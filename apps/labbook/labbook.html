@@ -1135,6 +1135,17 @@ html.lb-loading body > *{visibility:hidden;}
 .wk-task.done{background:transparent;box-shadow:inset 0 0 0 1px var(--border);}
 /* A weekend column is tinted surface2 — the same fill as a chip, so its chips vanished into it. */
 .wk-col.wk-weekend .wk-blk:not(.done),.wk-col.wk-weekend .wk-task:not(.done){background:var(--surface);}
+/* One experiment's steps and tasks on a day, under its code: the stripe is the project's colour and each card keeps its own tick. */
+.wk-exp{display:flex;flex-direction:column;gap:4px;padding:4px 4px 4px 5px;border-left:3px solid var(--pc,#5e87c5);border-radius:var(--r-1);background:var(--surface2);}
+.wk-exp-hd{min-width:0;cursor:pointer;}
+.wk-exp-hd .wk-code{display:block;font-weight:700;font-size:var(--fs-1);color:var(--text);overflow-wrap:break-word;}
+.wk-exp-hd:hover .wk-code{color:var(--accent);}
+.wk-exp .wk-blk,.wk-exp .wk-task{border-left:0;padding:4px 4px 4px 5px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--border);}   /* the group's padding comes out of the card's width: a column is 118 px at the narrowest */
+.wk-exp .wk-blk:hover,.wk-exp .wk-task:hover{background:var(--surface3);}
+.wk-exp .wk-blk .wk-bt{-webkit-line-clamp:4;}   /* the code is the header's now: the card has its line back */
+.wk-exp .wk-blk.done,.wk-exp .wk-task.done{background:transparent;}
+.wk-col.wk-weekend .wk-exp{background:var(--surface);}
+.wk-col.wk-weekend .wk-exp .wk-blk:not(.done),.wk-col.wk-weekend .wk-exp .wk-task:not(.done){background:var(--surface2);}
 .wk-task .wk-cb{width:15px;height:15px;flex:none;border:1.6px solid var(--border2);border-radius:var(--r-1);cursor:pointer;margin-top:1px;display:flex;align-items:center;justify-content:center;}
 .wk-task.done .wk-cb{background:var(--accent,#5e87c5);border-color:var(--accent,#5e87c5);color:var(--on-accent);}
 /* The task text is its own line; the links sit under it rather than running into the last word. */
@@ -15419,7 +15430,7 @@ function wkStepChip(e,b,opts){
     +' title="'+code+(t?(' — '+t):'')+'">'
     +'<span class="wk-cb" onclick="event.stopPropagation();toggleDone(\''+e.id+'\',\''+b.id+'\')" title="'+(b.done?'Done — click to reopen':'Mark done')+'">'+(b.done?'&#10003;':'')+'</span>'
     +'<span class="wk-blk-main" onclick="openBlk(\''+e.id+'\',\''+b.id+'\')">'
-      +'<span class="wk-code">'+codeH+'</span>'+(t?'<span class="wk-bt">'+t+'</span>':'')
+      +(opts.noCode?'':'<span class="wk-code">'+codeH+'</span>')+(t?'<span class="wk-bt">'+t+'</span>':(opts.noCode?'<span class="wk-bt">Step</span>':''))
       +(opts.showDate?'<span class="wk-from">'+esc(fmtDate(b.date))+'</span>':'')
     +'</span>'
     +'<span class="wk-sn" onclick="event.stopPropagation();snoozeBlock(\''+e.id+'\',\''+b.id+'\',1)" title="Snooze a day — later steps move too">'+ICON_SNOOZE+'</span>'
@@ -15514,6 +15525,31 @@ function wkMoveTo(D){
     if(over&&WK_DRAG) wkMoveTo(over.getAttribute('data-date')); else WK_DRAG=null;
   });
 })();
+// One planner task as a card. Inside an experiment's group the experiment is the header, so the code chip is left out.
+function wkTaskHtml(t,inGroup){
+      var linkChip=''; if(t.expId&&!inGroup){ var le=LB.data.experiments[t.expId]; if(le) linkChip='<span class="wk-lnk" onclick="event.stopPropagation();openExp(\''+t.expId+'\')" title="Open experiment">'+esc(le.code||le.title||'exp')+' &#8599;</span>'; }
+      return '<div class="wk-task'+(t.done?' done':'')+'" data-id="'+t.id+'" draggable="true" ondragstart="wkDragStart(event,\'task\',\''+t.id+'\')" ondragend="wkDragEnd()" oncontextmenu="ctxTask(event,\''+t.id+'\')">'
+        +'<span class="wk-cb" onclick="togglePlannerTask(\''+t.id+'\')" title="Toggle done">'+(t.done?'&#10003;':'')+'</span>'
+        +'<span class="wk-tx"><span contenteditable="true" spellcheck="false" onblur="editPlannerTask(\''+t.id+'\',this.textContent)" onkeydown="if(event.key===\'Enter\'){event.preventDefault();this.blur();}">'+esc(t.text)+'</span>'+linkChip+' <span class="wk-lnk" onclick="linkPlannerTask(\''+t.id+'\')" title="Link to an experiment or one of its steps">'+(t.expId?'edit link':'+ link')+'</span></span>'
+        +'<span class="wk-del" onclick="delPlannerTask(\''+t.id+'\')" title="Delete">&times;</span></div>';
+}
+// A day's steps and linked tasks, one group per experiment: its code once as a header, then a card for each step
+// or task, every card still ticked on its own. Tasks that link to nothing follow the groups.
+function wkExpGroupHtml(g){
+  var e=g.exp, p=projById(e.projectId), pc=(p&&p.color)||'#5e87c5', code=esc(e.code||e.title||'Exp');
+  return '<div class="wk-exp" style="--pc:'+pc+'" data-grp="'+e.id+'">'
+    +'<div class="wk-exp-hd" onclick="openExp(\''+e.id+'\')" title="Open '+code+'"><span class="wk-code">'+code.replace(/_/g,'_<wbr>')+'</span></div>'
+    +g.blks.map(function(b){ return wkStepChip(e,b,{noCode:true}); }).join('')
+    +g.tks.map(function(t){ return wkTaskHtml(t,true); }).join('')
+  +'</div>';
+}
+function wkDayBodyHtml(D){
+  var groups=[], at={}, free=[];
+  function grp(e){ if(!at[e.id]){ at[e.id]={exp:e,blks:[],tks:[]}; groups.push(at[e.id]); } return at[e.id]; }
+  blocksForDate(D).forEach(function(bt){ grp(bt.exp).blks.push(bt.block); });
+  tasksForDate(D).forEach(function(t){ var le=t.expId&&LB.data.experiments[t.expId]; if(le) grp(le).tks.push(t); else free.push(t); });
+  return groups.map(wkExpGroupHtml).join('')+free.map(function(t){ return wkTaskHtml(t,false); }).join('');
+}
 function renderWeekPlanner(host){
   var mon=wkMonday(WK_ANCHOR||todayStr()), today=todayStr();
   var days=[]; for(var i=0;i<7;i++) days.push(addDays(mon,i));
@@ -15521,19 +15557,12 @@ function renderWeekPlanner(host){
   var cols=days.map(function(D,i){
     var isToday=D===today, weekend=i>=5;
     var d=new Date(D+'T00:00:00');
-    var blks=blocksForDate(D).map(function(bt){ return wkStepChip(bt.exp,bt.block); }).join('');
-    var tks=tasksForDate(D).map(function(t){
-      var linkChip=''; if(t.expId){ var le=LB.data.experiments[t.expId]; if(le) linkChip='<span class="wk-lnk" onclick="event.stopPropagation();openExp(\''+t.expId+'\')" title="Open experiment">'+esc(le.code||le.title||'exp')+' &#8599;</span>'; }
-      return '<div class="wk-task'+(t.done?' done':'')+'" data-id="'+t.id+'" draggable="true" ondragstart="wkDragStart(event,\'task\',\''+t.id+'\')" ondragend="wkDragEnd()" oncontextmenu="ctxTask(event,\''+t.id+'\')">'
-        +'<span class="wk-cb" onclick="togglePlannerTask(\''+t.id+'\')" title="Toggle done">'+(t.done?'&#10003;':'')+'</span>'
-        +'<span class="wk-tx"><span contenteditable="true" spellcheck="false" onblur="editPlannerTask(\''+t.id+'\',this.textContent)" onkeydown="if(event.key===\'Enter\'){event.preventDefault();this.blur();}">'+esc(t.text)+'</span>'+linkChip+' <span class="wk-lnk" onclick="linkPlannerTask(\''+t.id+'\')" title="Link to an experiment or one of its steps">'+(t.expId?'edit link':'+ link')+'</span></span>'
-        +'<span class="wk-del" onclick="delPlannerTask(\''+t.id+'\')" title="Delete">&times;</span></div>';
-    }).join('');
-    var empty=(!blks&&!tks)?'<div class="wk-empty">—</div>':'';
+    var grouped=wkDayBodyHtml(D);
+    var empty=grouped?'':'<div class="wk-empty">—</div>';
     return '<div class="wk-col'+(isToday?' wk-is-today':'')+(weekend?' wk-weekend':'')+'" data-date="'+D+'">'
       +'<div class="wk-chd" onclick="selectNode(\'notebook\');selectPage(\''+D+'\')" title="Open daily notebook">'
         +'<span class="wk-dow">'+WK_DOW[i]+'</span><span class="wk-dnum">'+d.getDate()+' '+d.toLocaleDateString('en-GB',{month:'short'})+'</span></div>'
-      +'<div class="wk-body" ondragover="wkDragOver(event,\''+D+'\')" ondrop="wkDrop(event,\''+D+'\')">'+blks+tks+empty
+      +'<div class="wk-body" ondragover="wkDragOver(event,\''+D+'\')" ondrop="wkDrop(event,\''+D+'\')">'+grouped+empty
         +'<div class="wk-add"><input placeholder="+ task" autocomplete="off" onkeydown="wkAddKey(event,\''+D+'\')"></div>'
       +'</div></div>';
   }).join('');

@@ -7625,6 +7625,14 @@ commit and one invariant each; each step below is added when it lands.
   (fixed: `.day-lblwrap{align-items:stretch}`). The phone sweep (not in CI) still flags white ink on the
   accent fill at 3.65:1 on Today in light (`.carry-from`, `.day-jr-open`); the CI sweep's light
   threshold is 3, which they pass.
+- **A3 — the Week groups by experiment.** On a day, an experiment's steps and the planner tasks linked
+  to it sit under one header (its code, once, with the project's colour as a stripe); each card keeps its
+  own tick, and tasks linked to nothing follow the groups (`wkDayBodyHtml`, `wkExpGroupHtml`,
+  `wkTaskHtml`, `wkStepChip(…,{noCode:true})`). The header is not a `.wk-blk` and not draggable, so the
+  delegated drag and touch code is unchanged. The group's padding comes out of the card, and a column is
+  118 px at the narrowest: B32 caught "Transfection" breaking again, hence the 4/5 px paddings and a
+  4-line clamp in a group (the code no longer takes a line). **B34** covers the grouping and the ticks.
+  The printed week (`buildWeekPrintDoc`) is still flat.
 
 ## Labbook on a laptop, audited (2026-10-12)
 

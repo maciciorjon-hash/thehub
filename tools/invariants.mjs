@@ -81,6 +81,8 @@
 //   B33 Today opens, Home is gone   selectNode('home') is Today; the Planner lists Today and Week, Experiments has its own column
 //                            (projects, "All experiments") and remembers its folder; a saved Home or an experiment saved under the Planner
 //                            still opens somewhere sensible; the sign-in notice that was Home's is on Today.
+//   B34 the Week groups       An experiment's steps and linked tasks on one day sit under one header (its code, once); each card ticks on
+//                            its own, a task linked to nothing stays outside the groups, and the header does not drag.
 //
 //   Report and exports — one experiment per preset, dressed with marked content:
 //   R1 Report = record, live  Every section carries what the record holds, a change reaches it
@@ -2244,6 +2246,42 @@ async function suite(opts) {
       } finally { window.lbAuthState = auth0; try { dayToday(); } catch (x) {} }
     });
 
+    // B34 — the Week puts an experiment's steps and linked tasks on one day under one header; each card still ticks on its own.
+    if (run('B34')) await guard('B34', 'week groups', async () => {
+      tick('B34');
+      const before = new Set(Object.keys(LB.data.experiments));
+      const key = 'NB_SPARK_SCREEN96', tpl = LB.data.presets[key], D = todayStr();
+      const su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup)));
+      buildExperimentFrom({ pid: PID, sid: SID, key, tpl, startDate: D, type: 'NB', title: 'INV grp', code: 'INV_GRP_20261012', setup: su, plate: true });
+      const e = Object.values(LB.data.experiments).find(x => !before.has(x.id));
+      e.blocks.slice(0, 2).forEach(b => { b.date = D; b.done = false; });     // two steps of one experiment on one day
+      const t1 = uid(), t2 = uid(), mk = (id, text, expId) => { plannerTasks()[id] = { id, date: D, text, done: false, expId, blockId: null, created: Date.now(), updated: Date.now() }; };
+      mk(t1, 'INV linked task', e.id); mk(t2, 'INV loose task', null);
+      try {
+        WK_ANCHOR = D; selectNode('week'); await sleep(220);
+        let g = document.querySelector('.wk-exp[data-grp="' + e.id + '"]');
+        if (!g) { bad('B34', 'group', 'no group for the experiment on its day'); return; }
+        const day = g.closest('.wk-col');
+        if (day.querySelectorAll('.wk-exp[data-grp="' + e.id + '"]').length !== 1) bad('B34', 'group', 'the experiment has more than one header in a day');
+        if (g.querySelector('.wk-exp-hd .wk-code').textContent !== e.code) bad('B34', 'group', 'the header reads ' + g.querySelector('.wk-exp-hd .wk-code').textContent + ', not ' + e.code);
+        const due = blocksForDate(D).filter(x => x.exp.id === e.id).length;
+        if (due < 2 || g.querySelectorAll('.wk-blk').length !== due) bad('B34', 'group', 'the group holds ' + g.querySelectorAll('.wk-blk').length + ' step cards, the experiment has ' + due + ' due');
+        if (g.querySelector('.wk-blk .wk-code')) bad('B34', 'group', 'the code is repeated on the cards under its header');
+        if (!g.querySelector('.wk-task')) bad('B34', 'group', 'a task linked to the experiment is not under its header');
+        if (g.getAttribute('draggable') || g.querySelector('.wk-exp-hd[draggable]')) bad('B34', 'group', 'the header is draggable: a step would not move on its own');
+        tick('B34');
+        const b0 = e.blocks[0], b1 = e.blocks[1];
+        g.querySelector('.wk-blk[data-blk="' + b0.id + '"] .wk-cb').click(); await sleep(160);
+        if (!b0.done || b1.done) bad('B34', 'tick', 'ticking one step card left done = ' + b0.done + ' / ' + b1.done);
+        g = document.querySelector('.wk-exp[data-grp="' + e.id + '"]');
+        if (!g.querySelector('.wk-blk[data-blk="' + b0.id + '"].done') || g.querySelector('.wk-blk[data-blk="' + b1.id + '"].done')) bad('B34', 'tick', 'the cards do not show which one is done');
+        g.querySelector('.wk-task .wk-cb').click(); await sleep(160);
+        if (!plannerTasks()[t1].done || b1.done) bad('B34', 'tick', 'ticking the linked task changed ' + (plannerTasks()[t1].done ? 'the other step' : 'nothing'));
+        const loose = [...document.querySelectorAll('.wk-task')].find(x => x.dataset.id === t2);
+        if (!loose || loose.closest('.wk-exp')) bad('B34', 'loose task', 'a task with no experiment sits inside a group');
+      } finally { delete plannerTasks()[t1]; delete plannerTasks()[t2]; delete LB.data.experiments[e.id]; try { WK_ANCHOR = null; } catch (x) {} selectNode('journal'); }
+    });
+
     clean.forEach(cleanup);
     window.lbAlert = lbAlert0; window.lbPrompt = lbPrompt0; window.lbChoose = lbChoose0; window.lbPicker = lbPicker0; window.toast = toast0; window._dl = dl0;
     try { selectNode('home'); } catch (x) {}
@@ -2293,7 +2331,7 @@ try {
           const chips = [...document.querySelectorAll('.wk-blk')];
           const res = { chips: chips.length, broken: [], colW: [] };
           document.querySelectorAll('.wk-col').forEach(c => res.colW.push(Math.round(c.getBoundingClientRect().width)));
-          chips.forEach(ch => ch.querySelectorAll('.wk-code,.wk-bt').forEach(el => {
+          document.querySelectorAll('.wk-blk .wk-code,.wk-blk .wk-bt,.wk-exp-hd .wk-code').forEach(el => {
             const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT); let n;
             while ((n = walker.nextNode())) { const re = /[^\s_]+/g; let m;
               while ((m = re.exec(n.nodeValue))) { const r = document.createRange(); r.setStart(n, m.index); r.setEnd(n, m.index + m[0].length);
@@ -2301,7 +2339,7 @@ try {
                   const probe = document.createElement('span'); probe.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap'; probe.textContent = m[0]; el.appendChild(probe);
                   const wd = probe.getBoundingClientRect().width; probe.remove();
                   if (wd <= el.clientWidth + 0.5) res.broken.push(m[0]); } } }
-          }));
+          });
           delete LB.data.experiments[e.id]; selectNode('home');
           return res;
         });
