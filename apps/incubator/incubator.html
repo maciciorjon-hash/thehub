@@ -592,12 +592,18 @@ function archLookup(name){
   var hit=incubatorArchive().filter(function(L){ return String(L.name||'').toLowerCase()===lc; })[0];
   return hit || refLookup(name);
 }
+// Lab practice: 1% P/S in every culture (the shell owns the rule; this is the standalone copy).
+function labMedium(m){
+  try{ if(window.parent && window.parent.cultureMedium) return window.parent.cultureMedium(m); }catch(e){}
+  m=String(m||'').trim(); if(!m) return m;
+  return /\bP\/?S\b|pen(icillin)?[\s\/-]*strep|antibiotic|gentamicin|primocin/i.test(m) ? m : m+' + 1% P/S';
+}
 var _cfArch=null;   // rules of the currently-chosen base line
 function cfArchPrefill(name){
   var ref=archLookup(name); _cfArch=ref||null; var hint=el('cf-hint'); if(!hint) return;
   if(!ref){ hint.textContent=''; return; }
   function fillIf(id,v){ var e=el(id); if(e && !e.value && v!=null && v!=='') e.value=v; }
-  fillIf('cf-interval', ref.intervalDays); fillIf('cf-limit', ref.passageLimit); fillIf('cf-media', ref.media);
+  fillIf('cf-interval', ref.intervalDays); fillIf('cf-limit', ref.passageLimit); fillIf('cf-media', labMedium(ref.media));
   hint.textContent='Rules from '+(ref.name||name)+': '+(ref.ratio||'?')+(ref.doublingH?(' · doubling ~'+ref.doublingH+'h'):'')+(ref.passageLimit?(' · limit P'+ref.passageLimit):'')+(ref.type?(' · '+ref.type):'');
 }
 // ── Cell-line picker (choose a base line already in the system) ──
@@ -929,7 +935,7 @@ function cellFormHtml(){
       +'<div class="fld"><label>Vessel</label><input id="cf-vessel" class="inp" placeholder="T75" value="'+esc(c.vessel||'')+'"></div>'
       +'<div class="fld"><label>Split every (days)</label><input id="cf-interval" class="inp" type="number" min="1" placeholder="3" value="'+(c.intervalDays!=null?c.intervalDays:'')+'"></div>'
       +'<div class="fld"><label>Passage limit</label><input id="cf-limit" class="inp" type="number" min="1" placeholder="30" value="'+(c.passageLimit!=null?c.passageLimit:'')+'"></div>'
-      +'<div class="fld full"><label>Media</label><input id="cf-media" class="inp" placeholder="DMEM + 10% FBS" value="'+esc(c.media||'')+'"></div>'
+      +'<div class="fld full"><label>Media</label><input id="cf-media" class="inp" placeholder="DMEM + 10% FBS + 1% P/S" value="'+esc(c.media||'')+'"></div>'
       +'<div class="fld"><label>Last split date</label><input id="cf-seeded" class="inp" type="date" value="'+seededDefault+'"></div>'
       +'<div class="fld"><label>Last myco test</label><input id="cf-myco" class="inp" type="date" value="'+(editing?toDateInput(c.mycoLast):'')+'"></div>'
       /* Live cells are inventory too — "which incubator, which shelf" is the same question the

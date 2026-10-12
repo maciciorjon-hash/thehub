@@ -1708,7 +1708,7 @@ function _hubThawGo(v, line){
   JournalStore.addCell({
     line: line, baseLine: base, titleSuffix: suffix,
     passage: isNaN(pass) ? 1 : pass,
-    vessel: 'T25', media: (ref&&ref.media) || v.vial.cultureMedia || '',
+    vessel: 'T25', media: (ref&&ref.media) ? cultureMedium(ref.media) : (v.vial.cultureMedia || ''),
     intervalDays: (ref&&ref.intervalDays) || 3,
     passageLimit: (ref&&ref.passageLimit) || 30,
     ratio: (ref&&ref.ratio) || '', type: (ref&&ref.type) || '',
@@ -2640,6 +2640,14 @@ var CELL_ARCHIVE_BUILTIN = [
   { id:'sudhl5',   name:'SU-DHL-5',   tissue:'Lymphoma (DLBCL)',   catalog:'CRL-2958', url:'https://www.atcc.org/products/crl-2958', morphology:'Lymphoblast, suspension',                     media:'RPMI-1640 (ATCC 30-2001) + 10% heat-inact. FBS', doublingH:40, ratio:'1:3', intervalDays:3, passageLimit:25, type:'Suspension' }
 ];
 // Combined list = built-ins + user-added lines (from JournalStore, cross-device).
+// The lab's own practice: every culture gets 1% pen/strep on top of the supplier's recipe, unless
+// the recipe already names an antibiotic. Applied where a NEW culture takes its medium from a
+// reference (thaw, picking a line); never to a culture that already holds its own medium text.
+function cultureMedium(m){
+  m = String(m||'').trim(); if(!m) return m;
+  return /\bP\/?S\b|pen(icillin)?[\s\/-]*strep|antibiotic|gentamicin|primocin/i.test(m) ? m : m + ' + 1% P/S';
+}
+window.cultureMedium = cultureMedium;
 function getCellArchive(){
   var user = JournalStore.get().cellArchive;
   return CELL_ARCHIVE_BUILTIN.concat(Array.isArray(user) ? user : []);
