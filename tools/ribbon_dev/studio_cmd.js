@@ -504,7 +504,7 @@ function nearestLigandDist(a){
   var best=null, bd=1e9; _ligAtomsCache.forEach(function(p){ var dx=p.x-a.x, dy=p.y-a.y, dz=p.z-a.z, d=dx*dx+dy*dy+dz*dz; if(d<bd){ bd=d; best=p; } });
   if(!best||isLigandAtom(a)) return null; var d=Math.sqrt(bd); return d<=12?{d:d,l:best.l}:null;
 }
-function isLigandAtom(a){ return ligands.some(function(l){ return l.resn===a.resn&&l.chain===(a.chain||'')&&l.resi===a.resi; }); }
+function isLigandAtom(a){ return _isLigAtom(a); }
 function cmdWire(){
   cmdLoad();
   var inp=$('cmdInput'), pop=$('cmdPop');

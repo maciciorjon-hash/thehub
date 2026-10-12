@@ -50,15 +50,34 @@ var HYDRO_C={ALA:['CB'],VAL:['CB','CG1','CG2'],LEU:['CB','CG','CD1','CD2'],ILE:[
 var POS_ATOMS={LYS:['NZ'],ARG:['NH1','NH2','NE'],HIS:['ND1','NE2']}, NEG_ATOMS={ASP:['OD1','OD2'],GLU:['OE1','OE2']};
 var INTER_TYPES={hbond:{n:'Hydrogen bonds',c:'#3e63dd',w:0.07},salt:{n:'Salt bridges',c:'#d6409f',w:0.08},hydro:{n:'Hydrophobic contacts',c:'#8b8d98',w:0.05},
   pi:{n:'π-stacking',c:'#30a46c',w:0.08},cation:{n:'Cation–π',c:'#e5484d',w:0.08},halogen:{n:'Halogen bonds',c:'#12a594',w:0.07},metal:{n:'Metal contacts',c:'#8e4ec6',w:0.08}};
-function _isLigAtom(a){ return ligands.some(function(l){ return l.resn===a.resn&&l.chain===(a.chain||'')&&l.resi===a.resi; }); }
+// A uniform grid with integer cell numbers and no allocation per query. The grid in the core builds an "x,y,z" string for each of the 27
+// cells of every query; Interactions, Lysines, Clashes and Pockets each make tens of thousands of queries on a large structure.
+function agrid(atoms,cell){
+  var n=atoms.length, x0=1e9,y0=1e9,z0=1e9,x1=-1e9,y1=-1e9,z1=-1e9, i, a;
+  for(i=0;i<n;i++){ a=atoms[i]; if(a.x<x0)x0=a.x; if(a.y<y0)y0=a.y; if(a.z<z0)z0=a.z; if(a.x>x1)x1=a.x; if(a.y>y1)y1=a.y; if(a.z>z1)z1=a.z; }
+  if(!n){ x0=y0=z0=x1=y1=z1=0; }
+  var nx,ny,nz;
+  for(;;){ nx=Math.floor((x1-x0)/cell)+3; ny=Math.floor((y1-y0)/cell)+3; nz=Math.floor((z1-z0)/cell)+3; if(nx*ny*nz<=6e6) break; cell*=1.5; }   // one empty cell each side
+  var head=new Int32Array(nx*ny*nz).fill(-1), next=new Int32Array(n);
+  for(i=0;i<n;i++){ a=atoms[i]; var c=((Math.floor((a.z-z0)/cell)+1)*ny+(Math.floor((a.y-y0)/cell)+1))*nx+(Math.floor((a.x-x0)/cell)+1); next[i]=head[c]; head[c]=i; }
+  return {near:function(x,y,z,fn){
+    var cx=Math.floor((x-x0)/cell)+1, cy=Math.floor((y-y0)/cell)+1, cz=Math.floor((z-z0)/cell)+1;
+    for(var k=Math.max(0,cz-1);k<=Math.min(nz-1,cz+1);k++) for(var j=Math.max(0,cy-1);j<=Math.min(ny-1,cy+1);j++) for(var q=Math.max(0,cx-1);q<=Math.min(nx-1,cx+1);q++)
+      for(var m=head[(k*ny+j)*nx+q];m>=0;m=next[m]) fn(m);
+  }};
+}
+// Which hetero residues are ligands: one lookup, rebuilt when the structure changes (it was a scan of the ligand list for every atom, copied four times).
+var _ligKeysFor=null, _ligKeys={};
+function _ligKeysMap(){ if(_ligKeysFor!==ligands){ _ligKeysFor=ligands; _ligKeys={}; ligands.forEach(function(l){ _ligKeys[l.key]=1; }); } return _ligKeys; }
+function _isLigAtom(a){ return !!_ligKeysMap()[a.resn+':'+(a.chain||'')+':'+a.resi]; }
 function _carbonOnlyC(a,idx){ return (a.elem||'C').toUpperCase()==='C'&&(a.bonds||[]).every(function(j){ var b=idx[j]; return !b||/^(C|H)$/i.test(b.elem||'C'); }); }
 // src, tgt: atom lists. srcLig: src is a ligand (no charges known)
 function interactions(src,tgt,srcLig){
-  var out=[], idx=_atomsByIndex(), S=heavy(src), T=heavy(tgt), g=gridOf(T,6.5), add=function(type,a,b,d,pa,pb,extra){ out.push(Object.assign({type:type,a:a,b:b,d:d,pa:pa||{x:a.x,y:a.y,z:a.z},pb:pb||{x:b.x,y:b.y,z:b.z}},extra||{})); };
+  var out=[], idx=_atomsByIndex(), S=heavy(src), T=heavy(tgt), g=agrid(T,4.5), add=function(type,a,b,d,pa,pb,extra){ out.push(Object.assign({type:type,a:a,b:b,d:d,pa:pa||{x:a.x,y:a.y,z:a.z},pb:pb||{x:b.x,y:b.y,z:b.z}},extra||{})); };
   var hydroBest={};
   S.forEach(function(a){
     var ea=(a.elem||'C').toUpperCase();
-    gridNear(g,6.5,a.x,a.y,a.z,function(j){
+    g.near(a.x,a.y,a.z,function(j){
       var b=T[j]; if(rKeyOf(a)===rKeyOf(b)&&(a.chain||'')===(b.chain||'')) return;
       var eb=(b.elem||'C').toUpperCase(), d=_d(a,b);
       if(d>4.5) return;
@@ -109,9 +128,10 @@ function _setName(spec){
 var _inter=null, _interShapes=[];
 function interNow(){
   var f=state.inter; if(!f||!currentModel) return null;
-  var key=f.src+'|'+f.tgt+'|'+chainList.join()+'|'+currentPdbId+'|'+_frame;
+  var key=f.src+'|'+f.tgt+'|'+chainList.join()+'|'+Object.keys(state.hiddenChains).join()+'|'+currentPdbId+'|'+_frame+'|'+((f.src==='sel'||f.tgt==='sel')?selKeys().join(','):'');   // the selection and the chains shown are part of the question
   if(_inter&&_inter.key===key) return _inter;
-  var S=_setAtoms(f.src), T=f.tgt==='protein'?_setAtoms('protein').filter(function(a){ return S.indexOf(a)<0&&!_isLigAtom(a); }):_setAtoms(f.tgt);
+  var S=_setAtoms(f.src), si={}; S.forEach(function(a){ si[a.index]=1; });
+  var T=f.tgt==='protein'?_setAtoms('protein').filter(function(a){ return !si[a.index]&&!_isLigAtom(a); }):_setAtoms(f.tgt);
   if(!S.length||!T.length){ _inter={key:key,list:[]}; return _inter; }
   _inter={key:key,list:interactions(S,T,/^lig:/.test(f.src))};
   return _inter;
@@ -164,6 +184,144 @@ function interFill(){
   if(state.inter){ s.value=state.inter.src; t.value=state.inter.tgt; } else if(chainList.length>1&&!ligands.length) t.value='chain:'+chainList[1];
 }
 
+// ── The binding site ─────────────────────────────────────────────────────────────────────────────────────────────
+// What a SeeSAR-style view is for, as far as the coordinates go: pick a ligand, see what holds it. The ligand is chosen for you (the
+// largest that is not a crystallisation additive — the rule used when a target is opened from Echo), the interactions are read at
+// once, and the residues are listed one row each, with a pip for every kind of interaction, nearest first — not one row per atom
+// pair. There is no affinity here: SeeSAR's HYDE needs a force field and a solvation model. These are geometric rules on the
+// coordinates (no hydrogens), and the card says so.
+var ELEM_MASS={H:1.008,C:12.011,N:14.007,O:15.999,F:18.998,P:30.974,S:32.06,CL:35.45,BR:79.904,I:126.904,B:10.81,SE:78.97,FE:55.845,ZN:65.38,MG:24.305,CA:40.078,NA:22.99,K:39.098,MN:54.938,CU:63.546};
+var _site=null, _siteAll=false, _siteAuto={}, _allGrid=null;
+function siteLigands(){   // {main: the ligands worth a site, largest first; other: additives, ions' neighbours and the small}
+  var main=[], other=[];
+  ligands.forEach(function(l){ (RB_ADDITIVES.indexOf(String(l.resn).toUpperCase())<0&&(l.n||0)>=6?main:other).push(l); });
+  var bySize=function(a,b){ return (b.n||0)-(a.n||0); };
+  main.sort(bySize); other.sort(bySize);
+  if(!main.length&&other.length){ main=[other.shift()]; }   // an entry whose only ligand is glycerol still has a site
+  return {main:main,other:other};
+}
+function sitePrimary(){ var L=siteLigands(); return L.main[0]||null; }
+function _siteBonds(L,idx){   // the bonds inside the ligand: {a,b,order,ring}
+  var inL={}; L.forEach(function(a){ inL[a.index]=1; });
+  var out=[], seen={};
+  L.forEach(function(a){ (a.bonds||[]).forEach(function(j,q){ if(!inL[j]) return; var k=a.index<j?a.index+'-'+j:j+'-'+a.index; if(seen[k]) return; seen[k]=1; out.push({a:a,b:idx[j],order:(a.bondOrder&&a.bondOrder[q])||1}); }); });
+  out.forEach(function(e){   // a bond is in a ring when its ends are still joined without it
+    var q=[e.a.index], vis={}; vis[e.a.index]=1; var ring=false;
+    while(q.length&&!ring){ var u=idx[q.shift()]; (u.bonds||[]).forEach(function(j){ if(ring||!inL[j]) return; if((u===e.a&&j===e.b.index)||(u===e.b&&j===e.a.index)) return; if(j===e.b.index){ ring=true; return; } if(!vis[j]){ vis[j]=1; q.push(j); } }); }
+    e.ring=ring;
+  });
+  return out;
+}
+function _sasaPer(src,grid,probe,points){   // the exposed area of each src atom among the atoms the grid holds
+  var P=spherePoints(points||60), out=[], total=0;
+  src.forEach(function(a){
+    var R=atomR(a)+probe, nb=[]; grid.near(a.x,a.y,a.z,function(j){ var b=grid.atoms[j]; if(b===a) return; var s=R+atomR(b)+probe; if(_d(a,b)<s) nb.push(b); });
+    var free=0; P.forEach(function(p){ var x=a.x+R*p[0], y=a.y+R*p[1], z=a.z+R*p[2]; if(!nb.some(function(b){ var r=atomR(b)+probe, dx=x-b.x, dy=y-b.y, dz=z-b.z; return dx*dx+dy*dy+dz*dz<r*r; })) free++; });
+    var area=free/P.length*4*Math.PI*R*R; out.push(area); total+=area;
+  });
+  return {each:out,total:total};
+}
+function _siteGrid(){
+  var key=currentPdbId+'|'+_frame; if(_allGrid&&_allGrid.key===key) return _allGrid;
+  var all=heavy(currentModel.selectedAtoms({}).filter(function(a){ return WATER_RESN.indexOf(a.resn)<0; })), g=agrid(all,7); g.atoms=all;
+  return (_allGrid={key:key,g:g,all:all});
+}
+function siteMetrics(l){
+  var idx=_atomsByIndex(), L=heavy(currentModel.selectedAtoms(ligSel(l))), n=L.length, mw=l.mw||0, est=!mw;
+  if(!mw){ L.forEach(function(a){ mw+=ELEM_MASS[(a.elem||'C').toUpperCase()]||12; }); }
+  var bonds=_siteBonds(L,idx), deg={}; bonds.forEach(function(e){ deg[e.a.index]=(deg[e.a.index]||0)+1; deg[e.b.index]=(deg[e.b.index]||0)+1; });
+  var amide=function(e){ var c=/^C$/i.test(e.a.elem||'')?e.a:/^C$/i.test(e.b.elem||'')?e.b:null, nn=/^N$/i.test(e.a.elem||'')?e.a:/^N$/i.test(e.b.elem||'')?e.b:null; if(!c||!nn) return false;
+    return (c.bonds||[]).some(function(j,q){ var o=idx[j]; return o&&/^O$/i.test(o.elem||'')&&(c.bondOrder&&c.bondOrder[q])===2; }); };
+  var rot=bonds.filter(function(e){ return e.order===1&&!e.ring&&(deg[e.a.index]||0)>1&&(deg[e.b.index]||0)>1&&!amide(e); }).length;
+  var G=_siteGrid(), alone=agrid(L,7); alone.atoms=L;
+  var A=_sasaPer(L,alone,1.4), C=_sasaPer(L,{near:G.g.near,atoms:G.all},1.4);
+  var burial={}; L.forEach(function(a,i){ burial[a.index]=A.each[i]>0.01?Math.max(0,Math.min(1,1-C.each[i]/A.each[i])):0; });
+  var clashes=clashCompute('lig:'+l.key,'protein');
+  return {n:n,mw:mw,mwEst:est,rot:rot,buried:A.total>0?Math.max(0,1-C.total/A.total):0,burial:burial,clashes:clashes.clashes.length,clashList:clashes.clashes};
+}
+function siteRows(list){   // the interactions as one row per residue
+  var by={}, order=[];
+  list.forEach(function(x){
+    var r=_isLigAtom(x.b)||(x.b.hetflag&&ionResn.indexOf(x.b.resn)>=0)?x.a:x.b; if(_isLigAtom(r)) r=x.b;
+    var k=rKeyOf(r), row=by[k]; if(!row){ row=by[k]={k:k,chain:r.chain||'',resi:r.resi,resn:r.resn,atom:r,types:{},n:0,dmin:99,pair:x}; order.push(row); }
+    var t=row.types[x.type]||(row.types[x.type]={n:0,d:99}); t.n++; if(x.d<t.d) t.d=x.d; row.n++; if(x.d<row.dmin){ row.dmin=x.d; row.pair=x; }
+  });
+  return order.sort(function(a,b){ return a.dmin-b.dmin; });
+}
+function siteNow(){
+  var f=state.site; if(!f||!currentModel) return null;
+  var l=ligands.filter(function(x){ return x.key===f.key; })[0]; if(!l) return null;
+  var key=[l.key,currentPdbId,_frame,chainList.join(),Object.keys(state.hiddenChains).join(),state.pocketR].join('|');
+  if(_site&&_site.key===key) return _site;
+  var m=siteMetrics(l), L=heavy(currentModel.selectedAtoms(ligSel(l))), shell={}, G=agrid(L,Math.max(4,state.pocketR));
+  currentModel.selectedAtoms({hetflag:false}).forEach(function(a){ if(state.hiddenChains[a.chain||'']) return; G.near(a.x,a.y,a.z,function(j){ if(_d(a,L[j])<=state.pocketR) shell[rKeyOf(a)]=1; }); });
+  _site={key:key,lig:l,m:m,shell:shell,rows:null};
+  return _site;
+}
+function siteSet(key){
+  var l=ligands.filter(function(x){ return x.key===key; })[0]; if(!l) return false;
+  var old=state.site&&state.site.key===key?state.site:{};
+  state.site={key:key,focus:!!old.focus,burial:!!old.burial}; _site=null;
+  interSet('lig:'+key,'protein');   // the lines, the sticks and the list below; the card is a reading of the same result
+  renderSite(); return true;
+}
+function siteAuto(){   // the first time Analyse is opened for a structure: the ligand is chosen, the interactions are read
+  if(!currentModel||!viewer||_siteAuto[currentPdbId]||state.inter||state.site) return;
+  _siteAuto[currentPdbId]=1; var l=sitePrimary(); if(l) siteSet(l.key);
+}
+function siteFocus(on){
+  var f=state.site; if(!f) return; f.focus=on; var l=ligands.filter(function(x){ return x.key===f.key; })[0]; if(!l) return;
+  if(on) state.pockets[l.key]=true; else delete state.pockets[l.key];
+  recolorStructure(); renderLigList(); renderSite();
+  if(on) focusLigand(l); else fitToView();
+}
+function siteBurial(on){ if(!state.site) return; state.site.burial=on; recolorStructure(); renderSite(); }
+function rbSiteKeys(){ var f=state.site; if(!f||!f.focus) return null; var s=siteNow(); return s?s.shell:null; }   // the residues kept in colour while the rest is dimmed
+function rbBurialColor(a){ var f=state.site, s=f&&f.burial&&_site; if(!s) return null; var v=s.m.burial[a.index]; return v==null?null:_ramp(['#fff1c9','#7fc8b2','#1d6f7a'],v); }
+function _typeDots(types){ return Object.keys(INTER_TYPES).filter(function(k){ return types[k]; }).map(function(k){ return '<i style="background:'+INTER_TYPES[k].c+'" title="'+escapeHtml(INTER_TYPES[k].n+' · '+types[k].d.toFixed(2)+' Å'+(types[k].n>1?' (+'+(types[k].n-1)+')':''))+'"></i>'; }).join(''); }
+function renderSite(){
+  var el=$('siteBody'); if(!el) return;
+  var L=siteLigands(), all=L.main.concat(_siteAll?L.other:[]), f=state.site, s=f&&siteNow();
+  var chips=all.map(function(l){ var on=f&&f.key===l.key; return '<button type="button" class="it-chip'+(on?' on':'')+'" data-k="'+escapeHtml(l.key)+'" aria-pressed="'+!!on+'" title="'+escapeHtml(l.name||l.resn)+'"><b>'+escapeHtml(l.resn)+'</b> '+escapeHtml(chainTitle(l.chain).replace('Chain ',''))+' '+l.resi+' <em>'+(l.n||0)+' atoms</em></button>'; }).join('')
+    +(L.other.length?'<button type="button" class="it-chip" id="siteMore">'+(_siteAll?'Hide':'+ '+L.other.length)+(_siteAll?'':' other')+'</button>':'');
+  $('siteLigs').innerHTML=chips;
+  var none=!ligands.length;
+  $('siteNone').hidden=!none; $('siteLigsWrap').hidden=none; $('siteCard').hidden=none||!s;
+  if(none||!s){ $('sum-site').textContent=''; return; }
+  var r=interNow(), list=r?r.list:[], types=f&&state.inter?state.inter.types:{}, shownList=list.filter(function(x){ return types[x.type]!==false; });
+  var rows=siteRows(shownList), m=s.m;
+  var by={}; list.forEach(function(x){ by[x.type]=(by[x.type]||0)+1; });
+  $('siteStrip').innerHTML=[[m.n,'heavy atoms'],[(m.mwEst?'≈ ':'')+m.mw.toFixed(m.mwEst?0:1),m.mwEst?'mass, heavy atoms':'molecular weight'],[m.rot,'rotatable bonds'],[Math.round(m.buried*100)+' %','buried'],[m.clashes,m.clashes===1?'clash':'clashes'],[rows.length,'residues touching']]
+    .map(function(t){ return '<div><b>'+t[0]+'</b><span>'+t[1]+'</span></div>'; }).join('');
+  $('siteTypes').innerHTML=Object.keys(INTER_TYPES).filter(function(k){ return by[k]; }).map(function(k){ var t=INTER_TYPES[k], on=types[k]!==false;
+    return '<button type="button" class="it-chip'+(on?' on':'')+'" data-t="'+k+'" aria-pressed="'+on+'"><i style="background:'+t.c+'"></i>'+t.n+' <b>'+by[k]+'</b></button>'; }).join('');
+  $('siteList').innerHTML=rows.length?rows.map(function(x,i){ return '<div class="li site-row" data-i="'+i+'"><button type="button" class="li-main" data-i="'+i+'" title="Zoom to it · Shift-click to label it"><span class="li-name">'+escapeHtml(x.resn)+' '+x.resi+' <span style="font-weight:400;color:var(--text2)">· '+escapeHtml(chainTitle(x.chain).replace('Chain ',''))+'</span></span><span class="li-meta">'+x.n+(x.n===1?' contact':' contacts')+'</span></button><span class="site-pips">'+_typeDots(x.types)+'</span><span class="mono-v">'+x.dmin.toFixed(1)+' Å</span></div>'; }).join('')
+    :'<div class="empty-note">'+(list.length?'Every kind is switched off.':'No contacts within the usual distances: this ligand is not held by the protein here, or it is far from it.')+'</div>';
+  $('siteList').querySelectorAll('.li-main').forEach(function(b){ b.addEventListener('click',function(ev){ var x=rows[+b.dataset.i]; _userMoved=true;
+    if(ev.shiftKey){ if(!state.residueLabels.some(function(y){ return y.chain===x.chain&&y.resi===x.resi; })) state.residueLabels.push({chain:x.chain,resi:x.resi,resn:x.resn,text:x.resn+' '+x.resi}); delete state.off.labels; renderLabelTags(); renderResLblList(); return; }
+    fitView({focus:{or:[ligSel(s.lig),{chain:x.chain,resi:x.resi}]},animate:true,margin:0.3}); }); });
+  $('siteFocus').setAttribute('aria-pressed',!!f.focus); $('siteFocus').classList.toggle('on',!!f.focus);
+  $('siteBurial').setAttribute('aria-pressed',!!f.burial); $('siteBurial').classList.toggle('on',!!f.burial);
+  $('site3d').checked=!state.inter||state.inter.show!==false;
+  $('sum-site').textContent=s.lig.resn+' · '+rows.length+' residues';
+  s.rows=rows;
+}
+function siteCopy(){
+  var s=_site; if(!s||!s.rows) return;
+  var t='Residue\tChain\tInteractions\tNearest (Å)\tContacts\n'+s.rows.map(function(x){ return x.resn+' '+x.resi+'\t'+x.chain+'\t'+Object.keys(x.types).map(function(k){ return INTER_TYPES[k].n; }).join(', ')+'\t'+x.dmin.toFixed(2)+'\t'+x.n; }).join('\n');
+  try{ navigator.clipboard.writeText(t).then(function(){ showToast('Copied '+s.rows.length+' residues.'); },function(){ showToast('The clipboard is not available here.'); }); }catch(e){ showToast('The clipboard is not available here.'); }
+}
+function siteWire(){
+  $('siteLigs').addEventListener('click',function(e){ var m=e.target.closest('#siteMore'); if(m){ _siteAll=!_siteAll; renderSite(); return; } var b=e.target.closest('.it-chip[data-k]'); if(b) siteSet(b.dataset.k); });
+  $('siteTypes').addEventListener('click',function(e){ var b=e.target.closest('.it-chip'); if(!b||!state.inter) return; state.inter.types[b.dataset.t]=state.inter.types[b.dataset.t]===false; recolorStructure(); interDraw(); viewer.render(); renderInter(); renderSite(); });
+  $('site3d').addEventListener('change',function(e){ if(!state.inter) return; state.inter.show=e.target.checked; recolorStructure(); interDraw(); viewer.render(); });
+  $('siteFocus').addEventListener('click',function(){ if(state.site) siteFocus(!state.site.focus); });
+  $('siteBurial').addEventListener('click',function(){ if(state.site) siteBurial(!state.site.burial); });
+  $('siteSel').addEventListener('click',function(){ var r=_site&&_site.rows; if(r) selSet(r.map(function(x){ return x.k; })); });
+  $('siteLabel').addEventListener('click',function(){ var r=_site&&_site.rows; if(!r) return; r.slice(0,16).forEach(function(x){ if(!state.residueLabels.some(function(y){ return y.chain===x.chain&&y.resi===x.resi; })) state.residueLabels.push({chain:x.chain,resi:x.resi,resn:x.resn,text:x.resn+' '+x.resi}); }); delete state.off.labels; renderLabelTags(); renderResLblList(); showToast('Labelled '+Math.min(16,r.length)+' residues.'); });
+  $('siteCopy').addEventListener('click',siteCopy);
+}
+
 // ── Lysines a ligase can reach ──────────────────────────────────────────────────────────────
 // For a degrader in a ternary complex: which lysines of the target face the ligase, and are on the surface.
 var LIGASE_RE=/von hippel|vhl|cereblon|crbn|dcaf|ddb1|cullin|keap1|mdm2|xiap|ciap|birc|kelch|f-box|fbx|beta-trcp|btrc|ring|ligase|rbx|skp|elongin/i;
@@ -173,14 +331,14 @@ function lysGuess(){
   var helpers=/elongin|ddb1|rbx|skp|cullin/i;
   var e3=lig.filter(function(c){ return !helpers.test(chainInfo[c].name||''); })[0]||lig[0];
   var near=ligands[0], tgt=null;
-  if(near){ var L=currentModel.selectedAtoms(ligSel(near)), best=-1; chainList.forEach(function(c){ if(lig.indexOf(c)>=0||chainInfo[c].type!=='protein') return; var n=0, A=polyAtoms(c), g=gridOf(A,5); L.forEach(function(a){ gridNear(g,5,a.x,a.y,a.z,function(j){ if(_d(a,A[j])<=5) n++; }); }); if(n>best){ best=n; tgt=c; } }); }
+  if(near){ var L=currentModel.selectedAtoms(ligSel(near)), best=-1; chainList.forEach(function(c){ if(lig.indexOf(c)>=0||chainInfo[c].type!=='protein') return; var n=0, A=polyAtoms(c), g=agrid(A,5); L.forEach(function(a){ g.near(a.x,a.y,a.z,function(j){ if(_d(a,A[j])<=5) n++; }); }); if(n>best){ best=n; tgt=c; } }); }
   tgt=tgt||chainList.filter(function(c){ return lig.indexOf(c)<0&&chainInfo[c].type==='protein'; })[0]||chainList[0];
   e3=e3||chainList.filter(function(c){ return c!==tgt; })[0];
   return {target:tgt,ligase:e3};
 }
 function nzExposure(nz,all,g,cell){   // the fraction of NZ's solvent sphere not buried by any other heavy atom
   var P=spherePoints(60), R=atomR(nz)+1.4, nb=[];
-  gridNear(g,cell,nz.x,nz.y,nz.z,function(j){ var b=all[j]; if(b===nz) return; var s=R+atomR(b)+1.4; if(_d(nz,b)<s) nb.push(b); });
+  g.near(nz.x,nz.y,nz.z,function(j){ var b=all[j]; if(b===nz) return; var s=R+atomR(b)+1.4; if(_d(nz,b)<s) nb.push(b); });
   var free=0; P.forEach(function(p){ var x=nz.x+R*p[0], y=nz.y+R*p[1], z=nz.z+R*p[2]; if(!nb.some(function(b){ var r=atomR(b)+1.4, dx=x-b.x, dy=y-b.y, dz=z-b.z; return dx*dx+dy*dy+dz*dz<r*r; })) free++; });
   return free/P.length;
 }
@@ -188,7 +346,7 @@ var _lys=null;
 function lysNow(){
   var f=state.lys; if(!f||!currentModel) return null;
   var key=f.target+'|'+f.ligase+'|'+currentPdbId+'|'+_frame; if(_lys&&_lys.key===key) return _lys;
-  var all=heavy(currentModel.selectedAtoms({}).filter(function(a){ return WATER_RESN.indexOf(a.resn)<0; })), cell=7, g=gridOf(all,cell);
+  var all=heavy(currentModel.selectedAtoms({}).filter(function(a){ return WATER_RESN.indexOf(a.resn)<0; })), cell=7, g=agrid(all,cell);
   var E=polyAtoms(f.ligase), deg=ligands.length?currentModel.selectedAtoms({}).filter(_isLigAtom):[];
   var rows=currentModel.selectedAtoms({chain:f.target,resn:'LYS',atom:'NZ'}).map(function(nz){
     var best=1e9; E.forEach(function(e){ var d=_d(nz,e); if(d<best) best=d; });
@@ -230,12 +388,19 @@ function lysFill(){
 // Overlap = the two van der Waals radii less the distance. A clash overlaps by 0.6 Å or more, a contact by −0.4 Å or more
 // (ChimeraX's defaults). Atoms of one residue, and the peptide bond between neighbours, are not counted.
 var _clash=null, _clashShapes=[];
+// Not counted: atoms of one residue, and the peptide link between two neighbouring POLYMER residues. A ligand that shares a chain letter
+// with the protein is not a neighbour of residue i±1 (the old rule dropped its real contacts with residues 200 and 202 for a ligand numbered 201).
+function _covalentNeighbours(a,b){
+  if((a.chain||'')!==(b.chain||'')) return false;
+  if(a.resi===b.resi&&(a.icode||'')===(b.icode||'')) return true;
+  return !a.hetflag&&!b.hetflag&&Math.abs(a.resi-b.resi)<=1;
+}
 function clashCompute(aSpec,bSpec){
   var A=heavy(_setAtoms(aSpec)), B=heavy(_setAtoms(bSpec)), Bi={}; B.forEach(function(b){ Bi[b.index]=1; });
   A=A.filter(function(a){ return !Bi[a.index]; });
-  var g=gridOf(B,4.5), cl=[], ct=0;
-  A.forEach(function(a){ gridNear(g,4.5,a.x,a.y,a.z,function(j){ var b=B[j];
-    if((a.chain||'')===(b.chain||'')&&Math.abs(a.resi-b.resi)<=1) return;
+  var g=agrid(B,4.5), cl=[], ct=0;
+  A.forEach(function(a){ g.near(a.x,a.y,a.z,function(j){ var b=B[j];
+    if(_covalentNeighbours(a,b)) return;
     var d=_d(a,b), ov=atomR(a)+atomR(b)-d; if(ov>=-0.4) ct++; if(ov>=0.6) cl.push({a:a,b:b,d:d,ov:ov}); }); });
   cl.sort(function(x,y){ return y.ov-x.ov; });
   return {a:aSpec,b:bSpec,clashes:cl,contacts:ct};
@@ -313,9 +478,9 @@ function pocketsFind(){
     if(pts.length*h*h*h>=30) out.push(pts.map(function(p){ return {x:x0+p[0]*h,y:y0+p[1]*h,z:z0+p[2]*h}; }));
   }
   out.sort(function(a,b){ return b.length-a.length; });
-  var gA=gridOf(A,4);
+  var gA=agrid(A,4);
   return out.slice(0,8).map(function(P,n){
-    var res={}; P.forEach(function(p){ gridNear(gA,4,p.x,p.y,p.z,function(t){ if(_d(p,A[t])<=4) res[rKeyOf(A[t])]=1; }); });
+    var res={}; P.forEach(function(p){ gA.near(p.x,p.y,p.z,function(t){ if(_d(p,A[t])<=4) res[rKeyOf(A[t])]=1; }); });
     var lig=ligands.filter(function(l){ return currentModel.selectedAtoms(ligSel(l)).some(function(a){ return P.some(function(p){ return _d(p,a)<=2; }); }); }).map(function(l){ return l.resn; });
     return {n:n+1,pts:P,vol:P.length*h*h*h,res:Object.keys(res),lig:lig};
   });
@@ -408,9 +573,10 @@ function rbStudioStyles(ef){
   var f=state.lys; if(f&&f.show){ var lr=lysNow(); if(lr&&!state.hiddenChains[f.target]){ var rs=lr.rows.filter(function(x){ return x.exp>=0.1&&x.dE3<=f.cut; }).map(function(x){ return x.resi; }); if(rs.length) viewer.addStyle({chain:f.target,resi:rs,resn:'LYS'},{stick:{radius:0.17,colorfunc:ef}}); } }
 }
 function rbStudioShapes(){ interDraw(); clashDraw(); pocketDraw(); }
-function analyseReset(){ _inter=null; _lys=null; _clash=null; _pockets=null; _pae=null; _elec=null; _interShapes=[]; _clashShapes=[]; _pocketShapes=[]; }   // the viewer was cleared: the shapes went with it
-function analyseOnModel(){ document.body.classList.toggle('rb-af',isAF()); interFill(); lysFill(); clashFill(); renderInter(); renderLys(); renderClash(); renderPockets(); paeLoad(); }
+function analyseReset(){ _site=null; _allGrid=null; _inter=null; _lys=null; _clash=null; _pockets=null; _pae=null; _elec=null; _interShapes=[]; _clashShapes=[]; _pocketShapes=[]; }   // the viewer was cleared: the shapes went with it
+function analyseOnModel(){ document.body.classList.toggle('rb-af',isAF()); renderSite(); interFill(); lysFill(); clashFill(); renderInter(); renderLys(); renderClash(); renderPockets(); paeLoad(); }
 function analyseWire(){
+  siteWire();
   $('interGo').addEventListener('click',function(){ interSet($('interSrc').value,$('interTgt').value); });
   $('interTypes').addEventListener('click',function(e){ var b=e.target.closest('.it-chip'); if(!b||!state.inter) return; state.inter.types[b.dataset.t]=state.inter.types[b.dataset.t]===false; recolorStructure(); interDraw(); viewer.render(); renderInter(); });
   $('interCopy').addEventListener('click',interCopy);
@@ -430,8 +596,12 @@ function analyseWire(){
   paeWire();
 }
 // Design keys for what Analyse shows
-DESIGN_KEYS.push('inter','lys');
+DESIGN_KEYS.push('inter','lys','site');
 RB_CMDS.push(
+  {n:['site','bindingsite','sites'],d:'The binding site of a ligand: what holds it, residue by residue',f:'site · site MZ1',
+   args:function(){ return siteLigands().main.concat(siteLigands().other).map(function(l){ return _cand(l.resn,'lig',l.name||'ligand'); }); },
+   run:function(a){ var n=needModel(); if(n) return n; var w=a.trim().toUpperCase(), L=siteLigands(), l=w?L.main.concat(L.other).filter(function(x){ return x.resn.toUpperCase()===w; })[0]:L.main[0];
+     if(!l) return _err(ligands.length?'site <ligand code>':'This structure has no ligand.'); siteSet(l.key); rbTab('analyse'); rbOpenSec('site'); var s=siteNow(); return _ok(l.resn+': '+(s&&s.rows?s.rows.length:0)+' residues touch it.'); }},
   {n:['interactions','inter','contacts2','plip','hbonds'],d:'What a ligand (or a chain) makes with the protein: H-bonds, salt bridges, hydrophobic, π, halogen, metal',f:'interactions MZ1 · interactions A B · interactions off',
    args:function(pos){ return pos===0?ligands.map(function(l){ return _cand(l.resn,'lig',l.name||'ligand'); }).concat(chainList.map(function(c){ return _cand(c,'chain',''); }),[_cand('sel','word','the selection'),_cand('off','word','none')]):chainList.map(function(c){ return _cand(c,'chain',''); }); },
    run:function(a){ var n=needModel(); if(n) return n; var w=a.trim().split(/\s+/).filter(Boolean);

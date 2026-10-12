@@ -7709,6 +7709,24 @@ commit and one invariant each; each step below is added when it lands.
   surface bands in a 6×7×6 cube; with it off it stays exact (RB31 decodes 120,000 random pixels to what was encoded). Preview drops
   the occlusion look while it plays (`_cLow`). Not in the film: the colour key. **RB39** (it found the scrubber reading its own value
   after Pause had redrawn it).
+- **B7 (1/3) — Analyse: the binding site, and the code under it.** Problem of use: eight unrelated tools in one accordion, nothing
+  computed until two selects were set and Find pressed, atom-pair lists (80 rows) with nothing ranked or grouped. New first section
+  **Binding site** (open): the first time Analyse is opened for a structure the ligand is chosen (the largest that is not an additive,
+  `sitePrimary`; an entry whose only ligand is glycerol still gets one) and its interactions are read at once (`siteSet` →
+  `interSet`, so the card is a reading of the same `state.inter` the lines and sticks use). One row per **residue**
+  (`siteRows`: pips per kind with distance, nearest first), type filters with counts, click = frame the residue with the ligand,
+  Shift-click = label, select/label/copy. **Ligand strip** (`siteMetrics`): heavy atoms, molecular weight (RCSB's `formula_weight` now
+  fetched with the names, else the heavy-atom mass marked ≈), rotatable bonds (single, acyclic, between two non-terminal heavy atoms,
+  not amide), **buried** (the share of the ligand's accessible surface the protein covers: per-atom Shrake–Rupley alone vs in
+  the structure, `_sasaPer`), clashes. **Focus** turns the pocket on, frames the ligand and steps the rest of the protein back
+  (`rbSiteKeys` in `makeColorFn`, kept in exports: it is a look); **Colour by burial** colours each ligand atom (`rbBurialColor`
+  through `ligStyle`) — the honest per-atom view; SeeSAR's per-atom view is HYDE affinity, which needs a force field and
+  a solvation model and is not here (the card says so). Code: `agrid` (integer cell numbers, no string keys, no allocation per
+  query) replaces the core grid in every Analyse function; one `_ligKeysMap` replaces the four copies of the ligand scan;
+  `interNow`'s cache key now holds the selection and the chains shown; the O(|T|·|S|) filter is a lookup;
+  **the clash rule** no longer drops a ligand's contacts with the residues either side of its own number
+  (`_covalentNeighbours`). `state.site` is a design key and is reset with a structure. Not done: the globals (`_inter`, `_lys`, …)
+  were not folded into one object (RB30 and the commands name them). **RB40**.
 
 ## Labbook on a laptop, audited (2026-10-12)
 

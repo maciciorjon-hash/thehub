@@ -59,6 +59,9 @@
 //                           the cropped figure (the structure above it untouched), sized in pt from the dpi; ink, corner, and the perspective warning.
 //   RB39 the film            Preview plays the frames that are recorded, on the structure; the bar scrubs to any frame exactly; the preview starts from, and goes back to,
 //                           the user's view; a drag on the viewer ends it; Loop; a recorded frame carries the labels and the scale bar; sizes; the GIF is dithered.
+//   RB40 the binding site    Analyse picks the ligand (not an additive) and reads its interactions when it is first opened; one row per residue, nearest first, a pip per
+//                           kind; the strip (atoms, mass, rotatable bonds, burial, clashes); filters, click, Shift-click; Focus and burial colouring; no ligand says so;
+//                           a ligand between two residues of its own chain letter clashes with both.
 //   RB33 Echo mutants        Echo reads groups named like BRD4_Y97A as mutants of BRD4 and sends log2(DC50 ratio) per residue; Ribbon puts them
 //                           on the AlphaFold model, labelled, with side chains; a residue not in the model is named.
 //   RB18 measurements       Two atoms make a distance equal to their coordinates, three an angle at the middle one; a dashed line,
@@ -159,6 +162,14 @@ function globulePdb() {
   }
   return L.join('\n') + '\nEND\n';
 }
+// A ligand numbered between two residues of its own chain letter, 1.5 Å from both: the contacts a "neighbour residue" rule threw away.
+function clashPdb() {
+  const L = []; let n = 1;
+  L.push(atomLine('ATOM', n++, 'CA', 'ALA', 'A', 200, 0, 0, 0)); L.push(atomLine('ATOM', n++, 'CA', 'ALA', 'A', 202, 6, 0, 0));
+  L.push(atomLine('ATOM', n++, 'CA', 'ALA', 'A', 10, 30, 0, 0)); L.push(atomLine('ATOM', n++, 'CA', 'ALA', 'A', 11, 31.5, 0, 0));   // two true neighbours, 1.5 Å apart: never a clash
+  L.push(atomLine('HETATM', n++, 'C1', 'LIG', 'A', 201, 1.5, 0, 0)); L.push(atomLine('HETATM', n++, 'C2', 'LIG', 'A', 201, 4.5, 0, 0));
+  return L.join('\n') + '\nEND\n';
+}
 // Built for the interactions: every contact at a known distance (see RB30).
 function interPdb() {
   const L = []; let n = 1; const A = (rec, name, resn, ch, resi, x, y, z, el) => L.push(atomLine(rec, n++, name, resn, ch, resi, x, y, z, 20, el));
@@ -202,6 +213,7 @@ const STRUCTS = {
   '7APO': () => synPdb({ chains: [{ id: 'A', len: 14, x0: 0 }], additive: true }),   // an entry whose only ligand is glycerol
   '8CAM': () => globulePdb(),
   '9INT': () => interPdb(),
+  '9CLS': () => clashPdb(),
   '9SHL': () => shellPdb(),
   '8POC': () => synPdb({ chains: [{ id: 'A', len: 14, x0: 0 }], additive: true, ligand: true, ligandN: 14 }),   // a real ligand beside the glycerol
 };
@@ -2306,6 +2318,63 @@ async function rb39() {
   await ctx.close();
 }
 
+
+// ── RB40 the binding site ───────────────────────────────────────────────────────────────────────
+async function rb40() {
+  const { ctx, pg, E, go } = await open({ tag: 'RB40 ' });
+  if (!(await has3d(pg))) { skipped.push('RB40 (3Dmol could not load from its CDN)'); await ctx.close(); return; }
+  await go('9INT'); await sleep(400);
+  check('RB40', 'nothing is drawn or computed until Analyse is opened', await E(() => !state.site && !state.inter));
+  await E(() => { rbTab('analyse'); }); await sleep(500);
+  const auto = await E(() => ({ site: state.site && state.site.key, inter: state.inter && state.inter.src, open: document.querySelector('details[data-sec=site]').open, rows: document.querySelectorAll('#siteList .site-row').length, chips: [...document.querySelectorAll('#siteLigs .it-chip[data-k]')].map(b => b.dataset.k).join() }));
+  check('RB40', 'opening Analyse picks the ligand and reads its interactions at once, with the card open', auto.site === 'LIG:A:201' && auto.inter === 'lig:LIG:A:201' && auto.open && auto.rows >= 4 && auto.chips === 'LIG:A:201', auto);
+  const t = await E(() => { const r = _site.rows, list = interNow().list; const res = new Set(list.map(x => (_isLigAtom(x.b) || ionResn.includes(x.b.resn) ? x.a : x.b)).map(a => rKeyOf(a))); return { n: r.length, distinct: res.size, sorted: r.every((x, i) => !i || r[i - 1].dmin <= x.dmin), names: r.map(x => x.resn + x.resi).join(), ser: Object.keys((r.find(x => x.resn === 'SER') || { types: {} }).types).join() }; });
+  check('RB40', 'the table is one row per residue, nearest first, not one per atom pair', t.n >= 4 && t.n <= t.distinct + 1 && t.sorted && /SER40/.test(t.names) && /PHE30/.test(t.names), t);
+  const pips = await E(() => ({ ser: [...document.querySelectorAll('#siteList .site-row')].find(r => /SER/.test(r.textContent)).querySelector('.site-pips i').getAttribute('title'), serTypes: Object.keys(_site.rows.find(x => x.resn === 'SER').types).join() }));
+  check('RB40', 'each kind of interaction a residue makes is a coloured pip, named with its distance', /Hydrogen bonds · 2\.\d\d Å/.test(pips.ser) && pips.serTypes === 'hbond', pips);
+  const st = await E(() => ({ txt: document.getElementById('siteStrip').textContent, m: _site.m }));
+  check('RB40', 'the ligand strip says its atoms, mass, rotatable bonds, how buried it is and its clashes', /heavy atoms/.test(st.txt) && /rotatable bonds/.test(st.txt) && /buried/.test(st.txt) && /clash/.test(st.txt) && st.m.n >= 10 && st.m.mwEst && st.m.buried >= 0 && st.m.buried <= 1 && Number.isInteger(st.m.rot) && Number.isInteger(st.m.clashes), { txt: st.txt, n: st.m.n, mw: st.m.mw, rot: st.m.rot, buried: st.m.buried });
+  // the filters
+  const before = await E(() => document.querySelectorAll('#siteList .site-row').length);
+  await pg.click('#siteTypes .it-chip[data-t=hbond]'); await sleep(250);
+  const after = await E(() => ({ n: document.querySelectorAll('#siteList .site-row').length, ser: /SER/.test(document.getElementById('siteList').textContent) }));
+  check('RB40', 'switching a kind off takes the residues that only make that kind out of the table', after.n === before - 1 && !after.ser, { before, after });
+  await pg.click('#siteTypes .it-chip[data-t=hbond]'); await sleep(200);
+  // a click goes to the residue, Shift-click labels it
+  const nl0 = await E(() => state.residueLabels.length);
+  await pg.click('#siteList .site-row:nth-child(1) .li-main', { modifiers: ['Shift'] }); await sleep(250);
+  check('RB40', 'Shift-click on a row labels that residue', await E(() => state.residueLabels.length) === nl0 + 1);
+  await pg.click('#siteList .site-row:nth-child(2) .li-main'); await sleep(900);
+  check('RB40', 'a click frames the residue with the ligand', await E(() => _userMoved === true));
+  // focus: the pocket as sticks, the rest stepped back
+  await pg.click('#siteFocus'); await sleep(500);
+  const fo = await E(() => { const fn = makeColorFn(), raw = makeColorFn({ noDim: true }), all = currentModel.selectedAtoms({ hetflag: false }), keys = rbSiteKeys(), near = all.find(a => keys[rKeyOf(a)]), far = all.find(a => !keys[rKeyOf(a)]); return { on: state.site.focus, pocket: !!state.pockets['LIG:A:201'], pressed: document.getElementById('siteFocus').getAttribute('aria-pressed'), nearSame: !near || fn(near) === raw(near), farDim: !far || fn(far) !== raw(far), hasFar: !!far, n: Object.keys(keys).length }; });
+  check('RB40', 'Focus turns the pocket on and steps the rest of the protein back, leaving the residues around the ligand in colour', fo.on && fo.pocket && fo.pressed === 'true' && fo.nearSame && fo.farDim && fo.n >= 3, fo);
+  await pg.click('#siteFocus'); await sleep(300);
+  check('RB40', 'and Focus again puts it all back', await E(() => !state.site.focus && !state.pockets['LIG:A:201'] && rbSiteKeys() === null));
+  // burial
+  await pg.click('#siteBurial'); await sleep(300);
+  const bu = await E(() => { const a = currentModel.selectedAtoms({ resn: 'LIG' }), cols = new Set(a.map(x => rbBurialColor(x))); return { cols: cols.size, on: state.site.burial, first: rbBurialColor(a[0]) }; });
+  check('RB40', 'Colour by burial gives each ligand atom its own colour by how buried it is', bu.on && bu.cols >= 2 && /^#/.test(bu.first), bu);
+  await pg.click('#siteBurial');
+  check('RB40', 'a design keeps the site, the focus and the burial colouring', await E(() => { state.site.focus = false; state.site.burial = true; const s = collectDesign().state.site; return !!s && s.key === 'LIG:A:201' && s.burial === true; }));
+  const cmd = await E(() => { const r = runCommand('site LIG', { noHistory: true }); return { ok: !!r.ok, key: state.site.key, msg: r.msg || r.ok }; });
+  check('RB40', 'the site command picks a ligand by its code', cmd.ok && cmd.key === 'LIG:A:201', cmd);
+  // additives and structures with no ligand
+  await go('8POC'); await sleep(400); await E(() => { rbTab('analyse'); }); await sleep(400);
+  const add = await E(() => ({ chips: [...document.querySelectorAll('#siteLigs .it-chip[data-k]')].map(b => b.dataset.k).join(), more: !!document.getElementById('siteMore'), site: state.site && state.site.key }));
+  check('RB40', 'a crystallisation additive is not the site: the ligand is picked, glycerol waits under "+ 1 other"', add.site === 'LIG:A:201' && add.chips === 'LIG:A:201' && add.more, add);
+  await go('7APO'); await sleep(400); await E(() => { rbTab('analyse'); }); await sleep(400);
+  check('RB40', 'an entry whose only ligand is glycerol still has a site', await E(() => state.site && state.site.key === 'GOL:A:202'));
+  await go('1XYZ'); await sleep(400); await E(() => { rbTab('analyse'); }); await sleep(300);
+  check('RB40', 'a structure with no ligand says so instead of showing an empty card', await E(() => !document.getElementById('siteNone').hidden && document.getElementById('siteCard').hidden && !state.site));
+  // the clash rule
+  await go('9CLS'); await sleep(300);
+  const cl = await E(() => ({ lig: clashCompute('lig:LIG:A:201', 'protein').clashes.length, nb: clashCompute('chain:A', 'chain:A').clashes.length, cov: [_covalentNeighbours({ chain: 'A', resi: 201, hetflag: true }, { chain: 'A', resi: 202, hetflag: false }), _covalentNeighbours({ chain: 'A', resi: 10, hetflag: false }, { chain: 'A', resi: 11, hetflag: false }), _covalentNeighbours({ chain: 'A', resi: 5, hetflag: false }, { chain: 'A', resi: 5, hetflag: false }), _covalentNeighbours({ chain: 'A', resi: 5 }, { chain: 'B', resi: 5 })] }));
+  check('RB40', 'a ligand 1.5 Å from the residues on either side of its own number clashes with both (the rule used to drop them), while two polymer neighbours never do', cl.lig === 2 && cl.cov.join() === 'false,true,true,false', cl);
+  await ctx.close();
+}
+
 // ── RB31 undo, click modes, views, films, figure sizes ─────────────────────────────────────
 async function rb31() {
   const { ctx, pg, E, go } = await open({ tag: 'RB31 ' });
@@ -2468,7 +2537,7 @@ async function rb33() {
   await r.ctx.close();
 }
 
-const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20], ['RB21', rb21], ['RB22', rb22], ['RB23', rb23], ['RB24', rb24], ['RB25', rb25], ['RB26', rb26], ['RB27', rb27], ['RB28', rb28], ['RB29', rb29], ['RB30', rb30], ['RB31', rb31], ['RB32', rb32], ['RB33', rb33], ['RB34', rb34], ['RB35', rb35], ['RB36', rb36], ['RB37', rb37], ['RB38', rb38], ['RB39', rb39]];
+const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20], ['RB21', rb21], ['RB22', rb22], ['RB23', rb23], ['RB24', rb24], ['RB25', rb25], ['RB26', rb26], ['RB27', rb27], ['RB28', rb28], ['RB29', rb29], ['RB30', rb30], ['RB31', rb31], ['RB32', rb32], ['RB33', rb33], ['RB34', rb34], ['RB35', rb35], ['RB36', rb36], ['RB37', rb37], ['RB38', rb38], ['RB39', rb39], ['RB40', rb40]];
 const port = await freePort();
 const srv = spawn('python3', ['-m', 'http.server', String(port), '--bind', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });
 base = `http://127.0.0.1:${port}/`;
