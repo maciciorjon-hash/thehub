@@ -182,6 +182,11 @@ UI_ICONS = {
                   '<path d="M3.5 3.5v17" opacity=".6"/>'
                   '<rect class="m1" x="5.5" y="4.5" width="8" height="3.5" rx="1.5"/><rect class="m1" x="8" y="10.25" width="9" height="3.5" rx="1.5"/>'
                   '<rect class="m1" x="11.5" y="16" width="9" height="3.5" rx="1.5"/>'),
+    # a flask: the experiment itself, the liquid line its one moving part
+    'experiments': ('<path '+FL+' d="M6.9 15.3h10.2l2 3.4a1.6 1.6 0 0 1-1.4 2.3H6.3a1.6 1.6 0 0 1-1.4-2.3z"/>'
+                    '<path d="M9.5 3.5h5"/><path d="M10.2 3.5v6.1L4.9 18.7A1.6 1.6 0 0 0 6.3 21h11.4a1.6 1.6 0 0 0 1.4-2.3L13.8 9.6V3.5"/>'
+                    '<path class="m1" d="M8.4 15.3h7.2" pathLength="1"/>'
+                    '<circle class="m1" cx="12" cy="18.1" r=".95" fill="currentColor" stroke="none"/>'),
     # a dose response in its frame
     'analysis':  ('<rect '+FL+' x="3.5" y="3.5" width="17" height="17" rx="3.5"/>'
                   '<rect x="3.5" y="3.5" width="17" height="17" rx="3.5"/>'
@@ -261,7 +266,7 @@ APP_FILES = {
     'blot':'apps/western-blot/western-blot.html',
 }
 SHELL = 'shell/hub-shell.html'
-WS_KEYS = ['planner', 'fold', 'cloud', 'antibody', 'primer', 'plasmid', 'notebook', 'designer', 'cells']
+WS_KEYS = ['planner', 'fold', 'cloud', 'antibody', 'primer', 'plasmid', 'notebook', 'designer', 'experiments', 'cells']
 SUITE_KEYS = ['analysis', 'archive', 'apps']
 
 # The tile: neutral, the faintest wash of the app's hue, the glyph in ink and one accent in the

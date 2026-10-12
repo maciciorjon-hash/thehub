@@ -56,7 +56,7 @@ const SEED = `(function(){
   var ids={}; Object.keys(out).forEach(function(k){ if(out[k]) ids[k]=out[k].id; }); return ids; })()`;
 const OPEN = k => `openExp(window.__SW.${k})`;
 const SCENES = [
-  ['home', `selectNode('home')`],
+  ['planner_today', `selectNode('journal')`],
   ['today', `openDayPage(todayStr())`],
   ['week', `selectNode('week')`],
   ['exps', `selectNode('exps')`],

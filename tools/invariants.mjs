@@ -77,6 +77,11 @@
 //                            dialog, the Journal, the Designer — keeps the caret
 //                            when typed into. (the Designer's own search box)
 //
+//   Navigation, 2026-10-12:
+//   B33 Today opens, Home is gone   selectNode('home') is Today; the Planner lists Today and Week, Experiments has its own column
+//                            (projects, "All experiments") and remembers its folder; a saved Home or an experiment saved under the Planner
+//                            still opens somewhere sensible; the sign-in notice that was Home's is on Today.
+//
 //   Report and exports — one experiment per preset, dressed with marked content:
 //   R1 Report = record, live  Every section carries what the record holds, a change reaches it
 //                            with nothing pressed, each toggle removes what it names, and hand-
@@ -2187,6 +2192,56 @@ async function suite(opts) {
         const miss = [...document.querySelectorAll('[onclick]:not(button):not(a):not(input):not(select):not(textarea):not(label):not(option)')]
           .filter(x => x.offsetParent && x.tabIndex < 0 && !x.closest('[contenteditable]:not([contenteditable="false"])'));
         if (miss.length) bad('B19', n, `${miss.length} clickable element(s) Tab cannot reach, e.g. ${miss[0].className || miss[0].tagName}`); }
+    });
+
+    // B33 — Today is where Labbook opens; Home is gone and Experiments is a workspace of its own.
+    if (run('B33')) await guard('B33', 'navigation', async () => {
+      tick('B33');
+      if (typeof renderHome !== 'undefined' || typeof homeTodayBand !== 'undefined') bad('B33', 'home', 'the Home dashboard code is still there');
+      const tabs = LB_TABS.map(t => t.id);
+      if (tabs[0] !== 'today' || tabs[1] !== 'exps' || tabs.includes('home')) bad('B33', 'tabs', 'the phone tabs start ' + tabs.join());
+      const col = () => [...document.querySelectorAll('#pane-sec .sec-item')].map(x => x.textContent.replace(/\s+/g, ' ').trim());
+      selectNode('home'); await sleep(140);
+      if (SEL.node.kind !== 'journal' || lbWorkspace() !== 'planner') bad('B33', 'home alias', 'selectNode("home") opened ' + SEL.node.kind + ' in ' + lbWorkspace() + ', expected Today in the Planner');
+      if (!document.querySelector('#pane-ed .exh-day')) bad('B33', 'home alias', 'Today did not draw');
+      tick('B33');
+      const c1 = col(), at = n => c1.indexOf(n);
+      if (!(at('Journal') >= 0 && at('Journal') < at('Planner') && at('Planner') < at('Experiments') && at('Experiments') < at('Designer'))) bad('B33', 'workspaces', 'the workspace list reads ' + c1.join(' · '));
+      if (!(at('Today') > at('Designer') && at('Week') > at('Today'))) bad('B33', 'planner column', 'the Planner lists ' + c1.join(' · '));
+      if (document.querySelector('#pane-sec .proj-row')) bad('B33', 'planner column', 'the project list is still in the Planner');
+      selectNode('exps'); await sleep(140);
+      tick('B33');
+      if (lbWorkspace() !== 'experiments') bad('B33', 'experiments', 'the Experiments list is in the ' + lbWorkspace() + ' workspace');
+      if (!document.querySelector('#pane-sec .proj-row')) bad('B33', 'experiments column', 'no projects in the Experiments column');
+      if (!col().includes('All experiments')) bad('B33', 'experiments column', 'the column reads ' + col().join(' · '));
+      const e0 = Object.values(LB.data.experiments)[0];
+      if (e0) { const was = e0.updated; e0.updated = Date.now(); XV.q = ''; XV.filter = 'all'; renderEditor(); await sleep(100);
+        if (!document.querySelector('#pane-ed .xv-recent .xv-rc')) bad('B33', 'recent', 'Experiments shows no "Recently edited" row'); e0.updated = was; }
+      // where you left each one
+      selectNode('expsec', PID, SID); await sleep(100); selectNode('week'); await sleep(100);
+      openExperimentsWs(); await sleep(100);
+      if (SEL.node.kind !== 'expsec' || SEL.node.projectId !== PID) bad('B33', 'experiments restore', 'back in Experiments it opened ' + SEL.node.kind);
+      openPlannerWs(); await sleep(100);
+      if (SEL.node.kind !== 'week') bad('B33', 'planner restore', 'back in the Planner it opened ' + SEL.node.kind + ', expected the Week');
+      tick('B33');
+      // what an older Labbook saved
+      const mig = _wsLastFrom({ planner: { node: { kind: 'expsec', projectId: PID, sectionId: SID }, page: null }, ws: 'planner' });
+      if (!mig.experiments || mig.planner || mig.ws !== 'experiments') bad('B33', 'saved state', 'an experiment saved under the Planner was not moved: ' + J(mig));
+      const was = WS_LAST.planner; WS_LAST.planner = { node: { kind: 'home' }, page: null };
+      const rn = _wsRestoreNode('planner'); WS_LAST.planner = was;
+      if (!rn || rn.node.kind !== 'journal') bad('B33', 'saved state', 'a saved Home did not open Today');
+      // the crumb
+      const words = () => crumbHtml().replace(/<[^>]+>/g, ' ').replace(/[\s›]+/g, ' ').trim();
+      selectNode('journal'); if (words() !== 'Planner Today') bad('B33', 'crumb', 'Today reads "' + words() + '"');
+      selectNode('exps'); if (words() !== 'Experiments') bad('B33', 'crumb', 'Experiments reads "' + words() + '"');
+      // the sync notice moved here with Home: Today shows it, another day does not
+      const auth0 = window.lbAuthState; window.lbAuthState = () => ({ kind: 'signedout' });
+      try {
+        selectNode('journal'); await sleep(140);
+        if (!document.querySelector('#pane-ed .lh-sync')) bad('B33', 'sync notice', 'Today shows no sign-in notice on a device that is signed out');
+        dayGo(-1); await sleep(140);
+        if (document.querySelector('#pane-ed .lh-sync')) bad('B33', 'sync notice', 'a past day shows the sign-in notice');
+      } finally { window.lbAuthState = auth0; try { dayToday(); } catch (x) {} }
     });
 
     clean.forEach(cleanup);

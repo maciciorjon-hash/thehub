@@ -180,7 +180,7 @@ if (run('PA7')) {
       if (Math.abs(m.layer.t - m.slot.t) > 1 || Math.abs(m.layer.b - m.slot.b) > 1 || Math.abs(m.layer.w - m.slot.w) > 1) bad('PA7', `${tag}: the frame is not on its slot (${JSON.stringify(m.layer)} vs ${JSON.stringify(m.slot)})`); else ok();
       if (m.layer.b > m.bar.t + 1) bad('PA7', `${tag}: the frame reaches under the tab bar (${m.layer.b} > ${m.bar.t})`); else ok();
       if (m.layer.h < 300) bad('PA7', `${tag}: the frame is only ${Math.round(m.layer.h)}px tall`); else ok();
-      if (m.tabs.join() !== 'home,exps,cells,add,more') bad('PA7', `${tag}: the tabs are ${m.tabs.join()}`); else ok();
+      if (m.tabs.join() !== 'today,exps,cells,add,more') bad('PA7', `${tag}: the tabs are ${m.tabs.join()}`); else ok();
       const sideways = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1);
       if (sideways) bad('PA7', `${tag}: the page scrolls sideways`); else ok();
     } finally { await ctx.close(); }

@@ -12,6 +12,8 @@
 //   S5  no pinned apps    the rail carries the sections and nothing else: opening Echo or Blueprint adds no entry to it
 //                         (it used to keep the last three opened and let you pin four), no "Pin to the rail" is offered, and an
 //                         open app lights the landing it belongs to
+//   S6  the rail's order      Journal, Planner, Experiments, Designer, then the landings; Experiments has its own entry and icon, an old
+//                         "exps" link lights it, and Labbook telling the Hub it is in Experiments lights it
 //
 //   node tools/hub_invariants.mjs [--shell=PATH] [--only=S1]      exit 1 on any finding
 import { chromium } from 'playwright';
@@ -161,6 +163,31 @@ if (run('S5')) {
   if (r.stored !== null && r.stored !== undefined) bad('S5', 'hub_rail_apps is still kept or rewritten: ' + r.stored); else ok();
   if (r.echoLit !== 'analysis' || r.pdLit !== 'more') bad('S5', 'an open app should light its landing: Echo lit ' + r.echoLit + ' (want analysis), Blueprint lit ' + r.pdLit + ' (want more)'); else ok();
   if (r.pin || r.hasPinFn !== 'undefined') bad('S5', 'pinning to the rail is still offered (railPin is ' + r.hasPinFn + ')'); else ok();
+}
+
+if (run('S6')) {
+  const r = await page.evaluate(async () => {
+    isAdmin = true; document.body.classList.add('ws'); renderRail();
+    const rail = () => [...document.querySelectorAll('#ws-rail .ws-item[data-ws]')].map(b => b.dataset.ws);
+    const lit = () => (document.querySelector('#ws-rail .ws-item.on') || {}).dataset ? document.querySelector('#ws-rail .ws-item.on').dataset.ws : null;
+    const out = { order: rail(), nav: WS_NAV.filter(n => !n.sep).map(n => n.id), tabs: WS_TABS.slice(), icon: !!(WS_ICONS && WS_ICONS.experiments && /<svg/.test(WS_ICONS.experiments)) };
+    wsGo('exps'); await new Promise(r => setTimeout(r, 400));
+    out.afterExps = lit(); out.section = _wsSection;
+    wsGo('planner'); await new Promise(r => setTimeout(r, 400));
+    out.afterPlanner = lit();
+    // Labbook says which workspace it is in (opening an experiment from Today moves it to Experiments)
+    window.dispatchEvent(new MessageEvent('message', { data: { type: 'lb:ws', ws: 'experiments' }, origin: location.origin }));
+    await new Promise(r => setTimeout(r, 120)); out.afterTold = lit();
+    try { backToHub({ plain: true }); } catch (e) {}
+    return out;
+  });
+  const want = 'notebook,planner,experiments,designer,analysis,archive,cells,more';
+  if (r.order.join() !== want || r.nav.join() !== want) bad('S6', 'the rail reads ' + r.order.join(', ') + ' (want ' + want + ')'); else ok();
+  if (r.tabs.join() !== 'notebook,planner,experiments,analysis,archive,cells') bad('S6', 'the phone bar reads ' + r.tabs.join(', ')); else ok();
+  if (!r.icon) bad('S6', 'Experiments has no rail icon'); else ok();
+  if (r.afterExps !== 'experiments' || r.section !== 'experiments') bad('S6', 'the old Experiments link lit ' + r.afterExps + ' (section ' + r.section + '), expected Experiments'); else ok();
+  if (r.afterPlanner !== 'planner') bad('S6', 'Planner lit ' + r.afterPlanner); else ok();
+  if (r.afterTold !== 'experiments') bad('S6', 'Labbook said it is in Experiments and the rail lit ' + r.afterTold); else ok();
 }
 
 for (const e of errs) bad('page', e);

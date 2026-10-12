@@ -7603,6 +7603,28 @@ Approved plan: `~/.claude/plans/la-pantalla-home-en-streamed-pike.md`. Done in t
 commit and one invariant each; each step below is added when it lands.
 
 - **A1 — pinned apps off the rail.** See *The rail, second pass* above (bullet *Apps on the rail*).
+- **A2 + A4 — Home is gone and Experiments is a workspace.** Labbook opens on **Today** (`SEL` starts
+  at `{kind:'journal'}`; `NODE_ALIAS.home='journal'` sends every old `selectNode('home')`, `lb:go home`
+  and saved `lb_last` there). What Home had that Today did not moved: the sign-in/sync notice
+  (`syncBandHtml()`, on today's Today only — the PWA and the iPhone app need it; PA8) and "Recently
+  edited" (`xvRecentHtml()`, chips above the project list on Experiments, experiments only). The
+  progress ring and the running-experiments card were dropped: Today lists the steps and Experiments
+  has the Running filter. Four workspaces in the rail, in this order: **Journal · Planner ·
+  Experiments · Designer** (`WS_NAV`, `WS_TABS`; ⌥1–⌥9 shift by one). The compact label is "Exps" —
+  "Experiments" is cut at the rail's 76 px; the wide rail says it in full. `lbWorkspace()` returns
+  `experiments` for `exps`/`expsec`, Labbook tells the host (`lb:ws`), and the shell takes
+  `lb:go experiments` and old `exps` links. The column: Planner = Today · Week (+ Archive/Cells
+  standalone); Experiments = *All experiments* + the Projects tree; standalone gets a "Workspaces"
+  block of the four on top. `WS_LAST.experiments` is its own memory, and `_wsLastFrom()` moves what an
+  older version saved under the planner's key. Opening an experiment from Today moves the rail to
+  Experiments (the editor lives there). dHUB still opens on Planner · Today. Icon `experiments`
+  (a flask) is drawn in `tools/sync_icons.py`.
+  Invariants: **B33** (`tools/invariants.mjs`), **S6** (`tools/hub_invariants.mjs`), PA7 now expects
+  `today,exps,cells,add,more`. The desktop sweep's `home` scene became `planner_today`, so the
+  Planner's Today is swept for the first time — it found a date field 25 px tall beside 28 px arrows
+  (fixed: `.day-lblwrap{align-items:stretch}`). The phone sweep (not in CI) still flags white ink on the
+  accent fill at 3.65:1 on Today in light (`.carry-from`, `.day-jr-open`); the CI sweep's light
+  threshold is 3, which they pass.
 
 ## Labbook on a laptop, audited (2026-10-12)
 
