@@ -23,8 +23,11 @@ function applyLook(patch,after){
   Object.keys(patch).forEach(function(k){ state[k]=typeof patch[k]==='object'&&patch[k]?_clone(patch[k]):patch[k]; });
   if(after) after();
   syncControlsToState(); $('topColor').value=state.color;
-  applyBackground(); applyProjection(); buildGeometry(); updateLegend(); renderChainList(); renderLigList(); updateSummaries(); if(SEQ.on) seqRender();
-  if(!_userMoved) fitView({animate:true});
+  _noDraw(function(){   // one draw for the whole style, not one per step (see _noDraw)
+    applyBackground(); applyProjection(); buildGeometry(); updateLegend(); renderChainList(); renderLigList(); updateSummaries(); if(SEQ.on) seqRender();
+    if(!_userMoved) fitView({animate:true});
+  });
+  viewer.render();
 }
 function applyPreset(id){
   var p=PRESETS.filter(function(x){ return x.id===id; })[0]; if(!p) return false;
