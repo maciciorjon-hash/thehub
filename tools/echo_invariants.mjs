@@ -149,6 +149,10 @@
 //   E59 the input files go    A run's input files are written to Firebase Storage under its entry (echo/<entry>/<files>.json.gz) and the entry
 //       to the cloud too        says where; another device with no local copy gets Re-analyse, fetches them, and they are byte for byte the
 //                               ones that were run; deleting the analysis deletes the file in the cloud.
+//   E60 the gradient planner  The intermediate plate is its own plate: 384 PP, 20 µL dead, ~65 µL a well — the Source plate's type and dead
+//       asks for as few        volume do not touch its checks. The planner uses as few intermediates as will do (none when Source reaches, one
+//       intermediates as       before two; a point nothing can reach does not buy more), and "Force number of intermediates" gives exactly that
+//       will do                many, the best it can, even if a point lands off plan.
 //
 // Usage (repo root):  node tools/echo_invariants.mjs [--only=E1,E7] [--file=path/to/echo.html] [--verbose]
 import { chromium } from 'playwright';
@@ -2279,6 +2283,58 @@ if (run('E59')) await guard('E59', async () => {
   const c = await E(async () => { await _hxDeleteRuns(_hxRunsOf('n:files1').map(r => r.id)); await new Promise(r => setTimeout(r, 300)); return Object.keys(window.__objs).length; });
   check('E59', 'deleting the analysis deletes its files in the cloud', c === 0, c);
   await E(() => { delete window.firebase; });
+});
+
+if (run('E60')) await guard('E60', async () => {
+  await E(() => { document.getElementById('setup-modal')?.classList.add('hidden'); [...document.querySelectorAll('.outer-tab')].find(b => /Gradient/.test(b.textContent)).click(); });
+  await pg.waitForTimeout(500);
+  const plan = (c) => E(async (c) => {
+    const set = (id, v) => { document.getElementById(id).value = v; };
+    set('eg-vol', c.vol); set('eg-dmso', c.dmso); set('eg-top-val', c.top); set('eg-top-unit', c.unit); set('eg-pts', c.pts); set('eg-df', c.df);
+    set('eg-inter-vol', c.pre ?? 30); set('eg-bf-ncompounds', 10); set('eg-bf-srcType', c.srcType || 'ldv'); set('eg-bf-srcDead', c.srcDead ?? 2.5);
+    set('eg-bf-plateType', c.plate || 'pp'); set('eg-bf-dead', c.dead ?? (c.plate === 'ldv' ? 2.5 : 20));
+    window._egExplicitPlanM = null; window._egS.length = 1; window._egS[0] = { label: 'Source', val: 10, unit: '1e-3' };
+    const f = document.getElementById('eg-force-on'); f.checked = c.force != null; document.getElementById('eg-force-n').value = c.force ?? 1; _egForceChg();
+    window._egSuggest(false); await new Promise(r => setTimeout(r, 450));
+    const rows = [...document.querySelectorAll('#eg-tbody tr')].map(t => t.innerText);
+    return { n: window._egS.length - 1, bad: rows.filter(t => /✗|% off/.test(t)).length, out: document.getElementById('eg-bf-out').innerText.replace(/\s+/g, ' '),
+             lbl: document.getElementById('eg-auto-lbl').textContent, note: document.getElementById('eg-warn-box').innerText.replace(/\s+/g, ' ') };
+  }, c);
+  const A = { vol: 20, dmso: 1, top: 10, unit: '1e-6', pts: 10, df: 3 };          // needs two intermediates, no fewer reaches
+  // the intermediate plate is 384 PP / 20 µL dead by default, whatever the Source plate is
+  let r = await plan(A);
+  check('E60', 'a 30 µL pre-fill fits a 384 PP well and its usable volume is 30 − 20 = 10 µL', !/holds/.test(r.out.replace(/Every intermediate well holds/, '')) && /10\.0 µL/.test(r.out) && /30 pre-filled − 20 dead/.test(r.out), r.out.slice(0, 400));
+  r = await plan({ ...A, srcType: 'pp', srcDead: 20 });
+  check('E60', 'the Source plate\'s type and dead volume do not change the intermediate plate\'s', /10\.0 µL/.test(r.out) && /30 pre-filled − 20 dead/.test(r.out) && !/more than a 384 PP/.test(r.out), r.out.slice(0, 400));
+  check('E60', 'the Source well\'s own dead volume is the one named for Source', /plus the source plate's dead volume \(20 µL, PP\)/.test(r.out), r.out.slice(-300));
+  r = await plan({ ...A, plate: 'ldv', pre: 30 });
+  check('E60', 'an LDV intermediate plate says a 30 µL pre-fill is more than it holds', /more than an LDV well holds/.test(r.out), r.out.slice(0, 300));
+  r = await plan({ ...A, plate: 'pp', pre: 70 });
+  check('E60', 'a 70 µL pre-fill is more than a 384 PP well holds', /more than a 384 PP well holds/.test(r.out), r.out.slice(0, 300));
+  // as few as will do
+  r = await plan({ vol: 20, dmso: 1, top: 20, unit: '1e-6', pts: 5, df: 2 });
+  check('E60', 'Source alone is used when it reaches every point', r.n === 0 && r.bad === 0, { n: r.n, bad: r.bad });
+  r = await plan({ vol: 20, dmso: 1, top: 10, unit: '1e-6', pts: 6, df: 3 });
+  const one = r.n;
+  const f1 = await plan({ vol: 20, dmso: 1, top: 10, unit: '1e-6', pts: 6, df: 3, force: Math.max(0, one - 1) });
+  check('E60', 'the default is the fewest that put every point on plan: one fewer cannot', r.bad === 0 && (one === 0 || f1.bad > 0), { n: one, bad: r.bad, oneFewerBad: f1.bad });
+  r = await plan(A);
+  check('E60', 'the 19 683-fold series takes two, not more', r.n === 2 && r.bad === 0 && /intermediates automatic/.test(r.lbl), { n: r.n, bad: r.bad, lbl: r.lbl });
+  r = await plan({ vol: 20, dmso: 0.2, top: 1000, unit: '1e-9', pts: 10, df: 3 });
+  const hb = r.n;
+  const hb6 = await plan({ vol: 20, dmso: 0.2, top: 1000, unit: '1e-9', pts: 10, df: 3, force: 6 });
+  check('E60', 'a point no number of intermediates reaches does not buy more of them', hb <= 3 && hb6.n === 6, { default: hb, forced6: hb6.n });
+  // forced
+  for (const k of [0, 1, 2, 4]) {
+    r = await plan({ ...A, force: k });
+    check('E60', `forced to ${k}: exactly ${k} intermediate${k === 1 ? '' : 's'}, the label says so`, r.n === k && new RegExp('forced to ' + k).test(r.lbl), { n: r.n, lbl: r.lbl });
+  }
+  r = await plan({ ...A, force: 1 });
+  check('E60', 'forced below what reaches: the best that number can, with the points it misses marked and the note saying so', r.bad > 0 && /Forced to 1 intermediate/.test(r.note) && /best 1 intermediate can do/.test(r.note), r.note.slice(0, 300));
+  r = await plan({ ...A, force: 4 });
+  check('E60', 'forced above what is needed: exactly that many, all within tolerance', r.n === 4 && r.bad === 0, { n: r.n, bad: r.bad });
+  r = await plan(A);
+  check('E60', 'unticking Force hands the number back to the planner', r.n === 2 && !/forced/.test(r.lbl), { n: r.n, lbl: r.lbl });
 });
 
 await browser.close();
