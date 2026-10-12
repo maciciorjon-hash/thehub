@@ -7738,6 +7738,21 @@ commit and one invariant each; each step below is added when it lands.
   drawing is one cloud per cavity. "Pocket radius" in Models is "Shell". **Clashes and contacts** is a clickable table, worst overlap
   first, marked in 3D; exclusion is covalent adjacency only. `elecMap` goes through the grid (cutoff + cells) instead of every atom ×
   every charge. **RB41**.
+- **B7 (3/3) — the 2D interaction diagram.** On the Binding site card (and enlarged in a dialog, `diagram` / `diagram svg|png` on the command
+  line): the ligand drawn flat with the residues round it and a dashed line per interaction in its kind's colour, with its distance, as
+  in a LigPlot or SeeSAR figure. `siteDiagram()` returns one SVG string, so the card, the dialog and the file are the same picture
+  (SVG for a paper; PNG at 2400 px by default; Send to Labbook when hosted). How it is made, and what it is not: the ligand's heavy
+  atoms are projected onto the plane of their two largest axes (`_eig3`, Jacobi on the 3×3 covariance), then **relaxed** (`_diagFlatten`:
+  pairs within three bonds keep their true separation as far as a flat page allows, the rest are kept ≥ 0.8 bond apart) — the plain
+  projection of a folded linker puts atoms on top of each other (non-bonded minimum 0.00 of a bond; 1.03 after); the hand is fixed by
+  the first atoms off the axes so a file always draws the same picture. Each residue goes on the side of the ligand where it really is
+  (`_diagSpread` first spreads a crowd along the ligand in the order of their directions, `_diagPlace` then pushes boxes apart and off
+  the atoms; if there is still no room they go evenly on a circle wide enough that neighbours cannot touch). Cap 26 residues, the
+  rest named. Hover on a box, a line or a table row lights the other two and puts a halo on the residue in 3D (80 ms dwell, one
+  render); a click frames it (`sitePick`, shared with the table). Not a chemical drawing: no stereochemistry, no aromaticity beyond the
+  bond orders in the file, the PNG uses the system sans (an SVG drawn into a canvas cannot load the page's web fonts), and the white
+  ground is deliberate in both themes. **RB42** (fixture `9DGM`: a ring, an eight-carbon coil, a ring, 22 residues, nine in one wedge;
+  proven by switching the relaxation and the label placement off: 16 touching pairs and atoms 0.07 of a bond apart).
 
 ## Labbook on a laptop, audited (2026-10-12)
 

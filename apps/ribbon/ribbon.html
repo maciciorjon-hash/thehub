@@ -297,6 +297,17 @@ body:not(.rb-af) [data-sec="pae"]{display:none;}
 .site-stats span{font-size:var(--fs-1);color:var(--text2);}
 .site-row{grid-template-columns:minmax(0,1fr) auto auto;}
 .site-pips{display:inline-flex;gap:3px;align-items:center;}
+.site-diag{margin:8px 0 6px;}
+.diag-hd{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;}
+.diag-hd b{font-size:var(--fs-3);}
+.diag-box{background:#fff;border:1px solid var(--border2);border-radius:var(--r-3);overflow:hidden;margin:6px 0 8px;cursor:zoom-in;}
+.diag-box svg,.diag-big svg{display:block;width:100%;height:auto;margin:0 auto;}
+.diag-big{background:#fff;border:1px solid var(--border2);border-radius:var(--r-3);overflow:auto;max-height:calc(100dvh - 250px);}
+.ov-card.dg-card{max-width:min(940px,100%);}
+.dg-res{cursor:pointer;outline:none;}
+.dg-res:hover rect,.dg-res.hl rect,.dg-res:focus-visible rect{stroke-width:3.4;}
+.dg-ln.hl line{stroke-width:3.4;}
+.site-row.hl{background:var(--surface2);}
 .site-pips i{display:block;width:9px;height:9px;border-radius:50%;}
 .it-chip em{font-style:normal;color:var(--text3);}
 .btn.sm.on{border-color:var(--accent);color:var(--accent);}
@@ -1025,6 +1036,11 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
         <div id="siteCard" hidden>
           <div class="site-stats" id="siteStrip"></div>
           <div class="chips" id="siteTypes" role="group" aria-label="Kinds of interaction shown"></div>
+          <div class="site-diag" id="siteDiag" hidden>
+            <div class="diag-hd"><b>2D diagram</b><span class="hint" id="diagSum"></span></div>
+            <div class="diag-box" id="diagBox" title="Click to enlarge"></div>
+            <div class="row" style="flex-wrap:wrap"><button type="button" class="btn sm" id="diagBig">Enlarge</button><button type="button" class="btn sm" id="diagSvg">Save SVG</button><button type="button" class="btn sm" id="diagPng">Save PNG</button></div>
+          </div>
           <div class="list" id="siteList"></div>
           <div class="row" style="flex-wrap:wrap"><label class="check"><input type="checkbox" id="site3d" checked> Lines in 3D</label><button type="button" class="btn sm" id="siteFocus" aria-pressed="false" title="Pocket residues as sticks, the rest stepped back, framed on the ligand">Focus</button><button type="button" class="btn sm" id="siteBurial" aria-pressed="false" title="Colour each ligand atom by how buried it is">Colour by burial</button></div>
           <div class="row" style="flex-wrap:wrap"><button type="button" class="btn sm" id="siteSel">Select the residues</button><button type="button" class="btn sm" id="siteLabel">Label them</button><button type="button" class="btn sm" id="siteCopy">Copy table</button></div>
@@ -1293,6 +1309,23 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
       <button class="btn" type="button" id="exCopy">Copy</button>
       <button class="btn" type="button" id="exLabbook" hidden>Send to Labbook</button>
       <button class="btn primary" type="button" id="exGo">Download</button>
+    </div>
+  </div>
+</div>
+
+<!-- The binding site, drawn flat -->
+<div id="diag-modal" class="ov-modal" role="dialog" aria-modal="true" aria-labelledby="dgTitle" onclick="if(event.target===this)diagClose()">
+  <div class="ov-card dg-card">
+    <div class="ov-hdr"><span id="dgTitle">Interactions, drawn flat</span><button class="ibtn" type="button" onclick="diagClose()" aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button></div>
+    <div class="ov-body">
+      <div class="diag-big" id="diagBig2"></div>
+      <div class="ov-dim">The ligand's own coordinates flattened onto the plane that holds most of it, then relaxed so that no two atoms sit on each other; each residue is on the side where it really is. Not a chemical drawing: it knows nothing of stereochemistry.</div>
+    </div>
+    <div class="ov-foot">
+      <button class="btn" type="button" onclick="diagClose()">Close</button>
+      <button class="btn" type="button" id="dgLabbook" hidden>Send to Labbook</button>
+      <button class="btn" type="button" id="dgSvg">Save SVG</button>
+      <button class="btn primary" type="button" id="dgPng">Save PNG</button>
     </div>
   </div>
 </div>
@@ -6339,12 +6372,13 @@ function _typeDots(types){ return Object.keys(INTER_TYPES).filter(function(k){ r
 function renderSite(){
   var el=$('siteBody'); if(!el) return;
   var L=siteLigands(), all=L.main.concat(_siteAll?L.other:[]), f=state.site, s=f&&siteNow();
+  diagHot(null);
   var chips=all.map(function(l){ var on=f&&f.key===l.key; return '<button type="button" class="it-chip'+(on?' on':'')+'" data-k="'+escapeHtml(l.key)+'" aria-pressed="'+!!on+'" title="'+escapeHtml(l.name||l.resn)+'"><b>'+escapeHtml(l.resn)+'</b> '+escapeHtml(chainTitle(l.chain).replace('Chain ',''))+' '+l.resi+' <em>'+(l.n||0)+' atoms</em></button>'; }).join('')
     +(L.other.length?'<button type="button" class="it-chip" id="siteMore">'+(_siteAll?'Hide':'+ '+L.other.length)+(_siteAll?'':' other')+'</button>':'');
   $('siteLigs').innerHTML=chips;
   var none=!ligands.length;
   $('siteNone').hidden=!none; $('siteLigsWrap').hidden=none; $('siteCard').hidden=none||!s;
-  if(none||!s){ $('sum-site').textContent=''; return; }
+  if(none||!s){ $('sum-site').textContent=''; $('siteDiag').hidden=true; $('diagBox').innerHTML=''; _diagLast=null; return; }
   var r=interNow(), list=r?r.list:[], types=f&&state.inter?state.inter.types:{}, shownList=list.filter(function(x){ return types[x.type]!==false; });
   var rows=siteRows(shownList), m=s.m;
   var by={}; list.forEach(function(x){ by[x.type]=(by[x.type]||0)+1; });
@@ -6352,16 +6386,19 @@ function renderSite(){
     .map(function(t){ return '<div><b>'+t[0]+'</b><span>'+t[1]+'</span></div>'; }).join('');
   $('siteTypes').innerHTML=Object.keys(INTER_TYPES).filter(function(k){ return by[k]; }).map(function(k){ var t=INTER_TYPES[k], on=types[k]!==false;
     return '<button type="button" class="it-chip'+(on?' on':'')+'" data-t="'+k+'" aria-pressed="'+on+'"><i style="background:'+t.c+'"></i>'+t.n+' <b>'+by[k]+'</b></button>'; }).join('');
-  $('siteList').innerHTML=rows.length?rows.map(function(x,i){ return '<div class="li site-row" data-i="'+i+'"><button type="button" class="li-main" data-i="'+i+'" title="Zoom to it · Shift-click to label it"><span class="li-name">'+escapeHtml(x.resn)+' '+x.resi+' <span style="font-weight:400;color:var(--text2)">· '+escapeHtml(chainTitle(x.chain).replace('Chain ',''))+'</span></span><span class="li-meta">'+x.n+(x.n===1?' contact':' contacts')+'</span></button><span class="site-pips">'+_typeDots(x.types)+'</span><span class="mono-v">'+x.dmin.toFixed(1)+' Å</span></div>'; }).join('')
+  $('siteList').innerHTML=rows.length?rows.map(function(x,i){ return '<div class="li site-row" data-i="'+i+'" data-k="'+escapeHtml(x.k)+'"><button type="button" class="li-main" data-i="'+i+'" title="Zoom to it · Shift-click to label it"><span class="li-name">'+escapeHtml(x.resn)+' '+x.resi+' <span style="font-weight:400;color:var(--text2)">· '+escapeHtml(chainTitle(x.chain).replace('Chain ',''))+'</span></span><span class="li-meta">'+x.n+(x.n===1?' contact':' contacts')+'</span></button><span class="site-pips">'+_typeDots(x.types)+'</span><span class="mono-v">'+x.dmin.toFixed(1)+' Å</span></div>'; }).join('')
     :'<div class="empty-note">'+(list.length?'Every kind is switched off.':'No contacts within the usual distances: this ligand is not held by the protein here, or it is far from it.')+'</div>';
-  $('siteList').querySelectorAll('.li-main').forEach(function(b){ b.addEventListener('click',function(ev){ var x=rows[+b.dataset.i]; _userMoved=true;
-    if(ev.shiftKey){ if(!state.residueLabels.some(function(y){ return y.chain===x.chain&&y.resi===x.resi; })) state.residueLabels.push({chain:x.chain,resi:x.resi,resn:x.resn,text:x.resn+' '+x.resi}); delete state.off.labels; renderLabelTags(); renderResLblList(); return; }
-    fitView({focus:{or:[ligSel(s.lig),{chain:x.chain,resi:x.resi}]},animate:true,margin:0.3}); }); });
+  $('siteList').querySelectorAll('.li-main').forEach(function(b){ b.addEventListener('click',function(ev){ sitePick(rows[+b.dataset.i],ev.shiftKey); }); });
   $('siteFocus').setAttribute('aria-pressed',!!f.focus); $('siteFocus').classList.toggle('on',!!f.focus);
   $('siteBurial').setAttribute('aria-pressed',!!f.burial); $('siteBurial').classList.toggle('on',!!f.burial);
   $('site3d').checked=!state.inter||state.inter.show!==false;
   $('sum-site').textContent=s.lig.resn+' · '+rows.length+' residues';
-  s.rows=rows;
+  s.rows=rows; diagRender();
+}
+function sitePick(x,shift){   // a residue chosen in the table or in the picture: frame it with the ligand, or with Shift label it
+  var s=_site; if(!s||!x) return; _userMoved=true;
+  if(shift){ if(!state.residueLabels.some(function(y){ return y.chain===x.chain&&y.resi===x.resi; })) state.residueLabels.push({chain:x.chain,resi:x.resi,resn:x.resn,text:x.resn+' '+x.resi}); delete state.off.labels; renderLabelTags(); renderResLblList(); return; }
+  fitView({focus:{or:[ligSel(s.lig),{chain:x.chain,resi:x.resi}]},animate:true,margin:0.3});
 }
 function siteCopy(){
   var s=_site; if(!s||!s.rows) return;
@@ -6377,6 +6414,225 @@ function siteWire(){
   $('siteSel').addEventListener('click',function(){ var r=_site&&_site.rows; if(r) selSet(r.map(function(x){ return x.k; })); });
   $('siteLabel').addEventListener('click',function(){ var r=_site&&_site.rows; if(!r) return; r.slice(0,16).forEach(function(x){ if(!state.residueLabels.some(function(y){ return y.chain===x.chain&&y.resi===x.resi; })) state.residueLabels.push({chain:x.chain,resi:x.resi,resn:x.resn,text:x.resn+' '+x.resi}); }); delete state.off.labels; renderLabelTags(); renderResLblList(); showToast('Labelled '+Math.min(16,r.length)+' residues.'); });
   $('siteCopy').addEventListener('click',siteCopy);
+}
+
+// ── The 2D diagram ───────────────────────────────────────────────────────────────────────────────────────────────
+// The picture a paper shows for a binding mode: the ligand drawn flat, the residues that hold it set round it, a dashed line for every
+// interaction, coloured by kind. It is not a chemical drawing made from the bonds: the ligand's own coordinates are flattened onto the
+// plane that holds most of it (the two largest axes of its atoms), then relaxed until the bonds are one length and no two atoms sit on
+// each other — what a folded linker needs. Each residue is set on the side of the ligand where it really is and the boxes are pushed
+// apart until none touches another or the ligand. Everything is one SVG string, so the picture on the card, the enlarged one and the
+// file are the same thing. What it cannot do: it knows nothing of stereochemistry or of the ligand's chemistry beyond the bonds in the file.
+function _eig3(M){   // Jacobi sweeps on a symmetric 3×3 → {val, vec} with the largest first; vec[i] is a unit vector
+  var A=[M[0].slice(),M[1].slice(),M[2].slice()], V=[[1,0,0],[0,1,0],[0,0,1]], s, p, q, k;
+  for(s=0;s<30;s++){
+    if(Math.abs(A[0][1])+Math.abs(A[0][2])+Math.abs(A[1][2])<1e-12) break;
+    for(p=0;p<2;p++) for(q=p+1;q<3;q++){
+      if(Math.abs(A[p][q])<1e-15) continue;
+      var th=(A[q][q]-A[p][p])/(2*A[p][q]), t=(th>=0?1:-1)/(Math.abs(th)+Math.sqrt(th*th+1)), c=1/Math.sqrt(t*t+1), sn=t*c, x, y;
+      for(k=0;k<3;k++){ x=A[k][p]; y=A[k][q]; A[k][p]=c*x-sn*y; A[k][q]=sn*x+c*y; }
+      for(k=0;k<3;k++){ x=A[p][k]; y=A[q][k]; A[p][k]=c*x-sn*y; A[q][k]=sn*x+c*y; }
+      for(k=0;k<3;k++){ x=V[k][p]; y=V[k][q]; V[k][p]=c*x-sn*y; V[k][q]=sn*x+c*y; }
+    }
+  }
+  var ev=[A[0][0],A[1][1],A[2][2]], ord=[0,1,2].sort(function(a,b){ return ev[b]-ev[a]; });
+  return {val:ord.map(function(i){ return ev[i]; }),vec:ord.map(function(i){ return [V[0][i],V[1][i],V[2][i]]; })};
+}
+var DG_BOND=26;   // one bond, in the diagram's units (1 unit = 1 px at 100 %)
+function _diagFlatten(L,bonds){   // L: the ligand's heavy atoms → {xy:[[x,y]], c, u, v, s}: where each atom goes in the picture
+  var n=L.length, c=[0,0,0], i, j, pos={};
+  L.forEach(function(a,q){ c[0]+=a.x; c[1]+=a.y; c[2]+=a.z; pos[a.index]=q; }); c=c.map(function(t){ return t/n; });
+  var C=[[0,0,0],[0,0,0],[0,0,0]];
+  L.forEach(function(a){ var p=[a.x-c[0],a.y-c[1],a.z-c[2]]; for(i=0;i<3;i++) for(j=0;j<3;j++) C[i][j]+=p[i]*p[j]/n; });
+  var e=_eig3(C), u=e.vec[0], v=e.vec[1];
+  var lens=bonds.map(function(b){ return _d(b.a,b.b); }).sort(function(a,b){ return a-b; }), med=lens.length?lens[lens.length>>1]:1.5, s=DG_BOND/Math.max(1,med);
+  var X=L.map(function(a){ var p=[a.x-c[0],a.y-c[1],a.z-c[2]]; return [s*_dot(p,u),s*_dot(p,v)]; });
+  var fx=X.filter(function(p){ return Math.abs(p[0])>2; })[0], fy=X.filter(function(p){ return Math.abs(p[1])>2; })[0];   // the hand is arbitrary: fix it, so that the same file always draws the same picture
+  if(fx&&fx[0]>0){ u=u.map(function(t){ return -t; }); X.forEach(function(p){ p[0]=-p[0]; }); }
+  if(fy&&fy[1]>0){ v=v.map(function(t){ return -t; }); X.forEach(function(p){ p[1]=-p[1]; }); }
+  if(n<3) return {xy:X,c:c,u:u,v:v,s:s};
+  var nb=L.map(function(){ return []; }); bonds.forEach(function(b){ var p=pos[b.a.index], q=pos[b.b.index]; if(p!=null&&q!=null){ nb[p].push(q); nb[q].push(p); } });
+  var near=[], local={};   // pairs within three bonds keep their true separation as far as a flat page allows; the rest only keep apart
+  for(i=0;i<n;i++){ var dep={}, fr=[i]; dep[i]=0; while(fr.length){ var u0=fr.shift(); if(dep[u0]>=3) continue; nb[u0].forEach(function(w){ if(dep[w]==null){ dep[w]=dep[u0]+1; fr.push(w); } }); }
+    Object.keys(dep).forEach(function(k){ k=+k; if(k>i){ local[i*n+k]=1; near.push([i,k,s*_d(L[i],L[k]),dep[k]===1?1:dep[k]===2?0.6:0.3]); } }); }
+  var X0=X.map(function(p){ return p.slice(); }), minD=DG_BOND*0.8, F=X.map(function(){ return [0,0]; }), it;
+  for(it=0;it<260;it++){
+    for(i=0;i<n;i++){ F[i][0]=(X0[i][0]-X[i][0])*0.03; F[i][1]=(X0[i][1]-X[i][1])*0.03; }
+    near.forEach(function(r){ var a=r[0], b=r[1], dx=X[b][0]-X[a][0], dy=X[b][1]-X[a][1], d=Math.sqrt(dx*dx+dy*dy)||1e-6, k=(d-r[2])/d*0.5*r[3]; if(d<1e-5){ dx=1e-3*(a+1); dy=1e-3*(b+1); }
+      F[a][0]+=k*dx; F[a][1]+=k*dy; F[b][0]-=k*dx; F[b][1]-=k*dy; });
+    for(i=0;i<n;i++) for(j=i+1;j<n;j++){ if(local[i*n+j]) continue; var dx=X[j][0]-X[i][0], dy=X[j][1]-X[i][1], d=Math.sqrt(dx*dx+dy*dy);
+      if(d<minD){ if(d<1e-5){ dx=1e-3*(i+1); dy=1e-3*(j+1); d=Math.sqrt(dx*dx+dy*dy); } var k=(d-minD)/d*0.5; F[i][0]+=k*dx; F[i][1]+=k*dy; F[j][0]-=k*dx; F[j][1]-=k*dy; } }
+    var step=0.5; for(i=0;i<n;i++){ X[i][0]+=F[i][0]*step; X[i][1]+=F[i][1]*step; }
+  }
+  return {xy:X,c:c,u:u,v:v,s:s};
+}
+var DG_CLASS={ALA:'h',VAL:'h',LEU:'h',ILE:'h',MET:'h',PHE:'h',TRP:'h',PRO:'h',CYS:'h',SER:'p',THR:'p',ASN:'p',GLN:'p',TYR:'p',GLY:'p',HIS:'+',LYS:'+',ARG:'+',ASP:'-',GLU:'-'};
+var DG_FILL={h:['#fbe9d3','#d9822b'],p:['#eceef3','#8b8d98'],'+':['#dfe6fb','#3e63dd'],'-':['#fadce9','#d6409f'],x:['#eadff5','#8e4ec6']};
+var DG_KEY={h:'hydrophobic',p:'polar','+':'positive','-':'negative'};
+var DG_ELEM={N:'#3e63dd',O:'#e5484d',S:'#b7791f',P:'#e8590c',F:'#12a594',CL:'#12a594',BR:'#a0522d',I:'#7b4bb7'};
+function _diagOverlap(B,A,rA,pad){   // the first pair of boxes that touch, or a box on an atom; null when the picture is clean
+  var i, j, p;
+  for(i=0;i<B.length;i++){ for(j=i+1;j<B.length;j++){ if(Math.abs(B[i].x-B[j].x)<(B[i].w+B[j].w)/2+pad&&Math.abs(B[i].y-B[j].y)<(B[i].h+B[j].h)/2+pad) return [i,j]; }
+    for(p=0;p<A.length;p++){ var qx=Math.max(B[i].x-B[i].w/2,Math.min(B[i].x+B[i].w/2,A[p][0])), qy=Math.max(B[i].y-B[i].h/2,Math.min(B[i].y+B[i].h/2,A[p][1])); if(Math.hypot(qx-A[p][0],qy-A[p][1])<rA+pad*0.5) return [i,-1-p]; } }
+  return null;
+}
+function _diagSpread(B,support){   // boxes that want the same side are spread along the ligand in the order of their directions, so a crowd wraps round it instead of piling outwards
+  var n=B.length, o=B.map(function(b,q){ return q; }), th=B.map(function(b){ return Math.atan2(b.uy,b.ux); }), TWO=2*Math.PI, it, k;
+  if(n<2) return;
+  o.sort(function(a,b){ return th[a]-th[b]; });
+  var R=0; B.forEach(function(b){ R+=support(b.ux,b.uy)+30; }); R/=n;
+  var need=function(a,b){ var t=(th[a]+th[b])/2, w=(B[a].w+B[b].w)/2, h=(B[a].h+B[b].h)/2; return (Math.abs(Math.sin(t))*w+Math.abs(Math.cos(t))*h+7)/R; };   // the arc two neighbours need
+  for(it=0;it<300;it++){ var moved=0;
+    for(k=0;k<n;k++){ var a=o[k], b=o[(k+1)%n], gap=th[b]-th[a]; if(k===n-1) gap+=TWO; var g=Math.min(need(a,b),TWO/n*0.98);
+      if(gap<g){ var d=(g-gap)/2*0.5; th[a]-=d; th[b]+=d; moved++; } }
+    if(!moved) break; }
+  B.forEach(function(b,q){ b.ux=Math.cos(th[q]); b.uy=Math.sin(th[q]); });
+}
+function _diagPlace(B,A,rA){   // B: boxes {w,h,ux,uy} → x,y (centres): round the ligand on their own side, clear of each other and of its atoms
+  var pad=7, n=B.length, i, j, p, it, grow=1, att;
+  var support=function(ux,uy){ var m=0; A.forEach(function(q){ var t=q[0]*ux+q[1]*uy; if(t>m) m=t; }); return m+rA; };
+  _diagSpread(B,support);
+  for(att=0;att<8;att++){
+    B.forEach(function(b,q){ var rho=support(b.ux,b.uy)+pad+Math.abs(b.ux)*b.w/2+Math.abs(b.uy)*b.h/2+10*grow; b.gx=b.ux*rho; b.gy=b.uy*rho; b.x=b.gx+(q%3-1)*0.5; b.y=b.gy+(q%5-2)*0.5; });
+    for(it=0;it<420;it++){
+      var pull=it<300?0.05*(1-it/300):0;
+      for(i=0;i<n;i++){ for(j=i+1;j<n;j++){ var dx=B[j].x-B[i].x, dy=B[j].y-B[i].y, ox=(B[i].w+B[j].w)/2+pad-Math.abs(dx), oy=(B[i].h+B[j].h)/2+pad-Math.abs(dy);
+          if(ox>0&&oy>0){ if(ox<oy){ var sx=dx>=0?1:-1; B[i].x-=sx*ox/2; B[j].x+=sx*ox/2; } else { var sy=dy>=0?1:-1; B[i].y-=sy*oy/2; B[j].y+=sy*oy/2; } } }
+        for(p=0;p<A.length;p++){ var qx=Math.max(B[i].x-B[i].w/2,Math.min(B[i].x+B[i].w/2,A[p][0])), qy=Math.max(B[i].y-B[i].h/2,Math.min(B[i].y+B[i].h/2,A[p][1])), d=Math.hypot(qx-A[p][0],qy-A[p][1]), need=rA+pad;
+          if(d<need){ var ex, ey; if(d>1e-6){ ex=(qx-A[p][0])/d; ey=(qy-A[p][1])/d; } else { ex=B[i].ux; ey=B[i].uy; } B[i].x+=ex*(need-d); B[i].y+=ey*(need-d); } }
+        B[i].x+=(B[i].gx-B[i].x)*pull; B[i].y+=(B[i].gy-B[i].y)*pull; }
+    }
+    if(!_diagOverlap(B,A,rA,pad)) return;
+    grow*=1.35;
+  }
+  // there was no room: set them evenly on a circle wide enough that neighbours cannot touch, in the order of their directions
+  var order=B.map(function(b,q){ return q; }).sort(function(a,b){ return Math.atan2(B[a].uy,B[a].ux)-Math.atan2(B[b].uy,B[b].ux); }), md=0;
+  B.forEach(function(b){ md=Math.max(md,b.w,b.h); });
+  var R=Math.max((md+pad)*Math.SQRT2/(2*Math.sin(Math.PI/Math.max(2,n))),support(1,0)+md,support(-1,0)+md,support(0,1)+md,support(0,-1)+md);
+  order.forEach(function(q,k){ var t=2*Math.PI*k/n; B[q].x=R*Math.cos(t); B[q].y=R*Math.sin(t); });
+}
+function _diagEdge(b,tx,ty){   // where the line from a box's middle to (tx,ty) leaves the box
+  var dx=tx-b.x, dy=ty-b.y; if(!dx&&!dy) return [b.x,b.y];
+  var k=Math.min(dx?(b.w/2)/Math.abs(dx):1e9,dy?(b.h/2)/Math.abs(dy):1e9); return [b.x+dx*k,b.y+dy*k];
+}
+var DG_CAP=26;   // residues drawn; the rest are named under the picture
+function siteDiagram(){   // → {svg, w, h, boxes, atoms, bonds, lines, more} for the ligand of the Binding site card, or null
+  var s=siteNow(); if(!s||!currentModel) return null;
+  var r=interNow(), types=state.inter?state.inter.types:{}, list=(r?r.list:[]).filter(function(x){ return types[x.type]!==false; });
+  var L=heavy(currentModel.selectedAtoms(ligSel(s.lig))); if(!L.length) return null;
+  var idx=_atomsByIndex(), bonds=_siteBonds(L,idx), fl=_diagFlatten(L,bonds), pos={};
+  L.forEach(function(a,q){ pos[a.index]=q; });
+  var rows=siteRows(list), more=Math.max(0,rows.length-DG_CAP); rows=rows.slice(0,DG_CAP);
+  var rowOf={}; rows.forEach(function(row){ rowOf[row.k]=row; row.links=[]; });
+  list.forEach(function(x){ var la=_isLigAtom(x.a)?x.a:_isLigAtom(x.b)?x.b:null, ra=la===x.a?x.b:x.a; if(!la||pos[la.index]==null) return; var row=rowOf[rKeyOf(ra)]; if(!row) return;
+    var have=row.links.filter(function(l){ return l.type===x.type; }); if(have.length>=2||have.some(function(l){ return l.atom===la.index; })) return; row.links.push({type:x.type,d:x.d,atom:la.index,ra:ra}); });
+  var rA=DG_BOND*0.34, ctr=fl.xy.reduce(function(m,p){ return [m[0]+p[0]/fl.xy.length,m[1]+p[1]/fl.xy.length]; },[0,0]);
+  var A=fl.xy.map(function(p){ return [p[0]-ctr[0],p[1]-ctr[1]]; });
+  var chains=chainList.length>1, FS=12;
+  var B=rows.map(function(row){
+    var a=row.atom, lab=/^[A-Z]{3}$/.test(row.resn)&&DG_CLASS[row.resn]?row.resn.charAt(0)+row.resn.slice(1).toLowerCase():row.resn, t1=lab+' '+row.resi, ch=chains&&row.chain?' '+row.chain:'';
+    var p=[a.x-fl.c[0],a.y-fl.c[1],a.z-fl.c[2]], ux=fl.s*_dot(p,fl.u)-ctr[0], uy=fl.s*_dot(p,fl.v)-ctr[1], m=Math.hypot(ux,uy);
+    if(m<DG_BOND*0.9&&row.links.length){ var q=A[pos[row.links[0].atom]]; ux=q[0]; uy=q[1]; m=Math.hypot(ux,uy); }   // above or below the ligand: use the side of its nearest atom
+    if(m<1e-6){ ux=1; uy=0; m=1; }
+    return {k:row.k,row:row,text:t1,chain:ch,w:Math.round((t1.length+ch.length)*FS*0.58+16),h:FS+11,ux:ux/m,uy:uy/m,cls:DG_CLASS[row.resn]||(ionResn.indexOf(row.resn)>=0?'x':'p')};
+  });
+  _diagPlace(B,A,rA);
+  // the drawing's bounds
+  var x0=1e9,y0=1e9,x1=-1e9,y1=-1e9, grow=function(x,y,r){ x0=Math.min(x0,x-r); y0=Math.min(y0,y-r); x1=Math.max(x1,x+r); y1=Math.max(y1,y+r); };
+  A.forEach(function(p){ grow(p[0],p[1],rA+4); }); B.forEach(function(b){ x0=Math.min(x0,b.x-b.w/2); x1=Math.max(x1,b.x+b.w/2); y0=Math.min(y0,b.y-b.h/2); y1=Math.max(y1,b.y+b.h/2); });
+  var present={}; rows.forEach(function(row){ row.links.forEach(function(l){ present[l.type]=1; }); });
+  var keyT=Object.keys(INTER_TYPES).filter(function(k){ return present[k]; }), clsP={}; B.forEach(function(b){ if(DG_KEY[b.cls]) clsP[b.cls]=1; });
+  var keyC=Object.keys(DG_KEY).filter(function(k){ return clsP[k]; });
+  var M=18, minW=300, W=Math.max(minW,Math.ceil(x1-x0)+2*M), ox=-x0+(W-(x1-x0))/2;   // the picture is centred in at least a phone-card width
+  // the key: lines first, then the box colours, wrapping at the width
+  var kx=M, ky=0, KR=18, key=[], kw=function(t){ return t.length*6.4+36; };
+  var place=function(w){ if(kx>M&&kx+w>W-M){ kx=M; ky+=KR; } var x=kx; kx+=w+10; return x; };
+  keyT.forEach(function(k){ var w=kw(INTER_TYPES[k].n), x=place(w); key.push({t:'line',x:x,y:ky,c:INTER_TYPES[k].c,text:INTER_TYPES[k].n}); });
+  keyC.forEach(function(k){ var w=kw(DG_KEY[k]), x=place(w); key.push({t:'box',x:x,y:ky,k:k,text:DG_KEY[k]}); });
+  var keyH=key.length?ky+KR+10:0, H=Math.ceil(y1-y0)+2*M+keyH, oy=-y0+M, KY=Math.ceil(y1-y0)+2*M+4;
+  var ink='#1a1d2e', ink2='#5a5f7a', font=_labelFontFamily();
+  var X=function(v){ return +(v+ox).toFixed(1); }, Y=function(v){ return +(v+oy).toFixed(1); };
+  var o=['<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+W+' '+H+'" width="'+W+'" height="'+H+'" font-family="'+escapeHtml(font)+'" role="img" aria-label="'+escapeHtml('Interactions of '+s.lig.resn+' with the protein, drawn flat')+'">',
+    '<rect width="'+W+'" height="'+H+'" fill="#ffffff"/>'];
+  // bonds, shortened where an atom carries a letter
+  var lab={}; L.forEach(function(a,q){ var el=(a.elem||'C').toUpperCase(); if(el!=='C') lab[q]=el; });
+  var bondSvg=[];
+  bonds.forEach(function(e){ var p=pos[e.a.index], q=pos[e.b.index], P=A[p], Q=A[q], dx=Q[0]-P[0], dy=Q[1]-P[1], d=Math.hypot(dx,dy)||1, ux=dx/d, uy=dy/d, cut=DG_BOND*0.3;
+    var sx=P[0]+(lab[p]?ux*cut:0), sy=P[1]+(lab[p]?uy*cut:0), ex=Q[0]-(lab[q]?ux*cut:0), ey=Q[1]-(lab[q]?uy*cut:0), nx=-uy, ny=ux, k=e.order>=3?3:e.order===2?2:1, off=3;
+    for(var t=0;t<k;t++){ var f=(t-(k-1)/2)*off; bondSvg.push('<line x1="'+X(sx+nx*f)+'" y1="'+Y(sy+ny*f)+'" x2="'+X(ex+nx*f)+'" y2="'+Y(ey+ny*f)+'"/>'); } });
+  o.push('<g class="dg-bonds" stroke="'+ink+'" stroke-width="1.8" stroke-linecap="round">'+bondSvg.join('')+'</g>');
+  // the interactions
+  var lines=[], lnSvg=[];
+  B.forEach(function(b){ b.row.links.forEach(function(l){ var P=A[pos[l.atom]], e=_diagEdge(b,P[0],P[1]), t=INTER_TYPES[l.type], dx=P[0]-e[0], dy=P[1]-e[1], d=Math.hypot(dx,dy)||1, stop=lab[pos[l.atom]]?DG_BOND*0.34:DG_BOND*0.12;
+      var tx=P[0]-dx/d*stop, ty=P[1]-dy/d*stop, hy=l.type==='hydro';
+      lines.push({k:b.k,type:l.type,d:l.d,x1:e[0],y1:e[1],x2:tx,y2:ty});
+      lnSvg.push('<g class="dg-ln" data-k="'+escapeHtml(b.k)+'" data-t="'+l.type+'"><line x1="'+X(e[0])+'" y1="'+Y(e[1])+'" x2="'+X(tx)+'" y2="'+Y(ty)+'" stroke="'+t.c+'" stroke-width="'+(hy?1.2:1.9)+'" stroke-dasharray="'+(hy?'2 4':'6 4')+'" stroke-linecap="round"/>'
+        +(hy?'':'<text x="'+X((e[0]+tx)/2)+'" y="'+Y((e[1]+ty)/2)+'" font-size="10" text-anchor="middle" dominant-baseline="central" fill="'+ink2+'" stroke="#ffffff" stroke-width="3.2" paint-order="stroke">'+l.d.toFixed(1)+'</text>')+'</g>'); }); });
+  o.push('<g class="dg-links">'+lnSvg.join('')+'</g>');
+  // the hetero atoms
+  var atSvg=[]; L.forEach(function(a,q){ if(!lab[q]) return; var el=lab[q], c=DG_ELEM[el]||'#5a5f7a', t=el.charAt(0)+el.slice(1).toLowerCase();
+    atSvg.push('<text x="'+X(A[q][0])+'" y="'+Y(A[q][1])+'" font-size="14" font-weight="700" text-anchor="middle" dominant-baseline="central" fill="'+c+'">'+t+'</text>'); });
+  o.push('<g class="dg-atoms">'+atSvg.join('')+'</g>');
+  // the residues
+  o.push('<g class="dg-resg">'+B.map(function(b){ var f=DG_FILL[b.cls]||DG_FILL.p, top=Object.keys(INTER_TYPES).filter(function(k){ return b.row.types[k]; })[0], sc=top?INTER_TYPES[top].c:f[1];
+    return '<g class="dg-res" data-k="'+escapeHtml(b.k)+'" tabindex="0" role="button" aria-label="'+escapeHtml(b.text+b.chain+', '+b.row.n+(b.row.n===1?' contact':' contacts'))+'"><rect x="'+X(b.x-b.w/2)+'" y="'+Y(b.y-b.h/2)+'" width="'+b.w+'" height="'+b.h+'" rx="6" fill="'+f[0]+'" stroke="'+sc+'" stroke-width="1.6"/>'
+      +'<text x="'+X(b.x)+'" y="'+Y(b.y)+'" font-size="'+FS+'" font-weight="600" text-anchor="middle" dominant-baseline="central" fill="'+ink+'">'+escapeHtml(b.text)+(b.chain?'<tspan font-weight="400" fill="'+ink2+'">'+escapeHtml(b.chain)+'</tspan>':'')+'</text></g>'; }).join('')+'</g>');
+  if(key.length) o.push('<g class="dg-key" font-size="11" fill="'+ink2+'">'+key.map(function(k){
+    return k.t==='line'?'<line x1="'+(k.x)+'" y1="'+(KY+k.y+7)+'" x2="'+(k.x+20)+'" y2="'+(KY+k.y+7)+'" stroke="'+k.c+'" stroke-width="2" stroke-dasharray="6 3" stroke-linecap="round"/><text x="'+(k.x+26)+'" y="'+(KY+k.y+7)+'" dominant-baseline="central">'+escapeHtml(k.text)+'</text>'
+      :'<rect x="'+k.x+'" y="'+(KY+k.y+1)+'" width="20" height="12" rx="3" fill="'+DG_FILL[k.k][0]+'" stroke="'+DG_FILL[k.k][1]+'" stroke-width="1.2"/><text x="'+(k.x+26)+'" y="'+(KY+k.y+7)+'" dominant-baseline="central">'+escapeHtml(k.text)+'</text>'; }).join('')+'</g>');
+  o.push('</svg>');
+  return {svg:o.join(''),w:W,h:H,ox:ox,oy:oy,boxes:B.map(function(b){ return {k:b.k,x:b.x,y:b.y,w:b.w,h:b.h}; }),atoms:L.map(function(a,q){ return {index:a.index,x:A[q][0],y:A[q][1],el:(a.elem||'C').toUpperCase()}; }),
+    bonds:bonds.map(function(e){ return [pos[e.a.index],pos[e.b.index]]; }),lines:lines,more:more,rows:rows.length};
+}
+var _diagFlat=null;   // the flattening is the costly part and depends on the ligand only
+function _diagName(ext){ var s=_site; return (currentPdbId||'structure').replace(/[\\/:*?"<>|\s]+/g,'_')+'_'+(s?s.lig.resn:'ligand')+'_interactions.'+ext; }
+function diagRender(){
+  var box=$('diagBox'); if(!box) return null;
+  var d=null; try{ d=siteDiagram(); }catch(e){ d=null; }
+  $('siteDiag').hidden=!d||!d.rows;
+  box.innerHTML=d&&d.rows?d.svg:'';
+  $('diagSum').textContent=d&&d.rows?d.rows+' residues'+(d.more?' · the '+d.more+' farthest are in the table':''):'';
+  if($('diag-modal').classList.contains('open')) $('diagBig2').innerHTML=d&&d.rows?d.svg:'';
+  _diagLast=d; return d;
+}
+var _diagLast=null, _dgHot=null, _dgShape=null, _dgT=0, _dgPrev=null;
+function diagHot(k){   // the residue under the pointer, in the picture, the table and the structure
+  if(k===_dgHot) return; _dgHot=k; clearTimeout(_dgT);
+  [].forEach.call(document.querySelectorAll('.dg-res,.dg-ln,#siteList .site-row'),function(e){ e.classList.toggle('hl',k!=null&&e.getAttribute('data-k')===k); });
+  var had=!!_dgShape; if(_dgShape){ try{ viewer.removeShape(_dgShape); }catch(e){} _dgShape=null; }
+  var row=k&&_site&&_site.rows?_site.rows.filter(function(r){ return r.k===k; })[0]:null;
+  if(!row||!viewer){ if(had&&viewer){ try{ viewer.render(); }catch(e){} } return; }
+  _dgT=setTimeout(function(){ if(_dgHot!==k) return; try{ _dgShape=viewer.addSphere({center:{x:row.atom.x,y:row.atom.y,z:row.atom.z},radius:1.1,color:'#ffb000',alpha:0.5,clickable:false}); viewer.render(); }catch(e){} },80);
+}
+function diagOpen(){
+  var d=diagRender(); if(!d||!d.rows){ showToast('Open Analyse and pick a ligand first.'); return; }
+  $('dgLabbook').hidden=!hosted(); $('diagBig2').innerHTML=d.svg; $('diagBig2').firstChild.style.maxWidth=Math.round(d.w*1.7)+'px';
+  _dgPrev=document.activeElement; $('diag-modal').classList.add('open'); $('dgPng').focus();
+}
+function diagClose(){ $('diag-modal').classList.remove('open'); if(_dgPrev&&_dgPrev.focus){ try{ _dgPrev.focus(); }catch(e){} } }
+function diagSvg(){ var d=_diagLast||diagRender(); if(!d||!d.rows) return false; _saveBlob(new Blob([d.svg],{type:'image/svg+xml;charset=utf-8'}),_diagName('svg')); return true; }
+function diagCanvas(cb,width){   // the picture as a canvas, 2400 px wide unless asked
+  var d=_diagLast||diagRender(); if(!d||!d.rows){ cb(null); return; }
+  var img=new Image(), url=URL.createObjectURL(new Blob([d.svg],{type:'image/svg+xml;charset=utf-8'}));
+  img.onload=function(){ var k=(width||2400)/d.w, cv=document.createElement('canvas'); cv.width=Math.round(d.w*k); cv.height=Math.round(d.h*k);
+    var x=cv.getContext('2d'); x.fillStyle='#fff'; x.fillRect(0,0,cv.width,cv.height); x.drawImage(img,0,0,cv.width,cv.height); URL.revokeObjectURL(url); cb(cv); };
+  img.onerror=function(){ URL.revokeObjectURL(url); cb(null); };
+  img.src=url;
+}
+function diagPng(){ diagCanvas(function(cv){ if(!cv){ showToast('The picture could not be made.'); return; } cv.toBlob(function(b){ if(b) _saveBlob(b,_diagName('png')); else showToast('The image is too large for this browser.'); },'image/png'); }); }
+function diagLabbook(){
+  diagCanvas(function(cv){ if(!cv||!_site) return; var s=_site, n=_diagLast?_diagLast.rows:0;
+    if(_sendCanvasToLabbook(cv,_diagName('png'),s.lig.resn+' in '+(currentPdbId||'the structure')+': the '+n+' residues that touch it, drawn flat. Interactions are read from the coordinates (no hydrogens).',null)) diagClose(); });
+}
+function diagWire(){
+  var over=function(e){ var g=e.target.closest&&e.target.closest('.dg-res,.site-row'); diagHot(g?g.getAttribute('data-k'):null); };
+  var host=['diagBox','siteList'].map($);
+  host.forEach(function(el){ el.addEventListener('mouseover',over); el.addEventListener('mouseleave',function(){ diagHot(null); }); el.addEventListener('focusin',over); el.addEventListener('focusout',function(){ diagHot(null); }); });
+  var pick=function(e){ var g=e.target.closest('.dg-res'); if(!g){ if(e.target.closest('svg')) diagOpen(); return; } var row=_site&&_site.rows&&_site.rows.filter(function(r){ return r.k===g.getAttribute('data-k'); })[0]; if(row) sitePick(row,e.shiftKey); };
+  $('diagBox').addEventListener('click',pick);
+  $('diagBox').addEventListener('keydown',function(e){ if((e.key==='Enter'||e.key===' ')&&e.target.closest('.dg-res')){ e.preventDefault(); pick(e); } });
+  $('diagBig').addEventListener('click',diagOpen); $('diagSvg').addEventListener('click',diagSvg); $('diagPng').addEventListener('click',diagPng);
+  $('dgSvg').addEventListener('click',diagSvg); $('dgPng').addEventListener('click',diagPng); $('dgLabbook').addEventListener('click',diagLabbook);
 }
 
 // ── Lysines a ligase can reach ──────────────────────────────────────────────────────────────
@@ -6662,7 +6918,7 @@ function rbStudioShapes(){ interDraw(); clashDraw(); pocketDraw(); }
 function analyseReset(){ _site=null; _allGrid=null; _inter=null; _lys=null; _clash=null; _pockets=null; _pae=null; _elec=null; _interShapes=[]; _clashShapes=[]; _pocketShapes=[]; }   // the viewer was cleared: the shapes went with it
 function analyseOnModel(){ document.body.classList.toggle('rb-af',isAF()); renderSite(); interFill(); lysFill(); clashFill(); renderInter(); renderLys(); renderClash(); renderPockets(); paeLoad(); }
 function analyseWire(){
-  siteWire();
+  siteWire(); diagWire();
   $('interGo').addEventListener('click',function(){ interSet($('interSrc').value,$('interTgt').value); });
   $('interTypes').addEventListener('click',function(e){ var b=e.target.closest('.it-chip'); if(!b||!state.inter) return; state.inter.types[b.dataset.t]=state.inter.types[b.dataset.t]===false; recolorStructure(); interDraw(); viewer.render(); renderInter(); });
   $('interCopy').addEventListener('click',interCopy);
@@ -6688,6 +6944,12 @@ RB_CMDS.push(
    args:function(){ return siteLigands().main.concat(siteLigands().other).map(function(l){ return _cand(l.resn,'lig',l.name||'ligand'); }); },
    run:function(a){ var n=needModel(); if(n) return n; var w=a.trim().toUpperCase(), L=siteLigands(), l=w?L.main.concat(L.other).filter(function(x){ return x.resn.toUpperCase()===w; })[0]:L.main[0];
      if(!l) return _err(ligands.length?'site <ligand code>':'This structure has no ligand.'); siteSet(l.key); rbTab('analyse'); rbOpenSec('site'); var s=siteNow(); return _ok(l.resn+': '+(s&&s.rows?s.rows.length:0)+' residues touch it.'); }},
+  {n:['diagram','plot2d','flat'],d:'The ligand and what holds it, drawn flat: a figure for a paper',f:'diagram · diagram svg · diagram png',
+   args:function(pos){ return pos===0?[_cand('svg','word','save it as a vector figure'),_cand('png','word','save it as an image')]:[]; },
+   run:function(a){ var n=needModel(); if(n) return n; if(!state.site){ var l=sitePrimary(); if(!l) return _err('This structure has no ligand.'); siteSet(l.key); }
+     var w=a.trim().toLowerCase(); rbTab('analyse'); rbOpenSec('site'); var d=diagRender(); if(!d||!d.rows) return _err('Nothing touches this ligand within the usual distances.');
+     if(w==='svg'){ diagSvg(); return _ok('Saved the diagram as an SVG.'); } if(w==='png'){ diagPng(); return _ok('Saving the diagram as a PNG.'); }
+     diagOpen(); return _ok(d.rows+' residues, drawn flat.'); }},
   {n:['interactions','inter','contacts2','plip','hbonds'],d:'What a ligand (or a chain) makes with the protein: H-bonds, salt bridges, hydrophobic, π, halogen, metal',f:'interactions MZ1 · interactions A B · interactions off',
    args:function(pos){ return pos===0?ligands.map(function(l){ return _cand(l.resn,'lig',l.name||'ligand'); }).concat(chainList.map(function(c){ return _cand(c,'chain',''); }),[_cand('sel','word','the selection'),_cand('off','word','none')]):chainList.map(function(c){ return _cand(c,'chain',''); }); },
    run:function(a){ var n=needModel(); if(n) return n; var w=a.trim().split(/\s+/).filter(Boolean);
@@ -7242,6 +7504,7 @@ function boot(){
     if(e.key==='Escape'){
       if($('confirm-modal').classList.contains('open')) _cfClose(false);
       else if($('panel-modal').classList.contains('open')) closePanels();
+      else if($('diag-modal').classList.contains('open')) diagClose();
       else if($('export-modal').classList.contains('open')) closeExport();
       else if($('opts-panel').classList.contains('open')) $('opts-panel').classList.remove('open');
       else if($('chain-popup').classList.contains('open')) closeChainPopup();
@@ -8143,9 +8406,15 @@ var assistRegister, assistOpen, assistClose, assistAsk, assistToggle;
         a: ['**Colour › Look**: one-click **styles** — pastel ones first (Pastel paper, By structure, Pastel rainbow, Ternary complex, Grey + accent), then Binding site, the surfaces, Ink and wash, Pastel on dark, Cover and Confidence — that set the colours, light, depth, outline and background, and never touch your labels, highlights or measurements. **Save look** keeps the current one as your own.',
             '**Light**: Flat (no light at all), Soft (a gentle fill and a hint of shadow — pastels stay clean) or Studio (a key light and deep shadows). **Depth** fades what is further away; **Perspective** (Appearance) goes from none (orthographic) to strong; **Pastel** softens every colour. **Chain colours** offers Okabe–Ito and Tol, made to stay apart for colour-blind readers; values can use viridis or cividis.'],
         tip: 'A chain colour that disappears on the background is pointed out under the palette.', prep: open('look'), show: [{ sel: '#presetGrid', say: 'The styles.', miss: NEED }] },
+      { id: 'site', t: 'The binding site of a ligand', group: 'Analyse', on: ['viewer'],
+        q: ['binding site', 'site', 'what holds the ligand', 'residues around the ligand', 'buried', 'rotatable bonds', 'focus', 'burial', 'seesar', '2d diagram', 'interaction diagram', 'flat diagram', 'ligplot', 'sitio de union', 'diagrama 2d', 'residuos alrededor del ligando'],
+        a: ['**Analyse › Binding site** opens on the ligand (the largest one that is not a crystallisation additive) and reads at once what holds it: one row per residue, nearest first, with a coloured pip for each kind of interaction. Click a row to frame it with the ligand, Shift-click to label it. The strip gives heavy atoms, molecular weight, rotatable bonds, how much of the ligand\'s surface the protein covers, and clashes.',
+            '**Focus** shows the pocket as sticks and steps the rest of the protein back; **Colour by burial** colours each ligand atom by how buried it is. The **2D diagram** draws the ligand flat with the residues round it and a dashed line for every interaction, coloured by kind with its distance; point at a residue and it lights up in the table and in 3D. **Enlarge**, **Save SVG** and **Save PNG** give a figure for a paper (or type `diagram`, `diagram svg`).'],
+        warn: 'There is no affinity estimate: SeeSAR\'s HYDE needs a force field and a solvation model. Interactions are read from distances and angles in the file with no hydrogens, and the diagram flattens the ligand\'s own coordinates, so it is not a chemical drawing of it and knows nothing of stereochemistry.',
+        prep: open('site'), show: [{ sel: '#siteCard', say: 'The binding site.', miss: NEED }] },
       { id: 'interactions', t: 'What a ligand makes with the protein', group: 'Analyse', on: ['viewer'],
         q: ['interactions', 'hydrogen bonds', 'h-bonds', 'salt bridge', 'pi stacking', 'hydrophobic contacts', 'halogen bond', 'plip', 'binding mode', 'interacciones', 'puentes de hidrogeno', 'apilamiento', 'modo de union'],
-        a: ['**Analyse › Interactions**: pick a ligand (or a chain) and what to look against, and press **Find**. Hydrogen bonds, hydrophobic contacts, π-stacking, cation–π, halogen bonds and metals are drawn as dashed lines in their colours, the residues as sticks, and listed with their distances; chips switch each kind on and off; the table copies.',
+        a: ['**Analyse › Between any two parts**: pick a ligand (or a chain) and what to look against, and press **Find** (the Binding site card does this for the main ligand on its own). Hydrogen bonds, hydrophobic contacts, π-stacking, cation–π, halogen bonds and metals are drawn as dashed lines in their colours, the residues as sticks, and listed with their distances; chips switch each kind on and off; the table copies.',
             'Between two chains it also finds salt bridges.'],
         warn: 'Found from distances and angles in the file, heavy atoms only (there are no hydrogens in most files). A ligand\'s charges are not in the file, so salt bridges are only found between chains.',
         prep: open('interact'), show: [{ sel: '#interGo', say: 'Find interactions.', miss: NEED }] },
@@ -8156,7 +8425,7 @@ var assistRegister, assistOpen, assistClose, assistAsk, assistToggle;
         prep: open('lysines'), show: [{ sel: '#lysGo', say: 'Find lysines.', miss: NEED }] },
       { id: 'pockets', t: 'Find pockets', group: 'Analyse', on: ['viewer'],
         q: ['pocket', 'pockets', 'cavity', 'cavities', 'binding pocket', 'druggable', 'bolsillo', 'cavidad', 'sitio de union'],
-        a: '**Analyse › Pockets** looks for buried cavities in the chains shown — empty places with protein around them in most directions — and lists them by volume, with the residues that line them and any ligand already in them. Click one to see it alone and select its residues.',
+        a: '**Analyse › Cavities** looks for buried cavities in the chains shown — empty places with protein around them in most directions — and ranks them by volume × how closed they are, with a bar for what lines each one (hydrophobic, polar, charged) and any ligand already in it. Click one to see it alone and select its residues.',
         tip: 'In 5T35 the two largest are the ones that hold MZ1.', prep: open('pockets'), show: [{ sel: '#pocketGo', say: 'Find pockets.', miss: NEED }] },
       { id: 'clashes', t: 'Clashes and contacts', group: 'Analyse', on: ['viewer'],
         q: ['clash', 'clashes', 'overlap', 'steric', 'contacts', 'choques', 'solapamiento', 'esterico'],

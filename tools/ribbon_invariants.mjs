@@ -64,6 +64,9 @@
 //                           a ligand between two residues of its own chain letter clashes with both.
 //   RB41 cavities and the engine  Cavities are scored volume × enclosure and say what lines them, found in slices (the page stays alive) with the same answer as the
 //                           synchronous call; the pane goes from the ligand outwards; the clash table; the integer grid returns exactly what is within the radius.
+//   RB42 the 2D diagram     The ligand drawn flat with the residues round it: no two labels touch (ten on one side), none on the ligand, none outside; a folded ligand
+//                           has no atoms on top of each other; a line from each box to an atom in its kind's colour; hover lights table, picture and structure; the
+//                           filters; SVG and PNG; the dialog; the same picture every time.
 //   RB33 Echo mutants        Echo reads groups named like BRD4_Y97A as mutants of BRD4 and sends log2(DC50 ratio) per residue; Ribbon puts them
 //                           on the AlphaFold model, labelled, with side chains; a residue not in the model is named.
 //   RB18 measurements       Two atoms make a distance equal to their coordinates, three an angle at the middle one; a dashed line,
@@ -205,6 +208,46 @@ function shellPdbN(N, R, K = 1, gap = 22) {   // K³ closed shells on a lattice:
   for (let a = 0; a < K; a++) for (let b = 0; b < K; b++) for (let c = 0; c < K; c++) for (let i = 0; i < N; i++) { const y = 1 - 2 * (i + 0.5) / N, r = Math.sqrt(1 - y * y), t = i * Math.PI * (3 - Math.sqrt(5)); L.push(atomLine('ATOM', n++, 'CA', 'ALA', 'A', res++, a * gap + R * r * Math.cos(t), b * gap + R * y, c * gap + R * r * Math.sin(t), 20, 'C')); }
   return L.join('\n') + '\nEND\n';
 }
+// A degrader-like ligand folded on itself (a ring, an eight-carbon coil, a ring) with residues round it, many of them in one narrow wedge:
+// what a flat picture has to untangle (RB42).
+function diagPdb() {
+  const L = []; let n = 1; const A = (rec, name, resn, ch, resi, x, y, z, el) => L.push(atomLine(rec, n++, name, resn, ch, resi, x, y, z, 20, el));
+  const P = [], el = [];   // ring A (0-5), N (6), coil (7-14), ring B (15-20), O (21)
+  for (let k = 0; k < 6; k++) { P.push([1.39 * Math.cos(k * Math.PI / 3), 1.39 * Math.sin(k * Math.PI / 3), 0]); el.push('C'); }
+  P.push([-2.8, 0, 0]); el.push('N');
+  for (let k = 0; k < 8; k++) { const t = k * 100 * Math.PI / 180; P.push([3.1 + 0.59 * k, 0.9 * Math.cos(t), 0.9 * Math.sin(t)]); el.push('C'); }
+  const ex = P[14], cB = [ex[0] + 1.5, ex[1] - 1.39, ex[2]];
+  for (let k = 0; k < 6; k++) { P.push([cB[0], cB[1] + 1.39 * Math.cos(k * Math.PI / 3), cB[2] + 1.39 * Math.sin(k * Math.PI / 3)]); el.push('C'); }
+  P.push([cB[0], cB[1] - 2.79, cB[2]]); el.push('O');
+  const first = n; P.forEach((p, i) => A('HETATM', el[i] + (i + 1), 'LIG', 'A', 201, p[0], p[1], p[2], el[i]));
+  const bonds = []; for (let k = 0; k < 6; k++) { bonds.push([k, (k + 1) % 6]); bonds.push([15 + k, 15 + (k + 1) % 6]); }
+  bonds.push([3, 6]); bonds.push([0, 7]); for (let k = 7; k < 14; k++) bonds.push([k, k + 1]); bonds.push([14, 15]); bonds.push([18, 21]);
+  const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+  // residues: a contact carbon 3.8 Å from a ligand carbon that bonds only carbons, 3 Å or more from every other ligand atom, 2.8 Å from each other
+  const carbonOnly = i => el[i] === 'C' && ![3, 14, 15, 18].includes(i) && !(i === 0);
+  const wedge = [12, 13, 16, 17, 19, 20], free = P.map((p, i) => i).filter(carbonOnly);
+  const placed = []; let seed = 11; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const names = [['LEU', 'CD1'], ['VAL', 'CG1'], ['ILE', 'CD1'], ['LEU', 'CD2'], ['VAL', 'CG2'], ['ILE', 'CG1']];
+  let resi = 30;
+  for (let tries = 0; tries < 20000 && placed.length < 22; tries++) {
+    const inWedge = placed.length < 9 && tries < 6000, i = inWedge ? wedge[Math.floor(rnd() * wedge.length)] : free[Math.floor(rnd() * free.length)];
+    let d;
+    if (inWedge) d = [1, (rnd() - 0.5) * 1.8, (rnd() - 0.5) * 1.8];
+    else { const th = rnd() * 6.283, ph = Math.acos(2 * rnd() - 1); d = [Math.sin(ph) * Math.cos(th), Math.sin(ph) * Math.sin(th), Math.cos(ph)]; }
+    const m = Math.hypot(...d); d = d.map(v => v / m);
+    const q = [P[i][0] + 3.7 * d[0], P[i][1] + 3.7 * d[1], P[i][2] + 3.7 * d[2]];
+    if (P.some((p, j) => j !== i && dist(p, q) < 3.0)) continue;
+    if (placed.some(o => dist(o, q) < 2.8)) continue;
+    placed.push(q);
+    const [rn, an] = names[placed.length % names.length];
+    A('ATOM', 'CA', rn, 'A', resi, q[0] + 1.5 * d[0], q[1] + 1.5 * d[1], q[2] + 1.5 * d[2], 'C'); A('ATOM', an, rn, 'A', resi, q[0], q[1], q[2], 'C'); resi += 3;
+  }
+  // two that hold the ligand by hydrogen bonds: a serine on the N, an aspartate on the O
+  A('ATOM', 'CA', 'SER', 'A', 120, P[6][0] - 3.4, 1.9, 0.4, 'C'); A('ATOM', 'OG', 'SER', 'A', 120, P[6][0] - 2.8, 0.3, 0, 'O');
+  A('ATOM', 'CA', 'ASP', 'A', 130, P[21][0] + 1.5, P[21][1] - 4.1, 0.4, 'C'); A('ATOM', 'OD1', 'ASP', 'A', 130, P[21][0], P[21][1] - 2.8, 0, 'O');
+  bonds.forEach(([i, j]) => L.push('CONECT' + String(first + i).padStart(5) + String(first + j).padStart(5)));
+  return L.join('\n') + '\nEND\n';
+}
 const AF_B = i => (i <= 3 ? 95 : i <= 6 ? 80 : i <= 9 ? 60 : 30);
 const STRUCTS = {
   '1XYZ': () => synPdb(),
@@ -222,6 +265,7 @@ const STRUCTS = {
   '9INT': () => interPdb(),
   '9BIG': () => shellPdbN(330, 7.5, 5),
   '9CLS': () => clashPdb(),
+  '9DGM': () => diagPdb(),
   '9SHL': () => shellPdb(),
   '8POC': () => synPdb({ chains: [{ id: 'A', len: 14, x0: 0 }], additive: true, ligand: true, ligandN: 14 }),   // a real ligand beside the glycerol
 };
@@ -2590,7 +2634,76 @@ async function rb33() {
   await r.ctx.close();
 }
 
-const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20], ['RB21', rb21], ['RB22', rb22], ['RB23', rb23], ['RB24', rb24], ['RB25', rb25], ['RB26', rb26], ['RB27', rb27], ['RB28', rb28], ['RB29', rb29], ['RB30', rb30], ['RB31', rb31], ['RB32', rb32], ['RB33', rb33], ['RB34', rb34], ['RB35', rb35], ['RB36', rb36], ['RB37', rb37], ['RB38', rb38], ['RB39', rb39], ['RB40', rb40], ['RB41', rb41]];
+// ── RB42 the 2D diagram ─────────────────────────────────────────────────────────────────────────
+async function rb42() {
+  const { ctx, pg, E, go } = await open({ tag: 'RB42 ' });
+  if (!(await has3d(pg))) { skipped.push('RB42 (3Dmol could not load from its CDN)'); await ctx.close(); return; }
+  await go('9DGM'); await sleep(500);
+  await E(() => { rbTab('analyse'); }); await sleep(900);
+  const g = () => E(() => {   // the picture as it is on the page: the boxes, the atoms and the lines, read back from the SVG itself
+    const svg = document.querySelector('#diagBox svg'); if (!svg) return null;
+    const vb = svg.viewBox.baseVal, num = (el, a) => +el.getAttribute(a);
+    const boxes = [...svg.querySelectorAll('.dg-res')].map(r => { const q = r.querySelector('rect'); return { k: r.dataset.k, x: num(q, 'x'), y: num(q, 'y'), w: num(q, 'width'), h: num(q, 'height') }; });
+    const d = _diagLast, at = d.atoms.map(a => ({ x: a.x + d.ox, y: a.y + d.oy, el: a.el })), bonds = d.bonds;
+    return { W: vb.width, H: vb.height, boxes, at, bonds, lines: [...svg.querySelectorAll('.dg-ln')].map(l => { const ln = l.querySelector('line'); return { k: l.dataset.k, t: l.dataset.t, x1: num(ln, 'x1'), y1: num(ln, 'y1'), x2: num(ln, 'x2'), y2: num(ln, 'y2'), c: ln.getAttribute('stroke'), want: INTER_TYPES[l.dataset.t].c }; }), bond: DG_BOND, rows: d.rows, siteRows: _site.rows.length };
+  });
+  const d = await g();
+  check('RB42', 'the diagram is drawn when Analyse opens, one box per residue of the table (up to the cap)', !!d && d.boxes.length >= 14 && d.boxes.length === Math.min(26, d.siteRows), d && { boxes: d.boxes.length, rows: d.siteRows });
+  const touch = (a, b, pad) => Math.abs(a.x - b.x) < (a.w + b.w) / 2 + pad && Math.abs(a.y - b.y) < (a.h + b.h) / 2 + pad;
+  let pairs = 0; for (let i = 0; i < d.boxes.length; i++) for (let j = i + 1; j < d.boxes.length; j++) if (touch(d.boxes[i], d.boxes[j], 0)) pairs++;
+  check('RB42', 'no two residue labels touch, even with ten of them on one side of the ligand', pairs === 0, { pairs, n: d.boxes.length });
+  const onAtom = d.boxes.filter(b => d.at.some(a => { const qx = Math.max(b.x, Math.min(b.x + b.w, a.x)), qy = Math.max(b.y, Math.min(b.y + b.h, a.y)); return Math.hypot(qx - a.x, qy - a.y) < d.bond * 0.34; })).length;
+  check('RB42', 'no label sits on the ligand, and every one is inside the picture', onAtom === 0 && d.boxes.every(b => b.x >= 0 && b.y >= 0 && b.x + b.w <= d.W && b.y + b.h <= d.H), { onAtom, W: d.W, H: d.H });
+  let minNb = 1e9; const adj = new Set(d.bonds.map(([a, b]) => a + '-' + b)); for (let i = 0; i < d.at.length; i++) for (let j = i + 1; j < d.at.length; j++) if (!adj.has(i + '-' + j)) minNb = Math.min(minNb, Math.hypot(d.at[i].x - d.at[j].x, d.at[i].y - d.at[j].y));
+  const bl = d.bonds.map(([a, b]) => Math.hypot(d.at[a].x - d.at[b].x, d.at[a].y - d.at[b].y)).sort((a, b) => a - b), med = bl[bl.length >> 1];
+  check('RB42', 'the folded ligand is drawn flat without atoms on top of each other, bonds about one length', minNb > d.bond * 0.55 && med > d.bond * 0.75 && med < d.bond * 1.25, { minNb: +(minNb / d.bond).toFixed(2), med: +(med / d.bond).toFixed(2) });
+  const edge = (b, x, y) => { const cx = b.x + b.w / 2, cy = b.y + b.h / 2, dx = Math.abs(x - cx) - b.w / 2, dy = Math.abs(y - cy) - b.h / 2; return Math.max(dx, dy); };
+  const lk = d.lines.every(l => { const b = d.boxes.find(q => q.k === l.k); const a = d.at.reduce((m, p) => Math.min(m, Math.hypot(p.x - l.x2, p.y - l.y2)), 1e9); return b && Math.abs(edge(b, l.x1, l.y1)) < 1.5 && a < d.bond * 0.4; });
+  check('RB42', 'every interaction is a line from the edge of its residue to an atom of the ligand, in the colour of its kind', lk && d.lines.length >= d.boxes.length && d.boxes.every(b => d.lines.some(l => l.k === b.k)) && d.lines.every(l => l.c === l.want), { lines: d.lines.length });
+  // it is the same picture every time
+  const same = await E(() => siteDiagram().svg === siteDiagram().svg);
+  check('RB42', 'the same file draws the same picture every time', same);
+  // hover: picture, table, structure
+  await pg.hover('#diagBox .dg-res'); await sleep(350);
+  const hv = await E(() => ({ k: _dgHot, res: document.querySelectorAll('.dg-res.hl').length, row: document.querySelectorAll('#siteList .site-row.hl').length, shape: !!_dgShape }));
+  check('RB42', 'the pointer on a residue in the picture lights it in the table and puts a halo on it in the structure', !!hv.k && hv.res === 1 && hv.row === 1 && hv.shape, hv);
+  await pg.mouse.move(5, 5); await sleep(350);
+  check('RB42', 'and takes it all away again', await E(() => !_dgHot && !_dgShape && !document.querySelector('.dg-res.hl')));
+  await pg.hover('#siteList .site-row:nth-child(2)'); await sleep(350);
+  check('RB42', 'a row of the table lights its box in the picture', await E(() => document.querySelectorAll('.dg-res.hl').length === 1));
+  await pg.mouse.move(5, 5); await sleep(250);
+  // click goes to the residue
+  await E(() => { window.__fit = []; const o = window.fitView; window.__fitO = o; window.fitView = function (a) { window.__fit.push(a); return o.apply(this, arguments); }; });
+  await pg.click('#diagBox .dg-res'); await sleep(300);
+  check('RB42', 'a click on a box frames that residue with the ligand', await E(() => { window.fitView = window.__fitO; return window.__fit.length === 1 && !!window.__fit[0].focus; }));
+  // the filters
+  const n0 = await E(() => document.querySelectorAll('#diagBox .dg-res').length);
+  await pg.click('#siteTypes .it-chip[data-t=hydro]'); await sleep(300);
+  const n1 = await E(() => ({ boxes: document.querySelectorAll('#diagBox .dg-res').length, rows: document.querySelectorAll('#siteList .site-row').length }));
+  check('RB42', 'switching a kind off takes its residues out of the picture as well as the table', n1.boxes < n0 && n1.boxes === n1.rows && n1.boxes >= 2, { n0, n1 });
+  await pg.click('#siteTypes .it-chip[data-t=hydro]'); await sleep(300);
+  // the file
+  const sv = await E(() => { window.__saved = []; const o = window._saveBlob; window.__saveO = o; window._saveBlob = function (b, n) { window.__saved.push({ b, n }); }; diagSvg(); window._saveBlob = o; const s = window.__saved[0]; return s.b.text().then(t => ({ name: s.n, text: t })); });
+  const xml = await E((t) => { const doc = new DOMParser().parseFromString(t, 'image/svg+xml'); return { err: !!doc.querySelector('parsererror'), boxes: doc.querySelectorAll('.dg-res').length, hl: doc.querySelectorAll('.hl').length, w: doc.documentElement.getAttribute('width') }; }, sv.text);
+  check('RB42', 'Save SVG writes a valid, self-contained vector figure named for the structure and the ligand', /_LIG_interactions\.svg$/.test(sv.name) && !xml.err && xml.boxes >= 14 && xml.hl === 0 && /<rect width="\d+" height="\d+" fill="#ffffff"\/>/.test(sv.text), { name: sv.name, xml });
+  const png = await E(() => new Promise(res => diagCanvas(cv => { if (!cv) return res(null); const x = cv.getContext('2d'), im = x.getImageData(0, 0, cv.width, cv.height).data; let ink = 0; for (let i = 0; i < im.length; i += 4) if (im[i] < 200 || im[i + 1] < 200 || im[i + 2] < 200) ink++; res({ w: cv.width, h: cv.height, ink: ink / (cv.width * cv.height), ratio: cv.height / cv.width, want: _diagLast.h / _diagLast.w }); }, 1500)));
+  check('RB42', 'Save PNG renders that picture at the width asked, not blank', !!png && png.w === 1500 && png.ink > 0.02 && Math.abs(png.ratio - png.want) < 0.01, png);
+  // enlarged
+  await pg.click('#diagBig'); await sleep(300);
+  const md = await E(() => ({ open: document.getElementById('diag-modal').classList.contains('open'), same: document.querySelector('#diagBig2 svg').innerHTML === document.querySelector('#diagBox svg').innerHTML, focus: document.activeElement && document.activeElement.id }));
+  check('RB42', 'Enlarge opens the same picture in a dialog with focus inside it', md.open && md.same && /^dg/.test(md.focus), md);
+  await pg.keyboard.press('Escape'); await sleep(200);
+  check('RB42', 'Escape closes it and gives the focus back', await E(() => !document.getElementById('diag-modal').classList.contains('open') && document.activeElement && document.activeElement.id === 'diagBig'));
+  // the other structures
+  await go('9INT'); await sleep(500); await E(() => { rbTab('analyse'); }); await sleep(700);
+  const small = await E(() => ({ shown: !document.getElementById('siteDiag').hidden, boxes: document.querySelectorAll('#diagBox .dg-res').length, ions: [...document.querySelectorAll('#diagBox .dg-res')].map(r => r.textContent.trim()).join('|') }));
+  check('RB42', 'a small ligand with an ion draws too, the ion as a box of its own', small.shown && small.boxes >= 4 && /MG/.test(small.ions), small);
+  await go('1XYZ'); await sleep(400); await E(() => { rbTab('analyse'); }); await sleep(400);
+  check('RB42', 'a structure with no ligand has no diagram', await E(() => document.getElementById('siteDiag').hidden && !document.querySelector('#diagBox svg')));
+  await ctx.close();
+}
+
+const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20], ['RB21', rb21], ['RB22', rb22], ['RB23', rb23], ['RB24', rb24], ['RB25', rb25], ['RB26', rb26], ['RB27', rb27], ['RB28', rb28], ['RB29', rb29], ['RB30', rb30], ['RB31', rb31], ['RB32', rb32], ['RB33', rb33], ['RB34', rb34], ['RB35', rb35], ['RB36', rb36], ['RB37', rb37], ['RB38', rb38], ['RB39', rb39], ['RB40', rb40], ['RB41', rb41], ['RB42', rb42]];
 const port = await freePort();
 const srv = spawn('python3', ['-m', 'http.server', String(port), '--bind', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });
 base = `http://127.0.0.1:${port}/`;
