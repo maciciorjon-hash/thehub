@@ -1570,11 +1570,11 @@ function _shortDate(s){
 // Runs inside the printed page, once laid out: while the map is shorter than it needs to be, drop a note or the
 // last legend row (whichever there is more of) and say how many went — the sheet is never two pages.
 var _SHEET_FIT='(function(){var m=document.querySelector(".map"),need=+m.getAttribute("data-need"),tb=document.querySelector("table"),nt=document.querySelector(".nt");'
- +'function mm(){return m.getBoundingClientRect().height*25.4/96}'
+ +'var fc=m.getAttribute("data-fit")==="content";function mm(){return m.getBoundingClientRect().height*25.4/96}function short(){return fc?m.scrollHeight>m.clientHeight+1:mm()<need}'
  +'function rowsOf(){return tb?[].filter.call(tb.querySelectorAll("tr"),function(x){return x.querySelector("td")&&!x.classList.contains("mr")}):[]}'
  +'function notesOf(){return nt?nt.querySelectorAll("p:not(.more)"):[]}'
  +'var rl=0,nl=0,i=0,more0=tb&&tb.querySelector(".mr"),hid0=more0?+more0.getAttribute("data-n"):0,nmore0=nt&&nt.querySelector(".more");'
- +'while(mm()<need&&i++<200){var r=rowsOf(),n=notesOf();'
+ +'while(short()&&i++<200){var r=rowsOf(),n=notesOf();'
  +'if(n.length>2||(n.length>0&&r.length<=3)){n[n.length-1].remove();nl++}else if(r.length>3){r[r.length-1].remove();rl++}else break}'
  +'if(rl&&tb){var r2=rowsOf();if(r2.length>3){r2[r2.length-1].remove();rl++}}'
  +'if(tb&&(rl||hid0)){if(more0)more0.remove();var tr=document.createElement("tr");tr.className="mr";tr.innerHTML="<td class=more colspan="+tb.rows[0].cells.length+">+ "+(rl+hid0)+" more line"+(rl+hid0>1?"s":"")+" in this box \u2014 see the app</td>";tb.appendChild(tr)}'
@@ -1675,6 +1675,7 @@ function scopeSheetHTML(storageLabel, title, racks, today, isRack){
     });
   }); });
   order.sort(function(a,b){ return b.n-a.n || a.name.localeCompare(b.name); });
+  order.forEach(function(g,i){ g.code=_lineCode(i); });   // the same letters in the legend and in the small maps
   var nB=items.length, pct=cap?Math.round(filled/cap*100):0, showKind=Object.keys(kinds).length>1;
   // the cards: the fewest columns in which every map fits at a readable size
   var maxC=items.reduce(function(m,it){ return Math.max(m,it.box.cols); },1), maxR=items.reduce(function(m,it){ return Math.max(m,it.box.rows); },1);
@@ -1697,7 +1698,8 @@ function scopeSheetHTML(storageLabel, title, racks, today, isRack){
       var b=it.box, vs=b.vials||{}, mini='';
       for(var r=0;r<b.rows;r++) for(var c=0;c<b.cols;c++){
         var v=vs[String.fromCharCode(65+r)+(c+1)];
-        mini+=v?'<i style="background:'+lineTone(vialLabel(v),vialKind(v)).fill+';box-shadow:inset 0 0 0 .15mm '+lineTone(vialLabel(v),vialKind(v)).edge+'"></i>':'<i class="fr"></i>';
+        var tn=v&&lineTone(vialLabel(v),vialKind(v));
+        mini+=v?'<i style="background:'+tn.fill+';box-shadow:inset 0 0 0 .15mm '+tn.edge+'">'+(S>=2.6&&order.length<=26?groups[vialKind(v)+'\u0001'+(vialLabel(v)||'(unlabelled)')].code:'')+'</i>':'<i class="fr"></i>';
       }
       return head+'<div class="cd"><div class="ct"><b>'+esc(b.name||'Box')+'</b><span>'+it.n+'/'+(b.rows*b.cols)+'</span></div>'
         +'<div class="mini" style="grid-template-columns:repeat('+b.cols+','+S.toFixed(2)+'mm);grid-auto-rows:'+S.toFixed(2)+'mm">'+mini+'</div></div>';
@@ -1711,7 +1713,7 @@ function scopeSheetHTML(storageLabel, title, racks, today, isRack){
   var rows=order.slice(0,40).map(function(g){
     var t=lineTone(g.name,g.kind), bx=Object.keys(g.boxes).sort(function(a,b){ return g.boxes[b]-g.boxes[a]||a.localeCompare(b); });
     var where=bx.slice(0,3).map(function(n){ return esc(n)+' ×'+g.boxes[n]; }).join(' · ')+(bx.length>3?' · +'+(bx.length-3):'');
-    return '<tr><td class="lg"><i style="background:'+t.fill+';border-color:'+t.edge+'"></i><b>'+esc(g.name)+'</b></td>'+(showKind?'<td>'+esc(vialKindLabel(g.kind))+'</td>':'')
+    return '<tr><td class="lg"><i style="background:'+t.fill+';border-color:'+t.edge+'">'+g.code+'</i><b>'+esc(g.name)+'</b></td>'+(showKind?'<td>'+esc(vialKindLabel(g.kind))+'</td>':'')
       +'<td class="num">'+g.vials+'</td><td class="wh">'+where+'</td></tr>';
   }).join('')+(order.length>40?'<tr class="mr" data-n="'+(order.length-40)+'"><td class="more" colspan="'+(showKind?4:3)+'">+ '+(order.length-40)+' more lines — see the app</td></tr>':'');
   var css='@page{size:A4 portrait;margin:0}*{box-sizing:border-box}html,body{margin:0;height:297mm;overflow:hidden}'
@@ -1724,17 +1726,17 @@ function scopeSheetHTML(storageLabel, title, racks, today, isRack){
    +'.bar{height:1.6mm;background:#e4e4e8;border-radius:1mm;margin:1.6mm 0 1mm;overflow:hidden}.bar i{display:block;height:100%;background:#1c1c1e}.st .sm{font-size:7pt;color:#6b6b70}'
    +'.map{flex:0 1 auto;min-height:0;overflow:hidden;display:grid;grid-template-columns:repeat('+(mode==='maps'?k:1)+',1fr);gap:'+GAP+'mm;align-content:start}'
    +'.cd{border:.25mm solid #d9d9de;border-radius:1.6mm;padding:1.5mm 1.5mm 1.5mm;min-width:0}.ct{display:flex;justify-content:space-between;gap:2mm;font-size:7pt;line-height:4.2mm;height:4.2mm;margin-bottom:1mm}.ct b{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.ct span{color:#6b6b70;font-variant-numeric:tabular-nums;flex:none}.rh{grid-column:1/-1;font-size:6.5pt;letter-spacing:.12em;text-transform:uppercase;color:#6b6b70;font-weight:600;height:4mm;line-height:4mm}'
-   +'.mini{display:grid;gap:.3mm;width:max-content}.mini i{display:block;border-radius:.5mm}.mini i.fr{background:#fff;box-shadow:inset 0 0 0 .15mm #d4d4d9}'
+   +'.mini{display:grid;gap:.3mm;width:max-content}.mini i{display:flex;align-items:center;justify-content:center;border-radius:.5mm;font-style:normal;font-weight:700;color:#3a3a3e;font-size:'+(S*1.7).toFixed(1)+'pt;line-height:1}.mini i.fr{background:#fff;box-shadow:inset 0 0 0 .15mm #d4d4d9}'
    +'.lst{grid-column:1/-1}.lr{display:grid;grid-template-columns:1fr 34mm 18mm 28mm 14mm;gap:3mm;align-items:center;height:5.2mm;border-bottom:.2mm solid #e4e4e8;font-size:7.5pt}.lr b,.lrk{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.lrk{color:#6b6b70}.lb{height:1.4mm;background:#e4e4e8;border-radius:1mm;overflow:hidden}.lb i{display:block;height:100%;background:#1c1c1e}.ln{text-align:right;font-variant-numeric:tabular-nums}.lr.more{display:block;color:#6b6b70;font-style:italic}'
    +'h2{font-size:6.5pt;letter-spacing:.14em;text-transform:uppercase;color:#6b6b70;margin:0 0 1mm;font-weight:600}'
    +'table{width:100%;border-collapse:collapse;table-layout:fixed}th{font-size:6.5pt;letter-spacing:.1em;text-transform:uppercase;color:#6b6b70;font-weight:600;text-align:left;padding:0 1.5mm 1.2mm 0;border-bottom:.3mm solid #1c1c1e}th.num,td.num{text-align:right;font-variant-numeric:tabular-nums;padding-right:4mm}'
-   +'td{padding:.9mm 1.5mm .9mm 0;border-bottom:.2mm solid #e4e4e8;font-size:7.5pt;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}td.lg i{display:inline-block;width:3mm;height:3mm;border-radius:.8mm;border:.3mm solid;margin-right:1.8mm;vertical-align:-.6mm}td.wh{color:#3a3a3e}'
+   +'td{padding:.9mm 1.5mm .9mm 0;border-bottom:.2mm solid #e4e4e8;font-size:7.5pt;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}td.lg i{display:inline-block;width:3mm;height:3mm;border-radius:.8mm;border:.3mm solid;margin-right:1.8mm;vertical-align:-.6mm;font-style:normal;font-size:5pt;font-weight:700;line-height:2.4mm;text-align:center;color:#3a3a3e}td.wh{color:#3a3a3e}'
    +'td.more,.more{color:#6b6b70;font-style:italic}'
    +'.ft{margin-top:auto;display:flex;justify-content:space-between;font-size:6.5pt;color:#8a8a90;border-top:.2mm solid #e4e4e8;padding-top:2mm}';
   return '<!doctype html><html><head><meta charset="utf-8"><title>'+esc(title)+'</title><style>'+css+'</style></head><body><div class="page">'
    +'<div class="hd"><div><div class="eb">Freezer &nbsp;›&nbsp; '+esc(storageLabel)+' &nbsp;·&nbsp; '+nB+' box'+(nB===1?'':'es')+'</div><h1>'+esc(title)+'</h1></div>'
    +'<div class="st"><div class="big">'+filled+'<small> / '+cap+'</small></div><div class="bar"><i style="width:'+pct+'%"></i></div><div class="sm">'+pct+'% filled · '+(cap-filled)+' free</div></div></div>'
-   +(nB?'<div class="map" data-need="'+need+'">'+cards+'</div>':'<div class="map" data-need="0"><p class="more">No boxes yet.</p></div>')
+   +(nB?'<div class="map" data-fit="content" data-need="'+need+'">'+cards+'</div>':'<div class="map" data-need="0"><p class="more">No boxes yet.</p></div>')
    +(rows?('<div><h2>What is in here</h2><table><colgroup><col style="width:'+(showKind?'34':'38')+'%">'+(showKind?'<col style="width:9%">':'')+'<col style="width:10%"><col></colgroup><tr><th>Line</th>'+(showKind?'<th>Type</th>':'')+'<th class="num">Vials</th><th>Where</th></tr>'+rows+'</table></div>'):'')
    +'<div class="ft"><span>dHUB · Freezer</span><span>Printed '+esc(today)+'</span></div></div><script>'+_SHEET_FIT+'<\/script></body></html>';
 }

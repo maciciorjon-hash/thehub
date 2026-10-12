@@ -18,7 +18,8 @@
 //   F11 tiles, not marbles  the live box draws rounded tiles (never circles), a filled one in its line's tone with its name and
 //                           passage, a free one dashed and naming its position; small tiles (phone, wide box) drop the text
 //   F12 one sheet, many     the rack / storage sheet is one A4 page for 0 … 60 boxes of any size (maps, or a list when there
-//                           are too many for a readable map) and does not clip its cards
+//                           are too many for a readable map), does not clip its cards, and every small-map cell carries its
+//                           line's letter (the legend's key) when there are 26 lines or fewer
 //   F13 export reads back   the .xlsx export (Overview + one table per storage) imports into an empty freezer with every
 //                           vial, kind, box size and position intact, and the Overview sheet is not mistaken for vials
 //
@@ -259,7 +260,7 @@ if (run('F12')) await guard('F12', async () => {
       const racks = []; let n = 0;
       for (let rk = 0; rk < Math.ceil(nb / 6); rk++) { const boxes = [];
         for (let i = 0; i < 6 && boxes.length + rk * 6 < nb; i++) { const vials = {};
-          for (let r = 0; r < R; r++) for (let c = 1; c <= C; c++) { if (((r * 13 + c * 7 + i * 5) % 10) / 10 > 0.6) continue; vials[String.fromCharCode(65 + r) + c] = { cellLine: 'Line ' + ((r + c + i) % L) + ', KO #' + (c % 3), vialCount: 1 }; n++; }
+          for (let r = 0; r < R; r++) for (let c = 1; c <= C; c++) { if (((r * 13 + c * 7 + i * 5) % 10) / 10 > 0.6) continue; vials[String.fromCharCode(65 + r) + c] = { cellLine: 'Line ' + ((r + c + i) % L), vialCount: 1 }; n++; }
           boxes.push({ id: 'b' + rk + i, name: 'Box ' + (rk * 6 + i + 1) + ' with a long name', rows: R, cols: C, vials }); }
         racks.push({ id: 'r' + rk, name: 'Shelf ' + (rk + 1), boxes }); }
       return scopeSheetHTML('-80', 'Storage', racks, '2026-10-12', false);
@@ -267,10 +268,11 @@ if (run('F12')) await guard('F12', async () => {
     const q = await p.context().newPage(); await q.setContent(html);
     const pdf = await q.pdf({ preferCSSPageSize: true, printBackground: true });
     const pages = (pdf.toString('latin1').match(/\/Type\s*\/Page[^s]/g) || []).length;
-    const t = await q.evaluate(() => { const pg = document.querySelector('.page'), m = document.querySelector('.map'); return { over: pg.scrollHeight > pg.clientHeight + 1, clip: m.scrollHeight > m.clientHeight + 1 }; });
+    const t = await q.evaluate(() => { const pg = document.querySelector('.page'), m = document.querySelector('.map'), f = [...document.querySelectorAll('.mini i:not(.fr)')]; return { over: pg.scrollHeight > pg.clientHeight + 1, clip: m.scrollHeight > m.clientHeight + 1, maps: f.length, lettered: f.filter(x => /^[A-Z]$/.test(x.textContent)).length, key: (document.querySelector('td.lg i') || {}).textContent }; });
     const tag = `${nb} boxes ${R}x${C}/${L} lines`;
     pages === 1 ? ok() : bad('F12', `${tag}: ${pages} pages`);
     !t.over && !t.clip ? ok() : bad('F12', `${tag}: overflow ${t.over}, cards clipped ${t.clip}`);
+    if (t.maps && L <= 26 && nb) (t.lettered === t.maps && t.key === 'A') ? ok() : bad('F12', `${tag}: ${t.lettered} of ${t.maps} small-map cells carry their line's letter (legend starts at ${t.key})`);
     await q.close();
   }
   p.errs.length ? bad('F12', 'errors: ' + p.errs.join(' | ')) : ok();
