@@ -116,7 +116,7 @@ function interNow(){
   _inter={key:key,list:interactions(S,T,/^lig:/.test(f.src))};
   return _inter;
 }
-function interShown(){ var f=state.inter; if(!f||!f.show) return []; var r=interNow(); return r?r.list.filter(function(x){ return f.types[x.type]!==false&&!state.hiddenChains[x.a.chain||'']&&!state.hiddenChains[x.b.chain||'']; }):[]; }
+function interShown(){ var f=state.inter; if(!f||!f.show) return []; var r=interNow(); return r?r.list.filter(function(x){ return f.types[x.type]!==false&&!state.hiddenChains[x.a.chain||'']&&!state.hiddenChains[x.b.chain||'']&&!ligAtomOff(x.a)&&!ligAtomOff(x.b); }):[]; }
 function interDraw(){
   if(!viewer) return;
   _interShapes.forEach(function(s){ try{ viewer.removeShape(s); }catch(e){} }); _interShapes=[];

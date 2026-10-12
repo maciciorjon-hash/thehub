@@ -1811,6 +1811,12 @@ function ligScheme(l){ return state.ligColors[l.key]||'yellowCarbon'; }
 function ligHex(l){ var s=ligScheme(l); return /^#[0-9a-f]{6}$/i.test(s)?s:(LIG_SCHEMES.filter(function(x){ return x.k===s; })[0]||LIG_SCHEMES[0]).hex; }
 function ligStyle(l,sticks){ var s=ligScheme(l); if(/^#/.test(s)){ var f=elemColorFn(function(){ return s; }); return sticks?{stick:{radius:0.2,colorfunc:f}}:{stick:{radius:0.2,colorfunc:f},sphere:{scale:0.3,colorfunc:f}}; } return sticks?{stick:{radius:0.2,colorscheme:s}}:{stick:{radius:0.2,colorscheme:s},sphere:{scale:0.3,colorscheme:s}}; }
 function ligSel(l){ return {resn:l.resn,chain:l.chain,resi:l.resi}; }
+// A ligand put away with its eye in Models. It lives in state.off (as the ions' and the labels' eyes do), so a design, an undo
+// and "show all" already carry it. Chain hidden and ligand put away are two separate things; a ligand is drawn only when neither.
+function ligOff(l){ return !!state.off['lig:'+l.key]; }
+function ligShown(l){ return !state.hiddenChains[l.chain]&&!ligOff(l); }
+function ligAtomOff(a){ return !!state.off['lig:'+a.resn+':'+(a.chain||'')+':'+a.resi]; }
+function setLigShown(l,on){ setExtraShown('lig:'+l.key,on); renderLigList(); }
 function rebuildStyles(){
   if(!currentModel||!viewer) return;
   var fn=makeColorFn(), sticks=state.style==='stick', vis=visibleChains(), hid=chainList.filter(function(c){ return state.hiddenChains[c]; });
@@ -1818,13 +1824,14 @@ function rebuildStyles(){
   viewer.setStyle({},sticks?{stick:{radius:0.2,colorfunc:fn}}:{cartoon:{colorfunc:fn}});
   if(hid.length) viewer.setStyle({chain:hid},{});
   // ligands — each its own carbon colour, so a PROTAC can stand out from the protein it sits in
-  var shown=ligands.filter(function(l){ return !state.hiddenChains[l.chain]; });
+  var shown=ligands.filter(ligShown);
   if(ionResn.length) viewer.setStyle({hetflag:true,resn:ionResn},state.showLigands&&!state.off.ions?{sphere:{scale:0.3,colorscheme:'Jmol'}}:{});
   if(!state.showLigands) shown.forEach(function(l){ viewer.setStyle(ligSel(l),{}); });
   else if(shown.length+ligOverflow>40) viewer.setStyle({hetflag:true,not:{resn:WATER_RESN.concat(ionResn)}},{stick:{radius:0.2,colorscheme:'yellowCarbon'},sphere:{scale:0.3,colorscheme:'yellowCarbon'}});
   else shown.forEach(function(l){
     viewer.setStyle(ligSel(l),ligStyle(l,sticks));
   });
+  ligands.forEach(function(l){ if(ligOff(l)) viewer.setStyle(ligSel(l),{}); });   // the one style drawn for forty-odd ligands, too
   // waters are drawn only when asked for
   viewer.setStyle({resn:WATER_RESN},state.showWaters?{sphere:{radius:0.3,color:'#d94d4d'}}:{});
   // residues pulled out as sticks: highlights asked for them, and the pocket around a ligand
@@ -1847,7 +1854,7 @@ function rebuildStyles(){
   (state.hide||[]).forEach(function(t){ var p=parseResidues(t); if(!p.ranges) return; p.ranges.forEach(function(r){ var sel={resi:r.lo===r.hi?r.lo:(r.lo+'-'+r.hi)}; if(r.chain!=='*') sel.chain=r.chain; viewer.setStyle(sel,{}); }); });
   if(!state.off.meas) state.measures.forEach(function(m){ m.pts.forEach(function(pt){ if(!state.hiddenChains[pt.c]) viewer.addStyle({chain:pt.c,resi:pt.r,not:{resn:WATER_RESN}},{stick:{radius:0.15,colorfunc:ef}}); }); });   // an atom you measured is on screen to be seen
   ligands.forEach(function(l){
-    if(!state.pockets[l.key]||!state.showLigands||state.hiddenChains[l.chain]) return;
+    if(!state.pockets[l.key]||!state.showLigands||!ligShown(l)) return;
     viewer.addStyle({hetflag:false,within:{distance:state.pocketR,sel:ligSel(l)},byres:true},{stick:{radius:0.14,colorfunc:ef}});
   });
   applyOverlayStyle();   // last, so nothing drawn for this structure above reaches the second one
@@ -1932,6 +1939,7 @@ function fitPoints(focus){
   for(i=0;i<atoms.length;i++){
     a=atoms[i];
     if(vis[a.chain||'']) continue;
+    if(a.hetflag&&ligAtomOff(a)) continue;
     if(WATER_RESN.indexOf(a.resn)>=0) continue;
     if(!focus&&!a.hetflag&&a.atom!=='CA'&&a.atom!=='P'&&atoms.length>3000) continue;   // a big structure is framed by its backbone
     want.push(a);
@@ -2343,17 +2351,19 @@ function renderLigList(){
   if(!ligands.length){ el.innerHTML='<div class="empty-note">No ligands in this structure.</div>'; return; }
   ligands.forEach(function(l){
     var s=ligScheme(l), hex=ligHex(l), on=!!state.pockets[l.key];
-    var row=document.createElement('div'); row.className='li'+(state.hiddenChains[l.chain]?' off':'');
+    var shownL=ligShown(l), row=document.createElement('div'); row.className='li'+(shownL?'':' off');
     var nm=l.name?l.name:l.resn;
     row.innerHTML='<button type="button" class="li-dot" style="background:'+hex+'" title="Change colour" aria-label="Colour of '+escapeHtml(l.resn)+'"></button>'
       +'<button type="button" class="li-main" title="Zoom to this ligand"><span class="li-name">'+escapeHtml(l.resn)+' <span style="font-weight:400;color:var(--text2)">· '+escapeHtml(chainTitle(l.chain).replace('Chain ',''))+' '+l.resi+'</span></span><span class="li-meta'+(nm.length>48?' li-meta-1" title="'+escapeHtml(nm):'')+'">'+escapeHtml(nm!==l.resn?nm:(l.n+' atoms'))+'</span></button>'
-      +'<span class="li-acts"><button type="button" class="ibtn lg-pocket" aria-pressed="'+on+'" title="Show the residues within '+state.pocketR+' Å" aria-label="Pocket of '+escapeHtml(l.resn)+'"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg></button></span>';
+      +'<span class="li-acts"><button type="button" class="ibtn lg-pocket" aria-pressed="'+on+'" title="Show the residues within '+state.pocketR+' Å" aria-label="Pocket of '+escapeHtml(l.resn)+'"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg></button>'
+      +'<button type="button" class="ibtn lg-eye" aria-pressed="'+shownL+'" title="'+(shownL?'Hide':'Show')+' this ligand" aria-label="'+(shownL?'Hide ':'Show ')+escapeHtml(l.resn)+'"><svg viewBox="0 0 24 24" aria-hidden="true">'+(shownL?EYE_ON:EYE_OFF)+'</svg></button>'+'</span>';   // the eye is last, under the chains' eyes
     row.querySelector('.li-dot').addEventListener('click',function(){
       var i=LIG_SCHEMES.map(function(x){ return x.k; }).indexOf(s);
       state.ligColors[l.key]=LIG_SCHEMES[(i+1)%LIG_SCHEMES.length].k;
       recolorStructure(); renderLigList();
     });
     row.querySelector('.li-main').addEventListener('click',function(){ focusLigand(l); });
+    row.querySelector('.lg-eye').addEventListener('click',function(){ setLigShown(l,ligOff(l)); });
     row.querySelector('.lg-pocket').addEventListener('click',function(){
       if(state.pockets[l.key]) delete state.pockets[l.key]; else state.pockets[l.key]=true;
       recolorStructure(); renderLigList(); updateSummaries();
@@ -2364,6 +2374,7 @@ function renderLigList(){
 }
 function focusLigand(l){
   if(!viewer||!currentModel) return;
+  if(ligOff(l)) setLigShown(l,true);   // asking to look at it brings it back
   _userMoved=true;
   var sel=state.pockets[l.key]?{hetflag:false,within:{distance:state.pocketR,sel:ligSel(l)},byres:true}:ligSel(l);
   var pts=fitPoints(sel);
@@ -4251,7 +4262,7 @@ function _scRange(r,py){
   return r.lo===r.hi?n(r.lo):n(r.lo)+'-'+n(r.hi);
 }
 function _scLigands(){   // what the viewer draws as ligands, with the carbon colour each has been given
-  var shown=ligands.filter(function(l){ return !state.hiddenChains[l.chain]; });
+  var shown=ligands.filter(ligShown);
   var generic=state.showLigands&&shown.length+ligOverflow>40;
   return {on:state.showLigands, generic:generic, list:shown.map(function(l){
     var hex=ligHex(l);
@@ -5194,7 +5205,7 @@ function specParse(text){
     if(w==='coil'){ i++; return function(a){ return !a.hetflag&&a.ss!=='h'&&a.ss!=='s'; }; }
     if(w==='sel'){ i++; return function(a){ return !!_sel[rKeyOf(a)]; }; }
     if(w==='all'){ i++; return function(){ return true; }; }
-    if(w==='visible'){ i++; return function(a){ return !state.hiddenChains[a.chain||'']&&(WATER_RESN.indexOf(a.resn)<0||state.showWaters)&&(!isLigand(a)||state.showLigands); }; }
+    if(w==='visible'){ i++; return function(a){ return !state.hiddenChains[a.chain||'']&&(WATER_RESN.indexOf(a.resn)<0||state.showWaters)&&(!isLigand(a)||(state.showLigands&&!ligAtomOff(a))); }; }
     if(w==='interface'){ i++; var ic=state.iface&&ifaceNow(); if(!ic) return fail('No interface yet — choose two chains under Analyse → Interface, or type: interface A B'); var ra={}; [state.iface.a,state.iface.b].forEach(function(ch){ ifaceResidues(ic,ch).forEach(function(r){ ra[ch+'|'+r]=1; }); }); return function(a){ return !!ra[(a.chain||'')+'|'+a.resi]; }; }
     if(w==='pocket'){ i++; var ls=ligands; if(T[i]&&ligResn[String(T[i]).toUpperCase()]){ var only=String(T[i++]).toUpperCase(); ls=ligands.filter(function(l){ return l.resn.toUpperCase()===only; }); }
       if(!ls.length) return fail('There are no ligands here.'); var lp=function(a){ return ls.some(function(l){ return a.resn===l.resn&&(a.chain||'')===l.chain&&a.resi===l.resi; }); };
@@ -5388,6 +5399,8 @@ var RB_CMDS=[
 function showHide(a,on){
   var n=needModel(); if(n) return n; a=a.trim(); var l=a.toLowerCase();
   if(!a) return _err(on?'Show what? e.g. show waters':'Hide what? e.g. hide waters');
+  var lg=ligands.filter(function(x){ return x.resn.toLowerCase()===l||x.key.toLowerCase()===l; });   // a ligand by name: hide MZ1 · show LIG
+  if(lg.length&&!SHOW_THINGS[l]){ lg.forEach(function(x){ if(on) delete state.off['lig:'+x.key]; else state.off['lig:'+x.key]=true; }); recolorStructure(); renderLigList(); renderModelExtras(); updateSummaries(); return _ok((on?'Showing ':'Hiding ')+a+(lg.length>1?' (all '+lg.length+').':'.')); }
   var thing=SHOW_THINGS[l];
   if(thing){
     if(thing==='waters'){ state.showWaters=on; $('showWaters').checked=on; recolorStructure(); return _ok((on?'Showing':'Hiding')+' waters.'); }
@@ -5914,7 +5927,7 @@ function interNow(){
   _inter={key:key,list:interactions(S,T,/^lig:/.test(f.src))};
   return _inter;
 }
-function interShown(){ var f=state.inter; if(!f||!f.show) return []; var r=interNow(); return r?r.list.filter(function(x){ return f.types[x.type]!==false&&!state.hiddenChains[x.a.chain||'']&&!state.hiddenChains[x.b.chain||'']; }):[]; }
+function interShown(){ var f=state.inter; if(!f||!f.show) return []; var r=interNow(); return r?r.list.filter(function(x){ return f.types[x.type]!==false&&!state.hiddenChains[x.a.chain||'']&&!state.hiddenChains[x.b.chain||'']&&!ligAtomOff(x.a)&&!ligAtomOff(x.b); }):[]; }
 function interDraw(){
   if(!viewer) return;
   _interShapes.forEach(function(s){ try{ viewer.removeShape(s); }catch(e){} }); _interShapes=[];

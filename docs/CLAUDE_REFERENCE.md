@@ -7652,6 +7652,12 @@ commit and one invariant each; each step below is added when it lands.
   ours too (view axes, eased in and out). Nothing runs at rest (`rbCamBusy()`). The constants are in `RBCAM` so the
   feel can be tuned in one place — *only a real trackpad can judge it*. Invariant **RB34**; RB4 now waits for the
   eased wheel. Notes that were wrong: the old text said a right-drag moves the structure (it zooms).
+- **B4 — each ligand has its own eye** (Models). `state.off['lig:'+key]` (the same place the ions', labels' and
+  highlights' eyes live, so a design, an undo and `show all` already carry it); `ligOff/ligShown/ligAtomOff/setLigShown`.
+  A ligand put away is not styled (also in the forty-odd-ligands branch, which draws one style for all), has no pocket
+  sticks, is left out of `fitPoints`, the scripts (`_scLigands`), the interactions (`interShown`) and the command line's
+  `visible`; `hide MZ1` / `show LIG` do the same by name; asking to look at it (`focusLigand`) brings it back. Chain hidden
+  and ligand put away stay two separate things. The eye is the last button in the row, under the chains' eyes. **RB35**.
 
 ## Labbook on a laptop, audited (2026-10-12)
 

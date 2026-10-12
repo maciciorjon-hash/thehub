@@ -83,7 +83,7 @@ function specParse(text){
     if(w==='coil'){ i++; return function(a){ return !a.hetflag&&a.ss!=='h'&&a.ss!=='s'; }; }
     if(w==='sel'){ i++; return function(a){ return !!_sel[rKeyOf(a)]; }; }
     if(w==='all'){ i++; return function(){ return true; }; }
-    if(w==='visible'){ i++; return function(a){ return !state.hiddenChains[a.chain||'']&&(WATER_RESN.indexOf(a.resn)<0||state.showWaters)&&(!isLigand(a)||state.showLigands); }; }
+    if(w==='visible'){ i++; return function(a){ return !state.hiddenChains[a.chain||'']&&(WATER_RESN.indexOf(a.resn)<0||state.showWaters)&&(!isLigand(a)||(state.showLigands&&!ligAtomOff(a))); }; }
     if(w==='interface'){ i++; var ic=state.iface&&ifaceNow(); if(!ic) return fail('No interface yet — choose two chains under Analyse → Interface, or type: interface A B'); var ra={}; [state.iface.a,state.iface.b].forEach(function(ch){ ifaceResidues(ic,ch).forEach(function(r){ ra[ch+'|'+r]=1; }); }); return function(a){ return !!ra[(a.chain||'')+'|'+a.resi]; }; }
     if(w==='pocket'){ i++; var ls=ligands; if(T[i]&&ligResn[String(T[i]).toUpperCase()]){ var only=String(T[i++]).toUpperCase(); ls=ligands.filter(function(l){ return l.resn.toUpperCase()===only; }); }
       if(!ls.length) return fail('There are no ligands here.'); var lp=function(a){ return ls.some(function(l){ return a.resn===l.resn&&(a.chain||'')===l.chain&&a.resi===l.resi; }); };
@@ -277,6 +277,8 @@ var RB_CMDS=[
 function showHide(a,on){
   var n=needModel(); if(n) return n; a=a.trim(); var l=a.toLowerCase();
   if(!a) return _err(on?'Show what? e.g. show waters':'Hide what? e.g. hide waters');
+  var lg=ligands.filter(function(x){ return x.resn.toLowerCase()===l||x.key.toLowerCase()===l; });   // a ligand by name: hide MZ1 · show LIG
+  if(lg.length&&!SHOW_THINGS[l]){ lg.forEach(function(x){ if(on) delete state.off['lig:'+x.key]; else state.off['lig:'+x.key]=true; }); recolorStructure(); renderLigList(); renderModelExtras(); updateSummaries(); return _ok((on?'Showing ':'Hiding ')+a+(lg.length>1?' (all '+lg.length+').':'.')); }
   var thing=SHOW_THINGS[l];
   if(thing){
     if(thing==='waters'){ state.showWaters=on; $('showWaters').checked=on; recolorStructure(); return _ok((on?'Showing':'Hiding')+' waters.'); }

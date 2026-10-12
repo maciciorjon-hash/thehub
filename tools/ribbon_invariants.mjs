@@ -49,6 +49,8 @@
 //   RB34 camera feel         The wheel zooms the web's way, eased, to the pointer, the same in and out, in pixels or lines, bounded; Safari's
 //                           pinch; Shift and scroll move it; a drag let go keeps turning and settles (not with reduced motion); the camera draws
 //                           once a frame, with the cheap look while it moves; nothing runs at rest.
+//   RB35 a ligand's own eye  Each ligand in Models has an eye of its own: it puts that ligand away (not the others, not the chain), the framing and
+//                           the scripts leave it out, a design keeps it, `hide LIG` / `show LIG` do the same, and focusing it brings it back.
 //   RB33 Echo mutants        Echo reads groups named like BRD4_Y97A as mutants of BRD4 and sends log2(DC50 ratio) per residue; Ribbon puts them
 //                           on the AlphaFold model, labelled, with side chains; a residue not in the model is named.
 //   RB18 measurements       Two atoms make a distance equal to their coordinates, three an angle at the middle one; a dashed line,
@@ -2069,6 +2071,32 @@ async function rb34() {
   await ctx.close();
 }
 
+
+// ── RB35 a ligand's own eye ─────────────────────────────────────────────────────────────────
+async function rb35() {
+  const { ctx, pg, E, go } = await open({ tag: 'RB35 ' });
+  if (!(await has3d(pg))) { skipped.push('RB35 (3Dmol could not load from its CDN)'); await ctx.close(); return; }
+  await go('8POC'); await sleep(500);
+  const rows = await E(() => ({ n: ligands.length, eyes: document.querySelectorAll('#ligList .li .lg-eye').length, keys: ligands.map(l => l.key).join() }));
+  check('RB35', 'every ligand has its own eye, on', rows.n === 2 && rows.eyes === 2 && await E(() => [...document.querySelectorAll('#ligList .lg-eye')].every(b => b.getAttribute('aria-pressed') === 'true')), rows);
+  const drawn = (resn) => E(r => { const a = currentModel.selectedAtoms({ resn: r }); return a.length && a.every(x => x.style && Object.keys(x.style).length > 0); }, resn);
+  check('RB35', 'both are drawn', await drawn('LIG') && await drawn('GOL'));
+  await E(() => { rbTab('models'); }); await pg.click('#ligList .li:has(.li-name:text("LIG")) .lg-eye'); await sleep(300);
+  check('RB35', 'its eye puts that ligand away and leaves the other one drawn', !(await drawn('LIG')) && await drawn('GOL'));
+  const st = await E(() => ({ off: !!state.off['lig:LIG:A:201'], row: !!document.querySelector('#ligList .li.off .lg-eye[aria-pressed=false]'), pts: fitPoints().some(a => a.resn === 'LIG'), script: _scLigands().list.some(x => x.resn === 'LIG') }));
+  check('RB35', 'the row says so, and the framing and the scripts leave it out', st.off && st.row && !st.pts && !st.script, st);
+  check('RB35', 'a design keeps it', await E(() => !!collectDesign().state.off['lig:LIG:A:201']));
+  await E(() => { runCommand('show LIG', { noHistory: true }); }); await sleep(250);
+  check('RB35', '"show LIG" puts it back, and "hide LIG" away again', await drawn('LIG') && (await E(() => { runCommand('hide LIG', { noHistory: true }); return true; })) && (await sleep(250), !(await drawn('LIG'))));
+  await E(() => { runCommand('show all', { noHistory: true }); }); await sleep(250);
+  check('RB35', '"show all" brings back what was put away', await drawn('LIG') && await E(() => !Object.keys(state.off).some(k => /^lig:/.test(k))));
+  await E(() => { setLigShown(ligands[0], false); }); await sleep(250);
+  const l0 = await E(() => ligands[0].resn);
+  await pg.click('#ligList .li:first-child .li-main'); await sleep(500);
+  check('RB35', 'asking to look at a ligand brings it back', await E(() => !ligOff(ligands[0])) && await drawn(l0));
+  await ctx.close();
+}
+
 // ── RB31 undo, click modes, views, films, figure sizes ─────────────────────────────────────
 async function rb31() {
   const { ctx, pg, E, go } = await open({ tag: 'RB31 ' });
@@ -2231,7 +2259,7 @@ async function rb33() {
   await r.ctx.close();
 }
 
-const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20], ['RB21', rb21], ['RB22', rb22], ['RB23', rb23], ['RB24', rb24], ['RB25', rb25], ['RB26', rb26], ['RB27', rb27], ['RB28', rb28], ['RB29', rb29], ['RB30', rb30], ['RB31', rb31], ['RB32', rb32], ['RB33', rb33], ['RB34', rb34]];
+const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20], ['RB21', rb21], ['RB22', rb22], ['RB23', rb23], ['RB24', rb24], ['RB25', rb25], ['RB26', rb26], ['RB27', rb27], ['RB28', rb28], ['RB29', rb29], ['RB30', rb30], ['RB31', rb31], ['RB32', rb32], ['RB33', rb33], ['RB34', rb34], ['RB35', rb35]];
 const port = await freePort();
 const srv = spawn('python3', ['-m', 'http.server', String(port), '--bind', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });
 base = `http://127.0.0.1:${port}/`;
