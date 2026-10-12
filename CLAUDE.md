@@ -15,6 +15,7 @@ shell/hub-shell.html        the shell (source of truth)       embed.py   build s
 apps/<name>/<name>.html     every app, folder == file name     tools/     scripts, sync kits, Playwright invariants
 docs/                       UI.md (visual standard) · CLAUDE_REFERENCE.md · SESSION_HISTORY.md · BETA_TEST_REPORT.md · CLAUDE_HANDOFF.md
 vendor/  old_stuff/ (retired apps, see its README)  Backup/ (Jon's real data backups)
+mobile/  the Labbook iPhone app (Capacitor; www/ from `embed.py --profile=labbook-app`, see mobile/README.md + reference › *Labbook as an iPhone app*)
 ```
 Apps (id → folder): echo→echo · deg→dora · pd→blueprint · dna→helix · pt→protein-tools · spectra→bca · cryo→iceberg · cuppa · beacon · lumina · hitfinder · tempo · ribbon · protocols→archive · cellarchive→cell-archive · incubator · labbook · blot→western-blot. Admin-only: labbook, incubator, tempo, (hitfinder unless the Data Analysis suite code). Details: reference › *Current apps*.
 

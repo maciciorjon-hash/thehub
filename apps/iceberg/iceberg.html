@@ -767,7 +767,13 @@ function cryoInitSync(cb){
       _cryoAdopting=true; state=Object.assign(state, v); _normState(state); _cryoAdopting=false;
       try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch(e){}
       fin(true);
-    } else fin(false);
+    } else {
+      // The newer copy is ours: a change made at the bench with no signal, then the app closed before the
+      // debounced push left. saveState() only pushes on the NEXT edit, so without this the freezer on the
+      // laptop stays behind until someone happens to touch it.
+      if(v && v.storages && (state.updated||0) > (v.updated||0) && _hasAnyVials(state)){ try{ r.set(state).catch(function(){}); }catch(e){} }
+      fin(false);
+    }
   }).catch(function(){ fin(false); _cryoRetry(); }); }catch(e){ fin(false); _cryoRetry(); }
   setTimeout(function(){ fin(false); }, 2500); // don't hang if Firebase is denied/offline
   cryoListen(r);

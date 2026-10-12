@@ -678,6 +678,20 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 .arc-view{position:absolute;inset:0;display:flex;}
 .arc-mount{flex:1;min-width:0;display:flex;}
 #arc-frame.arc-visible{pointer-events:auto;}
+/* Cells: three embedded apps behind one segmented bar. #cells-layer is fixed and sized to #cells-slot by cellsPlace(). */
+.cells-view{position:absolute;inset:0;display:flex;flex-direction:column;min-width:0;}
+/* The phone's bottom stack (tab bar, safe area, a running timer) sits over the pane; the frame must stop above it. */
+body.lb-tabs .cells-view{bottom:calc(var(--lb-tabbar-h) + var(--lb-safe-b) + var(--lb-timers-h));}
+.cells-tabs{flex:none;display:flex;gap:2px;margin:10px 12px 8px;padding:2px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-2);}
+.cells-tabs button{flex:1 1 0;min-width:0;min-height:36px;display:flex;align-items:center;justify-content:center;gap:6px;background:none;border:none;color:var(--text2);font-family:var(--sans);font-size:var(--fs-3);font-weight:600;border-radius:var(--r-1);cursor:pointer;}
+.cells-tabs button.on{background:var(--surface);color:var(--text);box-shadow:var(--shadow-xs);}
+.cells-badge{font-style:normal;min-width:16px;height:16px;padding:0 4px;border-radius:var(--r-pill,999px);background:var(--warn,#c47818);color:var(--on-accent);font-size:var(--fs-1);line-height:16px;text-align:center;font-weight:700;}
+.cells-slot{flex:1;min-height:0;position:relative;}
+#cells-layer{position:fixed;left:0;top:0;width:0;height:0;z-index:60;display:none;overflow:hidden;}
+#cells-layer.on{display:block;}
+.cells-frame{position:absolute;inset:0;width:100%;height:100%;border:0;background:var(--bg);}
+#lb-tabs .lbt{position:relative;}
+.lbt-badge{position:absolute;top:3px;left:calc(50% + 6px);min-width:16px;height:16px;padding:0 4px;border-radius:999px;background:var(--warn,#c47818);color:var(--on-accent);font-size:var(--fs-1);line-height:16px;text-align:center;font-weight:700;font-style:normal;}
 /* Planner tasks shown inside the daily notebook */
 .nbt-list{border:1px solid var(--border);border-radius:var(--r-2);background:var(--surface2);padding:6px 4px;}
 .nbt{display:flex;align-items:flex-start;gap:8px;padding:5px 9px;font-size:var(--fs-3);line-height:1.45;}
@@ -3158,6 +3172,10 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
 <!-- Archive lives here when its view isn't on screen; the bridge scrapes its live DOM, so it
      has to stay in the document rather than be torn down. -->
 <div id="arc-host" aria-hidden="true"></div>
+<!-- Cells (Incubator, Lines, Freezer) in the phone build: the frames live here for the whole session and are
+     laid over the Cells view's slot. Reparenting an iframe reloads it, and a reload would leave the old copy's
+     listeners on the store, so they are moved with CSS and never in the DOM. -->
+<div id="cells-layer" aria-hidden="true"></div>
 
 <script>
 // ── Theme ──
@@ -9071,6 +9089,7 @@ function _lbAuthWatch(){
         // taken at the bench, offline) is what the sweep now finds a home for.
         _lbStore=null; if(uid) setTimeout(function(){ try{ _attSweep(false); }catch(e){} },6000);
       }
+      try{ cellsAuth(uid); }catch(e){}
       lbInitSync(); updateStatus(); renderAll();
     });
     // A redirect sign-in (the standalone iOS app cannot open a popup) completes here on the
@@ -9083,7 +9102,11 @@ function _lbAuthWatch(){
 // The installed app is "standalone": there is no browser around it to open a popup in, so the
 // popup flow opens Safari and never comes back. Redirect is the flow for that display mode.
 function _lbStandalone(){ try{ return !!(navigator.standalone || (window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)); }catch(e){ return false; } }
+// The installed iOS app (embed.py --profile=labbook-app defines LB_NATIVE): a WKWebView cannot finish Google's popup or
+// redirect, so it signs in with the email and password set from a signed-in laptop and offers nothing that cannot work.
+function lbNative(){ try{ return typeof LB_NATIVE!=='undefined' && !!LB_NATIVE; }catch(e){ return false; } }
 function lbSignIn(){
+  if(lbNative()){ lbSignInEmail(); return; }
   var st=lbAuthState();
   if(st.kind==='host'||st.kind==='ok') return;
   if(st.kind!=='signedout'){ lbAlert(st.txt,{title:'Cannot sign in here'}); return; }
@@ -9841,7 +9864,8 @@ var ICON_TAB_PLUS='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" st
 var LB_TABS=[
   {id:'home',    lbl:'Home',        ico:function(){ return HOME_ICON; }, go:function(){ selectNode('home'); }},
   {id:'exps',    lbl:'Experiments', ico:function(){ return EXPS_ICON; }, go:function(){ selectNode('exps'); }},
-  {id:'notebook',lbl:'Journal',     ico:function(){ return NB_ICON; },   go:function(){ openJournalWs(); }},
+  {id:'cells',   lbl:'Cells',       ico:function(){ return CELLS_ICON; }, go:function(){ selectNode('cells'); }, on:function(){ return cellsEmbedded(); }},
+  {id:'notebook',lbl:'Journal',     ico:function(){ return NB_ICON; },   go:function(){ openJournalWs(); }, on:function(){ return !cellsEmbedded(); }},
   {id:'add',     lbl:'New',         ico:function(){ return ICON_TAB_PLUS; }, go:function(){ newExperimentFromAnywhere(); }},
   {id:'more',    lbl:'More',        ico:function(){ return ICON_MORE_H; }, go:function(ev){ lbMoreMenu(ev); }}
 ];
@@ -9849,6 +9873,7 @@ function _tabFor(node){ var k=node.kind, surf=lbSurface();
   if(k==='home') return 'home';
   if(surf==='exps'||k==='expsec') return 'exps';
   if(k==='nb') return 'notebook';
+  if(k==='cells') return 'cells';
   return ''; }   // Today and Week are reached from Home's band and from More; nothing is lit
 function _shortPlaceholders(){
   // A hint written for a 560px field is cut at "Search experiments, protocols, a" in a 340px one.
@@ -9864,12 +9889,12 @@ function renderMobileTabs(){
   if(!on){ if(nav) nav.innerHTML=''; return; }
   if(!nav){ nav=document.createElement('nav'); nav.id='lb-tabs'; nav.setAttribute('aria-label','Labbook'); document.body.appendChild(nav); }
   var cur=_tabFor(SEL.node);
-  nav.innerHTML=LB_TABS.map(function(t){ return '<button class="lbt'+(t.id===cur?' on':'')+(t.id==='add'?' lbt-add':'')+'" data-tab="'+t.id+'" onclick="lbTabGo(event,\''+t.id+'\')"'
+  nav.innerHTML=LB_TABS.filter(function(t){ return !t.on||t.on(); }).map(function(t){ return '<button class="lbt'+(t.id===cur?' on':'')+(t.id==='add'?' lbt-add':'')+'" data-tab="'+t.id+'" onclick="lbTabGo(event,\''+t.id+'\')"'
     // A long press on + is the camera. The 480 ms hold arms it (the [oncontextmenu] delegation
     // fires this from a timer); the RELEASE opens it — a file input opens only inside a real
     // user gesture on iOS, and a timer is not one.
     +(t.id==='add'?' oncontextmenu="event.preventDefault();_qcArm()" onpointerup="_qcFire()" title="New experiment · hold for a photo into today\u2019s note"':'')
-    +' aria-label="'+esc(t.lbl)+'"'+(t.id===cur?' aria-current="page"':'')+'>'+t.ico()+'<span>'+esc(t.lbl)+'</span></button>'; }).join('');
+    +' aria-label="'+esc(t.lbl)+'"'+(t.id===cur?' aria-current="page"':'')+'>'+t.ico()+'<span>'+esc(t.lbl)+'</span>'+(t.id==='cells'&&_cellsWarn()?'<i class="lbt-badge">'+_cellsWarn()+'</i>':'')+'</button>'; }).join('');
 }
 function lbTabGo(ev,id){ var t=LB_TABS.filter(function(x){ return x.id===id; })[0]; if(t) t.go(ev); }
 // "+" from anywhere. createExperiment() needs a folder to file into, and only the expsec
@@ -9926,6 +9951,8 @@ function lbMoreMenu(ev){
     (au.kind==='signedout'?{label:'Sign in', sub:'this device shows only its own notes until you do', fn:function(){ lbSignIn(); }}:null),
     (au.kind==='signedout'?{sep:true}:null),
     {label:'Search', sub:'experiments, steps, protocols, wells…', fn:function(){ openSpot(); }},
+    (archiveEmbedded()?{label:'Protocols', sub:'the Archive, with its calculators', fn:function(){ selectNode('archive'); }}:null),
+    (cellsEmbedded()?{label:'Journal', sub:'free notes, by day', fn:function(){ openJournalWs(); }}:null),
     {label:'Today', sub:'steps due, carried over, tasks, cultures', fn:function(){ selectNode('journal'); }},
     {label:'Week planner', fn:function(){ selectNode('week'); }},
     {label:'What you need today', sub:'every material the steps due today consume', fn:function(){ openPrepSheet({date:todayStr()}); }},
@@ -10005,6 +10032,7 @@ function genSecById(id){ return LB.data.generalSections.filter(function(s){retur
 var HOME_ICON='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>';
 var TODAY_ICON='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.2 2"/></svg>';
 var NB_ICON='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 3v18M12 8h5M12 12h5"/></svg>';
+var CELLS_ICON='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M8 10.5c1.4-1.2 3-1.2 4.4 0s3 1.2 4.4 0"/><circle cx="9.5" cy="14.5" r="1"/><circle cx="14" cy="14.8" r="1"/></svg>';
 var ARC_ICON='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 5.5A2.5 2.5 0 015.5 3H11v16H5.5A2.5 2.5 0 003 21.5v-16z"/><path d="M21 5.5A2.5 2.5 0 0018.5 3H13v16h5.5A2.5 2.5 0 0121 21.5v-16z"/></svg>';
 var EXPS_ICON='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6M10 3v6.5L4.6 18A2 2 0 006.3 21h11.4a2 2 0 001.7-3L14 9.5V3"/><path d="M7.5 15h9"/></svg>';
 var WK_ICON='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4M7 13h2M11 13h2M15 13h2M7 17h2M11 17h2"/></svg>';
@@ -10055,6 +10083,7 @@ function renderSections(){
     h+=secLeaf({kind:'week'},'Week',WK_ICON,null,null,k==='week');
     h+=secLeaf({kind:'exps'},'Experiments',EXPS_ICON,null,null,surf==='exps');
     if(archiveEmbedded()) h+=secLeaf({kind:'archive'},'Archive',ARC_ICON,null);
+    if(cellsEmbedded()) h+=secLeaf({kind:'cells'},'Cells',CELLS_ICON,null);
   }
   h+='<div class="pane-lbl">Projects</div>';
   LB.data.projects.forEach(function(p){
@@ -10865,7 +10894,7 @@ function renderPages(){
   if(ssec) ssec.style.display = hasTree ? '' : 'none';
   // Today has a date navigator and Journal lists the days, so the day list that used to sit
   // between them is gone; the Planner's dashboards never had a list.
-  var noList = node.kind==='home'||node.kind==='week'||node.kind==='archive'||node.kind==='exps'||node.kind==='journal'||node.kind==='design';
+  var noList = node.kind==='home'||node.kind==='week'||node.kind==='archive'||node.kind==='cells'||node.kind==='exps'||node.kind==='journal'||node.kind==='design';
   document.body.classList.toggle('lb-nonav', !hasTree && noList);
   // The list pane coming back slides in with its contents instead of popping into place.
   if(!noList && _ppShown===false) _tabAnim(ppw);
@@ -12601,8 +12630,11 @@ function homeSyncBand(){
   }
   if(au.kind==='signedout'){
     return '<div class="lh-sync warn"><b>Signed out — this device shows only what was written on it.</b> Your experiments live in the notebook your laptop syncs to; sign in with the same Google account to see them here.'
-      +'<div class="lh-sync-acts"><button class="rc-btn primary" onclick="lbSignIn()">Sign in with Google</button><button class="rc-btn" onclick="lbSignInEmail()">Email &amp; password</button></div>'
-      +'<div class="lh-sync-note">On an installed app Google sign-in leaves and comes back; if it does not come back, Email &amp; password is the one that always works — set a password once from the laptop (Settings → About).</div></div>';
+      +(lbNative()
+        ? '<div class="lh-sync-acts"><button class="rc-btn primary" onclick="lbSignInEmail()">Sign in with email &amp; password</button></div>'
+          +'<div class="lh-sync-note">Set the password once from the laptop (Settings → About → Set a password for the phone). After that this app signs in by itself and works with no signal.</div></div>'
+        : '<div class="lh-sync-acts"><button class="rc-btn primary" onclick="lbSignIn()">Sign in with Google</button><button class="rc-btn" onclick="lbSignInEmail()">Email &amp; password</button></div>'
+          +'<div class="lh-sync-note">On an installed app Google sign-in leaves and comes back; if it does not come back, Email &amp; password is the one that always works — set a password once from the laptop (Settings → About).</div></div>');
   }
   if(au.kind==='ok' && _cloudSeen===null) return '<div class="lh-sync"><b>Signed in</b> — fetching your notebook…</div>';
   if(au.kind==='ok' && !nExp) return '<div class="lh-sync"><b>Signed in, and the notebook is empty.</b> Nothing has been written to this account yet — or the laptop is not signed in with '+esc(au.txt.replace(/^Signed in as /,'').replace(/ — changes sync\.$/,''))+'.</div>';
@@ -12980,9 +13012,11 @@ function _renderEditorBody(){
   renderTopbar();
   var host=el('pane-ed'); var node=SEL.node;
   if(node.kind!=='archive') _arcPark();
+  if(node.kind!=='cells') _cellsHide();
   if(node.kind==='home'){ return renderHome(host); }
   if(node.kind==='week'){ return renderWeekPlanner(host); }
   if(node.kind==='archive'){ return renderArchiveView(host); }
+  if(node.kind==='cells'){ return renderCellsView(host); }
   if(node.kind==='exps'){ return renderExperiments(host); }
   if(node.kind==='design'){ return renderDesigner(host); }
   if(node.kind==='journal'){ return renderDayView(host, SEL.page || DAY_VIEW || todayStr()); }
@@ -15542,8 +15576,12 @@ function dHubContextFor(e,extra){ e=e||_curExp(); var cell=(e&&e.cellLines||'').
 // Incubator shows up here without a reload and without Labbook keeping its own copy. There is
 // nothing to sync because there is nothing duplicated.
 function lbHost(){ try{ return (window.parent&&window.parent!==window)?window.parent:null; }catch(e){ return null; } }
+// Who holds the cultures: dHUB's shell when embedded, otherwise this window itself in the phone build, where
+// embed.py lifts the shell's JournalStore and alert logic into the page (the CELLS-HOST block).
+function lbJS(){ var H=lbHost(); if(H&&H.JournalStore) return H;
+  try{ if(window.JournalStore && window.computeCellAlerts) return window; }catch(e){} return null; }
 function lbCultures(){
-  var H=lbHost(); if(!H||!H.JournalStore||!H.computeCellAlerts) return null;
+  var H=lbJS(); if(!H||!H.JournalStore||!H.computeCellAlerts) return null;
   var d=null; try{ d=H.JournalStore.get(); }catch(e){ return null; }
   var inc=(d&&d.incubator)||{}, now=Date.now();
   return Object.keys(inc).map(function(id){
@@ -15585,7 +15623,7 @@ function openCultureLink(cid){ var l=lbCultures(), x=l&&l.filter(function(c){ re
 // Cleared only if it was raised on this same day's check, so a later "OK" cannot erase an issue
 // someone else found.
 function _ccIssue(cid,D,note){
-  var H=lbHost(); if(!H||!H.JournalStore) return;
+  var H=lbJS(); if(!H||!H.JournalStore) return;
   var c=((H.JournalStore.get()||{}).incubator||{})[cid]; if(!c) return;
   var hist=(c.history||[]).slice(), now=Date.now();
   if(note){ hist.push({action:'issue',note:note,ts:now}); H.JournalStore.updateCell(cid,{issue:{ts:now,day:D,note:note},history:hist}); }
@@ -15657,7 +15695,7 @@ function _ccRecord(cid,s,note,expId){
 }
 // An issue that is over: the flag goes, the history keeps the line.
 function ccResolve(cid){
-  var H=lbHost(); if(!H||!H.JournalStore) return;
+  var H=lbJS(); if(!H||!H.JournalStore) return;
   var c=((H.JournalStore.get()||{}).incubator||{})[cid]; if(!c||!c.issue) return;
   var hist=(c.history||[]).slice(); hist.push({action:'issue cleared',ts:Date.now()});
   H.JournalStore.updateCell(cid,{issue:null,history:hist}); toast('Issue cleared on '+(c.line||'the culture')+'.');
@@ -15734,7 +15772,7 @@ function cellsDayHtml(D){
 // from Incubator would yank the caret out of whatever you were typing.
 var _cultSub=null;
 function lbWatchCultures(){
-  if(_cultSub) return; var H=lbHost(); if(!H||!H.JournalStore) return;
+  if(_cultSub) return; var H=lbJS(); if(!H||!H.JournalStore) return;
   try{ H.JournalStore.attach(); }catch(e){}
   try{ _cultSub=H.JournalStore.subscribe(function(){
     var ch=false; try{ ch=cellSyncTasks(); }catch(e){}
@@ -15767,7 +15805,8 @@ function ongoingHtml(D){
         +'<span class="ong-next">'+(x.next?('next '+esc(fmtDate(x.next.date))):'nothing scheduled')+'</span></div>';
     }).join('')+'</div></div>';
 }
-function openIncubatorLink(line){ try{ if(window.parent && window.parent.openApp) window.parent.openApp('incubator','incubator', line, dHubContextFor(_curExp(),{cellLines:[{label:String(line)}]})); }catch(e){} }
+function openIncubatorLink(line){ if(!lbHost() && cellsEmbedded()){ openCells('incubator',line); return; }
+  try{ if(window.parent && window.parent.openApp) window.parent.openApp('incubator','incubator', line, dHubContextFor(_curExp(),{cellLines:[{label:String(line)}]})); }catch(e){} }
 document.addEventListener('click',function(e){ var c=e.target.closest && e.target.closest('.exh-chip'); if(!c) return; if(c.dataset.kind==='plasmid') openPlasmidLink(c.dataset.val); else openIncubatorLink(c.dataset.val); });
 
 // ── One-time hand-off of the old local antibody list ────────────────────────────────────────
@@ -15977,6 +16016,7 @@ function crumbHtml(){
     else if(k==='week') S('Week',null,true);
     else if(k==='exps') S('Experiments',null,true);
     else if(k==='archive') S('Archive',null,true);
+    else if(k==='cells') S('Cells',null,true);
     else if(k==='expsec'){
       var p=projById(SEL.node.projectId), sc=p&&(p.sections||[]).filter(function(x){ return x.id===SEL.node.sectionId; })[0];
       var e=SEL.page?LB.data.experiments[SEL.page]:null;
@@ -17553,6 +17593,9 @@ function archiveSteps(pid){ try{ var _w=_arcWin(); if(_w && _w.ARCHIVE_STEPS) re
 // every consumer below keeps working unchanged. Inside dHUB the placeholder stays empty and we
 // use the shell's Archive instead.
 var ARCHIVE_B64 = "";           // filled by embed.py for the standalone build
+var INCUBATOR_B64 = "";         // the phone build also carries Incubator, Lines and Freezer
+var CELLARCHIVE_B64 = "";
+var FREEZER_B64 = "";
 var _arcFrame=null, _arcLoading=false;
 function _arcHasLocal(){ try{ return !!(window.ARCHIVE_INDEX && window.ARCHIVE_INDEX.length); }catch(e){ return false; } }
 // Whichever window is actually holding the Archive globals.
@@ -17620,6 +17663,96 @@ function _arcPark(){
   var host=el('arc-host');
   if(_arcFrame&&host&&_arcFrame.parentNode!==host){ _arcFrame.classList.remove('arc-visible'); host.appendChild(_arcFrame); }
 }
+// ── Cells: Incubator, Lines and Freezer, run inside Labbook ─────────────────────────────────────
+// The same three apps dHUB hosts, embedded verbatim like Archive. They read their host through
+// window.parent, which here is this page: JournalStore, computeCellAlerts, CELL_REF, firebase and
+// openApp are lifted from the shell by embed.py (the CELLS-HOST block), so there is one JournalStore
+// and one set of alert rules, and no copy of either to keep in step. Nothing here sets isAdmin, on
+// purpose: Freezer seeds a demo inventory when it is admin and finds no vials, and a phone that
+// opens it offline for the first time must never push that over the real freezer.
+var CELLS_TABS=[{id:'incubator',lbl:'Cultures'},{id:'cellarchive',lbl:'Lines'},{id:'cryo',lbl:'Freezer'}];
+var _cellsFrames={}, _cellsTab='incubator', _cellsUid=undefined, _cellsWait=0, _cellsSub=null, _cellsPlaceT=null;
+function cellsEmbedded(){ return !!(INCUBATOR_B64&&CELLARCHIVE_B64&&FREEZER_B64&&window.JournalStore); }
+function _cellsB64(id){ return id==='incubator'?INCUBATOR_B64:id==='cellarchive'?CELLARCHIVE_B64:FREEZER_B64; }
+function _cellsWarn(){ var l=null; try{ l=lbCultures(); }catch(e){} return l?l.filter(function(x){ return x.worst==='warn'; }).length:0; }
+function _cellsFrame(id){
+  if(_cellsFrames[id]) return _cellsFrames[id];
+  var layer=el('cells-layer'); if(!layer||!_cellsB64(id)) return null;
+  var f=document.createElement('iframe'); f.id='cells-f-'+id; f.className='cells-frame';
+  f.title=(CELLS_TABS.filter(function(t){ return t.id===id; })[0]||{}).lbl||id;
+  f.setAttribute('sandbox','allow-scripts allow-same-origin allow-downloads allow-forms allow-modals allow-popups');
+  f.setAttribute('allow','camera; clipboard-write');
+  f.srcdoc=decodeB64(_cellsB64(id));
+  layer.appendChild(f); _cellsFrames[id]=f; return f;
+}
+function renderCellsView(host){
+  if(!cellsEmbedded()){
+    host.innerHTML='<div class="ed-empty"><div class="t">Cells aren\'t part of this build</div><div>This build reads cultures and the freezer from its host application.</div></div>';
+    return;
+  }
+  var n=_cellsWarn();
+  host.innerHTML='<div class="cells-view"><div class="cells-tabs" role="tablist">'
+    +CELLS_TABS.map(function(t){ return '<button role="tab" data-ct="'+t.id+'" class="'+(t.id===_cellsTab?'on':'')+'" aria-selected="'+(t.id===_cellsTab)+'" onclick="cellsTab(\''+t.id+'\')">'+esc(t.lbl)
+      +(t.id==='incubator'&&n?'<i class="cells-badge">'+n+'</i>':'')+'</button>'; }).join('')
+    +'</div><div id="cells-slot" class="cells-slot"></div></div>';
+  _cellsShow();
+}
+function _cellsShow(){
+  var layer=el('cells-layer'), slot=el('cells-slot'); if(!layer||!slot) return;
+  // The frames read the session once, when they load. Make them wait for Firebase to say whether there is one,
+  // or Freezer starts signed out, finds nothing in the cloud and never asks again.
+  if(!_authKnown && _cellsWait<20){ _cellsWait++; slot.innerHTML='<div class="ed-empty"><div class="t">Opening your cells…</div></div>';
+    setTimeout(function(){ if(SEL.node.kind==='cells') _cellsShow(); },150); return; }
+  _cellsFrame(_cellsTab);
+  CELLS_TABS.forEach(function(t){ var f=_cellsFrames[t.id]; if(f) f.style.display=(t.id===_cellsTab)?'block':'none'; });
+  layer.classList.add('on'); document.body.classList.add('lb-cells-on'); cellsPlace();
+  // The pane slides in (a 360 ms transform), so its slot is not where it will rest until that has finished.
+  clearTimeout(_cellsPlaceT); _cellsPlaceT=setTimeout(function(){ if(SEL.node.kind==='cells') cellsPlace(); },420);
+  _cellsTheme();
+}
+function cellsTab(id){
+  if(!CELLS_TABS.some(function(t){ return t.id===id; })) return;
+  _cellsTab=id;
+  Array.prototype.forEach.call(document.querySelectorAll('.cells-tabs [data-ct]'),function(b){ var on=b.getAttribute('data-ct')===id; b.classList.toggle('on',on); b.setAttribute('aria-selected',on); });
+  _cellsShow();
+}
+function openCells(tab,item){ if(tab&&CELLS_TABS.some(function(t){ return t.id===tab; })) _cellsTab=tab;
+  if(SEL.node.kind==='cells') cellsTab(_cellsTab); else selectNode('cells'); }
+function cellsPlace(){
+  var layer=el('cells-layer'), slot=el('cells-slot'); if(!layer||!slot) return;
+  var r=slot.getBoundingClientRect();
+  layer.style.left=r.left+'px'; layer.style.top=r.top+'px'; layer.style.width=r.width+'px'; layer.style.height=r.height+'px';
+}
+function _cellsHide(){ _cellsWait=0; var layer=el('cells-layer'); if(layer) layer.classList.remove('on'); document.body.classList.remove('lb-cells-on'); }
+// Same-origin srcdoc frames: set the theme on them directly, as the Hub's postMessage does for its own.
+function _cellsTheme(){ var t=document.documentElement.getAttribute('data-theme')==='dark'?'dark':'light';
+  Object.keys(_cellsFrames).forEach(function(k){ try{ _cellsFrames[k].contentDocument.documentElement.setAttribute('data-theme',t); }catch(e){} }); }
+// A sign-in or sign-out starts a different notebook: frames built under the old session hold its data, so they go.
+function cellsAuth(uid){
+  if(!window.JournalStore) return;
+  try{ if(uid) window.JournalStore.attach(); else window.JournalStore.detach(); }catch(e){}
+  if(_cellsUid!==undefined && _cellsUid!==uid){
+    Object.keys(_cellsFrames).forEach(function(k){ try{ _cellsFrames[k].remove(); }catch(e){} }); _cellsFrames={};
+    if(SEL.node.kind==='cells') setTimeout(function(){ if(SEL.node.kind==='cells') _cellsShow(); },0);
+  }
+  _cellsUid=uid;
+  if(!_cellsSub){ try{ _cellsSub=window.JournalStore.subscribe(function(){ _cellsBadge(); }); }catch(e){} }
+}
+function _cellsBadge(){
+  var n=_cellsWarn();
+  Array.prototype.forEach.call(document.querySelectorAll('.cells-badge,.lbt-badge'),function(b){ if(n) b.textContent=n; else b.remove(); });
+  var inc=document.querySelector('.cells-tabs [data-ct="incubator"]'); if(inc&&n&&!inc.querySelector('.cells-badge')) inc.insertAdjacentHTML('beforeend','<i class="cells-badge">'+n+'</i>');
+  var tb=document.querySelector('#lb-tabs [data-tab="cells"]'); if(tb&&n&&!tb.querySelector('.lbt-badge')) tb.insertAdjacentHTML('beforeend','<i class="lbt-badge">'+n+'</i>');
+}
+window.addEventListener('resize',function(){ if(document.body.classList.contains('lb-cells-on')) cellsPlace(); });
+// What Incubator, Lines and Freezer ask their host to do. Anything else stays a no-op, as it does for a host without it.
+if(!lbHost()) window.openApp=function(app,tab,item){
+  if(app==='incubator'||app==='cells') return openCells('incubator',item);
+  if(app==='cellarchive') return openCells('cellarchive',item);
+  if(app==='cryo') return openCells('cryo',item);
+  if(app==='protocols') return selectNode('archive');
+  if(app==='labbook') return selectNode('home');
+};
 function protocolStepsHtml(it,steps){
   var h='<div class="lb-proto-hd"><a class="lb-link proto" data-app="protocols" data-pid="'+esc(String(it.id))+'" contenteditable="false">'+esc(it.label)+' &#8599;</a></div>';
   steps.forEach(function(seg){ if(seg.type==='section'){ h+='<p><strong>'+esc(seg.text)+'</strong></p>'; } else { var tag=seg.ordered?'ol':'ul'; h+='<'+tag+'>'+seg.items.map(function(x){return '<li>'+x+'</li>';}).join('')+'</'+tag+'>'; } });
@@ -17859,8 +17992,8 @@ function spotBeyondLabbook(){
     });
   } }catch(e){}
   // Cultures and freezer vials, through the shell's join
-  try{ if(H&&H.JournalStore){
-    var inc=(H.JournalStore.get()||{}).incubator||{};
+  try{ var HJ=lbJS(); if(HJ&&HJ.JournalStore){
+    var inc=(HJ.JournalStore.get()||{}).incubator||{};
     Object.keys(inc).forEach(function(id){ var c=inc[id]; if(!c||!c.line) return;
       out.push({a:c.line,b:'in culture · p'+(c.passage==null?'?':c.passage)+(c.vessel?(' · '+c.vessel):''),
         k:'culture',svg:tbSvg(P_DISH),c:'#5e87c5',fn:function(){ openIncubatorLink(c.line); }});
@@ -22227,7 +22360,7 @@ function _settingsBody(){
   // prose, with the one button that changes it — the shape hubSyncEnv() already uses in the
   // shell, for the same reason: a device that is not syncing has to say why, not just that.
   var syncRow='<div class="st-row"><span class="st-l"><b>Sync</b><i>'+esc(au.txt)+'</i></span>'
-    + (au.kind==='signedout' ? '<span class="st-acts"><button class="rc-btn" onclick="lbSignIn()">Sign in with Google</button><button class="rc-btn" onclick="lbSignInEmail()">Email &amp; password</button></span>' : '')
+    + (au.kind==='signedout' ? '<span class="st-acts">'+(lbNative()?'':'<button class="rc-btn" onclick="lbSignIn()">Sign in with Google</button>')+'<button class="rc-btn" onclick="lbSignInEmail()">Email &amp; password</button></span>' : '')
     + (au.kind==='ok' ? '<button class="rc-btn" onclick="lbSignOut();_settingsRender()">Sign out</button>' : '')
     + '</div>'
     // The phone cannot always finish a Google sign-in (an installed app has no browser to come
@@ -22496,6 +22629,7 @@ function toggleTheme(){
   var next=cur==='dark'?'light':'dark';
   document.documentElement.setAttribute('data-theme',next);
   try{ localStorage.setItem('hub_theme',next); }catch(e){}
+  try{ _cellsTheme(); }catch(e){}
   renderTopbar(); _colFootRender();
 }
 function _themeIsDark(){ return document.documentElement.getAttribute('data-theme')==='dark'; }

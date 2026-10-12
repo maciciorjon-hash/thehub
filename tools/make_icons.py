@@ -57,12 +57,13 @@ NB_LINES = [[(8.2, 2.6), (8.2, 21.4)],
             [(11.0, 11.0), (16.4, 11.0)]]
 
 
-def render(size, glyph_frac=0.56, ss=4):
+def render(size, glyph_frac=0.56, ss=4, flat=False):
     """Supersampled so the 1.8px stroke stays smooth at every size."""
     S = size * ss
     img = Image.new('RGBA', (S, S), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    d.rounded_rectangle([0, 0, S - 1, S - 1], radius=int(S * 0.22), fill=ACCENT)
+    # flat = the iOS App Store icon: a full-bleed square with no alpha; the system rounds the corners itself.
+    d.rounded_rectangle([0, 0, S - 1, S - 1], radius=0 if flat else int(S * 0.22), fill=ACCENT)
 
     scale = S * glyph_frac / 24.0
     off = (S - 24 * scale) / 2.0
@@ -87,7 +88,8 @@ def render(size, glyph_frac=0.56, ss=4):
         d.line([xf(p) for p in COVER], fill=ink, width=w, joint='curve')
         d.line([xf(p) for p in SPINE], fill=ink, width=w)
         cap(SPINE)
-    return img.resize((size, size), Image.LANCZOS)
+    out = img.resize((size, size), Image.LANCZOS)
+    return out.convert('RGB') if flat else out
 
 
 os.makedirs(OUT, exist_ok=True)
@@ -98,3 +100,11 @@ for name, size, frac in [('icon-192.png', 192, 0.56),
     p = os.path.join(OUT, name)
     render(size, frac).save(p, 'PNG', optimize=True)
     print(p, os.path.getsize(p), 'bytes')
+
+# The iOS app (mobile/, Capacitor): the 1024 px icon Xcode's asset catalog asks for.
+if APP == 'labbook':
+    ios = os.path.join(ROOT, 'mobile', 'ios', 'App', 'App', 'Assets.xcassets', 'AppIcon.appiconset')
+    if os.path.isdir(ios):
+        p = os.path.join(ios, 'AppIcon-512@2x.png')
+        render(1024, 0.50, flat=True).save(p, 'PNG', optimize=True)
+        print(p, os.path.getsize(p), 'bytes')

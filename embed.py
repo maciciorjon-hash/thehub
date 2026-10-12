@@ -8,6 +8,7 @@ Usage:
         ->  only the apps that make up the product story (see PROFILES). Personal-workflow
             apps stay in the repo and in the default build; they just don't ship.
   python embed.py --profile=labbook               ->  ./labbook-standalone.html
+  python embed.py --profile=labbook-app           ->  mobile/www (the iPhone app's bundle: everything inside, see mobile/README.md)
   python embed.py --profile=archive [dist/archive]
         ->  Archive on its own as an installable, offline PWA (phone use at the bench).
 
@@ -111,15 +112,74 @@ var LB_FB_CONFIG = {
 # of anyone's way. NEVER change it: every installed home-screen app is pinned to it.
 LABBOOK_SLUG = 'labbook-6b1d0c4f9a72'
 
-if profile in ('labbook', 'labbook-pwa'):
+# ── The native app: the same page, with everything it loads packaged INSIDE it ─────────────────────
+# `labbook-app` writes the www/ folder of the Capacitor project (mobile/). Where the PWA fetches the Firebase SDK, the
+# fonts and SheetJS from CDNs and leans on a service worker to remember them, the app carries them in its bundle:
+# opened for the first time on a bench with no signal it still starts, and the only thing that needs a connection is
+# the sync itself. Hashes come from vendor/MANIFEST.json (tools/vendor_fetch.py); a file that does not match refuses the build.
+NATIVE_DIR = 'mobile/www'
+def _vendor(rel):
+    import hashlib, json
+    man = json.load(open(os.path.join(BASE, 'vendor/MANIFEST.json')))
+    data = open(os.path.join(BASE, 'vendor', rel), 'rb').read()
+    want = man.get(rel, {}).get('integrity')
+    got = 'sha384-' + base64.b64encode(hashlib.sha384(data).digest()).decode()
+    if want != got:
+        sys.stderr.write('labbook-app profile: vendor/%s does not match vendor/MANIFEST.json (run tools/vendor_fetch.py)\n' % rel)
+        sys.exit(1)
+    return data
+_FONT_LINK = re.compile(r'<link href="https://fonts\.googleapis\.com/css2[^>]*>')
+def _localize(html):
+    # Every document the app embeds is localised the same way: the fonts and SheetJS are files next to index.html.
+    # (A srcdoc frame resolves relative URLs against its parent's, so the same relative path works inside them.)
+    html, n = _FONT_LINK.subn('<link rel="stylesheet" href="fonts/plex.css">', html)
+    html = html.replace('<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>',
+                        '<script src="xlsx.full.min.js"></script>')
+    return html
+
+if profile in ('labbook', 'labbook-pwa', 'labbook-app'):
     lb = open(os.path.join(BASE, 'apps/labbook/labbook.html'), encoding='utf-8').read()
     arc = open(os.path.join(BASE, 'apps/archive/archive.html'), 'rb').read()
+    if profile == 'labbook-app':
+        lb = _localize(lb)
+        arc = _localize(arc.decode('utf-8')).encode('utf-8')
     arc_b64 = base64.b64encode(arc).decode('ascii')
     lb, n = re.subn(r'(?<=var ARCHIVE_B64 = ")[^"]*', arc_b64, lb)
     if n != 1:
         sys.stderr.write('labbook profile: expected 1 ARCHIVE_B64 placeholder, got %d\n' % n)
         sys.exit(1)
-    lb, n = re.subn(r'</head>', LABBOOK_FB, lb, count=1)
+    # Cells on the phone: Incubator, Lines and Freezer are embedded the way Archive is, and read their host
+    # through window.parent - which is Labbook here. The host side (JournalStore, the alert rules, the
+    # cell-line reference, the built-in line list) is lifted from the shell between its CELLS-HOST markers, so
+    # there is one copy of each and nothing to keep in step by hand.
+    for var, rel in (('INCUBATOR_B64', 'apps/incubator/incubator.html'),
+                     ('CELLARCHIVE_B64', 'apps/cell-archive/cell-archive.html'),
+                     ('FREEZER_B64', 'apps/iceberg/iceberg.html')):
+        raw = open(os.path.join(BASE, rel), 'rb').read()
+        if profile == 'labbook-app':
+            raw = _localize(raw.decode('utf-8')).encode('utf-8')
+        b64 = base64.b64encode(raw).decode('ascii')
+        lb, n = re.subn(r'(?<=var %s = ")[^"]*' % var, lambda m: b64, lb)
+        if n != 1:
+            sys.stderr.write('labbook profile: expected 1 %s placeholder, got %d\n' % (var, n))
+            sys.exit(1)
+    shell_src = open(os.path.join(BASE, 'shell/hub-shell.html'), encoding='utf-8').read()
+    a = shell_src.find('// CELLS-HOST:BEGIN')
+    z = shell_src.find('// CELLS-HOST:END')
+    if a < 0 or z < a:
+        sys.stderr.write('labbook profile: the CELLS-HOST markers are missing from shell/hub-shell.html\n')
+        sys.exit(1)
+    cells_host = ('<script>\n// fbReady() is the shell\'s; here it is "the Firebase app exists and someone is signed in".\n'
+                  'function fbReady(){ try{ return !!(window.firebase && firebase.apps && firebase.apps.length && firebase.auth().currentUser); }catch(e){ return false; } }\n'
+                  + shell_src[a:z] + '\n</script>\n')
+    fb_tags = LABBOOK_FB
+    if profile == 'labbook-app':
+        fb_tags = re.sub(r'<script src="https://www\.gstatic\.com/firebasejs/[\d.]+/(firebase-[a-z]+-compat\.js)"></script>',
+                         lambda m: '<script src="firebase/%s"></script>' % m.group(1), fb_tags)
+        # LB_NATIVE: this is the installed app, not a browser tab. Google sign-in cannot complete inside a WKWebView
+        # (popup and redirect are both refused), so the app signs in with email and password only.
+        fb_tags = fb_tags.replace('<script>\n// If these tags', '<script>var LB_NATIVE = true;</script>\n<script>\n// If these tags', 1)
+    lb, n = re.subn(r'</head>', lambda m: cells_host + fb_tags, lb, count=1)
     if n != 1:
         sys.stderr.write('labbook profile: could not find </head>\n')
         sys.exit(1)
@@ -129,6 +189,22 @@ if profile in ('labbook', 'labbook-pwa'):
         open(out, 'w', encoding='utf-8').write(lb)
         print('Labbook standalone: %s (%s chars, Archive embedded: %s chars)'
               % (out, f'{len(lb):,}', f'{len(arc_b64):,}'))
+        sys.exit(0)
+
+    if profile == 'labbook-app':
+        import shutil
+        out_dir = os.path.abspath(args[0]) if args else os.path.join(BASE, NATIVE_DIR)
+        if os.path.isdir(out_dir):
+            shutil.rmtree(out_dir)
+        os.makedirs(os.path.join(out_dir, 'firebase'))
+        os.makedirs(os.path.join(out_dir, 'fonts'))
+        lb = lb.replace('</head>', '<meta name="robots" content="noindex, nofollow">\n</head>', 1)
+        open(os.path.join(out_dir, 'index.html'), 'w', encoding='utf-8').write(lb)
+        files = ['xlsx.full.min.js', 'fonts/plex.css'] + ['firebase/firebase-%s-compat.js' % n for n in ('app', 'auth', 'database', 'storage')]
+        files += sorted(f for f in (os.path.join('fonts', x) for x in os.listdir(os.path.join(BASE, 'vendor/fonts'))) if f.endswith('.woff2'))
+        for rel in files:
+            open(os.path.join(out_dir, rel), 'wb').write(_vendor(rel))
+        print('Labbook app bundle: %s (index.html %s chars, %d vendored files)' % (out_dir, f'{len(lb):,}', len(files)))
         sys.exit(0)
 
     # ── the installable bench app ──

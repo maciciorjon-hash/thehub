@@ -2578,6 +2578,8 @@ function clearAnnouncement() {
 function _dashEsc(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){
   return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 
+// CELLS-HOST:BEGIN — embed.py lifts this block verbatim into the phone app (labbook-pwa / labbook-app), where Labbook is
+// the host Incubator, Lines and Freezer read from. It may use only fbReady() and firebase; nothing else from the shell.
 // Built-in reference for common lab cell lines (general ATCC-style guidance —
 // split ratio, days between splits, doubling time, a nominal passage limit and
 // default media). Used to pre-fill new incubator entries and drive the alert
@@ -2690,7 +2692,29 @@ var JournalStore = (function(){
   function _cache(){ try { localStorage.setItem(CACHE_KEY, JSON.stringify(_data)); } catch(e){} }
   function _emit(){ _subs.slice().forEach(function(f){ try { f(_data); } catch(e){} }); }
   function _pushId(){ try { return firebase.database().ref('journal').push().key; } catch(e){ return 'loc-' + Date.now() + '-' + Math.random().toString(36).slice(2,8); } }
-  function _write(path, val){ try { return firebase.database().ref('journal/' + path).set(val).catch(function(){}); } catch(e){ return Promise.resolve(); } }
+  // Every write goes through a durable outbox first. RTDB queues an offline write in memory only, so a phone
+  // that logged a passage at the bench with no signal and was then closed by iOS lost it: on the next open the
+  // cloud copy replaced the cache. A write stays in the outbox until the server confirms it, is laid over each
+  // snapshot that arrives, and is re-sent on attach and when the connection returns. Sets are idempotent.
+  var OUT_KEY = 'hub_journal_outbox', _out = {};
+  try { _out = JSON.parse(localStorage.getItem(OUT_KEY) || '{}') || {}; } catch(e){ _out = {}; }
+  function _outSave(){ try { localStorage.setItem(OUT_KEY, JSON.stringify(_out)); } catch(e){} }
+  function _send(path){
+    try {
+      if (!(path in _out) || !_ready || !fbReady()) return Promise.resolve();
+      var v = _out[path];
+      return firebase.database().ref('journal/' + path).set(v).then(function(){ if (_out[path] === v){ delete _out[path]; _outSave(); } }).catch(function(){});
+    } catch(e){ return Promise.resolve(); }
+  }
+  function _flush(){ Object.keys(_out).forEach(_send); }
+  function _write(path, val){ _out[path] = (val === undefined ? null : val); _outSave(); return _send(path); }
+  function _overlay(o){
+    Object.keys(_out).forEach(function(p){ var seg = p.split('/'), v = _out[p];
+      if (seg.length === 1){ o[seg[0]] = v; return; }
+      var c = o[seg[0]] = o[seg[0]] || {};
+      if (v === null) delete c[seg[1]]; else c[seg[1]] = v; });
+  }
+  try { window.addEventListener('online', _flush); } catch(e){}
   function _seedKey(k){ try { firebase.database().ref('journal/' + k).set(_data[k]).catch(function(){}); } catch(e){} }
   function attach(){
     _stopped = false;
@@ -2708,8 +2732,9 @@ var JournalStore = (function(){
         function coll(k){ var rv=v[k], lv=_data[k]; var rEmpty=!(rv&&Object.keys(rv).length), lHas=!!(lv&&Object.keys(lv).length); if(rEmpty&&lHas){ out[k]=lv; _seedKey(k); } else out[k]=rv||{}; }
         function scalar(k){ var rv=v[k], lv=_data[k]; if((rv==null)&&(lv!=null)){ out[k]=lv; _seedKey(k); } else out[k]=(rv!=null?rv:null); }
         coll('tasks'); coll('incubator'); coll('antibodies'); coll('primers'); coll('plasmids'); scalar('accent'); scalar('note'); scalar('theme'); scalar('cellArchive');
+        _overlay(out);
         _data = out;
-        _ready = true; _cache(); _emit();
+        _ready = true; _cache(); _emit(); _flush();
       }, function(err){
         // A cancelled listener is PERMANENT until something re-attaches. Firebase cancels
         // on('value') when a read is denied, and _ref stayed non-null afterwards — so the
@@ -2748,6 +2773,7 @@ var JournalStore = (function(){
     setCellArchive: function(arr){ _data.cellArchive = arr; _cache(); _emit(); return _write('cellArchive', arr); }
   };
 })();
+// CELLS-HOST:END
 
 // ── Daily backup of the WHOLE /journal (tasks, cultures, Labbook, plasmids, iceberg, …) ──
 // Mirrors Labbook's backup: dated JSON to the folder you picked (reuses window.lbBackup),
