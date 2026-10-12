@@ -1930,9 +1930,9 @@ body.lb-bench #lb-photo-fab{display:none!important;}
 .mck-seg button:hover{color:var(--text);}
 .mck-seg button.sug{box-shadow:inset 0 0 0 1px var(--accent);color:var(--accent);}
 .mck-seg button.on{color:var(--on-accent);box-shadow:none;}
-.mck-seg button.on.mck-ok{background:var(--good);} .mck-seg button.on.mck-split{background:var(--accent);} .mck-seg button.on.mck-seed{background:var(--brand);} .mck-seg button.on.mck-issue{background:var(--danger);}
+.mck-seg button.on.mck-ok{background:var(--good);} .mck-seg button.on.mck-media{background:var(--warn);} .mck-seg button.on.mck-split{background:var(--accent);} .mck-seg button.on.mck-seed{background:var(--brand);} .mck-seg button.on.mck-issue{background:var(--danger);}
 .mck-st{flex:none;font-size:var(--fs-2);font-weight:600;color:var(--text2);}
-.mck-st.mck-ok{color:var(--good);} .mck-st.mck-split{color:var(--accent);} .mck-st.mck-seed{color:var(--brand);} .mck-st.mck-issue{color:var(--danger);}
+.mck-st.mck-ok{color:var(--good);} .mck-st.mck-media{color:var(--warn);} .mck-st.mck-split{color:var(--accent);} .mck-st.mck-seed{color:var(--brand);} .mck-st.mck-issue{color:var(--danger);}
 .mck-ask{flex:1 1 100%;display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding-top:2px;}
 .mck-q{font-size:var(--fs-2);color:var(--text3);margin-right:2px;}
 .mck-chip{background:var(--surface2);border:1px solid var(--border);color:var(--text2);font-family:var(--sans);font-size:var(--fs-2);border-radius:var(--r-1);padding:4px 9px;cursor:pointer;}
@@ -15439,11 +15439,12 @@ function nbTasksHtml(D){
   var rows=ts.map(function(t){
     var late=(t.date&&t.date<D)?('<span class="carry-from" title="Set for '+esc(fmtDate(t.date))+'">'+esc(fmtDate(t.date))+'</span>'):'';
     var chip='';
-    if(t.cellId&&lbCultures()) chip='<span class="nbt-lnk" onclick="openCultureLink(\''+t.cellId+'\')" title="Open this culture in Incubator">Incubator &#8599;</span>';
+    if(t.cellId&&lbCultures()){ chip='<span class="nbt-lnk" onclick="openCultureLink(\''+t.cellId+'\')" title="Open this culture in Incubator">Incubator &#8599;</span>';
+      if(!t.done&&(t.cellKind||'split')!=='media'&&t.cellKind!=='seed') chip+='<span class="nbt-lnk" onclick="cellPostpone(\''+t.id+'\')" title="Not today: move this task and the split to tomorrow">Postpone</span>'; }
     if(t.expId){ var le=LB.data.experiments[t.expId];
       if(le){ var stepName='';
         if(t.blockId){ var sb=(le.blocks||[]).filter(function(x){return x.id===t.blockId;})[0]; if(sb) stepName=' · '+(sb.title||('Day '+(sb.dayOffset||0))); }
-        chip='<span class="nbt-lnk" onclick="'+(t.blockId?('openBlk(\''+t.expId+'\',\''+t.blockId+'\')'):('openExp(\''+t.expId+'\')'))+'" title="Open">'+esc((le.code||le.title||'exp')+stepName)+' &#8599;</span>'; } }
+        chip+='<span class="nbt-lnk" onclick="'+(t.blockId?('openBlk(\''+t.expId+'\',\''+t.blockId+'\')'):('openExp(\''+t.expId+'\')'))+'" title="Open">'+esc((le.code||le.title||'exp')+stepName)+' &#8599;</span>'; } }
     return '<div class="nbt'+(t.done?' done':'')+(late?' late':'')+'" oncontextmenu="ctxTask(event,\''+t.id+'\',\''+D+'\')">'
       +'<span class="wk-cb" onclick="togglePlannerTask(\''+t.id+'\')" title="Toggle done">'+(t.done?'&#10003;':'')+'</span>'
       +(t.urgent?'<span class="nbt-urg" title="Urgent">!</span>':'')+late+'<span class="nbt-tx"><span contenteditable="true" spellcheck="false" onblur="editPlannerTask(\''+t.id+'\',this.textContent)" onkeydown="if(event.key===\'Enter\'){event.preventDefault();this.blur();}">'+esc(t.text)+'</span>'+chip+'</span>'
@@ -15524,7 +15525,36 @@ function wkPrev(){ WK_ANCHOR=addDays(wkMonday(WK_ANCHOR||todayStr()),-7); render
 function wkNext(){ WK_ANCHOR=addDays(wkMonday(WK_ANCHOR||todayStr()),7); renderEditor(); }
 function wkToday(){ WK_ANCHOR=null; renderEditor(); }
 function addPlannerTask(D,text){ text=(text||'').trim(); if(!text) return; var id=uid(); plannerTasks()[id]={id:id,date:D,text:text,done:false,expId:null,blockId:null,created:Date.now(),updated:Date.now()}; save(); renderEditor(); }
-function togglePlannerTask(id){ var t=plannerTasks()[id]; if(!t) return; t.done=!t.done; if(t.done) t.doneAt=Date.now(); else delete t.doneAt; t.updated=Date.now(); save(); renderEditor(); }
+function togglePlannerTask(id){ var t=plannerTasks()[id]; if(!t) return; t.done=!t.done; if(t.done) t.doneAt=Date.now(); else delete t.doneAt; t.updated=Date.now();
+  if(t.done) try{ cellApplyTask(t); }catch(e){}
+  save(); renderEditor(); }
+// A ticked cell task is the thing it says, so Incubator is told: a split gives the culture its next
+// passage and a new seeding date, a media change records the date. Only once per task (ticking it
+// off and on again does not split twice), only if Incubator does not already have it from that day
+// on, and never undone by un-ticking: a recorded passage is not rewritten, it is corrected in Incubator.
+function cellApplyTask(t){
+  if(!t||!t.cellId||t.applied) return;
+  var H=lbJS(); if(!H||!H.cultureAct||!H.JournalStore) return;
+  var c=((H.JournalStore.get()||{}).incubator||{})[t.cellId]; if(!c){ return; }
+  var k=t.cellKind||'split', from=_dayStartMs(t.date||todayStr()), what='', np=null;
+  if(k==='seed'){ t.applied=Date.now(); return; }
+  if(k==='media'){ if(!(c.mediaLast>=from)&&!(c.seeded>=from)){ H.cultureAct(t.cellId,'media',{}); what='Media change logged'; } }
+  else if(!(c.seeded>=from)){ var e=t.expId&&LB.data.experiments[t.expId];
+    np=H.cultureAct(t.cellId,'split',{note:e?('for '+(e.code||e.title||'an assay')):''}); what='Split logged'+(np!=null?(' \u2014 now P'+np):''); }
+  t.applied=Date.now();
+  if(what) toast(what+' in Incubator for '+(c.line||'the culture')+'.');
+}
+// Not today: the task moves to a later day and so does the split, in Incubator too.
+function cellPostpone(id,D){
+  var t=plannerTasks()[id]; if(!t||!t.cellId||t.done) return;
+  D=D||addDays(todayStr(),1); var H=lbJS();
+  undoMark('Postpone',['planner']);
+  t.date=D; t.updated=Date.now(); delete t.dismissed;
+  try{ if(H&&H.cultureAct&&(t.cellKind||'split')!=='media') H.cultureAct(t.cellId,'postpone',{until:_dayStartMs(D),note:'from the planner'}); }catch(e){}
+  save(); renderEditor(); toast('Postponed to '+fmtDate(D)+'.');
+}
+function cellPostponeTo(id){ var t=plannerTasks()[id]; if(!t) return;
+  lbPrompt('Which day?',addDays(todayStr(),1),{title:'Postpone to',ok:'Postpone',type:'date'}).then(function(v){ if(!v) return; if(!_realDay(v)||v<=todayStr()){ toast('Pick a day after today.'); return; } cellPostpone(id,v); }); }
 function delPlannerTask(id){ var t=plannerTasks()[id]; if(!t) return;
   lbConfirm('Delete \u201c'+(t.text||'this task')+'\u201d?',{title:'Delete task',ok:'Delete'}).then(function(ok){
     if(!ok) return;
@@ -15591,6 +15621,7 @@ function ctxTask(ev,id,D){
     {label:t.done?'Mark not done':'Mark done',fn:function(){ togglePlannerTask(id); }},
     (late?{label:'Move to this day',sub:'set for '+fmtDate(t.date),fn:function(){ t.date=D; t.updated=Date.now(); save(); renderEditor(); }}:null),
     (late?{label:'Dismiss',sub:'stop carrying it, without calling it done',fn:function(){ t.dismissed=true; t.updated=Date.now(); save(); renderEditor(); }}:null),
+    (t.cellId&&!t.done&&(t.cellKind||'split')!=='media'?{label:'Postpone split\u2026',sub:'the task and the split in Incubator move to that day',fn:function(){ cellPostponeTo(id); }}:null),
     {label:t.urgent?'Not urgent':'Mark urgent',fn:function(){ if(t.urgent) delete t.urgent; else t.urgent=true; t.updated=Date.now(); save(); renderEditor(); }},
     (!t.date?{label:'Give it a date…',sub:'it moves from Today to that day',fn:function(){ lbPrompt('Which day?',todayStr(),{title:'Task date',ok:'Set',type:'date'}).then(function(v){ if(!v) return; t.date=v; t.updated=Date.now(); save(); renderEditor(); }); }}:null),
     {label:t.expId?'Change link…':'Link to an experiment…',fn:function(){ linkPlannerTask(id); }},
@@ -15801,17 +15832,23 @@ function _daysSince(ts){ return ts?Math.floor((Date.now()-ts)/86400000):null; }
 // refresh. Stored per day in `cellCheck[D][cultureId]` (a cloud map, so a day is its own
 // record and the note on the same day is not touched). The culture itself lives in the shell's
 // JournalStore; Labbook only reads it and, for an Issue, writes the flag back.
+//   change media  → a planner task and a "needs a media change" flag on the culture (Incubator shows it);
+//                   ticked by itself when Incubator logs a media change or a split, and ticking it in the
+//                   planner logs the media change in Incubator
 //   need to split → one planner task per culture (id is deterministic: asking twice, or from
-//                   two devices, is the same task), ticked by itself when Incubator logs the split
+//                   two devices, is the same task), ticked by itself when Incubator logs the split; ticking
+//                   it in the planner logs the split in Incubator (passage +1) and flags the culture meanwhile
 //   seed          → a split whose cells go to an assay: the same task, plus the experiment it is for
 //                   (picked from what is planned or ongoing that day). The cell line is appended to
 //                   the experiment's Cell lines — never over what is there — and taken off again if the
-//                   answer changes, but only if the check put it there
+//                   answer changes, but only if the check put it there. Asks whether the cells are being
+//                   kept: yes → the task is also the culture's split (ticking it splits in Incubator); no →
+//                   a seed task only, the culture is left alone
 //   issue         → a one-line note, the culture goes red in Incubator, its split reminders stop,
 //                   nothing is deleted — Remove there also erases the history
 var CC_OPEN=false;   // the card stays open by choice once everything is answered
 var CC_ASK=null;     // culture whose Issue is waiting for its one line
-var CC_LABEL={ok:'OK',split:'Need to split',seed:'Seed',issue:'Issue'};
+var CC_LABEL={ok:'OK',media:'Change media',split:'Need to split',seed:'Seed',issue:'Issue'};
 function cellChecks(D,make){ var m=LB.data.cellCheck||(LB.data.cellCheck={}); return m[D]||(make?(m[D]={}):null); }
 function cellTaskId(cid,D){ return 'cell_'+cid+'_'+D; }
 function _dayStartMs(D){ var p=String(D).split('-'); return new Date(+p[0],+p[1]-1,+p[2]).getTime(); }
@@ -15855,7 +15892,16 @@ function ccAssayChoices(D){
   return first.sort(byName).concat(rest.sort(byName),[{id:'_none',c:'#9ca0b8',label:'No assay yet',sub:'Seed now, say which assay later'}]);
 }
 function ccSeedPick(cid){
-  lbPicker('Seed — which assay are these cells for?',ccAssayChoices(todayStr()),function(it){ _ccRecord(cid,'seed','',it.id==='_none'?null:it.id); });
+  lbPicker('Seed — which assay are these cells for?',ccAssayChoices(todayStr()),function(it){
+    // A seed takes cells off the flask. Whether the flask carries on is the next question, because
+    // that is what decides if the culture gets its split.
+    var cu=(lbCultures()||[]).filter(function(x){ return x.id===cid; })[0];
+    lbChoose('Are you maintaining these cells'+(cu&&cu.c.line?(' ('+cu.c.line+')'):'')+'?',{title:'Seed',answers:[
+      {id:'keep',label:'Yes, keep the culture going',sub:'The seed is also the culture’s split: ticking the task splits it in Incubator',primary:true},
+      {id:'done',label:'No, these cells are for the assay only',sub:'A seed task, and the culture is left as it is'},
+      {id:'cancel',label:'Not now',sub:'Nothing is recorded',safe:true}]}).then(function(a){
+        if(a==='keep'||a==='done') _ccRecord(cid,'seed','',it.id==='_none'?null:it.id,a==='keep'); });
+  });
 }
 // What the check added to an experiment, taken back out: only the name it appended.
 function _ccUnseed(prev){
@@ -15869,29 +15915,53 @@ function saveCellIssue(cid){
   if(!note){ if(i) i.focus(); return; }
   _ccRecord(cid,'issue',note);
 }
-function _ccRecord(cid,s,note,expId){
+// What the culture itself is told. The flag is what Incubator shows ("Needs a media change", "Needs a
+// split") until the action is logged there or by ticking the task; changing the answer takes it back.
+function _ccFlag(cid,what){ var H=lbJS(); try{ if(H&&H.cultureAct) H.cultureAct(cid,'flag',{what:what}); }catch(e){} }
+function _ccKind(r){ return r.s==='media'?'media':(r.s==='seed'&&r.keep===false?'seed':'split'); }
+function _ccTaskText(r,cu,ex){
+  var tail=(cu.c.line||'culture')+(cu.c.passage!=null?(' (P'+cu.c.passage+')'):'');
+  if(r.s==='media') return 'Change media · '+tail;
+  if(r.s==='seed') return (r.keep===false?'Seed cells · ':'Split & seed cells · ')+tail+(ex?(' → '+(ex.code||ex.title||'assay')):'');
+  return 'Split cells · '+tail;
+}
+// An open cell task for this culture on this day, whatever its id: a split that was postponed to
+// today is that culture's task for today, and asking again must not make a second one.
+function cellOpenTask(cid,D){
+  var T=plannerTasks(), ks=Object.keys(T);
+  for(var i=0;i<ks.length;i++){ var t=T[ks[i]]; if(t&&t.cellId===cid&&t.date===D&&!t.done&&!t.dismissed) return t; }
+  return null;
+}
+function _ccRecord(cid,s,note,expId,keep){
   var D=todayStr(), list=lbCultures(), cu=list&&list.filter(function(x){ return x.id===cid; })[0]; if(!cu) return;
-  var rec=cellChecks(D,true), prev=rec[cid], T=plannerTasks(), tid=cellTaskId(cid,D), now=Date.now();
+  var rec=cellChecks(D,true), prev=rec[cid], T=plannerTasks(), tid=(prev&&prev.tid)||cellTaskId(cid,D), now=Date.now();
   var ex=expId?LB.data.experiments[expId]:null;
   undoMark('Cell check',['cellCheck.'+D,'planner'].concat(prev&&prev.exp?['experiments.'+prev.exp]:[],ex?['experiments.'+ex.id]:[]));
   if(prev&&prev.s==='issue'&&s!=='issue') _ccIssue(cid,D,null);
   _ccUnseed(prev);
   var r={s:s,at:now,line:cu.c.line||''}; if(note) r.note=note;
+  if(s==='seed'){ r.keep=keep!==false; }
   if(s==='seed'&&ex){
     r.exp=ex.id; r.code=ex.code||''; r.title=ex.title||'';
     var have=String(ex.cellLines||'').split(/[,;]+/).map(function(x){ return x.trim().toLowerCase(); });
     if(have.indexOf(String(r.line).toLowerCase())<0){ ex.cellLines=(String(ex.cellLines||'').trim()?String(ex.cellLines).trim().replace(/[,;]\s*$/,'')+', ':'')+r.line; ex.updated=now; r.addedCell=true; }
   }
-  rec[cid]=r;
-  if(s==='split'||s==='seed'){
-    var txt=(s==='seed'?'Seed':'Split')+' cells · '+(cu.c.line||'culture')+(cu.c.passage!=null?(' (P'+cu.c.passage+')'):'')+(s==='seed'&&ex?(' → '+(ex.code||ex.title||'assay')):'');
-    var t=T[tid];
-    if(!t) T[tid]={id:tid,date:D,text:txt,done:false,expId:(s==='seed'&&ex)?ex.id:null,blockId:null,cellId:cid,created:now,updated:now};
+  var wantsTask=(s==='split'||s==='seed'||s==='media');
+  if(wantsTask){
+    var t=T[tid]||cellOpenTask(cid,D);
+    if(t&&!t.done) tid=t.id;
+    var txt=_ccTaskText(r,cu,s==='seed'?ex:null), kind=_ccKind(r);
+    if(!t) T[tid]={id:tid,date:D,text:txt,done:false,expId:(s==='seed'&&ex)?ex.id:null,blockId:null,cellId:cid,cellKind:kind,created:now,updated:now};
     else if(!t.done){
       if(t.dismissed) delete t.dismissed;
-      if(/^(Split|Seed) cells · /.test(t.text||'')) t.text=txt;   // the words it was given, not ones you typed
-      t.expId=(s==='seed'&&ex)?ex.id:null; t.updated=now; }
-  } else if(T[tid]&&!T[tid].done) delete T[tid];   // the answer changed before the split was done
+      if(/^(Split|Seed|Split & seed|Change media) (cells )?· /.test(t.text||'')) t.text=txt;   // the words it was given, not ones you typed
+      t.cellKind=kind; t.expId=(s==='seed'&&ex)?ex.id:null; t.updated=now; }
+    if(tid!==cellTaskId(cid,D)) r.tid=tid;
+  } else if(T[tid]&&!T[tid].done) delete T[tid];   // the answer changed before the task was done
+  rec[cid]=r;
+  // the culture hears it too (not for a seed that leaves the flask alone)
+  if(wantsTask&&!(s==='seed'&&r.keep===false)) _ccFlag(cid,s==='media'?'media':'split');
+  else if(prev&&(prev.s==='media'||prev.s==='split'||prev.s==='seed')) _ccFlag(cid,null);
   if(s==='issue') _ccIssue(cid,D,note);
   CC_ASK=null; save(); renderEditor();
 }
@@ -15908,15 +15978,18 @@ function cellSyncTasks(){
   var list=lbCultures(); if(!list) return false;
   var T=plannerTasks(), ch=false, by={}; list.forEach(function(x){ by[x.id]=x; });
   Object.keys(T).forEach(function(k){ var t=T[k]; if(!t||!t.cellId||t.done||t.dismissed||!t.date) return;
-    var x=by[t.cellId]; if(x&&x.c.seeded&&x.c.seeded>=_dayStartMs(t.date)){ t.done=true; t.doneAt=x.c.seeded; t.updated=Date.now(); ch=true; } });
+    var x=by[t.cellId], k=t.cellKind||'split', at=0; if(!x||k==='seed') return;   // a seed that leaves the flask alone has nothing to wait for in Incubator
+    at=k==='media'?(x.c.mediaLast||0):(x.c.seeded||0);   // a split gives fresh medium, so it also does the media task
+    if(k==='media'&&x.c.seeded>at) at=x.c.seeded;
+    if(at&&at>=_dayStartMs(t.date)){ t.done=true; t.doneAt=at; t.applied=at; t.updated=Date.now(); ch=true; } });
   if(ch) save(); return ch;
 }
 // What the row says next to the answer: the line for an issue, the assay for a seed.
 function _ccNote(r){ if(!r) return ''; if(r.note) return r.note; if(r.s==='seed') return (r.code||r.title)?('For '+[r.code,r.title].filter(Boolean).join(' · ')):'No assay yet'; return ''; }
 function _ccSummary(rec,list){
-  var n={ok:0,split:0,seed:0,issue:0}; Object.keys(rec).forEach(function(k){ var r=rec[k]; if(r&&n[r.s]!=null) n[r.s]++; });
+  var n={ok:0,media:0,split:0,seed:0,issue:0}; Object.keys(rec).forEach(function(k){ var r=rec[k]; if(r&&n[r.s]!=null) n[r.s]++; });
   if(list) list.forEach(function(x){ if(!rec[x.id]&&x.c.issue) n.issue++; });
-  var p=[]; if(n.ok) p.push(n.ok+' OK'); if(n.split) p.push(n.split+' need to split'); if(n.seed) p.push(n.seed+' seeded'); if(n.issue) p.push(n.issue+' with an issue');
+  var p=[]; if(n.ok) p.push(n.ok+' OK'); if(n.media) p.push(n.media+' need media'); if(n.split) p.push(n.split+' need to split'); if(n.seed) p.push(n.seed+' seeded'); if(n.issue) p.push(n.issue+' with an issue');
   return p.join(' · ');
 }
 function _ccRow(x,r){
@@ -15926,7 +15999,7 @@ function _ccRow(x,r){
     +'<span class="cul-meta">p'+esc(String(c.passage==null?'?':c.passage))+(c.vessel?(' · '+esc(c.vessel)):'')+'</span>';
   if(c.issue&&!r) return '<div class="cul-row cc warn">'+head+'<span class="cul-msg">Issue since '+esc(fmtDate(c.issue.day||_dateKey(c.issue.ts)))+(c.issue.note?(' — '+esc(c.issue.note)):'')+'</span>'
     +'<button class="btn ghost sm" onclick="ccResolve(\''+id+'\')">Resolved</button></div>';
-  var seg='<div class="mck-seg" role="group" aria-label="'+esc(c.line||'Culture')+'">'+['ok','split','seed','issue'].map(function(k){
+  var seg='<div class="mck-seg" role="group" aria-label="'+esc(c.line||'Culture')+'">'+['ok','media','split','seed','issue'].map(function(k){
     return '<button class="mck-'+k+((r&&r.s===k)?' on':'')+((sug===k)?' sug':'')+'" aria-pressed="'+((r&&r.s===k)?'true':'false')+'" onclick="setCellCheck(\''+id+'\',\''+k+'\')">'+CC_LABEL[k]+'</button>'; }).join('')+'</div>';
   var ask=(CC_ASK===id)?('<div class="mck-ask"><span class="mck-q">What happened?</span>'
     +'<button class="mck-chip" onclick="ccChip(this)">Contaminated</button><button class="mck-chip" onclick="ccChip(this)">Dead</button><button class="mck-chip" onclick="ccChip(this)">Not growing</button>'

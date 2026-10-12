@@ -2661,22 +2661,62 @@ function computeCellAlerts(cell, now){
   // An issue raised in Labbook's morning check (contaminated, dead, not growing). It is the one
   // thing to say about the culture until it is cleared, so its split and myco reminders stop.
   if (cell.issue) return [{level:'warn',tag:'issue',msg:'Issue — '+(cell.issue.note||'flagged')}];
-  if (cell.seeded && cell.intervalDays){
+  // "Needs a split" / "needs a media change" come from the morning check on Today (or are logged
+  // by hand); they hold until the split / media change is logged. A flag older than the last split
+  // is a leftover and counts for nothing. A postponed split moves the due date, not the interval.
+  if (cell.needsSplit && cell.needsSplit > (cell.seeded || 0)) out.push({level:'warn', tag:'split', msg:'Needs a split'});
+  else if (cell.seeded && cell.intervalDays){
     var d = (now - cell.seeded) / DAY;
-    if (d >= cell.intervalDays + 1)      out.push({level:'warn', tag:'split',   msg:'Split overdue · ' + Math.floor(d) + 'd since last split'});
-    else if (d >= cell.intervalDays)     out.push({level:'warn', tag:'split',   msg:'Due to split'});
-    else if (d >= cell.intervalDays - 1) out.push({level:'soft', tag:'split',   msg:'Split due soon'});
+    var late = (now - Math.max(cell.seeded + cell.intervalDays * DAY, cell.postponedUntil || 0)) / DAY;
+    if (late >= 1)       out.push({level:'warn', tag:'split',   msg:'Split overdue · ' + Math.floor(d) + 'd since last split'});
+    else if (late >= 0)  out.push({level:'warn', tag:'split',   msg:'Due to split'});
+    else if (late >= -1) out.push({level:'soft', tag:'split',   msg:'Split due soon'});
   }
+  if (cell.needsMedia && cell.needsMedia > (cell.mediaLast || 0)) out.push({level:'soft', tag:'media', msg:'Needs a media change'});
   if (cell.passage != null && cell.passageLimit){
     if (cell.passage >= cell.passageLimit)            out.push({level:'warn', tag:'passage', msg:'High passage (P' + cell.passage + ') — thaw a fresh vial'});
     else if (cell.passage >= cell.passageLimit * 0.8) out.push({level:'soft', tag:'passage', msg:'Approaching passage limit (P' + cell.passage + '/' + cell.passageLimit + ')'});
   }
-  if (!cell.mycoLast)                              out.push({level:'soft', tag:'myco', msg:'No mycoplasma test logged'});
-  else if ((now - cell.mycoLast) / DAY > 30)       out.push({level:'warn', tag:'myco', msg:'Mycoplasma test overdue'});
+  // A culture that has never been tested is not a culture that needs attention: this used to be a
+  // soft alert, so every culture without a logged test sat in "Needs attention" for ever and
+  // "Healthy" was empty. The drawer still says "Last myco test: never"; overdue is still a warning.
+  if (cell.mycoLast && (now - cell.mycoLast) / DAY > 30) out.push({level:'warn', tag:'myco', msg:'Mycoplasma test overdue'});
   var rank = {warn:0, soft:1, ok:2};
   out.sort(function(a,b){ return rank[a.level] - rank[b.level]; });
   return out;
 }
+
+// What happens to a culture, in one place, so that Incubator's buttons, Labbook's morning check and
+// a ticked task in the planner all write the same thing. kind: 'split' | 'media' | 'postpone' | 'flag'.
+//   split     passage +1, `seeded` = when, fresh medium (mediaLast = when), flags and postponement cleared
+//   media     mediaLast = when, needsMedia cleared
+//   postpone  postponedUntil = o.until (ms), needsSplit cleared
+//   flag      o.what 'split' | 'media' | null: what the morning check says it needs (null takes it back)
+// Returns the new passage for a split. Nothing here rewrites a recorded number: it adds to the history.
+function cultureAct(id, kind, o){
+  o = o || {};
+  var c = (JournalStore.get().incubator || {})[id]; if (!c) return null;
+  var when = o.when || Date.now(), hist = (c.history || []).slice(), p = {}, ret = null;
+  if (kind === 'split'){
+    var np = o.passage != null ? o.passage : (c.passage || 0) + 1;
+    hist.push({action:'split', ratio:o.ratio || '', passage:np, ts:when}); if (o.note) hist[hist.length-1].note = o.note;
+    p = {passage:np, seeded:when, mediaLast:when, needsSplit:null, needsMedia:null, postponedUntil:null}; ret = np;
+  } else if (kind === 'media'){
+    hist.push({action:'media change', ts:when}); if (o.note) hist[hist.length-1].note = o.note;
+    p = {mediaLast:when, needsMedia:null};
+  } else if (kind === 'postpone'){
+    hist.push({action:'split postponed', note:'to ' + new Date(o.until).toISOString().slice(0,10) + (o.note ? ' — ' + o.note : ''), ts:when});
+    p = {postponedUntil:o.until, needsSplit:null};
+  } else if (kind === 'flag'){
+    p = {needsSplit:null, needsMedia:null};
+    if (o.what === 'split') p.needsSplit = when; else if (o.what === 'media') p.needsMedia = when;
+    if (o.what) { hist.push({action:'needs a ' + (o.what === 'split' ? 'split' : 'media change'), note:'morning check', ts:when}); }
+  } else return null;
+  p.history = hist;
+  JournalStore.updateCell(id, p);
+  return ret;
+}
+window.cultureAct = cultureAct;
 
 // Single shared store over Firebase RTDB /journal + localStorage cache.
 var JournalStore = (function(){
