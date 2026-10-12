@@ -17,6 +17,9 @@
 //   PA7  the layout        at 390x780 and 375x640, light and dark: the frame fills the area under the Cells tabs,
 //                          stops above the tab bar, and the five tabs are all there
 //   PA8  native sign-in    the installed app offers email & password only (Google cannot finish in a WKWebView)
+//   PA9  the web app       the installable PWA (built here into a temp folder) is as self-contained: after ONE visit it
+//                          reloads with the network gone and still has its SDK, its typeface and the Cells tab; its
+//                          service worker precaches every file it loads, and it still offers Google sign-in
 //
 //   node tools/phone_app_invariants.mjs [--dir=mobile/www] [--only=PA5]      exit 1 on any finding
 import { chromium, devices } from 'playwright';
@@ -24,6 +27,8 @@ import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import vm from 'node:vm';
+import os from 'node:os';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -225,6 +230,50 @@ if (run('PA5')) {
     await new Promise(r => setTimeout(r, 20));
     if (Object.keys(JSON.parse(storage.hub_journal_outbox || '{}')).length) bad('PA5', 'a confirmed write is still in the outbox: ' + storage.hub_journal_outbox); else ok();
   }
+}
+
+// ── PA9: the installable web app, offline after a single visit ───────────────────────────────────
+if (run('PA9')) {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lb-pwa-'));
+  const b = spawnSync('python3', [path.join(ROOT, 'embed.py'), '--profile=labbook-pwa', tmp], { cwd: ROOT, encoding: 'utf8' });
+  if (b.status !== 0) bad('PA9', 'embed.py --profile=labbook-pwa failed: ' + (b.stderr || '').slice(-200));
+  else {
+    const sw = fs.readFileSync(path.join(tmp, 'sw.js'), 'utf8');
+    const html = fs.readFileSync(path.join(tmp, 'index.html'), 'utf8');
+    const refs = [...html.matchAll(/(?:src|href)="((?:firebase|fonts)\/[^"]+|xlsx\.full\.min\.js)"/g)].map(m => m[1]);
+    if (!refs.length) bad('PA9', 'the page references no local firebase/fonts/xlsx files'); else ok();
+    for (const r of refs) {
+      if (!fs.existsSync(path.join(tmp, r))) bad('PA9', r + ' is referenced by the page but is not in the build');
+      else if (!sw.includes('./' + r)) bad('PA9', r + ' is not in the service worker precache');
+      else ok();
+    }
+    if (/https:\/\/(www\.gstatic|fonts\.googleapis|cdnjs)/.test(html.replace(/\/\/ If these tags[^\n]*\n/, ''))) bad('PA9', 'the page still loads something from a CDN');
+    else ok();
+    if (!/Sign in with Google/.test(html)) bad('PA9', 'the web app lost its Google sign-in button'); else ok();
+    const srv2 = http.createServer((req, res) => {
+      const f = path.join(tmp, decodeURIComponent(req.url.split('?')[0]).replace(/^\/+$/, '/index.html'));
+      if (!f.startsWith(tmp) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { res.writeHead(404); res.end(); return; }
+      res.writeHead(200, { 'content-type': MIME[path.extname(f)] || 'application/octet-stream' }); fs.createReadStream(f).pipe(res);
+    });
+    await new Promise(r => srv2.listen(0, '127.0.0.1', r));
+    const br = await chromium.launch();
+    const ctx = await br.newContext({ ...devices['iPhone 13'] });
+    await ctx.addInitScript(() => { try { localStorage.setItem('lb_backup_nudged', '1'); localStorage.setItem('lb_lean', '1'); localStorage.setItem('lb_tour_done', '1'); } catch (e) {} });
+    const pg = await ctx.newPage();
+    const u = `http://127.0.0.1:${srv2.address().port}/index.html`;
+    await pg.route('**/*', r => { const x = r.request().url(); return /^https?:\/\/127\.0\.0\.1/.test(x) || /^(data|blob|about):/.test(x) ? r.continue() : r.abort(); });
+    await pg.goto(u);
+    await pg.evaluate(async () => { await navigator.serviceWorker.ready; });
+    await pg.waitForTimeout(1500);
+    await ctx.setOffline(true);
+    await pg.reload(); await pg.waitForSelector('#lb-tabs', { timeout: 15000 }).catch(() => {});
+    const st = await pg.evaluate(async () => { await document.fonts.ready; return { tabs: !!document.querySelector('#lb-tabs [data-tab="cells"]'), fb: typeof firebase,
+      plex: [...document.fonts].some(f => /IBM Plex Sans/.test(f.family) && f.status === 'loaded') }; }).catch(e => ({ err: String(e) }));
+    if (st.err) bad('PA9', 'the web app did not reload offline: ' + st.err);
+    else { if (!st.tabs) bad('PA9', 'offline reload: no Cells tab'); else ok(); if (st.fb !== 'object') bad('PA9', 'offline reload: no Firebase SDK'); else ok(); if (!st.plex) bad('PA9', 'offline reload: IBM Plex missing'); else ok(); }
+    await br.close(); srv2.close();
+  }
+  fs.rmSync(tmp, { recursive: true, force: true });
 }
 
 if (findings.length) { console.log(findings.join('\n')); console.log(`\n${findings.length} finding(s), ${passed} checks passed`); process.exit(1); }

@@ -140,7 +140,7 @@ def _localize(html):
 if profile in ('labbook', 'labbook-pwa', 'labbook-app'):
     lb = open(os.path.join(BASE, 'apps/labbook/labbook.html'), encoding='utf-8').read()
     arc = open(os.path.join(BASE, 'apps/archive/archive.html'), 'rb').read()
-    if profile == 'labbook-app':
+    if profile in ('labbook-app', 'labbook-pwa'):
         lb = _localize(lb)
         arc = _localize(arc.decode('utf-8')).encode('utf-8')
     arc_b64 = base64.b64encode(arc).decode('ascii')
@@ -156,7 +156,7 @@ if profile in ('labbook', 'labbook-pwa', 'labbook-app'):
                      ('CELLARCHIVE_B64', 'apps/cell-archive/cell-archive.html'),
                      ('FREEZER_B64', 'apps/iceberg/iceberg.html')):
         raw = open(os.path.join(BASE, rel), 'rb').read()
-        if profile == 'labbook-app':
+        if profile in ('labbook-app', 'labbook-pwa'):
             raw = _localize(raw.decode('utf-8')).encode('utf-8')
         b64 = base64.b64encode(raw).decode('ascii')
         lb, n = re.subn(r'(?<=var %s = ")[^"]*' % var, lambda m: b64, lb)
@@ -173,9 +173,10 @@ if profile in ('labbook', 'labbook-pwa', 'labbook-app'):
                   'function fbReady(){ try{ return !!(window.firebase && firebase.apps && firebase.apps.length && firebase.auth().currentUser); }catch(e){ return false; } }\n'
                   + shell_src[a:z] + '\n</script>\n')
     fb_tags = LABBOOK_FB
-    if profile == 'labbook-app':
+    if profile in ('labbook-app', 'labbook-pwa'):
         fb_tags = re.sub(r'<script src="https://www\.gstatic\.com/firebasejs/[\d.]+/(firebase-[a-z]+-compat\.js)"></script>',
                          lambda m: '<script src="firebase/%s"></script>' % m.group(1), fb_tags)
+    if profile == 'labbook-app':
         # LB_NATIVE: this is the installed app, not a browser tab. Google sign-in cannot complete inside a WKWebView
         # (popup and redirect are both refused), so the app signs in with email and password only.
         fb_tags = fb_tags.replace('<script>\n// If these tags', '<script>var LB_NATIVE = true;</script>\n<script>\n// If these tags', 1)
@@ -191,6 +192,10 @@ if profile in ('labbook', 'labbook-pwa', 'labbook-app'):
               % (out, f'{len(lb):,}', f'{len(arc_b64):,}'))
         sys.exit(0)
 
+    def vendored_files():
+        files = ['xlsx.full.min.js', 'fonts/plex.css'] + ['firebase/firebase-%s-compat.js' % n for n in ('app', 'auth', 'database', 'storage')]
+        return files + sorted(f for f in (os.path.join('fonts', x) for x in os.listdir(os.path.join(BASE, 'vendor/fonts'))) if f.endswith('.woff2'))
+
     if profile == 'labbook-app':
         import shutil
         out_dir = os.path.abspath(args[0]) if args else os.path.join(BASE, NATIVE_DIR)
@@ -200,15 +205,14 @@ if profile in ('labbook', 'labbook-pwa', 'labbook-app'):
         os.makedirs(os.path.join(out_dir, 'fonts'))
         lb = lb.replace('</head>', '<meta name="robots" content="noindex, nofollow">\n</head>', 1)
         open(os.path.join(out_dir, 'index.html'), 'w', encoding='utf-8').write(lb)
-        files = ['xlsx.full.min.js', 'fonts/plex.css'] + ['firebase/firebase-%s-compat.js' % n for n in ('app', 'auth', 'database', 'storage')]
-        files += sorted(f for f in (os.path.join('fonts', x) for x in os.listdir(os.path.join(BASE, 'vendor/fonts'))) if f.endswith('.woff2'))
+        files = vendored_files()
         for rel in files:
             open(os.path.join(out_dir, rel), 'wb').write(_vendor(rel))
         print('Labbook app bundle: %s (index.html %s chars, %d vendored files)' % (out_dir, f'{len(lb):,}', len(files)))
         sys.exit(0)
 
     # ── the installable bench app ──
-    import hashlib, shutil
+    import hashlib, shutil, json
     out_dir = os.path.abspath(args[0]) if args else os.path.join(BASE, 'dist', LABBOOK_SLUG)
     head = '''
 <meta name="robots" content="noindex, nofollow">
@@ -266,12 +270,13 @@ if ('serviceWorker' in navigator) {
     # answer to "what is in my notebook" is the one thing this app must not invent. The local
     # copy and IndexedDB are the offline store, exactly as they are in the Hub.
     sw = '''const CACHE = 'labbook-%s';
+// The page and everything it loads, so the very first launch with no signal works: the Firebase SDK, the fonts
+// and SheetJS are files of this app (vendor/), not CDN requests that had to be made once and remembered.
 const SHELL = ['./', './index.html', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png',
-  './icons/icon-maskable-512.png', './icons/apple-touch-icon.png'];
-// Data and auth only. A blanket googleapis.com also swallowed fonts.googleapis.com, which is
-// how an offline launch loses its typography; and the versioned SDK on gstatic is static code,
-// so caching it is what lets the app come back up and reconnect on a flaky connection.
+  './icons/icon-maskable-512.png', './icons/apple-touch-icon.png'].concat(__VENDORED__);
+// Data and auth only. (A blanket googleapis.com once also swallowed the fonts; they are local now,
+// but the list stays specific so nothing static is ever excluded by accident.)
 const NEVER = [/firebaseio\\.com/, /firebasedatabase\\.app/,
                /identitytoolkit\\.googleapis\\.com/, /securetoken\\.googleapis\\.com/,
                /firebasestorage\\.googleapis\\.com/, /firebaseapp\\.com\\/__\\/auth/];
@@ -306,6 +311,12 @@ self.addEventListener('fetch', e => {
 });
 ''' % ver
 
+    vend = vendored_files()
+    sw = sw.replace('__VENDORED__', json.dumps(['./' + v for v in vend]))
+    for rel in vend:
+        dst = os.path.join(out_dir, rel)
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        open(dst, 'wb').write(_vendor(rel))
     os.makedirs(os.path.join(out_dir, 'icons'), exist_ok=True)
     open(os.path.join(out_dir, 'index.html'), 'w', encoding='utf-8').write(lb)
     open(os.path.join(out_dir, 'manifest.webmanifest'), 'w', encoding='utf-8').write(manifest)

@@ -4,8 +4,8 @@
     python3 tools/make_icons.py                 # Archive  -> apps/archive/icons/
     python3 tools/make_icons.py --app=labbook   # Labbook  -> apps/labbook/icons/
 
-Each app's icon is its own header glyph on its own --brand colour, so the home-screen icon and
-the app agree. Only needed if a glyph or an accent changes; the PNGs are committed, because a
+Archive's icon is its header glyph on its --brand colour, so the home-screen icon and the app agree; Labbook's is its own
+drawing (labbook_icon below), the same notebook with the proportions worked out. Only needed if a glyph or an accent changes; the PNGs are committed, because a
 build that generates them would fail on a machine without Pillow.
 Requires Pillow.
 """
@@ -92,19 +92,61 @@ def render(size, glyph_frac=0.56, ss=4, flat=False):
     return out.convert('RGB') if flat else out
 
 
+# ── Labbook: the notebook, refined ────────────────────────────────────────────────────────────────────
+# Same idea as before (flat brand square, a white outlined notebook with a spine and two title lines) drawn on a 1024
+# unit canvas with the proportions worked out rather than inherited from a 24 px glyph: a 444 x 596 notebook centred on
+# the square (it was a third of the width), one stroke weight for wall, spine and lines, the inner corner radius equal
+# to the outer minus the stroke so the wall is even all round, the spine inside the cover instead of poking out of it,
+# and the lines the same distance from the spine and the right wall. `rounded` is the "any" icon (transparent
+# corners); the flat ones carry no alpha because iOS and Android round them themselves.
+def labbook_icon(size, rounded, sc=1.0, ss=4):
+    bg = ACCENT[:3]
+    S = 1024 * ss
+    X = lambda v: (512 + (v - 512) * sc) * ss
+    L = lambda v: v * sc * ss
+    img = Image.new('RGB', (S, S), bg)
+    d = ImageDraw.Draw(img)
+    x0, y0, x1, y1, t = 290, 214, 734, 810, 46
+    d.rounded_rectangle([X(x0), X(y0), X(x1), X(y1)], radius=L(94), fill='white')
+    d.rounded_rectangle([X(x0 + t), X(y0 + t), X(x1 - t), X(y1 - t)], radius=L(48), fill=bg)
+    sx = x0 + t + 30
+    d.rectangle([X(sx), X(y0 + t - 2), X(sx + t), X(y1 - t + 2)], fill='white')
+    lx0, lx1 = sx + t + 40, x1 - t - 40
+    for yy in (y0 + t + 112, y0 + t + 112 + 92):
+        d.rounded_rectangle([X(lx0), X(yy), X(lx1), X(yy + t - 2)], radius=L(22), fill='white')
+    out = img.resize((size, size), Image.LANCZOS)
+    if rounded:
+        mk = Image.new('L', (size * 4, size * 4), 0)
+        ImageDraw.Draw(mk).rounded_rectangle([0, 0, size * 4 - 1, size * 4 - 1], radius=int(size * 4 * 0.225), fill=255)
+        mk = mk.resize((size, size), Image.LANCZOS)
+        o = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+        o.paste(out, (0, 0), mk)
+        return o
+    return out
+
+
 os.makedirs(OUT, exist_ok=True)
-for name, size, frac in [('icon-192.png', 192, 0.56),
-                         ('icon-512.png', 512, 0.56),
-                         ('apple-touch-icon.png', 180, 0.56),
-                         ('icon-maskable-512.png', 512, 0.40)]:
-    p = os.path.join(OUT, name)
-    render(size, frac).save(p, 'PNG', optimize=True)
-    print(p, os.path.getsize(p), 'bytes')
+if APP == 'labbook':
+    for name, im in [('icon-192.png', labbook_icon(192, True)),
+                     ('icon-512.png', labbook_icon(512, True)),
+                     ('apple-touch-icon.png', labbook_icon(180, False)),
+                     ('icon-maskable-512.png', labbook_icon(512, False))]:
+        p = os.path.join(OUT, name)
+        im.save(p, 'PNG', optimize=True)
+        print(p, os.path.getsize(p), 'bytes')
+else:
+    for name, size, frac in [('icon-192.png', 192, 0.56),
+                             ('icon-512.png', 512, 0.56),
+                             ('apple-touch-icon.png', 180, 0.56),
+                             ('icon-maskable-512.png', 512, 0.40)]:
+        p = os.path.join(OUT, name)
+        render(size, frac).save(p, 'PNG', optimize=True)
+        print(p, os.path.getsize(p), 'bytes')
 
 # The iOS app (mobile/, Capacitor): the 1024 px icon Xcode's asset catalog asks for.
 if APP == 'labbook':
     ios = os.path.join(ROOT, 'mobile', 'ios', 'App', 'App', 'Assets.xcassets', 'AppIcon.appiconset')
     if os.path.isdir(ios):
         p = os.path.join(ios, 'AppIcon-512@2x.png')
-        render(1024, 0.50, flat=True).save(p, 'PNG', optimize=True)
+        labbook_icon(1024, False).save(p, 'PNG', optimize=True)
         print(p, os.path.getsize(p), 'bytes')

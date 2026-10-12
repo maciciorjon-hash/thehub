@@ -7457,6 +7457,22 @@ from a signed-in laptop (Settings → About) — both are Jon's. Camera is the e
 `Info.plist` carries the camera/photo usage strings and `ITSAppUsesNonExemptEncryption=false`. `tools/make_icons.py
 --app=labbook` also writes the 1024 px flat icon.
 
+**The web app is self-contained too (same day).** `labbook-pwa` now takes the same vendored files as the native bundle
+(`_localize`, local `firebase/*.js`, `fonts/`, `xlsx.full.min.js`) and the service worker precaches every one of them, so the
+very first launch with no signal works (before, they were fetched once from CDNs and remembered). It keeps Google sign-in.
+PA9 builds it into a temp folder, visits once, goes offline, reloads: SDK, Plex and the Cells tab are there; proven by emptying
+the precache list. **Google sign-in does not work in the installed iOS web app** (the popup/redirect cannot return — Jon
+confirmed on his phone, 2026-10-12); email + password does, and the provider is enabled in the project (probed with a bad
+login: `INVALID_LOGIN_CREDENTIALS`, not `OPERATION_NOT_ALLOWED`). The password is added to the same Google user
+(`lbSetPhonePassword`, Settings → About → *A password for the phone*, from a signed-in laptop), so it is the same uid and the
+same `/journal` data.
+
+**The icon (2026-10-12).** Jon rejected a busier redesign (flask, elastic band, gradient) and wants Labbook's minimal
+style: flat `--brand` square, white outlined notebook, spine, two lines. `labbook_icon()` in `tools/make_icons.py` is that
+drawing with the proportions worked out — a 444 x 596 notebook centred (it was a third of the width), one stroke weight (46
+of 1024) for wall, spine and lines, inner radius = outer − stroke, spine inside the cover, even margins on the lines. The
+flat variants (apple-touch, maskable, the iOS 1024) carry no alpha; the "any" ones have rounded transparent corners.
+
 **Not verified, and why.** This Mac has only the Command Line Tools, no Xcode, so the Xcode project has been *generated*
 (`cap add ios`) but never compiled or run, and nothing was tried on a phone; `mobile/README.md` is the install path
 (Xcode, a Team, Developer Mode; a free Apple ID signs for 7 days, the 99 USD programme gives a year and TestFlight). The
