@@ -57,6 +57,8 @@
 //                           restores and deletes a look; the old names still work.
 //   RB38 the scale bar       The length is the longest 1-2-5 in a fifth of the width (nm from 100 Å); on screen it is that long; in the export it is a strip under
 //                           the cropped figure (the structure above it untouched), sized in pt from the dpi; ink, corner, and the perspective warning.
+//   RB39 the film            Preview plays the frames that are recorded, on the structure; the bar scrubs to any frame exactly; the preview starts from, and goes back to,
+//                           the user's view; a drag on the viewer ends it; Loop; a recorded frame carries the labels and the scale bar; sizes; the GIF is dithered.
 //   RB33 Echo mutants        Echo reads groups named like BRD4_Y97A as mutants of BRD4 and sends log2(DC50 ratio) per residue; Ribbon puts them
 //                           on the AlphaFold model, labelled, with side chains; a residue not in the model is named.
 //   RB18 measurements       Two atoms make a distance equal to their coordinates, three an angle at the middle one; a dashed line,
@@ -2252,6 +2254,58 @@ async function rb38() {
   await ctx.close();
 }
 
+
+// ── RB39 the film: preview, scrub, record what was previewed ──────────────────────────────────────
+async function rb39() {
+  const { ctx, pg, E, go } = await open({ tag: 'RB39 ' });
+  if (!(await has3d(pg))) { skipped.push('RB39 (3Dmol could not load from its CDN)'); await ctx.close(); return; }
+  await go('8CAM'); await sleep(400);
+  await E(() => { rbTab('figure'); rbOpenSec('anim'); document.getElementById('animKind').value = 'turn'; document.getElementById('animFmt').value = 'video'; document.getElementById('animSecs').value = '2'; document.getElementById('animSecs').dispatchEvent(new Event('input')); fitToView(); }); await sleep(900);
+  const view = () => E(() => viewer.getView().map(v => +v.toFixed(5)).join());
+  check('RB39', 'before anything is previewed the scrubber waits (nothing to scrub) and the time reads 0.0 / 2.0 s · 30 fps', await E(() => document.getElementById('animScrub').disabled && document.getElementById('animTime').textContent === '0.0 / 2.0 s · 30 fps'));
+  const v0 = await view();
+  await pg.click('#animPlay'); await sleep(500);
+  const mid = await E(() => ({ playing: document.getElementById('animPlay').getAttribute('aria-pressed'), label: document.getElementById('animPlay').textContent, k: _anim.k, n: filmFrames().length, scrub: +document.getElementById('animScrub').value, vw: viewer.getView().join() }));
+  check('RB39', 'Preview plays the film on the structure: the button says Pause, the frame advances, the view is that frame', mid.playing === 'true' && mid.label === 'Pause' && mid.k > 3 && mid.n === 60 && mid.scrub === mid.k, mid);
+  await pg.click('#animPlay'); await sleep(250);
+  const at = await E(() => ({ k: _anim.k, now: viewer.getView().join(), want: filmFrames()[_anim.k].join(), label: document.getElementById('animPlay').textContent }));
+  check('RB39', 'Pause stops on a frame, and the view is exactly that frame of the film', at.now === at.want && at.label === 'Preview', at);
+  // the scrubber: any frame, exactly
+  const sc = await E(() => { const s = document.getElementById('animScrub'), F = filmFrames(), r = []; for (const k of [0, 17, 59]) { s.value = k; s.dispatchEvent(new Event('input')); const v = viewer.getView(); r.push(v.every((x, i) => Math.abs(x - F[k][i]) < 1e-5) || { k, v: v.map(x => +x.toFixed(4)), want: F[k].map(x => +x.toFixed(4)), base: !!_anim.base }); } return r; });
+  check('RB39', 'dragging the bar puts the camera on that frame, first, middle and last', sc.every(x => x === true), sc);
+  // the same frames are recorded, from where the preview started (not from where it was paused)
+  const base = await E(() => ({ same: JSON.stringify(_anim.base) === JSON.stringify(filmFrames()[0]), recFrames: animFrames('turn', 2, 30, _anim.base).length, key: _anim.key.split('|')[0], baseHasView: !!_anim.base }));
+  check('RB39', 'recording would use the same frames, built from the view the preview started from', base.same && base.recFrames === 60 && base.baseHasView, base);
+  check('RB39', 'while it is set up the time shows the frame, and Back to my view is offered', await E(() => !document.getElementById('animReset').hidden && /^\d\.\d \/ 2\.0 s · 30 fps$/.test(document.getElementById('animTime').textContent)));
+  await pg.click('#animReset'); await sleep(300);
+  check('RB39', 'Back to my view puts the camera where it was before the preview', await view() === v0 && await E(() => !_anim.base && document.getElementById('animReset').hidden), { v0, now: await view() });
+  // taking the camera by hand ends the preview: that view is the new start
+  await pg.click('#animPlay'); await sleep(250);
+  const box = await pg.locator('#viewport').boundingBox();
+  await pg.mouse.move(box.x + 100, box.y + 100); await pg.mouse.down(); await pg.mouse.move(box.x + 140, box.y + 120, { steps: 3 }); await pg.mouse.up(); await sleep(300);
+  check('RB39', 'a drag on the viewer stops the preview and lets go of the old start', await E(() => !_anim.prev && !_anim.base && document.getElementById('animPlay').textContent === 'Preview'));
+  // loop
+  await E(() => { document.getElementById('animSecs').value = '1'; document.getElementById('animSecs').dispatchEvent(new Event('input')); document.getElementById('animLoop').checked = true; });
+  await pg.click('#animPlay'); await sleep(1700);
+  check('RB39', 'with Loop on it goes round again; with it off it stops at the end', await E(() => !!_anim.prev) && await (async () => { await pg.click('#animPlay'); await E(() => { document.getElementById('animLoop').checked = false; _anim.k = 0; }); await pg.click('#animPlay'); await sleep(1500); return E(() => !_anim.prev && _anim.k === filmFrames().length - 1); })());
+  await E(() => filmReset(true));
+  // what is in the file
+  await E(() => { document.getElementById('animSize').value = 'auto'; document.getElementById('animFmt').value = 'gif'; state.bg = 'white'; applyBackground(); state.scalebar = true; state.projection = 'orthographic'; applyProjection(); state.residueLabels.push({ chain: 'A', resi: 20, resn: 'ALA', text: 'ALA 20' }); state.chainLabels.A = 'Chain A'; renderLabelTags(); });
+  await sleep(400);
+  const comp = await E(() => { const cv = document.querySelector('#viewport canvas'), mk = (labels, bar) => { state.exportLabels = labels; state.scalebar = bar; const f = document.createElement('canvas'); f.width = 480; f.height = Math.round(cv.height * 480 / cv.width); filmComposite(f, cv, { len: 0 }); return f.getContext('2d').getImageData(0, 0, f.width, f.height).data; };
+    const diff = (a, b, x0, y0, x1, y1, w) => { let n = 0; for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) { const i = (y * w + x) * 4; if (Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2]) > 60) n++; } return n; };
+    const plain = mk(false, false), lab = mk(true, false), bar = mk(false, true), W = 480, H = Math.round(cv.height * 480 / cv.width);
+    return { labels: diff(plain, lab, 0, 0, W, H, W), barBottomRight: diff(plain, bar, Math.round(W * 0.6), Math.round(H * 0.85), W, H, W), barElsewhere: diff(plain, bar, 0, 0, W, Math.round(H * 0.8), W), w: W, h: H }; });
+  check('RB39', 'a frame of the film carries the labels and the scale bar (the bare WebGL canvas used to be recorded)', comp.labels > 30 && comp.barBottomRight > 20 && comp.barElsewhere === 0, comp);
+  const sizes = await E(() => { const cv = document.querySelector('#viewport canvas'), r = {}; for (const [v, f] of [['auto', 'gif'], ['auto', 'video'], ['960', 'video'], ['screen', 'gif']]) { document.getElementById('animSize').value = v; const d = filmSize(cv, f); r[v + '/' + f] = d.w + 'x' + d.h + (d.w % 2 === 0 && d.h % 2 === 0 ? '' : ' ODD'); } r.canvas = cv.width + 'x' + cv.height; return r; });
+  check('RB39', 'the size is 480 px for a GIF, the screen for a video, or the width asked for, always with even sides', /^480x\d+$/.test(sizes['auto/gif']) && !/ODD/.test(JSON.stringify(sizes)) && sizes['auto/video'].split('x')[0] === String(sizes.canvas.split('x')[0] % 2 ? sizes.canvas.split('x')[0] - 1 : sizes.canvas.split('x')[0]) && /^960x/.test(sizes['960/video']), sizes);
+  // the GIF is dithered
+  const dith = await E(() => { const w = 64, h = 32, px = new Uint8ClampedArray(w * h * 4); for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = (y * w + x) * 4, v = 100 + x * 1.1; px[i] = v; px[i + 1] = v; px[i + 2] = v; px[i + 3] = 255; }
+    const bytes = gifEncode([px], w, h, 5, true), plain = gifEncode([px], w, h, 5, false); return { differs: bytes.length !== plain.length || bytes.some((b, i) => b !== plain[i]) }; });
+  check('RB39', 'a film GIF is dithered (a smooth gradient bands in 6×7×6 colours), the plain encoder stays exact', dith.differs, dith);
+  await ctx.close();
+}
+
 // ── RB31 undo, click modes, views, films, figure sizes ─────────────────────────────────────
 async function rb31() {
   const { ctx, pg, E, go } = await open({ tag: 'RB31 ' });
@@ -2309,13 +2363,13 @@ async function rb31() {
     const b = gifEncode([px], w, h, 5), img = new Image(); img.src = URL.createObjectURL(new Blob([b], { type: 'image/gif' })); await img.decode(); const c = document.createElement('canvas'); c.width = w; c.height = h; const x = c.getContext('2d'); x.drawImage(img, 0, 0); const d = x.getImageData(0, 0, w, h).data; let bad = 0;
     for (let i = 0; i < w * h; i++) { const r = Math.round(px[i * 4] / 51) * 51, g = Math.round(Math.round(px[i * 4 + 1] / 42.5) * 255 / 6), bb = Math.round(px[i * 4 + 2] / 51) * 51; if (Math.abs(d[i * 4] - r) > 1 || Math.abs(d[i * 4 + 1] - g) > 1 || Math.abs(d[i * 4 + 2] - bb) > 1) bad++; } return bad; });
   check('RB31', 'the GIF encoder survives a full dictionary: 120,000 random pixels decode to exactly what was encoded', dec === 0, dec);
-  await E(() => { state.bg = 'transparent'; applyBackground(); const s0 = MediaRecorder.prototype.start; MediaRecorder.prototype.start = function (...a) { window.__recBg = viewer.pngURI(); return s0.apply(this, a); }; });
+  await E(() => { state.bg = 'transparent'; applyBackground(); const s0 = MediaRecorder.prototype.start; MediaRecorder.prototype.start = function (...a) { window.__recC = [...window.__filmCanvas.getContext('2d').getImageData(2, 2, 1, 1).data]; return s0.apply(this, a); }; });
   await E(() => { document.getElementById('animFmt').value = 'video'; document.getElementById('animKind').value = 'rock'; });
   const vid = await Promise.all([pg.waitForEvent('download', { timeout: 60000 }), pg.click('#animGo')]).then(([d]) => d).catch(() => null);
   check('RB31', 'Record as video downloads a video file', !!vid && /\.(webm|mp4)$/.test(vid.suggestedFilename()), vid && vid.suggestedFilename());
   check('RB31', 'and the camera is back where it was', await E(() => !_anim.on));
   const corner = async uri => E(async u => { const img = new Image(); img.src = u; await img.decode(); const c = document.createElement('canvas'); c.width = img.width; c.height = img.height; const x = c.getContext('2d'); x.drawImage(img, 0, 0); return [...x.getImageData(2, 2, 1, 1).data]; }, uri);
-  const recC = await corner(await E(() => window.__recBg)), afterC = await corner(await E(() => viewer.pngURI()));
+  const recC = await E(() => window.__recC), afterC = await corner(await E(() => viewer.pngURI()));
   check('RB31', 'a transparent background is recorded on white (a video has no transparency, and it came out black), then put back', recC[3] === 255 && recC[0] > 240 && afterC[3] === 0 && /on white/.test(await E(() => document.getElementById('animStatus').textContent)), { recC, afterC });
   // figure sizes
   const fs = await E(() => { state.figSize = '1col'; _exOpts.res = '300'; const a = renderExport().width; state.figSize = '2col'; _exOpts.res = '600'; const b = renderExport().width; state.figSize = 'free'; return { a, b }; });
@@ -2414,7 +2468,7 @@ async function rb33() {
   await r.ctx.close();
 }
 
-const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20], ['RB21', rb21], ['RB22', rb22], ['RB23', rb23], ['RB24', rb24], ['RB25', rb25], ['RB26', rb26], ['RB27', rb27], ['RB28', rb28], ['RB29', rb29], ['RB30', rb30], ['RB31', rb31], ['RB32', rb32], ['RB33', rb33], ['RB34', rb34], ['RB35', rb35], ['RB36', rb36], ['RB37', rb37], ['RB38', rb38]];
+const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20], ['RB21', rb21], ['RB22', rb22], ['RB23', rb23], ['RB24', rb24], ['RB25', rb25], ['RB26', rb26], ['RB27', rb27], ['RB28', rb28], ['RB29', rb29], ['RB30', rb30], ['RB31', rb31], ['RB32', rb32], ['RB33', rb33], ['RB34', rb34], ['RB35', rb35], ['RB36', rb36], ['RB37', rb37], ['RB38', rb38], ['RB39', rb39]];
 const port = await freePort();
 const srv = spawn('python3', ['-m', 'http.server', String(port), '--bind', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });
 base = `http://127.0.0.1:${port}/`;

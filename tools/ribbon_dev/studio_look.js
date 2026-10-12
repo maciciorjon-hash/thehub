@@ -126,12 +126,12 @@ function drawAxes(){
 // 100 Å, with a thin space before the unit). It used to be chosen to be 50–150 *screen* pixels, so its printed size depended on the
 // window and the crop, and drawn before the crop, so the crop took the corner it sat in as part of the structure.
 var SB_LENS=[0.1,0.2,0.5,1,2,5,10,20,50,100,200,500,1000,2000,5000];
+function scaleBarLabel(L){ var big=L>=100, v=big?L/10:L; return (Math.abs(v-Math.round(v))<1e-9?String(Math.round(v)):String(+v.toFixed(2)))+' '+(big?'nm':'Å'); }
 function scaleBarSpec(ppa,widthPx,frac){
   if(!(ppa>0)||!(widthPx>0)) return null;
   var max=(frac||0.22)*widthPx, L=SB_LENS[0], i;
   for(i=0;i<SB_LENS.length;i++) if(SB_LENS[i]*ppa<=max) L=SB_LENS[i];
-  var big=L>=100, v=big?L/10:L;
-  return {len:L,px:L*ppa,label:(Math.abs(v-Math.round(v))<1e-9?String(Math.round(v)):String(+v.toFixed(2)))+' '+(big?'nm':'Å')};
+  return {len:L,px:L*ppa,label:scaleBarLabel(L)};
 }
 function scaleMeasure(){   // pixels per Å at the middle of the structure (exact there; in perspective nearer parts are larger)
   if(!viewer||!currentModel) return null;

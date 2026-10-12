@@ -7697,7 +7697,18 @@ commit and one invariant each; each step below is added when it lands.
   export dpi (7 pt label, 0.9 pt line). The pixels per Å are measured at the middle of the structure on the live view, times the
   export magnification, times the final resample. Controls: Ink (Auto/Black/White), Corner (Right/Left), and — in perspective — a
   hint that the bar is exact only at the middle, with *Set perspective to none*. Command `scalebar black|white|auto|left|right`.
-  `window.__sbLast` is what the last export drew, for the invariant. **RB38**. Films still carry no bar (B6).
+  `window.__sbLast` is what the last export drew, for the invariant. **RB38**.
+- **B6 — the film can be previewed, and carries what the picture carries.** `filmFrames()` builds the frames once, from the view
+  the preview started from (`_anim.base`), and the same frames are **previewed** (Preview/Pause, a scrubber that puts the camera on any
+  frame exactly, Loop, time and fps, *Back to my view*), and **recorded** (`animRun`). Taking the camera by hand, or a new structure,
+  lets go of the base. Recording composites each frame (`filmComposite`) onto its own canvas — the WebGL canvas scaled to the chosen
+  size on the picture's background, then the labels (as in an export) and the scale bar (the length chosen on the first frame, drawn
+  from the same `scaleBarSpec` rules) — and records *that* canvas; it used to record the bare WebGL canvas, so no film had a label or
+  a bar, and a transparent background was swapped to white on the viewer itself (now only in the file). Size: automatic (GIF 480, video
+  as on screen), or 480/960/1280/1920 px wide, always even sides. The GIF encoder dithers (4×4 ordered) when asked, since a smooth
+  surface bands in a 6×7×6 cube; with it off it stays exact (RB31 decodes 120,000 random pixels to what was encoded). Preview drops
+  the occlusion look while it plays (`_cLow`). Not in the film: the colour key. **RB39** (it found the scrubber reading its own value
+  after Pause had redrawn it).
 
 ## Labbook on a laptop, audited (2026-10-12)
 

@@ -206,6 +206,8 @@ input[type=number].inp::-webkit-outer-spin-button,input[type=number].inp::-webki
 .empty-note{font-size:var(--fs-2);color:var(--text3);line-height:1.5;}
 #ovBody{display:flex;flex-direction:column;gap:12px;}
 textarea.inp{height:auto;padding:8px 10px;resize:vertical;line-height:1.45;font-size:var(--fs-2);}
+.anim-prev input[type=range]{flex:1;min-width:0;}
+.anim-prev .hint{white-space:nowrap;}
 .if-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 84px;gap:8px;align-items:end;}
 .hl-form{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;}
 .hl-form .check{grid-column:1/-1;}
@@ -1140,8 +1142,11 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
           <div class="fld"><label for="animFmt">As</label><select id="animFmt" class="inp"><option value="video">Video</option><option value="gif">GIF</option></select></div>
           <div class="fld"><label for="animSecs">Seconds</label><input type="number" id="animSecs" class="inp sans" min="1" max="30" step="1" value="6"></div>
         </div>
+        <div class="fld"><label for="animSize">Size</label><select id="animSize" class="inp"><option value="auto">Automatic (GIF 480 px, video as on screen)</option><option value="480">480 px wide</option><option value="960">960 px wide</option><option value="1280">1280 px wide</option><option value="1920">1920 px wide</option><option value="screen">As on screen</option></select></div>
+        <div class="row anim-prev"><button type="button" class="btn" id="animPlay" aria-pressed="false">Preview</button><input type="range" id="animScrub" min="0" max="0" step="1" value="0" aria-label="Position in the film" disabled><span class="hint" id="animTime">0.0 / 6.0 s</span></div>
+        <div class="row"><label class="check"><input type="checkbox" id="animLoop" checked> Loop the preview</label><button type="button" class="link" id="animReset" hidden>Back to my view</button></div>
         <div class="row"><button type="button" class="btn primary" id="animGo">Record</button><button type="button" class="btn" id="animStop" hidden>Stop</button><span class="hint" id="animStatus"></span></div>
-        <div class="hint">A video is MP4 in Safari and WebM in Chrome (both play in PowerPoint and Keynote). A GIF is smaller and plays anywhere, at 480 px.</div>
+        <div class="hint">Preview plays the film on the structure itself, exactly the frames that are recorded; drag the bar to stop on one. The labels and the scale bar that are on the picture are in the film. A video is MP4 in Safari and WebM in Chrome (both play in PowerPoint and Keynote); a GIF is smaller, plays anywhere, and is dithered so a smooth surface does not band.</div>
       </div>
     </details>
 
@@ -5226,7 +5231,7 @@ function selActClick(ev){
 // the structure → the sequence
 function rbOnHover(atom){ _inspAtom=atom; inspectorPaint(); if(SEQ.on) seqMarkHover(rKeyOf(atom)); }
 function rbOnHoverEnd(){ _inspAtom=null; inspectorPaint(); seqMarkHover(null); }
-function rbOnModel(){ if(typeof analyseReset==='function') analyseReset(); if(typeof undoReset==='function') undoReset(); if(typeof renderViews==='function') setTimeout(renderViews,0); if(typeof analyseOnModel==='function') setTimeout(analyseOnModel,0); _sel={}; _selN=0; _selAnchor=null; _ligAtomsCache=null; _inspAtom=null; seqBuild(); seqRender(); inspectorPaint(); }
+function rbOnModel(){ if(typeof filmReset==='function') filmReset(false); if(typeof analyseReset==='function') analyseReset(); if(typeof undoReset==='function') undoReset(); if(typeof renderViews==='function') setTimeout(renderViews,0); if(typeof analyseOnModel==='function') setTimeout(analyseOnModel,0); _sel={}; _selN=0; _selAnchor=null; _ligAtomsCache=null; _inspAtom=null; seqBuild(); seqRender(); inspectorPaint(); }
 function rbAfterRecolor(){ seqRecolor(); }
 function rbExtraRows(){
   return _selN?[{k:'sel',t:'Selection',m:selDescribe(),on:true,go:selFocus}]:[];
@@ -5910,12 +5915,12 @@ function drawAxes(){
 // 100 Å, with a thin space before the unit). It used to be chosen to be 50–150 *screen* pixels, so its printed size depended on the
 // window and the crop, and drawn before the crop, so the crop took the corner it sat in as part of the structure.
 var SB_LENS=[0.1,0.2,0.5,1,2,5,10,20,50,100,200,500,1000,2000,5000];
+function scaleBarLabel(L){ var big=L>=100, v=big?L/10:L; return (Math.abs(v-Math.round(v))<1e-9?String(Math.round(v)):String(+v.toFixed(2)))+' '+(big?'nm':'Å'); }
 function scaleBarSpec(ppa,widthPx,frac){
   if(!(ppa>0)||!(widthPx>0)) return null;
   var max=(frac||0.22)*widthPx, L=SB_LENS[0], i;
   for(i=0;i<SB_LENS.length;i++) if(SB_LENS[i]*ppa<=max) L=SB_LENS[i];
-  var big=L>=100, v=big?L/10:L;
-  return {len:L,px:L*ppa,label:(Math.abs(v-Math.round(v))<1e-9?String(Math.round(v)):String(+v.toFixed(2)))+' '+(big?'nm':'Å')};
+  return {len:L,px:L*ppa,label:scaleBarLabel(L)};
 }
 function scaleMeasure(){   // pixels per Å at the middle of the structure (exact there; in perspective nearer parts are larger)
   if(!viewer||!currentModel) return null;
@@ -6592,11 +6597,13 @@ function renderViews(){
   el.querySelectorAll('.vw-del').forEach(function(b){ b.addEventListener('click',function(){ L.splice(+b.dataset.i,1); renderViews(); undoNote(); }); });
 }
 
-// ── Animation: turn, rock, or travel through the views — as a video or a GIF ─────────────────
-// The canvas is recorded as it is drawn (MediaRecorder: WebM in Chrome, MP4 in Safari); a GIF is made frame by frame here.
-var _anim={on:false};
-function animFrames(kind,secs,fps){   // the views, in order, that make the film
-  var v0=viewer.getView(), N=Math.max(2,Math.round(secs*fps)), out=[], i;
+// ── Film: turn, rock, or travel through the views — previewed live, then recorded as a video or a GIF ──────────
+// The frames are made once (from the view the preview started from) and the same frames are previewed, scrubbed and recorded.
+// Recording composites every frame onto its own canvas — the structure, the labels and the scale bar, as in a picture — so what
+// the preview shows is in the file; it used to record the bare WebGL canvas.
+var _anim={on:false,prev:null,base:null,frames:null,key:'',k:0};
+function animFrames(kind,secs,fps,base){   // the views, in order, that make the film
+  var v0=base||viewer.getView(), N=Math.max(2,Math.round(secs*fps)), out=[], i;
   function rotY(v,deg){ var a=deg*Math.PI/180, q=[0,Math.sin(a/2),0,Math.cos(a/2)], p=v.slice(4); // q ⊗ p
     var r=[q[3]*p[0]+q[0]*p[3]+q[1]*p[2]-q[2]*p[1],q[3]*p[1]-q[0]*p[2]+q[1]*p[3]+q[2]*p[0],q[3]*p[2]+q[0]*p[1]-q[1]*p[0]+q[2]*p[3],q[3]*p[3]-q[0]*p[0]-q[1]*p[1]-q[2]*p[2]];
     return v.slice(0,4).concat(r); }
@@ -6610,46 +6617,111 @@ function animFrames(kind,secs,fps){   // the views, in order, that make the film
   }
   return out;
 }
+function _filmFps(){ return $('animFmt').value==='gif'?15:30; }
+function _filmSecs(){ return Math.max(1,Math.min(30,parseFloat($('animSecs').value)||6)); }
+function filmFrames(){   // the frames of the film as it is set up now
+  var kind=$('animKind').value, fps=_filmFps(), secs=_filmSecs(), base=_anim.base||viewer.getView();
+  var vk=kind==='views'?JSON.stringify(viewsList().map(function(r){ return r.view; })):base.join();
+  var key=[kind,fps,secs,vk].join('|');
+  if(!_anim.frames||_anim.key!==key){ _anim.frames=animFrames(kind,secs,fps,base); _anim.key=key; }
+  return _anim.frames;
+}
+function filmSync(){
+  var sc=$('animScrub'); if(!sc) return;
+  var F=_anim.base&&currentModel&&viewer?filmFrames():null, fps=_filmFps(), secs=_filmSecs(), k=F?Math.min(_anim.k,F.length-1):0;
+  sc.disabled=!F||_anim.on; sc.max=F?F.length-1:0; sc.value=k;
+  $('animTime').textContent=(F?(k/fps).toFixed(1):'0.0')+' / '+secs.toFixed(1)+' s · '+fps+' fps';
+  $('animPlay').textContent=_anim.prev?'Pause':'Preview'; $('animPlay').setAttribute('aria-pressed',_anim.prev?'true':'false'); $('animPlay').disabled=_anim.on;
+  $('animReset').hidden=!_anim.base;
+}
+function filmShow(k){
+  var F=filmFrames(); if(!F||!viewer) return;
+  k=Math.max(0,Math.min(F.length-1,Math.round(k))); _anim.k=k; rbCamStop();
+  viewer.setView(F[k]); decorUpdate(); filmSync();
+}
+function filmPause(){ if(_anim.prev){ cancelAnimationFrame(_anim.prev.raf); _anim.prev=null; } filmSync(); }
+function filmPlay(){
+  if(!currentModel||!viewer||_anim.on) return;
+  if(_anim.prev){ filmPause(); return; }
+  if(!_anim.base) _anim.base=viewer.getView();
+  var F=filmFrames(); if(!F){ _anim.base=null; showToast('Add at least two views for a fly-through.'); return; }
+  if(_spinning) toggleSpin(); rbCamHalt();
+  var fps=_filmFps(), loop=$('animLoop').checked, k0=_anim.k>=F.length-1?0:_anim.k, t0=performance.now()-k0/fps*1000, pv={raf:0};
+  _anim.prev=pv; filmSync();
+  (function tick(now){
+    if(_anim.prev!==pv) return;
+    var k=Math.floor((now-t0)/1000*fps);
+    if(k>=F.length){ if(loop){ t0=now; k=0; } else { _anim.k=F.length-1; filmPause(); return; } }
+    if(k!==_anim.k){ _cLow(); filmShow(k); }
+    pv.raf=requestAnimationFrame(tick);
+  })(performance.now());
+}
+// Back to the view it started from (or just let go of it, when the camera was moved by hand: that view is the new start).
+function filmReset(restore){
+  filmPause(); if(restore&&_anim.base&&viewer) try{ viewer.setView(_anim.base); viewer.render(); }catch(e){}
+  _anim.base=null; _anim.frames=null; _anim.key=''; _anim.k=0; filmSync();
+}
 function _animStatus(t){ var e=$('animStatus'); if(e) e.textContent=t||''; }
 function animStop(){ _anim.abort=true; }
+// One frame of the file: the WebGL canvas scaled to W×H on the picture's background, then the labels and the scale bar drawn on it.
+function filmComposite(fc,cv,sb){
+  var W=fc.width, H=fc.height, x=fc.getContext('2d',{willReadFrequently:true}), r=cv.getBoundingClientRect(), f=W/r.width;
+  x.fillStyle=state.bg==='dark'?'#13161e':'#ffffff'; x.fillRect(0,0,W,H);   // a video has no transparency: it is recorded on the background
+  x.imageSmoothingEnabled=true; x.imageSmoothingQuality='high'; x.drawImage(cv,0,0,W,H);
+  if(state.exportLabels) drawLabelsToCtx(x,f,r);
+  if(state.scalebar&&sb){ var m=scaleMeasure(); if(m){ var ppa=m.ppa*f; if(!sb.len){ var sp=scaleBarSpec(ppa,W,0.22); sb.len=sp&&sp.len; }
+    if(sb.len){ var px=sb.len*ppa, pad=Math.round(W*0.03), lw=Math.max(2,Math.round(W/450)), cap=Math.round(lw*2.6), fs=Math.max(10,Math.round(W/70)), x1=W-pad, x0=x1-px, yb=H-pad-cap, ink=_sbInk(state.bg==='dark'?'dark':'white');
+      x.strokeStyle=ink; x.lineWidth=lw; x.lineCap='butt'; x.beginPath(); x.moveTo(x0,yb); x.lineTo(x1,yb); x.moveTo(x0,yb-cap); x.lineTo(x0,yb+cap); x.moveTo(x1,yb-cap); x.lineTo(x1,yb+cap); x.stroke();
+      x.fillStyle=ink; x.font='600 '+fs+'px '+_labelFontFamily(); x.textAlign='center'; x.textBaseline='alphabetic'; x.fillText(scaleBarLabel(sb.len),(x0+x1)/2,yb-cap-Math.round(fs*0.35)); } } }
+  return fc;
+}
+function filmSize(cv,fmt){
+  var v=$('animSize').value, W=v==='screen'?cv.width:(v==='auto'?(fmt==='gif'?480:cv.width):Math.min(+v||cv.width,cv.width*2));
+  W=Math.max(64,Math.round(W)); if(fmt!=='gif'&&v==='auto') W=cv.width; var H=Math.round(cv.height*W/cv.width);
+  return {w:W-(W%2), h:H-(H%2)};   // a video wants even sides
+}
 function animRun(){
   if(!currentModel||!viewer||_anim.on) return;
-  var kind=$('animKind').value, fmt=$('animFmt').value, secs=Math.max(1,Math.min(30,parseFloat($('animSecs').value)||6)), fps=fmt==='gif'?15:30;
-  var frames=animFrames(kind,secs,fps); if(!frames){ showToast('Add at least two views for a fly-through.'); return; }
-  var cv=$('viewport').querySelector('canvas'), v0=viewer.getView(), wasSpin=_spinning; if(wasSpin){ toggleSpin(); rbCamHalt(); }
-  _anim={on:true,abort:false}; $('animGo').hidden=true; $('animStop').hidden=false;
-  var selWas=rbExportBegin();
-  function done(msg){ _anim.on=false; if(typeof applyBackground==='function') applyBackground(); $('animGo').hidden=false; $('animStop').hidden=true; rbExportEnd(selWas); try{ viewer.setView(v0); viewer.render(); }catch(e){} if(wasSpin) toggleSpin(); _animStatus(msg); }
+  filmPause();
+  var kind=$('animKind').value, fmt=$('animFmt').value, secs=_filmSecs(), fps=_filmFps();
+  var frames=animFrames(kind,secs,fps,_anim.base||viewer.getView()); if(!frames){ showToast('Add at least two views for a fly-through.'); return; }
+  var cv=$('viewport').querySelector('canvas'), v0=_anim.base||viewer.getView(), wasSpin=_spinning; if(wasSpin){ toggleSpin(); rbCamHalt(); }
+  _anim.on=true; _anim.abort=false; $('animGo').hidden=true; $('animStop').hidden=false; filmSync();
+  var selWas=rbExportBegin(); state.exportLabels=$('exLabels')?$('exLabels').checked:true;
+  function done(msg){ _anim.on=false; $('animGo').hidden=false; $('animStop').hidden=true; rbExportEnd(selWas); try{ viewer.setView(v0); viewer.render(); }catch(e){} if(wasSpin) toggleSpin(); _animStatus(msg); filmSync(); }
   var name=(currentPdbId||'structure').replace(/[\\/:*?"<>|\s]+/g,'_')+'_'+kind;
+  var dims=filmSize(cv,fmt), fc=document.createElement('canvas'); fc.width=dims.w; fc.height=dims.h; window.__filmCanvas=fc;
+  var sb={len:0}, w=dims.w, h=dims.h;
+  var onWhite=state.bg==='transparent'?' · a transparent background is recorded on white':'';
   if(fmt==='gif'){
-    var W=cv.width, H=cv.height, sc=Math.min(1,480/Math.max(W,H)), w=Math.round(W*sc), h=Math.round(H*sc), gifF=[], i=0, off=document.createElement('canvas'); off.width=w; off.height=h; var ox=off.getContext('2d',{willReadFrequently:true});
+    var gifF=[], i=0;
     (function step(){
       if(_anim.abort){ done('Stopped.'); return; }
-      if(i>=frames.length){ _animStatus('Encoding the GIF…'); setTimeout(function(){ var bytes=gifEncode(gifF,w,h,Math.round(100/fps)); _saveBlob(new Blob([bytes],{type:'image/gif'}),name+'.gif'); done('Saved a GIF: '+frames.length+' frames, '+(bytes.length/1e6).toFixed(1)+' MB.'); },20); return; }
-      viewer.setView(frames[i]); viewer.render();
-      ox.fillStyle=state.bg==='dark'?'#13161e':'#ffffff'; ox.fillRect(0,0,w,h); ox.drawImage(cv,0,0,w,h); gifF.push(ox.getImageData(0,0,w,h).data);
+      if(i>=frames.length){ _animStatus('Encoding the GIF…'); setTimeout(function(){ var bytes=gifEncode(gifF,w,h,Math.round(100/fps),true); _saveBlob(new Blob([bytes],{type:'image/gif'}),name+'.gif'); done('Saved a GIF: '+frames.length+' frames, '+w+' × '+h+', '+(bytes.length/1048576).toFixed(1)+' MB'+onWhite+'.'); },30); return; }
+      viewer.setView(frames[i]); viewer.render(); filmComposite(fc,cv,sb); gifF.push(fc.getContext('2d',{willReadFrequently:true}).getImageData(0,0,w,h).data);
       i++; _animStatus('Frame '+i+' of '+frames.length); requestAnimationFrame(step);
     })();
     return;
   }
-  if(!cv.captureStream||!window.MediaRecorder){ done('This browser cannot record video. Choose GIF.'); return; }
+  if(!fc.captureStream||!window.MediaRecorder){ done('This browser cannot record video. Choose GIF.'); return; }
   var mime=['video/mp4;codecs=avc1','video/webm;codecs=vp9','video/webm'].filter(function(m){ try{ return MediaRecorder.isTypeSupported(m); }catch(e){ return false; } })[0];
   if(!mime){ done('This browser cannot record video. Choose GIF.'); return; }
-  var onWhite=state.bg==='transparent'; if(onWhite){ _setViewerBg('white'); viewer.render(); }   // a video has no transparency: drawn as it is, the empty background records as black
-  var stream=cv.captureStream(fps), rec=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:8e6}), chunks=[], k=0, t0=performance.now();
+  viewer.setView(frames[0]); viewer.render(); filmComposite(fc,cv,sb);
+  var stream=fc.captureStream(fps), rec=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:Math.round(Math.max(6e6,w*h*fps*0.12))}), chunks=[], k=0, t0=performance.now();
   rec.ondataavailable=function(e){ if(e.data&&e.data.size) chunks.push(e.data); };
-  rec.onstop=function(){ if(_anim.abort&&!chunks.length){ done('Stopped.'); return; } var ext=/mp4/.test(mime)?'mp4':'webm'; var blob=new Blob(chunks,{type:mime.split(';')[0]}); _saveBlob(blob,name+'.'+ext); done('Saved '+(ext==='mp4'?'an':'a')+' '+ext.toUpperCase()+' video: '+secs+' s'+(onWhite?', on white (a video cannot be transparent)':'')+'.'); };
+  rec.onstop=function(){ if(_anim.abort&&!chunks.length){ done('Stopped.'); return; } var ext=/mp4/.test(mime)?'mp4':'webm'; var blob=new Blob(chunks,{type:mime.split(';')[0]}); _saveBlob(blob,name+'.'+ext); done('Saved '+(ext==='mp4'?'an':'a')+' '+ext.toUpperCase()+': '+secs+' s, '+w+' × '+h+onWhite+'.'); };
   rec.start();
   (function tick(){
     if(_anim.abort){ rec.stop(); return; }
     var want=Math.floor((performance.now()-t0)/1000*fps);
     if(want>=frames.length){ setTimeout(function(){ rec.stop(); },120); return; }
-    if(want!==k){ k=want; viewer.setView(frames[k]); viewer.render(); _animStatus('Recording · '+Math.round(k/fps*10)/10+' / '+secs+' s'); }
+    if(want!==k){ k=want; viewer.setView(frames[k]); viewer.render(); filmComposite(fc,cv,sb); _animStatus('Recording · '+Math.round(k/fps*10)/10+' / '+secs+' s'); }
     requestAnimationFrame(tick);
   })();
 }
 // A small GIF89a encoder: a 6×7×6 colour cube, LZW, one frame after another. Enough for a turning protein on a flat background.
-function gifEncode(frames,w,h,delay){
+var BAYER4=[0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5];
+function gifEncode(frames,w,h,delay,dither){
   var out=[], push=function(){ for(var i=0;i<arguments.length;i++) out.push(arguments[i]); }, u16=function(v){ push(v&255,(v>>8)&255); };
   'GIF89a'.split('').forEach(function(c){ push(c.charCodeAt(0)); }); u16(w); u16(h); push(0xF7,0,0);   // global table of 256
   for(var r=0;r<6;r++) for(var g=0;g<7;g++) for(var b=0;b<6;b++) push(Math.round(r*255/5),Math.round(g*255/6),Math.round(b*255/5));
@@ -6659,7 +6731,10 @@ function gifEncode(frames,w,h,delay){
     push(0x21,0xF9,4,0,delay&255,(delay>>8)&255,0,0);
     push(0x2C); u16(0); u16(0); u16(w); u16(h); push(0);
     var idx=new Uint8Array(w*h);
-    for(var i=0,j=0;i<idx.length;i++,j+=4){ idx[i]=Math.round(px[j]/51)*42+Math.round(px[j+1]/42.5)*6+Math.round(px[j+2]/51); }
+    if(dither){ for(var yy=0,i2=0;yy<h;yy++) for(var xx=0;xx<w;xx++,i2++){ var jj=i2*4, t=(BAYER4[(yy&3)*4+(xx&3)]-7.5)/16;
+        var rr=Math.max(0,Math.min(255,px[jj]+t*51)), gg=Math.max(0,Math.min(255,px[jj+1]+t*42.5)), bb=Math.max(0,Math.min(255,px[jj+2]+t*51));
+        idx[i2]=Math.round(rr/51)*42+Math.round(gg/42.5)*6+Math.round(bb/51); } }
+    else for(var i=0,j=0;i<idx.length;i++,j+=4){ idx[i]=Math.round(px[j]/51)*42+Math.round(px[j+1]/42.5)*6+Math.round(px[j+2]/51); }
     var minCode=8; push(minCode); var bytes=lzw(idx,minCode), k=0;
     while(k<bytes.length){ var n=Math.min(255,bytes.length-k); push(n); for(var q=0;q<n;q++) push(bytes[k+q]); k+=n; }
     push(0);
@@ -6690,6 +6765,14 @@ function moreWire(){
   $('viewAdd').addEventListener('click',function(){ var r=viewAdd($('viewName').value); $('viewName').value=''; if(r) showToast('Saved “'+r.name+'”.'); });
   $('viewName').addEventListener('keydown',function(e){ if(e.key==='Enter') $('viewAdd').click(); });
   $('animGo').addEventListener('click',animRun); $('animStop').addEventListener('click',animStop);
+  $('animPlay').addEventListener('click',filmPlay); $('animReset').addEventListener('click',function(){ filmReset(true); });
+  $('animScrub').addEventListener('input',function(e){ var k=+e.target.value; filmPause(); if(!_anim.base&&viewer&&currentModel) _anim.base=viewer.getView(); filmShow(k); });   // read the bar first: pausing re-draws it
+  ['animKind','animFmt','animSecs','animSize','animLoop'].forEach(function(id){ $(id).addEventListener('change',function(){ filmSync(); }); });
+  $('animSecs').addEventListener('input',filmSync);
+  var _vpEl=$('viewport');   // the camera taken by hand: that view is the new start
+  _vpEl.addEventListener('pointerdown',function(){ if(_anim.base&&!_anim.on) filmReset(false); },true);
+  _vpEl.addEventListener('wheel',function(){ if(_anim.base&&!_anim.on) filmReset(false); },{capture:true,passive:true});
+  filmSync();
   $('figSize').innerHTML=FIG_SIZES.map(function(f){ return '<option value="'+f.id+'">'+escapeHtml(f.n)+'</option>'; }).join('');
   $('figSize').addEventListener('change',function(e){ state.figSize=e.target.value; if(typeof updateExDim==='function') updateExDim(); });
   renderViews(); undoButtons();
