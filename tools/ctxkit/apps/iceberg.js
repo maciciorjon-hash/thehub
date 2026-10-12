@@ -19,6 +19,7 @@ ctxApp(function(e, t){
   { l: 'Bulk add (paste)…', f: 'openBulkAdd', when: function(){ return !!getCurrentBox(); } },
   { l: 'Print the box map', f: 'printBoxMap', when: function(){ return !!getCurrentBox(); } },
   { l: 'Box history', f: 'showBoxLog', when: function(){ return !!getCurrentBox(); } },
+  { l: 'Print this storage (every box, one sheet)', f: 'printCurrentStorageSheet' },
   { l: 'Export everything (.xlsx)', f: 'exportAllXLSX' },
   { l: 'Import (.xlsx / .csv)…', f: 'importXLSXBtn' },
   { l: 'Download the template', f: 'downloadTemplate' }

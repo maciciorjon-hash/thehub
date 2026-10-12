@@ -15,6 +15,12 @@
 //   F9  backed up first     the inventory as it was is put aside in IndexedDB before this version saves
 //   F10 one sheet           the printed box map is ONE A4 page for any box (5x5 … 13x13, 3 or 40 lines, no notes or twelve,
 //                           empty, dark theme), carries every vial's label, and uses its own light tones, not the theme's
+//   F11 tiles, not marbles  the live box draws rounded tiles (never circles), a filled one in its line's tone with its name and
+//                           passage, a free one dashed and naming its position; small tiles (phone, wide box) drop the text
+//   F12 one sheet, many     the rack / storage sheet is one A4 page for 0 … 60 boxes of any size (maps, or a list when there
+//                           are too many for a readable map) and does not clip its cards
+//   F13 export reads back   the .xlsx export (Overview + one table per storage) imports into an empty freezer with every
+//                           vial, kind, box size and position intact, and the Overview sheet is not mistaken for vials
 //
 //   node tools/iceberg_invariants.mjs [--only=F1,F4] [--file=apps/iceberg/iceberg.html]      exit 1 on any finding
 import { chromium } from 'playwright';
@@ -213,6 +219,89 @@ if (run('F10')) await guard('F10', async () => {
     await q.close();
   }
   p.errs.length ? bad('F10', 'errors: ' + p.errs.join(' | ')) : ok();
+  await p.context().close();
+});
+
+if (run('F11')) await guard('F11', async () => {
+  const BIG = JSON.parse(JSON.stringify(OLD));
+  const bx = BIG.storages.minus80.racks[0].boxes[0]; bx.rows = 9; bx.cols = 9;
+  const p = await open(BIG);
+  const r = await p.evaluate(() => {
+    openBoxDetail('minus80', 'r1', 'b1');
+    const w = [...document.querySelectorAll('#detail-body .well')], f = w.find(x => x.dataset.pos === 'A1'), e = w.find(x => x.dataset.pos === 'H8');
+    const cs = (x, ps) => getComputedStyle(x, ps);
+    return {
+      n: w.length, radius: cs(f).borderTopLeftRadius, eradius: cs(e).borderTopLeftRadius, w: f.getBoundingClientRect().width,
+      name: (f.querySelector('.well-nm') || {}).textContent, sub: (f.querySelector('.well-sb') || {}).textContent, bg: cs(f).backgroundColor,
+      epos: cs(e, '::after').content, eStyle: cs(e).borderTopStyle, small: document.querySelector('.well-grid').classList.contains('wg-sm'),
+      edge: cs(f, '::before').width,
+    };
+  });
+  r.n === 81 ? ok() : bad('F11', 'wells drawn: ' + r.n);
+  !/%/.test(r.radius) && parseFloat(r.radius) < r.w / 2 - 1 && parseFloat(r.eradius) < r.w / 2 - 1 ? ok() : bad('F11', 'a well is drawn as a circle: ' + r.radius + ' / ' + r.eradius + ' on ' + r.w + 'px');
+  r.name === 'HCT116, DCAF15 KO #15' && r.sub === 'P12' ? ok() : bad('F11', 'a filled tile does not carry its name and passage: ' + JSON.stringify([r.name, r.sub]));
+  r.bg && r.bg !== 'rgba(0, 0, 0, 0)' ? ok() : bad('F11', 'a filled tile has no tone');
+  /H8/.test(r.epos) && r.eStyle === 'dashed' ? ok() : bad('F11', 'a free tile is not a dashed slot naming its position: ' + JSON.stringify([r.epos, r.eStyle]));
+  r.edge === '4px' ? ok() : bad('F11', 'a filled tile has no edge in the stronger tone: ' + r.edge);
+  !r.small ? ok() : bad('F11', 'a 9-column box on a desktop is drawn without text');
+  await p.setViewportSize({ width: 390, height: 800 }); await p.evaluate(() => renderBoxDetail());
+  const m = await p.evaluate(() => ({ small: document.querySelector('.well-grid').classList.contains('wg-sm'), txt: [...document.querySelectorAll('#detail-body .well-nm')].some(x => x.getBoundingClientRect().width > 0) }));
+  m.small && !m.txt ? ok() : bad('F11', 'on a phone the tiles keep their text: ' + JSON.stringify(m));
+  p.errs.length ? bad('F11', 'errors: ' + p.errs.join(' | ')) : ok();
+  await p.context().close();
+});
+
+if (run('F12')) await guard('F12', async () => {
+  const p = await open(OLD);
+  const cases = [[0, 9, 9, 3], [1, 9, 9, 6], [3, 9, 9, 6], [8, 9, 9, 11], [10, 8, 12, 14], [24, 9, 9, 20], [60, 9, 9, 50], [12, 13, 13, 30]];
+  for (const [nb, R, C, L] of cases) {
+    const html = await p.evaluate(([nb, R, C, L]) => {
+      const racks = []; let n = 0;
+      for (let rk = 0; rk < Math.ceil(nb / 6); rk++) { const boxes = [];
+        for (let i = 0; i < 6 && boxes.length + rk * 6 < nb; i++) { const vials = {};
+          for (let r = 0; r < R; r++) for (let c = 1; c <= C; c++) { if (((r * 13 + c * 7 + i * 5) % 10) / 10 > 0.6) continue; vials[String.fromCharCode(65 + r) + c] = { cellLine: 'Line ' + ((r + c + i) % L) + ', KO #' + (c % 3), vialCount: 1 }; n++; }
+          boxes.push({ id: 'b' + rk + i, name: 'Box ' + (rk * 6 + i + 1) + ' with a long name', rows: R, cols: C, vials }); }
+        racks.push({ id: 'r' + rk, name: 'Shelf ' + (rk + 1), boxes }); }
+      return scopeSheetHTML('-80', 'Storage', racks, '2026-10-12', false);
+    }, [nb, R, C, L]);
+    const q = await p.context().newPage(); await q.setContent(html);
+    const pdf = await q.pdf({ preferCSSPageSize: true, printBackground: true });
+    const pages = (pdf.toString('latin1').match(/\/Type\s*\/Page[^s]/g) || []).length;
+    const t = await q.evaluate(() => { const pg = document.querySelector('.page'), m = document.querySelector('.map'); return { over: pg.scrollHeight > pg.clientHeight + 1, clip: m.scrollHeight > m.clientHeight + 1 }; });
+    const tag = `${nb} boxes ${R}x${C}/${L} lines`;
+    pages === 1 ? ok() : bad('F12', `${tag}: ${pages} pages`);
+    !t.over && !t.clip ? ok() : bad('F12', `${tag}: overflow ${t.over}, cards clipped ${t.clip}`);
+    await q.close();
+  }
+  p.errs.length ? bad('F12', 'errors: ' + p.errs.join(' | ')) : ok();
+  await p.context().close();
+});
+
+if (run('F13')) await guard('F13', async () => {
+  const ST = { v: 1, updated: 1759000000000, cellLineColors: {}, storages: {
+    minus80: { label: '−80°C', racks: [{ id: 'r1', name: 'Shelf 1', boxes: [{ id: 'b1', name: 'Box A', rows: 9, cols: 9, vials: {
+      A1: { cellLine: 'HCT116, DCAF15 KO #15', passage: 'P12', freezeDate: '2026-01-02', freezeMedia: 'FBS 10% DMSO', cultureMedia: 'McCoy', frozenBy: 'JM', vialCount: 2, notes: 'n1' },
+      B3: { kind: 'plasmid', label: 'pJM07', freezeDate: '2026-02-03', frozenBy: 'JM', vialCount: 1 } } }, { id: 'b2', name: 'Box B', rows: 5, cols: 6, vials: { C2: { cellLine: 'A549', vialCount: 1 } } }] }] },
+    n2: { label: 'Liquid N₂', racks: [{ id: 'r2', name: 'Tank', boxes: [{ id: 'b3', name: 'Box C', rows: 10, cols: 10, vials: { D4: { cellLine: 'HEK293 FT', passage: 'P5', vialCount: 1 } } }] }] } } };
+  const p = await open(ST);
+  const out = await p.evaluate(async () => {
+    const sheets = {}, names = [];   // a stand-in for SheetJS: a sheet is its rows, so the test checks what the importer reads from what the exporter wrote
+    window.XLSX = { utils: { book_new: () => ({ SheetNames: [], Sheets: {} }), aoa_to_sheet: a => ({ aoa: a }), book_append_sheet: (wb, ws, n) => { wb.SheetNames.push(n); wb.Sheets[n] = ws; }, sheet_to_json: ws => ws.aoa },
+      writeFile: wb => { window.__wb = wb; }, read: () => window.__wb };
+    exportAllXLSX();
+    const wb = window.__wb, first = wb.SheetNames[0], header = wb.Sheets[first].aoa[0];
+    const before = JSON.stringify(state.storages);
+    state.storages = { minus80: { label: '−80°C', racks: [] }, n2: { label: 'Liquid N₂', racks: [] } };
+    window.FileReader = class { readAsArrayBuffer() { this.onload({ target: { result: new ArrayBuffer(1) } }); } };
+    importXLSX(new Blob(['x']));
+    await new Promise(r => setTimeout(r, 50));
+    const flat = st => { const o = {}; Object.keys(st).forEach(k => st[k].racks.forEach(r => r.boxes.forEach(b => Object.keys(b.vials).forEach(pos => { const v = b.vials[pos]; o[k + '|' + r.name + '|' + b.name + '|' + pos] = [b.rows + 'x' + b.cols, vialKind(v), vialLabel(v), v.passage || '', v.freezeDate || '', v.frozenBy || '', v.vialCount, v.notes || '', v.freezeMedia || '', v.cultureMedia || ''].join('~'); })))); return o; };
+    return { names: wb.SheetNames, first, header, a: flat(JSON.parse(before)), b: flat(state.storages), ov: wb.Sheets.Overview.aoa };
+  });
+  out.first === 'Overview' ? ok() : bad('F13', 'the overview is not the first sheet: ' + out.names.join(' | '));
+  out.ov.length === 4 && out.ov[1][3] === '9 × 9' && out.ov[1][4] === 2 ? ok() : bad('F13', 'overview rows: ' + JSON.stringify(out.ov));
+  Object.keys(out.a).length === 4 && JSON.stringify(out.a) === JSON.stringify(out.b) ? ok() : bad('F13', 'the export did not read back as it was:\n  ' + JSON.stringify(out.a) + '\n  ' + JSON.stringify(out.b));
+  p.errs.length ? bad('F13', 'errors: ' + p.errs.join(' | ')) : ok();
   await p.context().close();
 });
 
