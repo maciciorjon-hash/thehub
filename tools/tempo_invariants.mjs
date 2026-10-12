@@ -366,6 +366,25 @@ try {
     check('K14 nothing leaves its box, lands on its neighbour, is cut with no scroll, or sits off the line — empty and example, every tab, 1440 to 320 px, both themes', bad.length === 0, bad.slice(0, 6).join(' | ') + (bad.length > 6 ? ' … +' + (bad.length - 6) : ''));
   }
 
+  /* ───── K14 an x tick that sits on the y axis does not land on the lowest y label ───── */
+  {
+    const hit = await ev(() => {
+      const pal = tpPal(false), out = [];
+      // The tick labels are monospaced: 0.6 em a character, a line box of 1.3 em with the baseline 1.025 em from the top (IBM Plex Mono). Modelled, not measured: the
+      // offline page has no Plex, and the hub's real font has a taller box than the fallback — the 4px overlap the sweep found at 1024 was invisible without it.
+      const box = e => { const fs = +e.getAttribute('font-size'), w = e.textContent.length * .6 * fs, a = e.getAttribute('text-anchor'), x = +e.getAttribute('x'), y = +e.getAttribute('y'); const l = a === 'end' ? x - w : a === 'middle' ? x - w / 2 : x; return { l: l, r: l + w, t: y - 1.025 * fs, b: y + .275 * fs, s: e.textContent }; };
+      // a log concentration axis whose first decade (100 pM, 1 nM, 10 nM) sits right at the left edge, over a y axis that starts at 0
+      for (const lo of [0.1, 0.1004, 0.14, 0.2, 1, 1.002, 10]) for (const W of [560, 420, 320]) {
+        const F = tpFrame({ W: W, H: 300, pal: pal, id: 'k', x: { lo: lo, hi: lo * 400, log: true, label: 'Concentration', fmt: tpAxConc }, y: { lo: 0, hi: 100, label: 'K' } });
+        const d = document.createElement('div'); d.innerHTML = tpSvg(W, 300, F.s, pal);
+        const t = [...d.querySelectorAll('text')].filter(e => /Mono/.test(e.getAttribute('font-family') || '') && e.textContent.trim()).map(box);
+        for (let i = 0; i < t.length; i++) for (let j = i + 1; j < t.length; j++) { const a = t[i], b = t[j], ox = Math.min(a.r, b.r) - Math.max(a.l, b.l), oy = Math.min(a.b, b.b) - Math.max(a.t, b.t); if (ox > 1 && oy > 1) out.push(W + 'px lo ' + lo + ': "' + a.s + '" touches "' + b.s + '"'); }
+      }
+      return out;
+    });
+    check('K14 a first x tick on the y axis ("100 pM") never touches the lowest y label ("0")', hit.length === 0, hit.slice(0, 3).join(' | '));
+  }
+
   /* ───── the real ProNect files, when they are here ───── */
   if (REAL) {
     const F = path.join(ROOT, 'tools/fixtures/tempo');
