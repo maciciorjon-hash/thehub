@@ -1,27 +1,60 @@
 // ── Look: lighting, one-click styles, colour-blind palettes, and the helpers on the picture ─────
 // A style changes how the figure looks — colour mode, lighting, outline, background, projection — and never what is in it:
 // labels, highlights, measurements and pockets stay. One click, one undo.
+// A style starts from the same known state and sets what it needs on top, so styles never stack (Ternary used to leave a
+// perspective and a colour tuning behind for the next one). Pastel first: the figure Jon makes most is a pastel one.
+var LOOK_BASE={style:'cartoon',color:'chain',palette:'pastel',uniformColor:'#5e87c5',lighting:'soft',depth:0,border:'thin',bg:'white',projection:'perspective',perspective:50,pastel:0,surfaceOpacity:0.55,hsl:{h:0,s:100,l:100},ligColors:{}};
 var PRESETS=[
-  {id:'clean',n:'Clean',d:'One colour, soft light, white',sw:'linear-gradient(135deg,#5e87c5,#9fb6dd)',
-   s:{style:'cartoon',color:'uniform',uniformColor:'#5e87c5',lighting:'soft',fog:false,border:'thin',bg:'white',projection:'orthographic',palette:'ribbon'}},
-  {id:'ternary',n:'Ternary complex',d:'A colour per chain, the degrader magenta, its pocket',sw:'linear-gradient(135deg,#9fc5e8 0 33%,#f4b6b2 0 66%,#e642c8 0)',
-   s:{style:'cartoon',color:'chain',lighting:'soft',fog:false,border:'thin',bg:'white',palette:'pastel'},
+  {grp:'Figures',id:'paper',n:'Pastel paper',d:'A soft pastel colour per chain, soft light, white, no perspective — the figure for a paper',sw:'linear-gradient(135deg,#9fc5e8 0 34%,#f4b6b2 0 68%,#b6d7a8 0)',
+   s:{projection:'orthographic'}},
+  {id:'structure',n:'By structure',d:'Helices, sheets and loops in soft colours',sw:'linear-gradient(135deg,#f4b6b2 0 34%,#f9cb9c 0 68%,#d9d9d9 0)',
+   s:{color:'ss',pastel:55,projection:'orthographic'}},
+  {id:'rainbow',n:'Pastel rainbow',d:'From the N to the C terminus in a soft rainbow',sw:'linear-gradient(90deg,#f4a6b4,#f9cb9c,#ffe599,#b6d7a8,#9fc5e8,#c9b8e0)',
+   s:{color:'spectrum',pastel:62,projection:'orthographic'}},
+  {id:'ternary',n:'Ternary complex',d:'A pastel colour per protein, the degrader in magenta with its pocket',sw:'linear-gradient(135deg,#9fc5e8 0 33%,#f4b6b2 0 66%,#e642c8 0)',
+   s:{depth:25,perspective:40},
    after:function(){ var l=ligands[0]; if(l){ state.ligColors[l.key]='#e642c8'; state.pockets={}; state.pockets[l.key]=true; } }},
-  {id:'pocket',n:'Ligand pocket',d:'Grey protein, yellow ligand, the residues around it, close up',sw:'linear-gradient(135deg,#c9ccd6 0 60%,#ffd400 0)',
-   s:{style:'cartoon',color:'uniform',uniformColor:'#c9ccd6',lighting:'soft',fog:true,border:'thin',bg:'white'},
+  {id:'mono',n:'Grey + accent',d:'A quiet grey protein, the ligand in colour — for a sober figure',sw:'linear-gradient(135deg,#d3d7e2 0 62%,#ffd400 0)',
+   s:{color:'uniform',uniformColor:'#d3d7e2',projection:'orthographic'},
+   after:function(){ var l=ligands[0]; if(l) state.ligColors[l.key]='yellowCarbon'; }},
+  {grp:'Ligand and pocket',id:'site',n:'Binding site',d:'A pale protein, the ligand in yellow, the residues around it, close up',sw:'linear-gradient(135deg,#d3d7e2 0 55%,#ffd400 0)',
+   s:{color:'uniform',uniformColor:'#d3d7e2',depth:40},
    after:function(){ var l=ligands[0]; if(l){ state.ligColors[l.key]='yellowCarbon'; state.pockets={}; state.pockets[l.key]=true; setTimeout(function(){ focusLigand(l); },60); } }},
-  {id:'surface',n:'Surface',d:'A translucent surface over the chains',sw:'radial-gradient(circle at 40% 40%,#cfe0f7,#5e87c5)',
-   s:{style:'surface',color:'chain',surfaceOpacity:0.55,lighting:'soft',fog:false,border:'thin',bg:'white',palette:'ribbon'}},
-  {id:'cover',n:'Cover',d:'Dark, deep shadows, thick outline',sw:'linear-gradient(135deg,#13161e 0 45%,#e6194b 0 70%,#42d4f4 0)',
-   s:{style:'cartoon',color:'chain',lighting:'full',fog:true,border:'thick',bg:'dark',projection:'orthographic',palette:'vivid'}},
+  {grp:'Surfaces',id:'surface',n:'Pastel surface',d:'A nearly opaque pastel surface over the chains',sw:'radial-gradient(circle at 40% 40%,#f4d8d6,#9fc5e8)',
+   s:{style:'surface',surfaceOpacity:0.85,projection:'orthographic'}},
+  {id:'hydro',n:'Hydrophobic surface',d:'Greasy patches in warm tones, polar ones in cool, on the surface',sw:'linear-gradient(135deg,#f4c6a0,#ffffff 50%,#a8c8ec)',
+   s:{style:'surface',color:'hydro',surfaceOpacity:0.92,pastel:20,projection:'orthographic'}},
+  {grp:'Mood',id:'ink',n:'Ink and wash',d:'No light, a heavy outline: a drawing',sw:'linear-gradient(135deg,#fff 0 40%,#9fc5e8 0 70%,#1a1d2e 0)',
+   s:{lighting:'flat',border:'thick',projection:'orthographic'}},
+  {id:'night',n:'Pastel on dark',d:'Pastels on a dark background, a key light with deep shadows',sw:'linear-gradient(135deg,#13161e 0 40%,#9fc5e8 0 68%,#f4b6b2 0)',
+   s:{lighting:'studio',bg:'dark',depth:35}},
+  {id:'cover',n:'Cover',d:'Dark, vivid, deep shadows, a thick outline',sw:'linear-gradient(135deg,#13161e 0 45%,#e6194b 0 70%,#42d4f4 0)',
+   s:{palette:'vivid',lighting:'studio',border:'thick',bg:'dark',depth:45,perspective:62}},
   {id:'confidence',n:'Confidence',d:'Coloured by pLDDT or B-factor, with the key',sw:'linear-gradient(90deg,#ff7d45,#ffdb13,#65cbf3,#0053d6)',
-   s:{style:'cartoon',color:'conf',lighting:'simple',fog:false,border:'thin',bg:'white'}}
+   s:{color:'conf'}}
 ];
+var PRESET_ALIAS={clean:'paper',pocket:'site'};   // the names before 2026-10-12
+// "Save my look": what a style sets, kept on this device and offered with the others.
+var LOOK_KEYS=['style','color','uniformColor','lighting','depth','border','bg','projection','perspective','palette','pastel','hsl','surfaceOpacity'];
+function looksGet(){ try{ var a=JSON.parse(load('ribbon_looks')||'[]'); return Array.isArray(a)?a.filter(function(x){ return x&&typeof x.n==='string'&&x.s&&typeof x.s==='object'; }):[]; }catch(e){ return []; } }
+function lookSave(name){
+  name=(name||'').trim().replace(/\s+/g,' ').slice(0,28); if(!name) return false;
+  var s={}; LOOK_KEYS.forEach(function(k){ if(state[k]!==undefined) s[k]=_clone(state[k]); }); s.depth=rbDepth(); s.perspective=_persp()||50; s.projection=_persp()===0?'orthographic':'perspective';
+  var a=looksGet().filter(function(x){ return x.n!==name; }); a.push({n:name,s:s}); store('ribbon_looks',JSON.stringify(a.slice(-12)));
+  state.look='my:'+name; renderPresets(); return true;
+}
+function lookDelete(name){ store('ribbon_looks',JSON.stringify(looksGet().filter(function(x){ return x.n!==name; }))); if(state.look==='my:'+name) state.look=null; renderPresets(); }
 function applyLook(patch,after){
   if(!currentModel) return;
+  patch=Object.assign({},patch);   // the names before 2026-10-12: fog → depth, projection → perspective, simple/full → soft/studio
+  if(patch.fog!==undefined&&patch.depth===undefined) patch.depth=patch.fog?55:0;
+  delete patch.fog;
+  if(patch.perspective!==undefined&&patch.projection===undefined) patch.projection=patch.perspective===0?'orthographic':'perspective';
+  if(patch.lighting) patch.lighting=LIGHT_OLD[patch.lighting]||patch.lighting;
   if(patch.color&&patch.color!=='uniform') state.chainColors={};
   Object.keys(patch).forEach(function(k){ state[k]=typeof patch[k]==='object'&&patch[k]?_clone(patch[k]):patch[k]; });
   if(after) after();
+  state.fog=rbDepth()>0; state.projection=_persp()===0?'orthographic':'perspective'; if(_persp()>0) state.perspective=_persp();
   syncControlsToState(); $('topColor').value=state.color;
   _noDraw(function(){   // one draw for the whole style, not one per step (see _noDraw)
     applyBackground(); applyProjection(); buildGeometry(); updateLegend(); renderChainList(); renderLigList(); updateSummaries(); if(SEQ.on) seqRender();
@@ -30,18 +63,27 @@ function applyLook(patch,after){
   viewer.render();
 }
 function applyPreset(id){
-  var p=PRESETS.filter(function(x){ return x.id===id; })[0]; if(!p) return false;
+  id=PRESET_ALIAS[id]||id;
+  var my=/^my:/.test(id)?looksGet().filter(function(x){ return 'my:'+x.n===id; })[0]:null;
+  var p=my?{id:id,s:my.s}:PRESETS.filter(function(x){ return x.id===id; })[0]; if(!p) return false;
   if(id==='confidence'&&!isAF()&&!(bRange[1]>bRange[0])) { showToast('This structure has no B-factors to colour by.'); return false; }
-  applyLook(p.s,p.after); state.look=id; renderPresets(); return true;
+  if(state.look==='site'&&id!=='site') _userMoved=false;   // leaving the close-up of a site: the whole structure is framed again
+  applyLook(Object.assign({},LOOK_BASE,p.s),p.after); state.look=id; renderPresets(); return true;
 }
 function renderPresets(){
   var g=$('presetGrid'); if(!g) return;
-  g.innerHTML=PRESETS.map(function(p){ return '<button type="button" class="preset'+(state.look===p.id?' on':'')+'" data-p="'+p.id+'" title="'+escapeHtml(p.d)+'" aria-pressed="'+(state.look===p.id)+'"><i style="background:'+p.sw+'"></i><b>'+escapeHtml(p.n)+'</b></button>'; }).join('');
+  var h='', btn=function(p,my){ return '<button type="button" class="preset'+(state.look===p.id?' on':'')+'" data-p="'+escapeHtml(p.id)+'" title="'+escapeHtml(p.d)+'" aria-pressed="'+(state.look===p.id)+'"><i style="background:'+p.sw+'"></i><b>'+escapeHtml(p.n)+'</b>'+(my?'<span class="preset-x" role="button" tabindex="0" title="Delete this look" aria-label="Delete '+escapeHtml(p.n)+'">×</span>':'')+'</button>'; };
+  PRESETS.forEach(function(p){ if(p.grp) h+='<div class="preset-grp">'+escapeHtml(p.grp)+'</div>'; h+=btn(p,false); });
+  var mine=looksGet();
+  if(mine.length){ h+='<div class="preset-grp">My looks</div>'+mine.map(function(x){ return btn({id:'my:'+x.n,n:x.n,d:'A look you saved',sw:'linear-gradient(135deg,'+(/dark/.test(x.s.bg)?'#13161e':'#ffffff')+' 0 40%,'+(x.s.uniformColor||'#9fc5e8')+' 0)'},true); }).join(''); }
+  g.innerHTML=h;
 }
 function syncLookControls(){
-  _segSet('lightSeg',state.lighting||'simple');
-  var L=LIGHTING[state.lighting]||LIGHTING.simple; if($('lightHint')) $('lightHint').textContent=L.d;
-  if($('fogChk')){ $('fogChk').checked=!!state.fog; $('fogChk').disabled=state.bg==='transparent'||!!L.flat; $('fogChk').parentNode.title=state.bg==='transparent'?'A depth cue needs a white or dark background: what is further away fades into it.':''; }
+  _segSet('lightSeg',lightKey());
+  var L=LIGHTING[lightKey()]; if($('lightHint')) $('lightHint').textContent=L.d;
+  var d=rbDepth(); if($('depthR')){ $('depthR').value=d; $('depthV').textContent=d?d+'%':'Off';
+    var needBg=d>0&&state.bg==='transparent'; $('depthHint').textContent=needBg?'Depth fades into the background, so it shows once the background is white or dark.':'What is further away fades into the background.'; $('depthBg').hidden=!needBg; }
+  var pp=_persp(); if($('perspR')){ $('perspR').value=pp; $('perspV').textContent=pp===0?'None':pp<30?'Gentle':pp<70?'Natural':'Strong'; }
   if($('palSel')) $('palSel').value=state.palette||'ribbon';
   if($('valMapSel')) $('valMapSel').value=state.valMap||'consurf';
   if($('valMapFld')) $('valMapFld').hidden=!state.values;
@@ -112,11 +154,17 @@ function veChips(){   // the empty viewer offers what was opened before, and two
 }
 function lookWire(){
   renderPresets();
-  $('presetGrid').addEventListener('click',function(e){ var b=e.target.closest('.preset'); if(b) applyPreset(b.dataset.p); });
+  $('presetGrid').addEventListener('click',function(e){
+    var x=e.target.closest('.preset-x'); if(x){ e.stopPropagation(); var pb=x.closest('.preset'); if(pb) lookDelete(pb.dataset.p.replace(/^my:/,'')); return; }
+    var b=e.target.closest('.preset'); if(b) applyPreset(b.dataset.p); });
+  $('lookSave').addEventListener('click',function(){ var i=$('lookName'), nm=i.value.trim()||('My look '+(looksGet().length+1)); if(lookSave(nm)){ i.value=''; showToast('Saved “'+nm+'”.'); } });
+  $('lookName').addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); $('lookSave').click(); } });
   segHandler('lightSeg','lighting',function(){ state.look=null; renderPresets(); applyBorder(); syncLookControls(); updateSummaries(); });
-  $('fogChk').addEventListener('change',function(e){ state.fog=e.target.checked; applyBorder(); });
+  $('depthR').addEventListener('input',function(e){ setDepth(+e.target.value); });
+  $('depthBg').addEventListener('click',function(){ state.bg='white'; _segSet('bgSeg','white'); applyBackground(); if(selectedChain!==null) recolorStructure(); syncLookControls(); rbFogSync(); if(viewer) viewer.render(); });
+  $('perspR').addEventListener('input',function(e){ setPerspective(+e.target.value); });
   $('palSel').innerHTML=Object.keys(PALETTES).map(function(k){ return '<option value="'+k+'">'+escapeHtml(PALETTES[k].n)+'</option>'; }).join('');
-  $('palSel').addEventListener('change',function(e){ state.palette=e.target.value; if(state.color!=='chain'){ state.color='chain'; $('topColor').value='chain'; } state.chainColors={}; updateColorOrOpacity(); renderChainList(); contrastCheck(); if(SEQ.on) seqRender(); });
+  $('palSel').addEventListener('change',function(e){ state.look=null; renderPresets(); state.palette=e.target.value; if(state.color!=='chain'){ state.color='chain'; $('topColor').value='chain'; } state.chainColors={}; updateColorOrOpacity(); renderChainList(); contrastCheck(); if(SEQ.on) seqRender(); });
   $('valMapSel').innerHTML=Object.keys(VAL_MAPS).map(function(k){ return '<option value="'+k+'">'+escapeHtml(VAL_MAPS[k].n)+'</option>'; }).join('');
   $('valMapSel').addEventListener('change',function(e){ state.valMap=e.target.value; recolorStructure(); updateLegend(); renderChainList(); });
   $('scaleChk').addEventListener('change',function(e){ state.scalebar=e.target.checked; decorUpdate(); updateSummaries(); });
@@ -128,15 +176,21 @@ function lookWire(){
 }
 function lookOnViewer(){ try{ viewer.setViewChangeCallback(function(){ decorUpdate(); }); }catch(e){} }
 RB_CMDS.push(
-  {n:['lighting','light','lights'],d:'Simple, soft, full or flat light',f:'lighting soft · lighting full',
+  {n:['lighting','light','lights'],d:'Flat, soft or studio light',f:'lighting flat · lighting soft · lighting studio',
    args:function(){ return Object.keys(LIGHTING).map(function(k){ return _cand(k,'word',LIGHTING[k].d); }); },
-   run:function(a){ var l=a.trim().toLowerCase(); if(!LIGHTING[l]) return _err('lighting simple · soft · full · flat'); state.lighting=l; state.look=null; _segSet('lightSeg',l); applyBorder(); syncLookControls(); renderPresets(); return _ok(LIGHTING[l].n+' light.'); }},
-  {n:['fog','depthcue','depth'],d:'Fade what is further away',f:'fog on · fog off',
-   args:function(){ return [_cand('on','word',''),_cand('off','word','')]; },
-   run:function(a){ var on=!/^(off|no|false|0)$/i.test(a.trim()); state.fog=on; applyBorder(); syncLookControls(); return _ok(on?(state.bg==='transparent'?'Depth cue on — it shows once the background is white or dark.':'Depth cue on.'):'Depth cue off.'); }},
-  {n:['preset','look','theme'],d:'A whole look in one go',f:'preset ternary · preset pocket · preset cover',
-   args:function(){ return PRESETS.map(function(p){ return _cand(p.id,'word',p.n+' — '+p.d); }); },
-   run:function(a){ var n=needModel(); if(n) return n; var l=a.trim().toLowerCase(), p=PRESETS.filter(function(x){ return x.id===l||x.n.toLowerCase()===l||x.n.toLowerCase().indexOf(l)===0; })[0]; if(!p) return _err('preset '+PRESETS.map(function(x){ return x.id; }).join(' · ')); return applyPreset(p.id)?_ok(p.n+'.'):_err('Not for this structure.'); }},
+   run:function(a){ var l=a.trim().toLowerCase(); l=LIGHT_OLD[l]||l; if(!LIGHTING[l]) return _err('lighting flat · soft · studio'); state.lighting=l; state.look=null; _segSet('lightSeg',l); applyBorder(); syncLookControls(); renderPresets(); updateSummaries(); return _ok(LIGHTING[l].n+' light.'); }},
+  {n:['depth','fog','depthcue'],d:'Fade what is further away, 0–100',f:'depth 60 · depth off',
+   args:function(){ return [_cand('off','word','no fade'),_cand('40','word','a little'),_cand('70','word','a lot')]; },
+   run:function(a){ var s=a.trim().toLowerCase(), v=/^(off|no|false|none)$/.test(s)?0:/^(on|yes|true)$/.test(s)?55:parseFloat(s); if(!isFinite(v)) return _err('depth 0–100, or depth off'); v=Math.max(0,Math.min(100,Math.round(v))); setDepth(v); return _ok(v?('Depth '+v+'%'+(state.bg==='transparent'?' — it shows once the background is white or dark.':'.')):'Depth off.'); }},
+  {n:['pastel'],d:'Soften every colour, 0–100',f:'pastel 60 · pastel off',
+   args:function(){ return [_cand('off','word','as chosen'),_cand('40','word','a little'),_cand('80','word','a lot')]; },
+   run:function(a){ var s=a.trim().toLowerCase(), v=/^(off|no|none)$/.test(s)?0:/^(on|yes)$/.test(s)?60:parseFloat(s); if(!isFinite(v)) return _err('pastel 0–100, or pastel off'); v=Math.max(0,Math.min(100,Math.round(v))); setPastel(v); return _ok(v?'Pastel '+v+'%.':'Pastel off.'); }},
+  {n:['preset','look','theme'],d:'A whole look in one go',f:'preset paper · preset ternary · preset cover',
+   args:function(){ return PRESETS.map(function(p){ return _cand(p.id,'word',p.n+' — '+p.d); }).concat(looksGet().map(function(x){ return _cand(x.n,'word','A look you saved'); })); },
+   run:function(a){ var n=needModel(); if(n) return n; var l=a.trim().toLowerCase(); l=PRESET_ALIAS[l]||l;
+     var mine=looksGet().filter(function(x){ return x.n.toLowerCase()===l; })[0];
+     var p=mine?{id:'my:'+mine.n,n:mine.n}:PRESETS.filter(function(x){ return x.id===l||x.n.toLowerCase()===l||x.n.toLowerCase().indexOf(l)===0; })[0];
+     if(!p) return _err('preset '+PRESETS.map(function(x){ return x.id; }).join(' · ')); return applyPreset(p.id)?_ok(p.n+'.'):_err('Not for this structure.'); }},
   {n:['palette','colours','colors'],d:'The colours chains are given',f:'palette okabe · palette tol · palette pastel',
    args:function(){ return Object.keys(PALETTES).map(function(k){ return _cand(k,'word',PALETTES[k].n); }); },
    run:function(a){ var l=a.trim().toLowerCase(), k=Object.keys(PALETTES).filter(function(x){ return x===l||PALETTES[x].n.toLowerCase().indexOf(l)===0; })[0]; if(!k) return _err('palette '+Object.keys(PALETTES).join(' · ')); $('palSel').value=k; $('palSel').dispatchEvent(new Event('change')); return _ok(PALETTES[k].n+'.'); }},

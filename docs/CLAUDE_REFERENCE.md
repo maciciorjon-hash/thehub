@@ -7658,6 +7658,35 @@ commit and one invariant each; each step below is added when it lands.
   sticks, is left out of `fitPoints`, the scripts (`_scLigands`), the interactions (`interShown`) and the command line's
   `visible`; `hide MZ1` / `show LIG` do the same by name; asking to look at it (`focusLigand`) brings it back. Chain hidden
   and ligand put away stay two separate things. The eye is the last button in the row, under the chains' eyes. **RB35**.
+- **B2 — light, depth, perspective, pastel: options that do different things.** What was found by reading and
+  measuring (3Dmol 2.5.5, vendored): shading is `colour × max(N·L, 0)` with one headlight and **no ambient term**, so a
+  pastel falls through grey to black; the old Flat only thickened the outline (with the default outline it was pixel-
+  identical to Simple); Simple/Soft/Full looked alike because AO at 0.9 darkens a cartoon by 10 % and the `radius` Ribbon sent
+  is not read (strength is the only AO knob); the depth cue asked for fractions 0.5…1 of a slab two or three times the
+  structure (back tip 4 %, front half 0) and was disabled on the default transparent background; and switching to
+  orthographic shrank the structure by a third. Now: **Light = Flat · Soft · Studio** (`LIGHTING`: `amb` = share of
+  the light from everywhere, `ao` = occlusion strength; Flat is truly unlit, spread of the pixel luminance ≤ 2). 3Dmol has
+  no ambient uniform, so `rbPatchShaders()` wraps `viewer.renderer.buildProgram` and rewrites `max(dotProduct, 0.0)` into
+  `amb + (1-amb)*max(…)` in every program (mesh, spheres, sticks use that idiom; each `amb` is its own program, and
+  `rbRelight()` marks the materials for a rebuild on a change). It is private 3Dmol API on a pinned version: RB36 fails if it
+  stops applying. The same wrapper sets **Depth** (a slider replacing the checkbox) at draw time: the fog is clear at the
+  structure's front tip and `0.7·depth` % of the way to the background at its back tip (smoothstep), from the structure's
+  radius and the camera distance, so it follows the zoom and a Fit with no lag (`enableFog` only switches it on). It still
+  needs a white or dark background; on a transparent one the hint says so and **Use a white background** fixes it.
+  **Perspective** (a slider, 0 = orthographic) is the field of view (3–45°, 50 = the 20° it always was) with the size
+  matched after every change by moving the camera (`_matchSize`), so nothing jumps; `state.projection` is still the switch
+  old code and designs set. **Pastel** (0–100, in `adjustColor`, so it acts on every colour mode) keeps the hue, lightens
+  and softens a little; Hue/Sat/Light are under it. Old names still load (simple → soft, full → studio, fog → depth); the
+  default is Soft; ChimeraX/PyMOL scripts map Flat/Soft/Studio to flat/soft/full and carry the field of view.
+  **The test harness opens with Flat** (`open({light:false})` to keep the default): Soft's occlusion pass costs ~0.4 s a draw
+  without a GPU, which starved the drag in RB34 of frames. **RB36**.
+- **B3 — twelve styles, pastel first.** A style is `LOOK_BASE` plus its own keys, so styles never stack (Ternary used to
+  leave a perspective and a colour tuning for the next one; RB37 applies each after Cover and compares). Figures: Pastel paper,
+  By structure, Pastel rainbow, Ternary complex, Grey + accent; Ligand and pocket: Binding site (frames the site, and the next
+  style frames the whole structure again); Surfaces: Pastel surface, Hydrophobic surface; Mood: Ink and wash (Flat, thick
+  outline), Pastel on dark, Cover, Confidence. `clean`/`pocket` still work as names. **Save look** keeps the current light,
+  depth, colours, outline, background and perspective under a name (`localStorage.ribbon_looks`, 12 at most), offered under
+  *My looks* with a × to delete; changing anything by hand takes the highlight off the style. **RB37**.
 
 ## Labbook on a laptop, audited (2026-10-12)
 

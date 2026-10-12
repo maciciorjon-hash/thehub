@@ -51,6 +51,10 @@
 //                           once a frame, with the cheap look while it moves; nothing runs at rest.
 //   RB35 a ligand's own eye  Each ligand in Models has an eye of its own: it puts that ligand away (not the others, not the chain), the framing and
 //                           the scripts leave it out, a design keeps it, `hide LIG` / `show LIG` do the same, and focusing it brings it back.
+//   RB36 light and depth     Flat is no light (one colour, no shading), Soft and Studio shade more; Depth fades the far side from the front tip of the
+//                           structure and follows the zoom; the Perspective slider keeps the size; Pastel keeps the hue; the old names still load.
+//   RB37 styles              Twelve styles, pastel first, each the same whatever came before it; a change by hand takes the highlight off; Save look keeps, offers,
+//                           restores and deletes a look; the old names still work.
 //   RB33 Echo mutants        Echo reads groups named like BRD4_Y97A as mutants of BRD4 and sends log2(DC50 ratio) per residue; Ribbon puts them
 //                           on the AlphaFold model, labelled, with side chains; a residue not in the model is named.
 //   RB18 measurements       Two atoms make a distance equal to their coordinates, three an angle at the middle one; a dashed line,
@@ -76,7 +80,7 @@ const freePort = () => new Promise(res => { const s = net.createServer(); s.list
 async function waitHttp(url, ms = 8000) { const t0 = Date.now(); while (Date.now() - t0 < ms) { try { const r = await fetch(url); if (r.ok) return; } catch (e) {} await new Promise(r => setTimeout(r, 120)); } throw new Error('server did not come up: ' + url); }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-const out = [], counts = {}, skipped = [], pageErrs = [];
+const out = [], counts = {}, skipped = [], pageErrs = [], timing = {};
 function check(inv, name, ok, detail) {
   counts[inv] = (counts[inv] || 0) + 1;
   if (!ok) out.push({ inv, case: name, msg: detail === undefined ? 'failed' : JSON.stringify(detail) });
@@ -147,7 +151,7 @@ function globulePdb() {
   for (let i = 1; i <= 140; i++) {
     const th = rnd() * 6.283, ph = Math.acos(2 * rnd() - 1); p = [p[0] + 3.8 * Math.sin(ph) * Math.cos(th), p[1] + 3.8 * Math.sin(ph) * Math.sin(th), p[2] + 3.8 * Math.cos(ph)];
     const k = Math.hypot(...p); if (k > 22) p = p.map(v => v * 22 / k);
-    L.push(atomLine('ATOM', n++, 'N', 'ALA', 'A', i, p[0] - 1.2, p[1], p[2] - 0.5, 20, 'N')); L.push(atomLine('ATOM', n++, 'CA', 'ALA', 'A', i, p[0], p[1], p[2])); L.push(atomLine('ATOM', n++, 'C', 'ALA', 'A', i, p[0] + 1.2, p[1], p[2] + 0.5));
+    L.push(atomLine('ATOM', n++, 'N', 'ALA', 'A', i, p[0] - 1.2, p[1], p[2] - 0.5, 20, 'N')); L.push(atomLine('ATOM', n++, 'CA', 'ALA', 'A', i, p[0], p[1], p[2])); L.push(atomLine('ATOM', n++, 'C', 'ALA', 'A', i, p[0] + 1.2, p[1], p[2] + 0.5)); L.push(atomLine('ATOM', n++, 'O', 'ALA', 'A', i, p[0] + 2.2, p[1] + 0.6, p[2] + 0.5, 20, 'O'));   // the O is what orients the cartoon
   }
   return L.join('\n') + '\nEND\n';
 }
@@ -255,6 +259,9 @@ async function open(o = {}) {
   await pg.goto(base + (o.file || args.file || 'apps/ribbon/ribbon.html') + '?_ts=' + Date.now(), { waitUntil: 'load' });
   await pg.waitForTimeout(o.settle ?? 1500);
   const E = (f, a) => pg.evaluate(f, a);
+  // Soft is the default light and its occlusion pass costs ~0.4 s a draw without a GPU (CI, a laptop on software GL): the suites open with Flat,
+  // which is what Simple cost them before, and the ones about light set their own.
+  if (o.light !== false) await pg.evaluate(() => { try { state.lighting = 'flat'; } catch (e) {} });
   // the panel is tabs: a control is brought on screen (its tab, its section) before it is pressed, as a person would
   for (const m of ['click', 'fill', 'check', 'uncheck', 'focus']) {
     const orig = pg[m].bind(pg);
@@ -1307,7 +1314,7 @@ async function rb22() {
   // surface and stick styles, dark background
   const sty = await E(() => { state.style = 'surface'; state.surfaceOpacity = 0.4; state.bg = 'dark'; state.projection = 'perspective'; state.border = 'none'; return { pml: buildScript('pymol'), cxc: buildScript('chimerax') }; });
   check('RB22', 'surface style: a surface and the transparency that is drawn (60 %), in both', /^show surface, structure and polymer$/m.test(sty.pml) && /^set transparency, 0\.6$/m.test(sty.pml) && /^surface #1$/m.test(sty.cxc) && /^transparency #1 60 target s$/m.test(sty.cxc));
-  check('RB22', 'dark background, perspective and no outline carry over', /^bg_color 0x13161e$/m.test(sty.pml) && /^set orthoscopic, 0$/m.test(sty.pml) && /^set ray_trace_mode, 0$/m.test(sty.pml) && /^set bgColor #13161e$/m.test(sty.cxc) && /^camera mono$/m.test(sty.cxc) && /^graphics silhouettes false$/m.test(sty.cxc));
+  check('RB22', 'dark background, perspective and no outline carry over', /^bg_color 0x13161e$/m.test(sty.pml) && /^set orthoscopic, 0$/m.test(sty.pml) && /^set ray_trace_mode, 0$/m.test(sty.pml) && /^set bgColor #13161e$/m.test(sty.cxc) && /^camera mono fieldOfView \d+$/m.test(sty.cxc) && /^graphics silhouettes false$/m.test(sty.cxc));
   const stk = await E(() => { state.style = 'stick'; return { pml: buildScript('pymol'), cxc: buildScript('chimerax') }; });
   check('RB22', 'stick style: sticks for the polymer, no cartoon', /^show sticks, structure and polymer$/m.test(stk.pml) && !/^show cartoon/m.test(stk.pml) && /^style #1 & \(protein\|nucleic\) stick$/m.test(stk.cxc) && !/^cartoon /m.test(stk.cxc));
   // the dialog downloads them
@@ -1879,17 +1886,17 @@ async function rb29() {
   await go('4LIG');
   const pic = () => E(() => { viewer.render(); return viewer.pngURI(); });
   const p0 = await pic();
-  await E(() => { rbTab('colour'); }); await pg.click('#lightSeg button[data-v=full]'); await sleep(300);
-  const full = await E(() => ({ l: state.lighting, ao: !!viewer.getConfig || true, pressed: document.querySelector('#lightSeg button[data-v=full]').getAttribute('aria-pressed'), hint: document.getElementById('lightHint').textContent }));
-  check('RB29', 'a lighting button sets the light, says what it does, and the picture changes', full.l === 'full' && full.pressed === 'true' && /shadow/i.test(full.hint) && await pic() !== p0, full);
+  await E(() => { rbTab('colour'); }); await pg.click('#lightSeg button[data-v=studio]'); await sleep(300);
+  const full = await E(() => ({ l: state.lighting, ao: !!viewer.getConfig || true, pressed: document.querySelector('#lightSeg button[data-v=studio]').getAttribute('aria-pressed'), hint: document.getElementById('lightHint').textContent }));
+  check('RB29', 'a lighting button sets the light, says what it does, and the picture changes', full.l === 'studio' && full.pressed === 'true' && /shadow/i.test(full.hint) && await pic() !== p0, full);
   await pg.click('#bgSeg button[data-v=white]'); await sleep(150);   // the button, so the depth-cue box follows the background as it does for a person
-  const f0 = await pic(); await pg.check('#fogChk'); await sleep(250);
-  check('RB29', 'the depth cue changes the picture on a white background', await E(() => state.fog) && await pic() !== f0);
+  const f0 = await pic(); await E(() => { const r = document.getElementById('depthR'); r.value = 70; r.dispatchEvent(new Event('input')); }); await sleep(250);
+  check('RB29', 'the depth slider changes the picture on a white background', await E(() => state.depth === 70 && state.fog) && await pic() !== f0);
   await pg.click('#bgSeg button[data-v=transparent]'); await sleep(150);
-  check('RB29', 'and is off (and says why) on a transparent one, where it would fade into nothing', await E(() => document.getElementById('fogChk').disabled && /white or dark/.test(document.getElementById('fogChk').parentNode.title)));
+  check('RB29', 'and says why it shows nothing on a transparent one (it would fade into nothing), and offers a white background', await E(() => !document.getElementById('depthBg').hidden && /white or dark/.test(document.getElementById('depthHint').textContent)));
   // styles
   const before = await E(() => { state.residueLabels.push({ chain: 'A', resi: 3, resn: 'ALA', text: 'ALA 3' }); state.highlights.push({ id: 'h1', sel: 'A:2-4', color: '#123456', sticks: false }); recolorStructure(); return { lab: state.residueLabels.length, hl: state.highlights.length }; });
-  for (const id of ['clean', 'ternary', 'pocket', 'surface', 'cover', 'confidence']) {
+  for (const id of ['paper', 'structure', 'rainbow', 'ternary', 'mono', 'site', 'surface', 'hydro', 'ink', 'night', 'cover', 'confidence']) {
     const q0 = await pic();
     await pg.click(`#presetGrid .preset[data-p=${id}]`); await sleep(500);
     const r = await E(id => ({ on: document.querySelector('#presetGrid .preset[data-p=' + id + ']').getAttribute('aria-pressed'), lab: state.residueLabels.length, hl: state.highlights.length, style: state.style, light: state.lighting, bg: state.bg }), id);
@@ -1897,7 +1904,7 @@ async function rb29() {
   }
   // a style is drawn once, not once per step: without a GPU each draw is ~0.4 s and a click on a style froze the page for 5 s (30 s in CI)
   const draws = await E(() => { const R = viewer.renderer, real = R.render; let n = 0; R.render = function () { n++; return real.apply(this, arguments); };
-    try { _userMoved = false; applyPreset('clean'); const a = n; n = 0; fitView(); const b = n; n = 0; applyPreset('cover'); return { style: a, fit: b, style2: n }; } finally { R.render = real; } });
+    try { _userMoved = false; applyPreset('paper'); const a = n; n = 0; fitView(); const b = n; n = 0; applyPreset('cover'); return { style: a, fit: b, style2: n }; } finally { R.render = real; } });
   check('RB29', 'a style draws the picture at most twice and framing it once (each draw costs ~0.4 s without a GPU)', draws.style <= 2 && draws.style2 <= 2 && draws.fit === 1, draws);
   const framed = await E(() => { _userMoved = false; fitView(); const vp = document.getElementById('viewport'), r = vp.getBoundingClientRect(), bb = projBox(fitPoints(), r);
     return { ok: bb.x0 >= -2 && bb.y0 >= -2 && bb.x1 <= vp.clientWidth + 2 && bb.y1 <= vp.clientHeight + 2 && (bb.x1 - bb.x0 > vp.clientWidth * 0.6 || bb.y1 - bb.y0 > vp.clientHeight * 0.6), bb, w: vp.clientWidth, h: vp.clientHeight }; });
@@ -1911,7 +1918,7 @@ async function rb29() {
   const vm = await E(() => { state.valMap = 'viridis'; const a = valueColor(0), b = valueColor(1); state.valMap = 'consurf'; return { a, b }; });
   check('RB29', 'viridis runs dark purple → yellow', vm.a === '#440154' && vm.b === '#fde725', vm);
   // the scale bar is the right length
-  await E(() => { state.bg = 'white'; state.border = 'thin'; state.color = 'chain'; applyBackground(); recolorStructure(); });
+  await E(() => { state.bg = 'white'; state.border = 'thin'; state.color = 'chain'; state.projection = 'orthographic'; applyProjection(); applyBackground(); recolorStructure(); });   // the bar is exact in orthographic
   await pg.check('#scaleChk'); await sleep(300);
   const sb = await E(() => { const m = scaleMeasure(), el = document.getElementById('scaleBar'), w = el.querySelector('i').getBoundingClientRect().width;
     const c = currentModel.selectedAtoms({ atom: 'CA' })[0], v = viewer.getView(), R = _camRot(v), a = viewer.modelToScreen(c), b = viewer.modelToScreen({ x: c.x + R[0][0] * m.len, y: c.y + R[0][1] * m.len, z: c.z + R[0][2] * m.len });
@@ -1924,12 +1931,12 @@ async function rb29() {
   const ax = await E(() => { const a = renderExport().toDataURL(); store('ribbon_axes', '0'); decorUpdate(); const b = renderExport().toDataURL(); store('ribbon_axes', '1'); return a === b; });
   check('RB29', 'and never in the export', ax);
   // a design keeps the look
-  const d = await E(() => { state.lighting = 'soft'; state.fog = true; state.palette = 'tol'; state.valMap = 'cividis'; const st = collectDesign().state; return [st.lighting, st.fog, st.palette, st.valMap, st.scalebar].join(); });
-  check('RB29', 'a design keeps the light, the depth cue, the palette, the ramp and the scale bar', d === 'soft,true,tol,cividis,true', d);
-  const sc = await E(() => { state.lighting = 'full'; state.fog = true; state.bg = 'white'; return { cx: buildScript('chimerax'), py: buildScript('pymol') }; });
+  const d = await E(() => { state.lighting = 'soft'; state.depth = 60; state.palette = 'tol'; state.valMap = 'cividis'; const st = collectDesign().state; return [st.lighting, st.depth, st.palette, st.valMap, st.scalebar].join(); });
+  check('RB29', 'a design keeps the light, the depth, the palette, the ramp and the scale bar', d === 'soft,60,tol,cividis,true', d);
+  const sc = await E(() => { state.lighting = 'studio'; state.depth = 60; state.bg = 'white'; return { cx: buildScript('chimerax'), py: buildScript('pymol') }; });
   check('RB29', 'the scripts carry the light and the depth cue', /lighting full/.test(sc.cx) && /lighting depthCue true/.test(sc.cx) && /set depth_cue, 1/.test(sc.py) && /set ambient_occlusion_mode, 1/.test(sc.py));
   // the commands
-  const cm = await E(() => [runCommand('lighting soft', { noHistory: true }).ok && state.lighting === 'soft', runCommand('preset cover', { noHistory: true }).ok && state.bg === 'dark', runCommand('palette tol', { noHistory: true }).ok && state.palette === 'tol', !!runCommand('lighting neon', { noHistory: true }).err, cmdSuggest('lighting ').list.map(x => x.t).join() === 'simple,soft,full,flat']);
+  const cm = await E(() => [runCommand('lighting soft', { noHistory: true }).ok && state.lighting === 'soft', runCommand('preset cover', { noHistory: true }).ok && state.bg === 'dark', runCommand('palette tol', { noHistory: true }).ok && state.palette === 'tol', !!runCommand('lighting neon', { noHistory: true }).err, cmdSuggest('lighting ').list.map(x => x.t).join() === 'flat,soft,studio']);
   check('RB29', 'lighting, preset and palette are commands, and complete', cm.every(Boolean), cm);
   await ctx.close();
 }
@@ -2045,8 +2052,10 @@ async function rb34() {
   check('RB34', 'Shift and scroll move the structure with the fingers, and do not zoom', Math.abs(Math.abs(pan.dy) - 80) < 8 && Math.abs(pan.dx) < 2 && Math.abs(pan.dz) < 1e-6, pan);
   // a drag let go while turning keeps turning, then settles
   const q = () => E(() => viewer.getView().slice(4)), dist = (a, b) => Math.hypot(...a.map((v, i) => v - b[i]));
-  const flick = async (pause) => { await fit(); await pg.mouse.move(cx - 100, cy); await pg.mouse.down(); for (let i = 1; i <= 14; i++) { await pg.mouse.move(cx - 100 + i * 14, cy); await sleep(12); }
-    if (pause) await sleep(pause); const qu = await q(); await pg.mouse.up(); await sleep(160); const qa = await q(); await sleep(1300); const qb = await q(); await sleep(400); const qc = await q(); return { moved: dist(qu, qa), settle: dist(qb, qc), busy: await E(() => rbCamBusy()) }; };
+  const flick = async (pause) => { await fit(); const q0 = await q(); await pg.mouse.move(cx - 100, cy); await pg.mouse.down(); for (let i = 1; i <= 14; i++) { await pg.mouse.move(cx - 100 + i * 14, cy); await sleep(12); }
+    if (pause) await sleep(pause); await pg.mouse.up();                            // let go at once: a pause (or a round trip) before it is "it had stopped"
+    await sleep(40); const qa = await q(); await sleep(250); const qb = await q(); await sleep(1300); const qc = await q(); await sleep(300); const qd = await q();
+    return { turned: dist(q0, qa), moved: Math.min(dist(qa, qb), 2 - dist(qa, qb)), settle: dist(qc, qd), busy: await E(() => rbCamBusy()) }; };
   const f1 = await flick(0);
   check('RB34', 'a drag let go while turning keeps turning (3Dmol stops dead)', f1.moved > 0.03, f1);
   check('RB34', 'and settles, with nothing left running', f1.settle < 1e-3 && !f1.busy, f1);
@@ -2094,6 +2103,107 @@ async function rb35() {
   const l0 = await E(() => ligands[0].resn);
   await pg.click('#ligList .li:first-child .li-main'); await sleep(500);
   check('RB35', 'asking to look at a ligand brings it back', await E(() => !ligOff(ligands[0])) && await drawn(l0));
+  await ctx.close();
+}
+
+
+// ── RB36 light, depth, perspective, pastel ───────────────────────────────────────────────────────
+async function rb36() {
+  const { ctx, pg, E, go } = await open({ tag: 'RB36 ' });
+  if (!(await has3d(pg))) { skipped.push('RB36 (3Dmol could not load from its CDN)'); await ctx.close(); return; }
+  await go('8CAM'); await sleep(400);
+  // pixels of the structure: mean and spread of the luminance (the background is skipped)
+  const stats = () => E(() => new Promise(res => { viewer.render(); const img = new Image(); img.onload = () => { const c = document.createElement('canvas'); c.width = img.width; c.height = img.height; const x = c.getContext('2d'); x.drawImage(img, 0, 0);
+    const d = x.getImageData(0, 0, c.width, c.height).data; let n = 0, s = 0; const h = new Array(256).fill(0); for (let i = 0; i < d.length; i += 4) { if (d[i + 3] < 8 || (d[i] > 250 && d[i + 1] > 250 && d[i + 2] > 250)) continue; const l = Math.round((d[i] + d[i + 1] + d[i + 2]) / 3); n++; s += l; h[l]++; }
+    const pc = q => { let a = 0; for (let l = 0; l < 256; l++) { a += h[l]; if (a >= n * q) return l; } return 255; }; res({ n, mean: s / n, spread: pc(0.9) - pc(0.1) }); }; img.src = viewer.pngURI(); }));
+  const setup = (o) => E(async o => { Object.assign(state, o); applyBackground(); applyBorder(); buildGeometry(); fitToView(); await new Promise(r => setTimeout(r, 900)); }, o);
+  await setup({ style: 'surface', surfaceOpacity: 1, border: 'none', bg: 'white', color: 'uniform', depth: 0, projection: 'perspective' });
+  const shot = {};
+  for (const k of ['flat', 'soft', 'studio']) { await pg.click('#lightSeg button[data-v=' + k + ']'); await sleep(450); shot[k] = await stats(); }
+  check('RB36', 'Flat is no light at all: the surface is one colour, nothing shaded (3Dmol\'s "flat" was an outline)', shot.flat.spread <= 2 && shot.flat.n > 5000, shot.flat);
+  check('RB36', 'Soft shades it a little and Studio more: three lights that look different', shot.soft.spread > shot.flat.spread + 3 && shot.studio.spread > shot.soft.spread + 3, { flat: shot.flat.spread, soft: shot.soft.spread, studio: shot.studio.spread });
+  check('RB36', 'the shader patch is in place (the whole of the above rests on it)', await E(() => _rbPatched === true && _rbAmb === LIGHTING.studio.amb));
+  // an old design asks for the old names
+  const old = await E(() => { applyLook({ lighting: 'full', fog: true, projection: 'orthographic' }); const r = { l: state.lighting, d: rbDepth(), p: state.projection, k: lightKey() }; applyLook({ lighting: 'soft', depth: 0, projection: 'perspective' }); return r; });
+  check('RB36', 'the old names still load: simple/full are soft/studio, fog is depth, projection is perspective', old.l === 'studio' && old.d === 55 && old.p === 'orthographic', old);
+  // depth: the far side fades into the background
+  await setup({ style: 'cartoon', border: 'thin', bg: 'white', color: 'uniform', lighting: 'soft' });
+  const d0 = await stats(); await E(() => setDepth(50)); await sleep(250); const d50 = await stats(); await E(() => setDepth(100)); await sleep(250); const d100 = await stats();
+  check('RB36', 'Depth fades what is further away, more as it is turned up (it moved the mean by ~4 levels before)', d50.mean > d0.mean + 5 && d100.mean > d50.mean + 5, { d0: d0.mean, d50: d50.mean, d100: d100.mean });
+  const fogAt = () => E(() => { viewer.render(); const v = viewer.getView(), dc = viewer.CAMERA_Z - v[3], R = _structRadius(), f = viewer.scene.fog; return { dc, R, near: f && f.near, far: f && f.far, want: 2 * R / _invSmooth(0.7) }; });
+  const fog = await fogAt();
+  check('RB36', 'the fog starts at the structure\'s front tip and ends 70 % of the way past its back at full depth, not at a slab two or three times its size', fog.near != null && Math.abs(fog.near - (fog.dc - fog.R)) < 1 && Math.abs((fog.far - fog.near) - fog.want) < 1, fog);
+  await E(() => { rbCamZoomAt(2, innerWidth / 3, innerHeight / 2); }); const fog2 = await fogAt();
+  check('RB36', 'and follows the zoom the moment it moves, and a Fit', fog2.near != null && Math.abs(fog2.near - (fog2.dc - fog2.R)) < 1 && fog2.dc < fog.dc - 20, { fog, fog2 });
+  await E(() => { fitToView(); }); await sleep(900); const fog3 = await fogAt();
+  check('RB36', 'also after a Fit', Math.abs(fog3.near - (fog3.dc - fog3.R)) < 1, fog3);
+  await E(() => { setDepth(0); fitToView(); }); await sleep(900);
+  // perspective: the size does not jump
+  await E(async () => { _userMoved = true; setPerspective(50); }); await sleep(300);
+  const sizes = {}; for (const p of [0, 20, 100, 50]) { await E(p => setPerspective(p), p); await sleep(300); sizes[p] = await E(() => _projSize()); }
+  check('RB36', 'moving the Perspective slider keeps the structure the size it was (orthographic used to shrink it by a third)', [0, 20, 100].every(p => Math.abs(sizes[p] - sizes[50]) / sizes[50] < 0.04), sizes);
+  const fovs = await E(async () => { const r = {}; for (const p of [0, 50, 100]) { setPerspective(p); await new Promise(r => setTimeout(r, 150)); r[p] = { ortho: !!viewer.camera.ortho, fov: viewer.camera.fov }; } setPerspective(50); return r; });
+  check('RB36', 'the slider is a lens: none is orthographic, 50 is the 20° Ribbon always used, more is wider', fovs[0].ortho && !fovs[50].ortho && Math.abs(fovs[50].fov - 20) < 2 && fovs[100].fov > 40, fovs);
+  // pastel
+  const pas = await E(() => { state.hsl = { h: 0, s: 100, l: 100 }; const c = '#e6194b', hs = _hexToHSL; state.pastel = 0; const a = hs(adjustColor(c)); state.pastel = 80; const b = hs(adjustColor(c)); state.pastel = 0; const w = hs(adjustColor('#fafafa')); state.pastel = 80; const w2 = hs(adjustColor('#fafafa')); state.pastel = 0; return { a, b, w, w2, same: adjustColor(c) === _hslToHex(hs(c).h, hs(c).s, hs(c).l) }; });
+  check('RB36', 'Pastel keeps the hue, lowers the saturation and raises the lightness; a colour already pale moves little; 0 changes nothing', Math.abs(pas.a.h - pas.b.h) < 3 && pas.b.s < pas.a.s * 0.9 && pas.b.l > pas.a.l + 20 && Math.abs(pas.w2.l - pas.w.l) < 8 && pas.same, pas);
+  await pg.click('#presetGrid .preset >> nth=0'); await sleep(300);
+  const sl = await E(() => { const r = document.getElementById('pastelR'); r.value = 70; r.dispatchEvent(new Event('input')); return new Promise(res => setTimeout(() => res({ s: state.pastel, v: document.getElementById('pastelV').textContent, look: state.look }), 200)); });
+  check('RB36', 'the Pastel slider sets it, says it, and leaves the style button that was lit', sl.s === 70 && sl.v === '70%' && sl.look == null, sl);
+  // the controls are what the panel says
+  const ui = await E(() => ({ lights: [...document.querySelectorAll('#lightSeg button')].map(b => b.dataset.v).join(), depth: !!document.getElementById('depthR'), persp: !!document.getElementById('perspR'), oldFog: !!document.getElementById('fogChk'), oldProj: !!document.getElementById('projSeg') }));
+  check('RB36', 'the panel has Flat · Soft · Studio, a Depth slider and a Perspective slider, and no checkbox or two-way switch behind them', ui.lights === 'flat,soft,studio' && ui.depth && ui.persp && !ui.oldFog && !ui.oldProj, ui);
+  await ctx.close();
+}
+
+
+// ── RB37 styles ────────────────────────────────────────────────────────────────────────────────
+async function rb37() {
+  const { ctx, pg, E, go } = await open({ tag: 'RB37 ' });
+  if (!(await has3d(pg))) { skipped.push('RB37 (3Dmol could not load from its CDN)'); await ctx.close(); return; }
+  await go('4LIG'); await sleep(300);
+  await E(() => { rbTab('colour'); rbOpenSec('look'); });
+  const grid = await E(() => ({ ids: [...document.querySelectorAll('#presetGrid .preset')].map(b => b.dataset.p).join(), groups: [...document.querySelectorAll('#presetGrid .preset-grp')].map(g => g.textContent).join() }));
+  check('RB37', 'twelve styles in four groups, the pastel ones first', grid.ids === 'paper,structure,rainbow,ternary,mono,site,surface,hydro,ink,night,cover,confidence' && grid.groups === 'Figures,Ligand and pocket,Surfaces,Mood', grid);
+  // a style starts from a known state: it does not depend on the one before it
+  const keys = ['style', 'color', 'lighting', 'depth', 'border', 'bg', 'projection', 'perspective', 'palette', 'pastel', 'surfaceOpacity'];
+  const snap = () => E(k => { const o = {}; k.forEach(x => { o[x] = state[x]; }); o.depth = rbDepth(); o.hsl = JSON.stringify(state.hsl); return JSON.stringify(o); }, keys);
+  const bad = [];
+  for (const id of ['paper', 'structure', 'rainbow', 'ternary', 'mono', 'site', 'surface', 'hydro', 'ink', 'night']) {
+    await E(id => { applyPreset(id); }, id); const fresh = await snap();
+    await E(() => { applyPreset('cover'); }); await E(id => { applyPreset(id); }, id); const after = await snap();
+    if (fresh !== after) bad.push(id);
+  }
+  check('RB37', 'a style gives the same look whatever was applied before it (they used to stack)', !bad.length, bad);
+  // pastel first: the default figure is pastel
+  await E(() => { applyPreset('paper'); });
+  const paper = await E(() => ({ pal: state.palette, light: state.lighting, ortho: state.projection, bg: state.bg, mode: state.color }));
+  check('RB37', 'Pastel paper is chain colours in the pastel palette, soft light, white, orthographic', paper.pal === 'pastel' && paper.light === 'soft' && paper.ortho === 'orthographic' && paper.bg === 'white' && paper.mode === 'chain', paper);
+  const flat = await E(() => { applyPreset('ink'); return { l: state.lighting, b: state.border }; });
+  check('RB37', 'Ink and wash is Flat light with a thick outline', flat.l === 'flat' && flat.b === 'thick', flat);
+  // changing something by hand puts the lit style button out
+  await E(() => { applyPreset('paper'); });
+  const lit = async () => E(() => document.querySelectorAll('#presetGrid .preset.on').length);
+  const outs = [];
+  for (const [name, fn] of [['depth', () => setDepth(30)], ['pastel', () => setPastel(20)], ['perspective', () => setPerspective(80)], ['palette', () => { const s = document.getElementById('palSel'); s.value = 'tol'; s.dispatchEvent(new Event('change')); }], ['light', () => { state.lighting = 'flat'; state.look = null; renderPresets(); }]]) {
+    await E(() => { applyPreset('paper'); }); const before = await lit(); await E(fn); const after = await lit();
+    if (before !== 1 || after !== 0) outs.push({ name, before, after });
+  }
+  check('RB37', 'a change made by hand takes the highlight off the style (it is no longer that style)', !outs.length, outs);
+  // save my look
+  await E(() => { applyPreset('night'); setPastel(35); });
+  await pg.fill('#lookName', 'My dark pastel'); await pg.click('#lookSave'); await sleep(200);
+  const saved = await E(() => ({ list: JSON.parse(localStorage.getItem('ribbon_looks') || '[]').map(x => x.n).join(), btn: [...document.querySelectorAll('#presetGrid .preset')].map(b => b.dataset.p).filter(x => /^my:/.test(x)).join(), on: state.look }));
+  check('RB37', 'Save look keeps the current one under its name, offers it with the others and lights it', saved.list === 'My dark pastel' && saved.btn === 'my:My dark pastel' && saved.on === 'my:My dark pastel', saved);
+  await E(() => { applyPreset('paper'); });
+  await pg.click('#presetGrid .preset[data-p="my:My dark pastel"]'); await sleep(400);
+  const back = await E(() => ({ bg: state.bg, light: state.lighting, pastel: state.pastel, depth: rbDepth() }));
+  check('RB37', 'applying it brings everything back', back.bg === 'dark' && back.light === 'studio' && back.pastel === 35 && back.depth === 35, back);
+  await pg.hover('#presetGrid .preset[data-p="my:My dark pastel"]'); await pg.click('#presetGrid .preset[data-p="my:My dark pastel"] .preset-x'); await sleep(200);
+  check('RB37', 'its × deletes it, and nothing else', await E(() => JSON.parse(localStorage.getItem('ribbon_looks') || '[]').length === 0 && !document.querySelector('#presetGrid [data-p^="my:"]') && !!document.querySelector('#presetGrid .preset[data-p=paper]')));
+  // the names before
+  const old = await E(() => [runCommand('preset clean', { noHistory: true }).ok && state.look === 'paper', runCommand('preset pocket', { noHistory: true }).ok && state.look === 'site', runCommand('preset pastel paper', { noHistory: true }).ok]);
+  check('RB37', 'the old names (clean, pocket) and a name in words still work as commands', old.every(Boolean), old);
   await ctx.close();
 }
 
@@ -2259,7 +2369,7 @@ async function rb33() {
   await r.ctx.close();
 }
 
-const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20], ['RB21', rb21], ['RB22', rb22], ['RB23', rb23], ['RB24', rb24], ['RB25', rb25], ['RB26', rb26], ['RB27', rb27], ['RB28', rb28], ['RB29', rb29], ['RB30', rb30], ['RB31', rb31], ['RB32', rb32], ['RB33', rb33], ['RB34', rb34], ['RB35', rb35]];
+const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20], ['RB21', rb21], ['RB22', rb22], ['RB23', rb23], ['RB24', rb24], ['RB25', rb25], ['RB26', rb26], ['RB27', rb27], ['RB28', rb28], ['RB29', rb29], ['RB30', rb30], ['RB31', rb31], ['RB32', rb32], ['RB33', rb33], ['RB34', rb34], ['RB35', rb35], ['RB36', rb36], ['RB37', rb37]];
 const port = await freePort();
 const srv = spawn('python3', ['-m', 'http.server', String(port), '--bind', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });
 base = `http://127.0.0.1:${port}/`;
@@ -2268,7 +2378,9 @@ try {
   browser = await chromium.launch();
   for (const [id, fn] of SUITES) {
     if (!run(id)) continue;
+    const t0 = Date.now();
     try { await fn(); } catch (e) { out.push({ inv: id, case: 'suite', msg: 'the suite threw: ' + (m => { const l = m.split('\n').map(x => x.trim()).filter(Boolean); return l[0] + (l.length > 1 ? ' … ' + l[l.length - 1] : ''); })(String(e && e.message || e)) }); }
+    timing[id] = Date.now() - t0;
   }
   await browser.close();
 } finally { srv.kill(); }
@@ -2280,6 +2392,7 @@ for (const inv of invs) {
   (args.verbose ? f : f.slice(0, 12)).forEach(x => console.log(`      ${x.case}: ${x.msg}`));
 }
 skipped.forEach(s => console.log('  – skipped: ' + s));
+if (args.timing) console.log('  timing: ' + Object.entries(timing).sort((a, b) => b[1] - a[1]).map(([k, v]) => k + ' ' + Math.round(v / 1000) + 's').join(' · '));
 if (pageErrs.length) { console.log('  ✗ page errors:'); [...new Set(pageErrs)].forEach(e => console.log('      ' + e)); }
 const failed = out.length + pageErrs.length;
 console.log(failed ? `\n${failed} finding(s).` : '\nAll Ribbon invariants hold.');
