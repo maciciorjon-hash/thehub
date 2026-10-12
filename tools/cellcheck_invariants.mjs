@@ -12,6 +12,9 @@
 //   C4  collapse      when everything is answered the card is one line, and Edit reopens it
 //   C5  the split     a split logged in Incubator (seeded moves) ticks the task by itself
 //   C6  the journal   the day page says what was answered, written from the record
+//   C8  seed          a split for an assay: the picker offers what is planned or ongoing that day first (never a finished
+//                     experiment), the task is the split task plus the experiment, the experiment gets the cell line
+//                     appended (what was there stays), and changing the answer takes back only what the check added
 //   C7  stable        the rows keep their order while they are answered; no console errors
 //
 //   node tools/cellcheck_invariants.mjs [--base=http://127.0.0.1:PORT]      exit 1 on any finding
@@ -73,10 +76,14 @@ try {
     const tasks = () => f.evaluate(() => Object.values(LB.data.planner.tasks).filter(t => t.cellId).map(t => ({ id: t.id, date: t.date, cell: t.cellId, done: !!t.done })));
     const order = () => f.evaluate(() => [...document.querySelectorAll('#lb-cultures .cul-line')].map(x => x.textContent));
     const today = await f.evaluate(() => todayStr());
+    await f.evaluate(t => { const pj = LB.data.projects[0].id, mk = (id, code, title, status, extra) => LB.data.experiments[id] = Object.assign({ id, code, title, projectId: pj, status, blocks: [], created: Date.now(), updated: Date.now() }, extra || {});
+      mk('x1', 'EX1', 'Dose response', 'planned', { cellLines: 'HeLa', blocks: [{ id: 'bk1', title: 'Seed plate', date: t }] });
+      mk('x2', 'EX2', 'Time course', 'ongoing'); mk('x3', 'EX3', 'Finished one', 'done', { blocks: [{ id: 'bk3', title: 'old', date: t }] });
+      mk('x4', 'EX4', 'Later assay', 'planned'); renderAll(); }, today);
 
     // C1
     yes('C1', W + 'the card says how many to check', /3 of 3 to check/.test(await txt() || ''));
-    eq('C1', W + 'three answers per culture', await f.locator('.mck-seg button').count(), 9);
+    eq('C1', W + 'four answers per culture', await f.locator('.mck-seg button').count(), 12);
     eq('C1', W + 'nothing is pre-selected', await f.locator('.mck-seg button.on').count(), 0);
     eq('C1', W + 'the due split is outlined, only that one', await f.evaluate(() => [...document.querySelectorAll('.mck-seg button.sug')].map(b => b.className.includes('mck-split') && b.closest('.cul-row').innerText.includes('HCT116'))), [true]);
     const order0 = await order();
@@ -118,6 +125,35 @@ try {
     await f.evaluate(() => openDayPage(todayStr())); await p.waitForTimeout(400);
     const day = await f.evaluate(() => { const t = document.querySelector('.nb-day'); return t ? t.innerText.replace(/\s+/g, ' ') : ''; });
     yes('C6', W + 'the journal day lists the answers', /Cell cultures/.test(day) && /HEK293T OK/.test(day) && /HCT116 KO Need to split/.test(day) && /Jurkat OK/.test(day));
+
+    // C8
+    await f.evaluate(() => selectNode('journal')); await p.waitForTimeout(400);
+    await f.evaluate(() => { CC_OPEN = true; ccPatch(); }); await p.waitForTimeout(100);
+    const ch = await f.evaluate(d => ccAssayChoices(d).map(x => x.label.split(' \u00b7 ')[0] + '|' + x.sub.split(' \u00b7 ').slice(-2).join('/')), today);
+    eq('C8', W + 'planned today and ongoing first, then the rest, a finished one never, "no assay" last', ch.map(x => x.split('|')[0]), ['EX1 ', 'EX2 ', 'EX4 ', 'No assay yet'].map(x => x.trim()).map(x => x === 'EX1' ? 'EX1' : x));
+    await seg('HEK293T', 'seed').click(); await p.waitForTimeout(250);
+    yes('C8', W + 'Seed opens the picker with the suggestions', await f.locator('#lb-pick-list .dlg-item').count() === 4);
+    await f.locator('#lb-pick-list .dlg-item', { hasText: 'EX1' }).click(); await p.waitForTimeout(300);
+    const st = () => f.evaluate(d => ({ rec: LB.data.cellCheck[d].b2, task: LB.data.planner.tasks['cell_b2_' + d], cl: ['x1', 'x2'].map(i => LB.data.experiments[i].cellLines || '') }), today);
+    let a = await st();
+    eq('C8', W + 'the answer carries the assay', [a.rec.s, a.rec.exp, a.rec.code], ['seed', 'x1', 'EX1']);
+    eq('C8', W + 'the task is the split task plus the experiment', [a.task.cellId, a.task.expId, /^Seed cells · HEK293T/.test(a.task.text), /EX1/.test(a.task.text)], ['b2', 'x1', true, true]);
+    eq('C8', W + 'the cell line is appended, HeLa stays', a.cl, ['HeLa, HEK293T', '']);
+    await f.evaluate(() => { ccSeedPick('b2'); }); await p.waitForTimeout(250);
+    await f.locator('#lb-pick-list .dlg-item', { hasText: 'EX2' }).click(); await p.waitForTimeout(300);
+    a = await st();
+    eq('C8', W + 'seeding for another assay moves it: the first gets its line back, one task', [a.cl, a.task.expId, Object.values(await f.evaluate(() => LB.data.planner.tasks)).filter(t => t.cellId === 'b2').length], [['HeLa', 'HEK293T'], 'x2', 1]);
+    await seg('HEK293T', 'ok').click(); await p.waitForTimeout(250);
+    a = await st();
+    eq('C8', W + 'OK afterwards removes the task and the line it added', [a.cl, !!a.task], [['HeLa', ''], false]);
+    await f.evaluate(() => { ccSeedPick('b2'); }); await p.waitForTimeout(250);
+    await f.locator('#lb-pick-list .dlg-item', { hasText: 'No assay yet' }).click(); await p.waitForTimeout(300);
+    a = await st();
+    eq('C8', W + 'no assay yet is a seed without a link', [a.rec.s, a.rec.exp || null, a.task.expId, a.cl], ['seed', null, null, ['HeLa', '']]);
+    await p.evaluate(() => JournalStore.updateCell('b2', { seeded: Date.now() })); await p.waitForTimeout(400);
+    eq('C8', W + 'the split logged in Incubator ticks a seed too', (await st()).task.done, true);
+    await f.evaluate(() => openDayPage(todayStr())); await p.waitForTimeout(400);
+    yes('C8', W + 'the journal day says Seed', /HEK293T Seed/.test(await f.evaluate(() => document.querySelector('.nb-day').innerText.replace(/\s+/g, ' '))));
 
     eq('C7', W + 'no console errors', errs, []);
     await ctx.close();

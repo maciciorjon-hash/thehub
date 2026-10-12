@@ -1895,16 +1895,16 @@ body.lb-bench #lb-photo-fab{display:none!important;}
 .mck-seg button:hover{color:var(--text);}
 .mck-seg button.sug{box-shadow:inset 0 0 0 1px var(--accent);color:var(--accent);}
 .mck-seg button.on{color:var(--on-accent);box-shadow:none;}
-.mck-seg button.on.mck-ok{background:var(--good);} .mck-seg button.on.mck-split{background:var(--accent);} .mck-seg button.on.mck-issue{background:var(--danger);}
+.mck-seg button.on.mck-ok{background:var(--good);} .mck-seg button.on.mck-split{background:var(--accent);} .mck-seg button.on.mck-seed{background:var(--brand);} .mck-seg button.on.mck-issue{background:var(--danger);}
 .mck-st{flex:none;font-size:var(--fs-2);font-weight:600;color:var(--text2);}
-.mck-st.mck-ok{color:var(--good);} .mck-st.mck-split{color:var(--accent);} .mck-st.mck-issue{color:var(--danger);}
+.mck-st.mck-ok{color:var(--good);} .mck-st.mck-split{color:var(--accent);} .mck-st.mck-seed{color:var(--brand);} .mck-st.mck-issue{color:var(--danger);}
 .mck-ask{flex:1 1 100%;display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding-top:2px;}
 .mck-q{font-size:var(--fs-2);color:var(--text3);margin-right:2px;}
 .mck-chip{background:var(--surface2);border:1px solid var(--border);color:var(--text2);font-family:var(--sans);font-size:var(--fs-2);border-radius:var(--r-1);padding:4px 9px;cursor:pointer;}
 .mck-chip:hover{border-color:var(--border2);color:var(--text);}
 .mck-ask input{flex:1 1 160px;min-width:0;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-1);color:var(--text);font-family:var(--sans);font-size:var(--fs-3);padding:5px 9px;}
 .mck-tog{margin-left:10px;background:none;border:none;color:var(--accent);font-family:var(--sans);font-size:var(--fs-2);font-weight:600;cursor:pointer;padding:0;}
-@media (max-width:640px){ .mck-seg{flex:1 1 100%;} .mck-seg button{flex:1 1 0;min-height:34px;} }
+@media (max-width:640px){ .mck-seg{flex:1 1 100%;} .mck-seg button{flex:1 1 auto;min-height:34px;padding:5px 6px;} }
 .cul-row.warn .cul-msg{color:#e0803a;}
 .ong-list{display:flex;flex-direction:column;gap:4px;}
 .ong-row{display:flex;align-items:center;gap:10px;padding:6px 11px;border-radius:var(--r-2);
@@ -15563,11 +15563,15 @@ function _daysSince(ts){ return ts?Math.floor((Date.now()-ts)/86400000):null; }
 // JournalStore; Labbook only reads it and, for an Issue, writes the flag back.
 //   need to split → one planner task per culture (id is deterministic: asking twice, or from
 //                   two devices, is the same task), ticked by itself when Incubator logs the split
+//   seed          → a split whose cells go to an assay: the same task, plus the experiment it is for
+//                   (picked from what is planned or ongoing that day). The cell line is appended to
+//                   the experiment's Cell lines — never over what is there — and taken off again if the
+//                   answer changes, but only if the check put it there
 //   issue         → a one-line note, the culture goes red in Incubator, its split reminders stop,
 //                   nothing is deleted — Remove there also erases the history
 var CC_OPEN=false;   // the card stays open by choice once everything is answered
 var CC_ASK=null;     // culture whose Issue is waiting for its one line
-var CC_LABEL={ok:'OK',split:'Need to split',issue:'Issue'};
+var CC_LABEL={ok:'OK',split:'Need to split',seed:'Seed',issue:'Issue'};
 function cellChecks(D,make){ var m=LB.data.cellCheck||(LB.data.cellCheck={}); return m[D]||(make?(m[D]={}):null); }
 function cellTaskId(cid,D){ return 'cell_'+cid+'_'+D; }
 function _dayStartMs(D){ var p=String(D).split('-'); return new Date(+p[0],+p[1]-1,+p[2]).getTime(); }
@@ -15590,23 +15594,63 @@ function _ccIssue(cid,D,note){
 function setCellCheck(cid,s){
   var rec=cellChecks(todayStr()), prev=rec&&rec[cid];
   if(s==='issue'){ ccAsk(cid); return; }
+  if(s==='seed'){ ccSeedPick(cid); return; }   // picking again is how the assay is changed
   if(prev&&prev.s===s) return;
   _ccRecord(cid,s,'');
+}
+// Which assay are these cells for? What is planned or ongoing that day comes first, with the
+// reason; the other open experiments follow so a plate that starts tomorrow is still one search
+// away, and "no assay yet" is a real answer (a seed that has not been given a name).
+function ccAssayChoices(D){
+  var why={};
+  blocksForDate(D).forEach(function(fb){ if(isCoded(fb.exp)&&!expClosed(fb.exp)&&!why[fb.exp.id]) why[fb.exp.id]='Step today · '+(fb.block.title||'step'); });
+  var first=[], rest=[];
+  Object.keys(LB.data.experiments||{}).forEach(function(k){ var e=LB.data.experiments[k]; if(!e||!isCoded(e)||expClosed(e)) return;
+    var r=why[e.id]||(e.startDate===D?'Starts today':(e.status==='ongoing'?'Ongoing':''));
+    var proj=projById(e.projectId), it={id:e.id,c:projColor(e.projectId),label:(e.code?e.code+' · ':'')+(e.title||'Untitled'),sub:(proj?proj.name+' · ':'')+(r||'Open, not planned for today')};
+    it.rk=why[e.id]||e.startDate===D?0:(r?1:2);
+    (r?first:rest).push(it); });
+  // planned for the day before merely ongoing, then by name
+  var byName=function(a,b){ return ((a.rk||0)-(b.rk||0))||a.label.localeCompare(b.label); };
+  return first.sort(byName).concat(rest.sort(byName),[{id:'_none',c:'#9ca0b8',label:'No assay yet',sub:'Seed now, say which assay later'}]);
+}
+function ccSeedPick(cid){
+  lbPicker('Seed — which assay are these cells for?',ccAssayChoices(todayStr()),function(it){ _ccRecord(cid,'seed','',it.id==='_none'?null:it.id); });
+}
+// What the check added to an experiment, taken back out: only the name it appended.
+function _ccUnseed(prev){
+  if(!prev||prev.s!=='seed'||!prev.addedCell||!prev.exp) return;
+  var e=LB.data.experiments[prev.exp]; if(!e) return;
+  var keep=String(e.cellLines||'').split(/[,;]+/).map(function(x){ return x.trim(); }).filter(function(x){ return x&&x.toLowerCase()!==String(prev.line||'').toLowerCase(); });
+  e.cellLines=keep.join(', '); e.updated=Date.now();
 }
 function saveCellIssue(cid){
   var i=document.getElementById('cc-note'), note=i?i.value.trim():'';
   if(!note){ if(i) i.focus(); return; }
   _ccRecord(cid,'issue',note);
 }
-function _ccRecord(cid,s,note){
+function _ccRecord(cid,s,note,expId){
   var D=todayStr(), list=lbCultures(), cu=list&&list.filter(function(x){ return x.id===cid; })[0]; if(!cu) return;
   var rec=cellChecks(D,true), prev=rec[cid], T=plannerTasks(), tid=cellTaskId(cid,D), now=Date.now();
-  undoMark('Cell check',['cellCheck.'+D,'planner']);
+  var ex=expId?LB.data.experiments[expId]:null;
+  undoMark('Cell check',['cellCheck.'+D,'planner'].concat(prev&&prev.exp?['experiments.'+prev.exp]:[],ex?['experiments.'+ex.id]:[]));
   if(prev&&prev.s==='issue'&&s!=='issue') _ccIssue(cid,D,null);
-  var r={s:s,at:now,line:cu.c.line||''}; if(note) r.note=note; rec[cid]=r;
-  if(s==='split'){
-    if(!T[tid]) T[tid]={id:tid,date:D,text:'Split cells · '+(cu.c.line||'culture')+(cu.c.passage!=null?(' (P'+cu.c.passage+')'):''),done:false,expId:null,blockId:null,cellId:cid,created:now,updated:now};
-    else if(T[tid].dismissed){ delete T[tid].dismissed; T[tid].updated=now; }
+  _ccUnseed(prev);
+  var r={s:s,at:now,line:cu.c.line||''}; if(note) r.note=note;
+  if(s==='seed'&&ex){
+    r.exp=ex.id; r.code=ex.code||''; r.title=ex.title||'';
+    var have=String(ex.cellLines||'').split(/[,;]+/).map(function(x){ return x.trim().toLowerCase(); });
+    if(have.indexOf(String(r.line).toLowerCase())<0){ ex.cellLines=(String(ex.cellLines||'').trim()?String(ex.cellLines).trim().replace(/[,;]\s*$/,'')+', ':'')+r.line; ex.updated=now; r.addedCell=true; }
+  }
+  rec[cid]=r;
+  if(s==='split'||s==='seed'){
+    var txt=(s==='seed'?'Seed':'Split')+' cells · '+(cu.c.line||'culture')+(cu.c.passage!=null?(' (P'+cu.c.passage+')'):'')+(s==='seed'&&ex?(' → '+(ex.code||ex.title||'assay')):'');
+    var t=T[tid];
+    if(!t) T[tid]={id:tid,date:D,text:txt,done:false,expId:(s==='seed'&&ex)?ex.id:null,blockId:null,cellId:cid,created:now,updated:now};
+    else if(!t.done){
+      if(t.dismissed) delete t.dismissed;
+      if(/^(Split|Seed) cells · /.test(t.text||'')) t.text=txt;   // the words it was given, not ones you typed
+      t.expId=(s==='seed'&&ex)?ex.id:null; t.updated=now; }
   } else if(T[tid]&&!T[tid].done) delete T[tid];   // the answer changed before the split was done
   if(s==='issue') _ccIssue(cid,D,note);
   CC_ASK=null; save(); renderEditor();
@@ -15627,10 +15671,12 @@ function cellSyncTasks(){
     var x=by[t.cellId]; if(x&&x.c.seeded&&x.c.seeded>=_dayStartMs(t.date)){ t.done=true; t.doneAt=x.c.seeded; t.updated=Date.now(); ch=true; } });
   if(ch) save(); return ch;
 }
+// What the row says next to the answer: the line for an issue, the assay for a seed.
+function _ccNote(r){ if(!r) return ''; if(r.note) return r.note; if(r.s==='seed') return (r.code||r.title)?('For '+[r.code,r.title].filter(Boolean).join(' · ')):'No assay yet'; return ''; }
 function _ccSummary(rec,list){
-  var n={ok:0,split:0,issue:0}; Object.keys(rec).forEach(function(k){ var r=rec[k]; if(r&&n[r.s]!=null) n[r.s]++; });
+  var n={ok:0,split:0,seed:0,issue:0}; Object.keys(rec).forEach(function(k){ var r=rec[k]; if(r&&n[r.s]!=null) n[r.s]++; });
   if(list) list.forEach(function(x){ if(!rec[x.id]&&x.c.issue) n.issue++; });
-  var p=[]; if(n.ok) p.push(n.ok+' OK'); if(n.split) p.push(n.split+' need to split'); if(n.issue) p.push(n.issue+' with an issue');
+  var p=[]; if(n.ok) p.push(n.ok+' OK'); if(n.split) p.push(n.split+' need to split'); if(n.seed) p.push(n.seed+' seeded'); if(n.issue) p.push(n.issue+' with an issue');
   return p.join(' · ');
 }
 function _ccRow(x,r){
@@ -15640,13 +15686,13 @@ function _ccRow(x,r){
     +'<span class="cul-meta">p'+esc(String(c.passage==null?'?':c.passage))+(c.vessel?(' · '+esc(c.vessel)):'')+'</span>';
   if(c.issue&&!r) return '<div class="cul-row cc warn">'+head+'<span class="cul-msg">Issue since '+esc(fmtDate(c.issue.day||_dateKey(c.issue.ts)))+(c.issue.note?(' — '+esc(c.issue.note)):'')+'</span>'
     +'<button class="btn ghost sm" onclick="ccResolve(\''+id+'\')">Resolved</button></div>';
-  var seg='<div class="mck-seg" role="group" aria-label="'+esc(c.line||'Culture')+'">'+['ok','split','issue'].map(function(k){
+  var seg='<div class="mck-seg" role="group" aria-label="'+esc(c.line||'Culture')+'">'+['ok','split','seed','issue'].map(function(k){
     return '<button class="mck-'+k+((r&&r.s===k)?' on':'')+((sug===k)?' sug':'')+'" aria-pressed="'+((r&&r.s===k)?'true':'false')+'" onclick="setCellCheck(\''+id+'\',\''+k+'\')">'+CC_LABEL[k]+'</button>'; }).join('')+'</div>';
   var ask=(CC_ASK===id)?('<div class="mck-ask"><span class="mck-q">What happened?</span>'
     +'<button class="mck-chip" onclick="ccChip(this)">Contaminated</button><button class="mck-chip" onclick="ccChip(this)">Dead</button><button class="mck-chip" onclick="ccChip(this)">Not growing</button>'
     +'<input id="cc-note" placeholder="One line" autocomplete="off" onkeydown="if(event.key===\'Enter\')saveCellIssue(\''+id+'\');if(event.key===\'Escape\')ccCancel();">'
     +'<button class="btn sm" onclick="saveCellIssue(\''+id+'\')">Save issue</button><button class="btn ghost sm" onclick="ccCancel()">Cancel</button></div>'):'';
-  return '<div class="cul-row cc '+x.worst+'">'+head+'<span class="cul-msg">'+esc(r&&r.note?r.note:msg)+'</span>'+seg+ask+'</div>';
+  return '<div class="cul-row cc '+x.worst+'">'+head+'<span class="cul-msg">'+esc(_ccNote(r)||msg)+'</span>'+seg+ask+'</div>';
 }
 // Today's card body. Open while anything is unanswered, then one line (Edit reopens it).
 function culturesInnerHtml(){
@@ -15668,7 +15714,7 @@ function _ccRecordHtml(D){
   var rows=Object.keys(rec).map(function(k){ return rec[k]; }).filter(function(r){ return r&&CC_LABEL[r.s]; }).sort(function(a,b){ return (a.at||0)-(b.at||0); });
   if(!rows.length) return '';
   return rows.map(function(r){ return '<div class="cul-row cc mck-ro '+(r.s==='issue'?'warn':'')+'"><span class="cul-dot"></span><span class="cul-line">'+esc(r.line||'Culture')+'</span>'
-    +'<span class="mck-st mck-'+r.s+'">'+CC_LABEL[r.s]+'</span><span class="cul-msg">'+esc(r.note||'')+'</span></div>'; }).join('');
+    +'<span class="mck-st mck-'+r.s+'">'+CC_LABEL[r.s]+'</span><span class="cul-msg">'+esc(_ccNote(r))+'</span></div>'; }).join('');
 }
 function culturesHtml(D){
   D=D||todayStr();
