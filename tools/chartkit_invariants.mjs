@@ -13,6 +13,20 @@
 //                         applied again, a compound keeps its colour when another is hidden, undo restores
 //   K6  hostile input     Markup in a name or a title is text, in the panel, the chart and the SVG export
 //   K7  errors            SD, SEM, 95% CI and range are the numbers they say; one replicate has no bar
+//   K9  reachable         In Beacon, Lumina and Echo, with the mouse wheel over the figure, the whole figure and the whole panel
+//                         beside it can be scrolled into view at two window sizes (Echo's pane is overflow:hidden: it once could not)
+//   K10 room for labels   Whatever the page size (all five presets and the smallest), the number of compounds (1 to 63), the length
+//                         of a name, bars or curves: every label lies inside the figure and on no other label, and so does the legend
+//   K11 a number is a     Emptying or overtyping a field of the Page / Axes tabs cannot make a figure 71 892 pt wide (a 16 000 × 1 px
+//       number the figure PNG), a font of 0, a minimum above the maximum or 200 tick labels on one another
+//       can hold
+//   K12 a curve that      Leave out so many replicates that a curve cannot be refitted: it is not drawn, and the figure's status line and
+//       cannot be refitted  the Data tab say so; putting them back clears it
+//   K13 Echo's chooser    The compound count is one line (its class once collided with the Gradient Planner's round badge); a figure
+//                         holds at most 24 compounds; the key of a compound includes its assay panel; opening different results
+//                         (same count, same first compound) drops the old choice and the left-out replicates
+//   K14 consistent axes   A run of decades is labelled all as powers of ten or all as plain numbers, never "10^-3, 0.01, 0.1"
+//   K15 narrow windows    At 900 and 700 px wide nothing scrolls sideways in any of the three apps
 //
 //   node tools/chartkit_invariants.mjs        exit 1 on any finding
 import { chromium } from 'playwright';
@@ -159,6 +173,113 @@ await page.click('#persist-host [data-tab=colors]'); await page.click('#persist-
 await page.waitForTimeout(500);
 const saved = await ev(() => JSON.parse(localStorage.getItem('ck:persist2') || 'null'));
 check('K8 what is stored between visits is the style (the palette) and none of the data\'s own state (omitted replicates, colours, titles)', saved && saved.palette === 'bold' && Object.keys(saved.omit).length === 0 && Object.keys(saved.colors).length === 0 && saved.title[0].text === null, JSON.stringify(saved && { palette: saved.palette, omit: saved.omit, colors: saved.colors, t: saved.title[0].text }));
+
+// ═════ the editor inside the apps (what a person actually meets) ═════
+const APPS = {
+  echo: { file: 'apps/echo/echo.html', kit: '_egKit', root: '#eg-root', load: async pg => { await pg.evaluate(() => loadTestData()); await pg.waitForTimeout(600); await pg.evaluate(() => runPipeline()); await pg.waitForFunction(() => typeof _lastResultsData !== 'undefined' && _lastResultsData && _lastResultsData.length > 0, null, { timeout: 120000 }); await pg.waitForTimeout(500); await pg.evaluate(() => document.querySelector('[data-tab="graph"]').click()); } },
+  lumina: { file: 'apps/lumina/lumina.html', kit: '_lgKit', root: '#lg-root', load: async pg => { await pg.evaluate(() => loadLuminaTestData()); await pg.waitForTimeout(1500); await pg.evaluate(() => switchTab('graph')); } },
+  beacon: { file: 'apps/beacon/beacon.html', kit: '_bgKit', root: '#bg-root', load: async pg => { await pg.evaluate(() => loadTestData('gain')); await pg.waitForTimeout(800); await pg.evaluate(() => document.querySelector('[data-tab="graph"]').click()); } },
+};
+const REPO = path.resolve(HERE, '..');
+const LABELS = () => {   // every label inside the figure and on no other label; the legend inside too
+  window.__ckLabels = function (sc) {
+    const C = ChartKitCore, out = [], bad = [];
+    function box(p, tag) { const w = p.w || C.measure(p.text, p.size, p.bold, p.italic, p.font), h = p.size, l = p.anchor === 'middle' ? -w / 2 : p.anchor === 'end' ? -w : 0, pts = [[l, -h * .8], [l + w, -h * .8], [l + w, h * .25], [l, h * .25]], th = (p.rot || 0) * Math.PI / 180, c = Math.cos(th), s = Math.sin(th), q = pts.map(a => [p.x + a[0] * c - a[1] * s, p.y + a[0] * s + a[1] * c]), xs = q.map(a => a[0]), ys = q.map(a => a[1]); out.push({ id: tag || p.el, l: Math.min(...xs), r: Math.max(...xs), t: Math.min(...ys), b: Math.max(...ys) }); }
+    sc.prims.forEach(p => { if (p.t === 'text') box(p); else if (p.t === 'group') p.kids.forEach(k => { if (k.t === 'text') box(k, 'legtext'); }); });
+    out.forEach(x => { if (x.l < -.5 || x.t < -.5 || x.r > sc.W + .5 || x.b > sc.H + .5) bad.push('outside:' + x.id); });
+    for (let i = 0; i < out.length; i++) for (let j = i + 1; j < out.length; j++) { const p = out[i], q = out[j], ox = Math.min(p.r, q.r) - Math.max(p.l, q.l), oy = Math.min(p.b, q.b) - Math.max(p.t, q.t); if (ox > 1 && oy > 1 && !(p.id.startsWith('xTick') && q.id.startsWith('xTick'))) bad.push(p.id + '/' + q.id); }
+    const g = sc.prims.find(p => p.t === 'group'); if (g && (g.y < -.5 || g.y + g.h > sc.H + .5 || g.x + g.w > sc.W + .5 || g.x < -.5)) bad.push('legend box');
+    // the labels under bars: written ones are a text height apart (rotated labels' boxes overlap legitimately, so it is the spacing that is asked)
+    if (sc.kind === 'bars') { const xt = sc.prims.filter(p => p.t === 'text' && /^xTick/.test(p.el) && p.text).sort((a, b) => a.x - b.x); for (let i = 1; i < xt.length; i++) { const a = xt[i - 1], b = xt[i], rot = Math.abs(a.rot || 0), need = (rot >= 80 ? a.size * 1.0 : rot ? a.size * 1.3 : Math.max(a.w, b.w) * .95); if (b.x - a.x > .01 && b.x - a.x < need - .01) { bad.push('xlabels crowded'); break; } } }
+    return [...new Set(bad)].slice(0, 4);
+  };
+};
+async function openApp(name, vp) {
+  const a = APPS[name], c = await browser.newContext({ viewport: vp || { width: 1280, height: 800 }, acceptDownloads: true }), pg = await c.newPage(), e = [];
+  pg.on('pageerror', x => e.push(name + ' pageerror: ' + x.message)); pg.on('console', m => { if (m.type() === 'error') e.push(name + ' console: ' + m.text().slice(0, 140)); });
+  await pg.goto('file://' + path.join(REPO, a.file)); await pg.waitForTimeout(1200); await a.load(pg); await pg.waitForTimeout(900); await pg.evaluate(LABELS);
+  return { c, pg, e, a };
+}
+const appErrs = [];
+
+// K14 — a run of decades is labelled one way (the editor's own core, three data ranges)
+await open('xy');
+const k14 = await ev(() => { const C = ChartKitCore, out = {}; [[-4, 2], [-6, 1], [-2, 2], [0, 3], [-8, -4]].forEach(r => { const e = []; for (let x = r[0]; x <= r[1]; x++) e.push(x); out[r.join('..')] = C.decadeLabels(e); }); return out; });
+check('K14 a run of decades is all powers of ten or all plain numbers', Object.values(k14).every(l => l.every(x => /^10\^/.test(x)) || l.every(x => !/^10\^/.test(x))), JSON.stringify(k14));
+
+// K10 — room for labels, in the core (every page preset, 1–63 compounds, long names, bars and curves)
+await open('xy');
+await ev(LABELS);
+const k10core = await ev(() => {
+  const C = ChartKitCore, out = {};
+  const doc = (n, long, bars) => ({ title: ['HiBiT degradation', '', ''], xTitle: '[compound] (µM)', yTitle: '% Signal (norm. to ctrl)', refLine: { y: 100 }, items: Array.from({ length: n }, (_, i) => ({ id: 'i' + i, name: (long ? 'A-very-long-compound-identifier-with-a-salt-form-HCl-' : 'EDA-0') + i + ' · BRD2', points: [10, 3, 1, .3, .1, .03, .01, .003, .001, .0003].slice(0, bars === 'dense' ? 10 : bars ? 3 : 7).map((x, j) => ({ x, reps: [{ id: 'r' + i + j + 'a', v: 100 - j * 13 }, { id: 'r' + i + j + 'b', v: 98 - j * 13 }] })), fit: { fn: x => 50 } })) });
+  [['1 column', 3.4, 2.7], ['1.5 columns', 5, 3.5], ['2 columns', 6.5, 4.2], ['Slide', 9, 5.2], ['Square', 4.5, 4.5], ['smallest', 1, 1]].forEach(pg => [1, 3, 6, 12, 24, 63].forEach(n => [false, true].forEach(long => [false, true, 'dense'].forEach(bars => { const sc = C.build(doc(n, long, bars), { w: pg[1], h: pg[2], kind: bars ? 'bars' : 'xy' }), bad = window.__ckLabels(sc); if (bad.length) out[pg[0] + ' n=' + n + (long ? ' long' : '') + (bars ? ' bars' + (bars === 'dense' ? ' ×10' : '') : '')] = bad.join(','); }))));
+  return out;
+});
+check('K10 every label and the legend lie inside the figure and on no other label — 6 page sizes × 1–63 compounds × short/long names × bars/curves', Object.keys(k10core).length === 0, JSON.stringify(k10core).slice(0, 400));
+
+for (const name of Object.keys(APPS)) {
+  const { c, pg, e, a } = await openApp(name);
+  const E = (f, x) => pg.evaluate(f, x);
+  try {
+  // K9 — reachable with the wheel
+  const reach = () => E(r => { const sv = document.querySelector(r + ' svg.ck-svg').getBoundingClientRect(), p = document.querySelector(r + ' .ck-panel').getBoundingClientRect(); return { svgTop: Math.round(sv.top), svgBottom: Math.round(sv.bottom), panelBottom: Math.round(p.bottom), vh: innerHeight }; }, a.root);
+  for (const [w, h] of [[1280, 800], [1024, 768]]) {
+    await pg.setViewportSize({ width: w, height: h }); await pg.waitForTimeout(400);
+    await E(() => window.scrollTo(0, 0));
+    const at = await E(r => { const b = document.querySelector(r + ' svg.ck-svg').getBoundingClientRect(); return [b.x + b.width / 2, Math.min(b.y + 40, innerHeight - 60)]; }, a.root);
+    await pg.mouse.move(at[0], Math.max(at[1], 120)); for (let i = 0; i < 8; i++) await pg.mouse.wheel(0, 700); await pg.waitForTimeout(350);
+    const r1 = await reach();
+    check('K9 ' + name + ' ' + w + '×' + h + ': with the wheel the whole figure (bottom ' + r1.svgBottom + ') and the whole panel (' + r1.panelBottom + ') can be scrolled into the window (' + r1.vh + ')', r1.svgBottom <= r1.vh + 1 && r1.panelBottom <= r1.vh + 1, JSON.stringify(r1));
+    for (let i = 0; i < 8; i++) await pg.mouse.wheel(0, -700); await pg.waitForTimeout(350);
+    const r0 = await reach();
+    check('K9 ' + name + ' ' + w + '×' + h + ': and back up to the top of the figure', r0.svgTop >= 0, JSON.stringify(r0));
+  }
+  await pg.setViewportSize({ width: 1280, height: 800 });
+  // K10 — the adapter's own data at every page size, as bars and as curves
+  const k10 = await E(k => { const kit = window[k], spec = kit.spec(), out = {}, keep = JSON.stringify([spec.w, spec.h, spec.kind]); [['1 column', 3.4, 2.7], ['1.5 columns', 5, 3.5], ['2 columns', 6.5, 4.2], ['Slide', 9, 5.2], ['Square', 4.5, 4.5], ['smallest', 1, 1]].forEach(pg => ['xy', 'bars'].forEach(kind => { spec.w = pg[1]; spec.h = pg[2]; spec.kind = kind; kit.draw(); const bad = window.__ckLabels(kit.scene()); if (bad.length) out[pg[0] + ' ' + kind] = bad.join(','); })); const k0 = JSON.parse(keep); spec.w = k0[0]; spec.h = k0[1]; spec.kind = k0[2]; kit.draw(); return out; }, a.kit);
+  check('K10 ' + name + ': its own compounds fit every page size as curves and as bars', Object.keys(k10).length === 0, JSON.stringify(k10));
+  // K11 — numbers
+  await pg.click(a.root + ' .ck-tabs [data-tab="page"]');
+  const wf = pg.locator(a.root + ' input[data-p="w"]'); await wf.click(); await wf.fill(''); await pg.waitForTimeout(80);
+  const k11a = await E(k => ({ w: window[k].spec().w, W: window[k].scene().W }), a.kit);
+  await wf.fill(''); await wf.type('99'); await pg.waitForTimeout(80);
+  const k11b = await E(k => ({ w: window[k].spec().w, W: window[k].scene().W }), a.kit);
+  await wf.fill('6.5'); await pg.waitForTimeout(80);
+  check('K11 ' + name + ': an emptied width, and a width of 99 in, are held to what a figure can be (3–20 in)', k11a.w >= 3 && k11a.w <= 20 && k11b.w === 20 && k11b.W === 1440, JSON.stringify({ emptied: k11a, typed99: k11b }));
+  const k11c = await E(k => { const kit = window[k], s = kit.spec(), o = {}; s.y.min = 100; s.y.max = 20; kit.draw(); o.inv = { n: kit.scene().yTicks.ticks.length, lo: kit.scene().yTicks.min, hi: kit.scene().yTicks.max, bad: window.__ckLabels(kit.scene()) }; s.y.min = null; s.y.max = null; s.y.major = 0.0001; kit.draw(); o.tiny = { n: kit.scene().yTicks.ticks.length, bad: window.__ckLabels(kit.scene()) }; s.y.major = null; s.title.forEach(t => t.size = 0); s.x.size = -5; s.legend.size = 'abc'; kit.draw(); o.fonts = window.__ckLabels(kit.scene()); const sc = kit.scene(); o.sizes = [s.x.size, s.legend.size]; s.title = ChartKitCore.defaults().title; s.x.size = 10; s.legend.size = 10; kit.draw(); return o; }, a.kit);
+  check('K11 ' + name + ': a minimum above the maximum is ignored (the axis stays on auto), a step of 0.0001 does not make 200 labels, a font of 0 or "abc" is a readable font', k11c.inv.lo < k11c.inv.hi && k11c.inv.n <= 60 && k11c.inv.bad.length === 0 && k11c.tiny.n <= 61 && k11c.tiny.bad.length === 0 && k11c.fonts.length === 0, JSON.stringify(k11c));
+  // the PNG of an out-of-range page is still a figure
+  const png = await E(async k => { const kit = window[k], s = kit.spec(); s.w = 1e6; s.h = 0; kit.draw(); const sc = kit.scene(), r = await ChartKitExport.toPNG(sc, 300), b = new Uint8Array(await r.blob.arrayBuffer()), dv = new DataView(b.buffer); s.w = 6.5; s.h = 4.2; kit.draw(); return { w: dv.getUint32(16), h: dv.getUint32(20) }; }, a.kit);
+  check('K11 ' + name + ': a figure of absurd size still exports a real picture (300 dpi: ' + png.w + ' × ' + png.h + ' px, not 16000 × 1)', png.w >= 900 && png.h >= 600, JSON.stringify(png));
+  await E(() => window.scrollTo(0, 0));
+  // K15 — narrow windows
+  for (const [w, h] of [[900, 700], [700, 900]]) { await pg.setViewportSize({ width: w, height: h }); await pg.waitForTimeout(450); const ov = await E(() => [document.documentElement.scrollWidth, innerWidth]); check('K15 ' + name + ' at ' + w + ' px nothing scrolls sideways', ov[0] <= ov[1], JSON.stringify(ov)); }
+  await pg.setViewportSize({ width: 1280, height: 800 });
+
+  if (name === 'echo') {
+    // K12
+    await pg.click(a.root + ' .ck-tabs [data-tab="data"]');
+    const k12 = await E(() => { const s = _egKit.spec(), d = egGraphDoc(), it = d.items[0], o = {}; it.points.slice(0, it.points.length - 3).forEach(p => p.reps.forEach(r => s.omit[r.id] = true)); _egKit.draw(); _egKit.select(null); o.fit = !!_egKit.scene().items[0].fit; o.status = document.querySelector('#eg-root .ck-status').textContent; o.note = document.querySelectorAll('#eg-root .ck-fitnote').length; s.omit = {}; _egKit.draw(); o.after = document.querySelector('#eg-root .ck-status').textContent; return o; });
+    check('K12 echo: with too few points left the curve is not drawn and the status line says so; putting them back clears it', !k12.fit && /too few points/.test(k12.status) && k12.after === '', JSON.stringify(k12));
+    // K13
+    const k13 = await E(() => {
+      const o = {}, n = [...document.querySelectorAll('#eg-pick span')].find(x => /^\d+ of \d+$/.test(x.textContent.trim())); if (n) { const rg = document.createRange(); rg.selectNodeContents(n); o.nLines = new Set([...rg.getClientRects()].map(r => Math.round(r.top))).size; o.nW = Math.round(n.getBoundingClientRect().width); } else { o.nLines = null; o.nW = null; }
+      const keys = egRows().map(egKey); o.unique = new Set(keys).size === keys.length; o.keyHasPanel = keys[0].split('|').length === 3 && /\|\d*$/.test(keys[0]);
+      egSetSel(new Set(egRows().map(egKey))); o.cap = _egSel.size; o.docItems = egGraphDoc().items.length;
+      // opening different results with the same count and first compound
+      egSetSel(new Set(egRows().slice(0, 3).map(egKey))); _egKit.spec().omit['x#0'] = true; const rows = egRows(); rows[2]._logec50 += 0.5; egShow(); o.reset = [_egSel.size, Object.keys(_egKit.spec().omit).length]; rows[2]._logec50 -= 0.5;
+      return o;
+    });
+    check('K13 echo: the compound count ("6 of 63") is on one line (its class once collided with the Gradient Planner\'s 20 px round badge and wrapped to three)', k13.nLines === 1 && k13.nW >= 30, JSON.stringify({ lines: k13.nLines, width: k13.nW }));
+    check('K13 echo: a figure holds at most 24 compounds, and a compound\'s key is protein, name and assay panel, unique', k13.cap === 24 && k13.docItems === 24 && k13.unique && k13.keyHasPanel, JSON.stringify(k13));
+    check('K13 echo: other results with the same count and first compound start with the default choice and nothing left out', k13.reset[0] === 6 && k13.reset[1] === 0, JSON.stringify(k13.reset));
+  }
+  } catch (err) { check('K9-K15 ' + name + ': the checks ran to the end', false, String(err && err.message || err).split('\n')[0]); }
+  e.forEach(x => appErrs.push(x));
+  await c.close();
+}
+check('no page or console errors in the apps', appErrs.length === 0, appErrs.slice(0, 3).join(' | '));
 
 check('no page or console errors', errs.length === 0, errs.slice(0, 3).join(' | '));
 await browser.close();

@@ -44,7 +44,7 @@ var ChartKit = (function(){
     var svg = root.querySelector('.ck-svg'), panel = root.querySelector('.ck-body'), selBox = root.querySelector('.ck-sel'), tabsEl = root.querySelector('.ck-tabs'), status = root.querySelector('.ck-status');
     ['data:Data', 'text:Text', 'axes:Axes', 'style:Style', 'colors:Colours', 'page:Page'].forEach(function(t){ var p = t.split(':'); var b = document.createElement('button'); b.type = 'button'; b.dataset.tab = p[0]; b.textContent = p[1]; tabsEl.appendChild(b); });
 
-    function toast(m, k){ if (opts.toast) opts.toast(m, k); status.textContent = m; }
+    function toast(m, k){ if (opts.toast) opts.toast(m, k); status.textContent = m; status.classList.remove('ck-warnline'); lastFitNote = ''; }
     // Only the style is kept between visits. What was omitted, hidden, recoloured, moved or retitled belongs to the data it
     // was done to: a replicate left out of one experiment must not be silently left out of the next.
     function persistable(){
@@ -76,7 +76,18 @@ var ChartKit = (function(){
       svg.style.aspectRatio = scene.W + ' / ' + scene.H;
       svg.innerHTML = inner + '<g class="ck-ov"></g>';
       var bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect'); bg.setAttribute('width', scene.W); bg.setAttribute('height', scene.H); bg.setAttribute('fill', '#ffffff'); bg.setAttribute('class', 'ck-paper'); svg.insertBefore(bg, svg.firstChild.nextSibling || null);
-      overlay();
+      overlay(); pngNote(); fitNote();
+    }
+    // A curve that cannot be refitted without the replicates left out is not drawn; say so where the figure is, not only in the Data tab.
+    var lastFitNote = '';
+    function fitFailed(){ return scene && scene.kind === 'xy' ? scene.items.filter(function(i){ return i.refitFailed && !i.hidden; }) : []; }
+    function fitNote(){
+      var f = fitFailed(), msgs = [];
+      if (f.length) msgs.push((f.length === 1 ? f[0].name : f.length + ' compounds') + ': too few points are left to refit, so ' + (f.length === 1 ? 'its curve is' : 'their curves are') + ' not drawn. Put a replicate back to bring ' + (f.length === 1 ? 'it' : 'them') + ' back.');
+      if (scene && scene.grew) msgs.push('The labels need more room than ' + scene.grew.askedW.toFixed(1) + ' × ' + scene.grew.askedH.toFixed(1) + ' in, so the figure is made ' + scene.grew.w.toFixed(1) + ' × ' + scene.grew.h.toFixed(1) + ' in. A larger page, a smaller legend or fewer compounds keeps the size you asked for.');
+      var msg = msgs.join(' ');
+      if (msg) { status.textContent = msg; status.classList.add('ck-warnline'); lastFitNote = msg; }
+      else if (lastFitNote && status.textContent === lastFitNote) { status.textContent = ''; status.classList.remove('ck-warnline'); lastFitNote = ''; }
     }
     function rectOf(node){ var r = node.getBoundingClientRect(), o = svg.getBoundingClientRect(), k = scale(); return { l: (r.left - o.left) / k, t: (r.top - o.top) / k, r: (r.right - o.left) / k, b: (r.bottom - o.top) / k }; }
     function nodeOf(id){ var n = svg.querySelectorAll('[data-el]'); for (var i = 0; i < n.length; i++) if (n[i].dataset.el === id) return n[i]; return null; }
@@ -119,7 +130,7 @@ var ChartKit = (function(){
 
     // ── the panel ──────────────────────────────────────────────
     function fld(label, path, type, o){
-      o = o || {}; var v = get(spec, path);
+      o = o || {}; var v = get(spec, path), rg = C.RANGE[path]; if (rg) { if (o.min === undefined) o.min = rg[0]; if (o.max === undefined) o.max = rg[1]; }
       if (type === 'bool') return '<label class="ck-chk ck-f2"><input type="checkbox" data-p="' + path + '" data-t="bool"' + (v ? ' checked' : '') + '> ' + label + '</label>';
       if (type === 'sel') return '<label class="ck-f"><span>' + label + '</span><select class="ck-in" data-p="' + path + '" data-t="' + (o.num ? 'selnum' : 'str') + '">' + o.opts.map(function(x){ return '<option value="' + x[0] + '"' + (String(v) === String(x[0]) ? ' selected' : '') + '>' + x[1] + '</option>'; }).join('') + '</select></label>';
       return '<label class="ck-f"><span>' + label + '</span><input class="ck-in" type="number" step="' + (o.step || 'any') + '"' + (o.min !== undefined ? ' min="' + o.min + '"' : '') + (o.max !== undefined ? ' max="' + o.max + '"' : '') + ' data-p="' + path + '" data-t="' + (o.auto ? 'numauto' : 'num') + '" value="' + (v === null || v === undefined ? '' : v) + '"' + (o.auto ? ' placeholder="auto"' : '') + '></label>';
@@ -133,7 +144,8 @@ var ChartKit = (function(){
           '<div class="ck-grp">Numbers on the axes</div><div class="ck-grid">' + fld('Y labels', 'y.size', 'num', { step: 0.5, min: 4, max: 40 }) + fld('X labels', 'x.size', 'num', { step: 0.5, min: 4, max: 40 }) + '</div>';
       }
       else if (tab === 'axes') {
-        h = '<div class="ck-grp">Y axis</div><div class="ck-grid">' + fld('Minimum', 'y.min', 'num', { auto: 1 }) + fld('Maximum', 'y.max', 'num', { auto: 1 }) + fld('Major step', 'y.major', 'num', { auto: 1 }) + fld('Decimals', 'y.dec', 'num', { auto: 1, step: 1, min: 0, max: 6 }) + '</div>' + fld('Logarithmic', 'y.log', 'bool') +
+        var yBad = C.fin(+spec.y.min) && C.fin(+spec.y.max) && spec.y.min !== null && spec.y.max !== null && +spec.y.min >= +spec.y.max;
+        h = '<div class="ck-grp">Y axis</div><div class="ck-grid">' + fld('Minimum', 'y.min', 'num', { auto: 1 }) + fld('Maximum', 'y.max', 'num', { auto: 1 }) + fld('Major step', 'y.major', 'num', { auto: 1 }) + fld('Decimals', 'y.dec', 'num', { auto: 1, step: 1 }) + '</div>' + (yBad ? '<div class="ck-warn">The maximum has to be above the minimum — the axis is on auto until it is.</div>' : '') + fld('Logarithmic', 'y.log', 'bool') +
           '<div class="ck-grp">X axis</div><div class="ck-grid">' + (kind === 'bars' ? fld('Label angle', 'x.rot', 'sel', { num: 1, opts: [[0, 'Flat'], [45, '45°'], [90, 'Vertical']] }) + fld('Order', 'x.order', 'sel', { opts: [['given', 'As given'], ['desc', 'High → low'], ['asc', 'Low → high']] }) : fld('Minimum', 'x.min', 'num', { auto: 1 }) + fld('Maximum', 'x.max', 'num', { auto: 1 })) + '</div>' + (kind === 'bars' ? fld('Show concentration labels', 'x.labels', 'bool') : '') +
           '<div class="ck-grp">Lines</div><div class="ck-grid">' + fld('Axis width', 'axisW', 'num', { step: 0.25, min: 0.25, max: 5 }) + fld('Tick length', 'tick', 'num', { step: 0.5, min: 0, max: 12 }) + '</div>' + fld('Box around the plot', 'box', 'bool') + fld('Horizontal grid', 'grid', 'bool') +
           '<div class="ck-grp">Reference line</div>' + fld('Show', 'ref.show', 'bool') + '<div class="ck-grid">' + fld('At', 'ref.y', 'num', { auto: 1 }) + fld('Width', 'ref.w', 'num', { step: 0.25, min: 0.25, max: 5 }) + '</div>' + fld('Dotted', 'ref.dash', 'bool');
@@ -142,7 +154,7 @@ var ChartKit = (function(){
         h = (kind === 'bars' ? '<div class="ck-grp">Bars</div><div class="ck-grid">' + fld('Width', 'bar.width', 'num', { step: 0.05, min: 0.2, max: 1.2 }) + fld('Gap between groups', 'bar.gap', 'num', { step: 0.1, min: 0, max: 4 }) + fld('Gap inside a group', 'bar.inner', 'num', { step: 0.05, min: 0, max: 1 }) + fld('Border', 'bar.border', 'num', { step: 0.25, min: 0, max: 5 }) + '</div>' + fld('Fill', 'fill', 'sel', { opts: [['solid', 'Solid'], ['tint', 'Light fill, coloured border'], ['outline', 'Outline only']] }) + fld('Shade by concentration (highest darkest)', 'bar.shade', 'bool') + fld('Show every replicate as a point', 'pts.show', 'bool')
           : '<div class="ck-grp">Curves and points</div><div class="ck-grid">' + fld('Marker', 'xy.marker', 'sel', { opts: [['circle', 'Circle'], ['square', 'Square'], ['triangle', 'Triangle'], ['diamond', 'Diamond'], ['auto', 'One per compound']] }) + fld('Marker size', 'xy.msize', 'num', { step: 0.5, min: 1, max: 14 }) + fld('Line width', 'xy.lw', 'num', { step: 0.25, min: 0.25, max: 6 }) + '</div>' + fld('Show the fit', 'xy.fit', 'bool') + fld('Show the points', 'xy.points', 'bool') + fld('Open markers', 'xy.open', 'bool') + fld('Dashed fit', 'xy.dash', 'bool') + fld('Show every replicate beside its mean', 'pts.show', 'bool')) +
           '<div class="ck-grp">Error bars</div>' + fld('Show', 'err.type', 'sel', { opts: [['sd', 'SD'], ['sem', 'SEM'], ['ci95', '95% CI'], ['range', 'Range'], ['none', 'None']] }) + '<div class="ck-grid">' + (kind === 'bars' ? fld('Direction', 'err.dir', 'sel', { opts: [['up', 'Up only'], ['both', 'Both ways']] }) : '') + fld('Cap', 'err.cap', 'num', { step: 0.5, min: 0, max: 16 }) + fld('Width', 'err.w', 'num', { step: 0.25, min: 0.25, max: 5 }) + '</div>' +
-          '<div class="ck-grp">Legend</div>' + fld('Show', 'legend.show', 'bool') + '<div class="ck-grid">' + fld('Size', 'legend.size', 'num', { step: 0.5, min: 4, max: 40 }) + '</div>';
+          '<div class="ck-grp">Legend</div>' + fld('Show', 'legend.show', 'bool') + '<div class="ck-grid">' + fld('Size', 'legend.size', 'num', { step: 0.5, min: 4, max: 40 }) + fld('Position', 'legend.pos', 'sel', { opts: [['auto', 'Auto'], ['right', 'Right of the plot'], ['below', 'Below the plot']] }) + '</div>';
       }
       else if (tab === 'colors') {
         h = '<div class="ck-grp">Palette</div><div class="ck-pals">' + C.PALETTES.map(function(p){ return '<button type="button" class="ck-pal' + (spec.palette === p.id ? ' on' : '') + '" data-pal="' + p.id + '" title="' + p.name + '"><span class="ck-pn">' + p.name + '</span><span class="ck-ps">' + p.c.slice(0, 8).map(function(c){ return '<i style="background:' + c + '"></i>'; }).join('') + '</span></button>'; }).join('') + '</div>' +
@@ -151,7 +163,7 @@ var ChartKit = (function(){
       }
       else if (tab === 'page') {
         h = '<div class="ck-grp">Size of the figure</div><div class="ck-pg">' + PAGES.map(function(p){ return '<button type="button" class="ck-li' + (Math.abs(spec.w - p[1]) < 0.01 && Math.abs(spec.h - p[2]) < 0.01 ? ' on' : '') + '" data-page="' + p[1] + ',' + p[2] + '">' + p[0] + '<em>' + p[1] + ' × ' + p[2] + ' in</em></button>'; }).join('') + '</div>' +
-          '<div class="ck-grid">' + fld('Width (in)', 'w', 'num', { step: 0.1, min: 1.5, max: 20 }) + fld('Height (in)', 'h', 'num', { step: 0.1, min: 1.2, max: 20 }) + '</div>' +
+          '<div class="ck-grid">' + fld('Width (in)', 'w', 'num', { step: 0.1 }) + fld('Height (in)', 'h', 'num', { step: 0.1 }) + '</div>' +
           '<div class="ck-grp">Space around the plot (pt)</div><div class="ck-grid">' + fld('Left', 'margin.l', 'num', { step: 1 }) + fld('Right', 'margin.r', 'num', { step: 1 }) + fld('Top', 'margin.t', 'num', { step: 1 }) + fld('Bottom', 'margin.b', 'num', { step: 1 }) + '</div>' +
           '<div class="ck-row"><button type="button" class="ck-btn" data-a="resetlayout">Reset positions &amp; margins</button><button type="button" class="ck-btn" data-a="resetall">Reset everything</button></div>' +
           '<div class="ck-note" id="ck-pngnote"></div>';
@@ -165,17 +177,19 @@ var ChartKit = (function(){
       var anyOmit = Object.keys(spec.omit).some(function(k){ return spec.omit[k]; });
       return '<div class="ck-note">Click a replicate to leave it out of the chart — means, error bars and fits are recalculated without it.' + (anyOmit ? ' <button type="button" class="ck-link" data-a="restoreomit">Put them all back</button>' : '') + '</div>' + its.map(function(it, ii){
         var hid = spec.hidden[it.id], col = C.itemColor(spec, it, ii);
+        var failed = !hid && fitFailed().some(function(f){ return f.id === it.id; });
         return '<div class="ck-dg' + (hid ? ' off' : '') + '"><div class="ck-dh"><i style="background:' + col + '"></i><button type="button" class="ck-name" data-pick="bar:' + esc(it.id) + '">' + esc(it.name) + '</button><button type="button" class="ck-link" data-a="hideitem" data-id="' + esc(it.id) + '">' + (hid ? 'Show' : 'Hide') + '</button></div>' +
+          (failed ? '<div class="ck-fitnote">Too few points left to refit — its curve is not drawn.</div>' : '') +
           (hid ? '' : (it.points || []).map(function(p){ return '<div class="ck-dp"><span class="ck-dx">' + esc(p.label != null ? p.label : p.x) + '</span><span class="ck-reps">' + (p.reps || []).map(function(r){ var off = spec.omit[r.id]; return '<button type="button" class="ck-rep' + (off ? ' off' : '') + '" data-omit="' + esc(r.id) + '" title="' + (off ? 'Omitted — click to put it back' : 'Click to omit') + '">' + esc(C.fin(r.v) ? String(+(+r.v).toPrecision(4)) : '–') + '</button>'; }).join('') + '</span></div>'; }).join('')) + '</div>';
       }).join('');
     }
 
     // ── changes ────────────────────────────────────────────────
-    function setPath(path, v, k){ pushUndo(k || path); put(spec, path, v); draw(); save(); }
+    function setPath(path, v, k){ pushUndo(k || path); put(spec, path, v); C.sanitize(spec); draw(); save(); }
     root.addEventListener('input', function(e){
       var t = e.target;
       if (t.dataset.p) { var v = t.dataset.t === 'bool' ? t.checked : t.dataset.t === 'selnum' ? +t.value : t.dataset.t === 'num' || t.dataset.t === 'numauto' ? (t.value === '' ? (t.dataset.t === 'numauto' ? null : 0) : +t.value) : t.value; if ((t.dataset.t === 'num' || t.dataset.t === 'numauto') && v !== null && !isFinite(v)) return; setPath(t.dataset.p, v); if (t.dataset.t === 'bool' || t.tagName === 'SELECT') { renderPanel(); } }
-      else if (t.dataset.tp) { var vv = +t.value; if (!isFinite(vv) || vv < 1) return; setPath(t.dataset.tp, vv); }
+      else if (t.dataset.tp) { var vv = +t.value; if (!isFinite(vv) || t.value === '') return; setPath(t.dataset.tp, vv); }
       else if (t.dataset.text) { var id = t.dataset.text; pushUndo('text:' + id); if (id.indexOf('title') === 0) spec.title[+id.slice(5)].text = t.value; else spec[id].text = t.value; draw(); save(); }
       else if (t.dataset.item) { pushUndo('col:' + t.dataset.item); spec.colors[t.dataset.item] = t.value; draw(); save(); renderSwatches(); }
     });
@@ -278,7 +292,7 @@ var ChartKit = (function(){
       if (!scene) return; toast('Making the ' + dpi + ' dpi PNG…');
       X.toPNG(scene, dpi).then(function(r){ X.save(r.blob, base() + '_' + dpi + 'dpi.png'); toast('PNG saved — ' + r.size.w + ' × ' + r.size.h + ' px, tagged ' + r.size.effective + ' dpi' + (r.size.scaled ? ' (the most this browser can draw)' : '') + '.'); }).catch(function(err){ toast(err.message, 'err'); });
     }
-    function exportPDF(){ if (!scene) return; X.save(X.toPDF(scene), base() + '.pdf'); toast('PDF saved — vector, ' + spec.w + ' × ' + spec.h + ' in.'); }
+    function exportPDF(){ if (!scene) return; X.save(X.toPDF(scene), base() + '.pdf'); toast('PDF saved — vector, ' + (scene.W / 72).toFixed(1) + ' × ' + (scene.H / 72).toFixed(1) + ' in.'); }
     function exportSVG(){ if (!scene) return; X.save(new Blob([X.toSVG(scene)], { type: 'image/svg+xml' }), base() + '.svg'); toast('SVG saved.'); }
 
     var lastSig = null;

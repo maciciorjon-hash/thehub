@@ -39,13 +39,35 @@ var ChartKitCore = (function(){
       pts: { show: false, size: 2.6 },
       xy: { marker: 'circle', msize: 4.5, lw: 1.8, fit: true, points: true, open: false, dash: false },
       ref: { show: true, y: null, dash: true, w: 1, label: true },
-      legend: { show: true, size: 10, swatch: 11 },
+      legend: { show: true, size: 10, swatch: 11, pos: 'auto' },
       hidden: {}, omit: {}, pos: {}, margin: { l: 0, r: 0, t: 0, b: 0 },
       snap: true, grid2: false
     };
   }
   function merge(a, b){ if (!b || typeof b !== 'object') return a; Object.keys(b).forEach(function(k){ if (a[k] && typeof a[k] === 'object' && !Array.isArray(a[k]) && typeof b[k] === 'object' && b[k]) merge(a[k], b[k]); else a[k] = b[k]; }); return a; }
-  function withDefaults(s){ var d = defaults(); if (s && typeof s === 'object') { merge(d, JSON.parse(JSON.stringify(s))); if (Array.isArray(s.title)) d.title = s.title.map(function(t, i){ return merge(JSON.parse(JSON.stringify(defaults().title[i] || defaults().title[2])), t); }); } return d; }
+  // What a number in the spec may be. A field the person is typing in passes through every value on the way to the one
+  // they mean ("" → 0 → 8, "99" on the way to "9.9"), and a spec kept in localStorage may hold anything: none of it may
+  // reach the drawing as a figure 71 892 pt wide (a 16 000 × 1 px PNG) or a font of 0. null stays null (auto).
+  var RANGE = { w: [3, 20], h: [2.6, 20], axisW: [0.25, 5], tick: [0, 12], 'x.size': [4, 40], 'y.size': [4, 40], 'xTitle.size': [4, 60], 'yTitle.size': [4, 60], 'legend.size': [4, 40],
+    'bar.width': [0.2, 1.2], 'bar.gap': [0, 4], 'bar.inner': [0, 1], 'bar.border': [0, 5], 'err.cap': [0, 16], 'err.w': [0.25, 5], 'xy.msize': [1, 14], 'xy.lw': [0.25, 6], 'ref.w': [0.25, 5],
+    'margin.l': [-40, 200], 'margin.r': [-40, 200], 'margin.t': [-40, 200], 'margin.b': [-40, 200], 'y.dec': [0, 6], 'y.major': [0, 1e6] };
+  function getp(o, path){ return path.split('.').reduce(function(a, k){ return a == null ? a : a[k]; }, o); }
+  function putp(o, path, v){ var ks = path.split('.'), t = o; for (var i = 0; i < ks.length - 1; i++) { if (t[ks[i]] == null || typeof t[ks[i]] !== 'object') t[ks[i]] = {}; t = t[ks[i]]; } t[ks[ks.length - 1]] = v; }
+  function clamp(v, lo, hi){ return Math.max(lo, Math.min(hi, v)); }
+  var AUTO = { 'y.dec': 1, 'y.major': 1 };   // empty means "auto" there
+  function sanitize(s){
+    var d = defaults();
+    Object.keys(RANGE).forEach(function(k){
+      var v = getp(s, k), r = RANGE[k];
+      if (AUTO[k] && (v === null || v === undefined || v === '')) { putp(s, k, null); return; }
+      v = (v === null || v === undefined || v === '') ? NaN : +v;
+      putp(s, k, isFinite(v) ? clamp(v, r[0], r[1]) : getp(d, k));
+    });
+    (s.title || []).forEach(function(t, i){ var v = +t.size; t.size = isFinite(v) ? clamp(v, 4, 60) : (d.title[i] || d.title[2]).size; });
+    if (s.y.dec !== null) s.y.dec = Math.round(s.y.dec);
+    return s;
+  }
+  function withDefaults(s){ var d = defaults(); if (s && typeof s === 'object') { merge(d, JSON.parse(JSON.stringify(s))); if (Array.isArray(s.title)) d.title = s.title.map(function(t, i){ return merge(JSON.parse(JSON.stringify(defaults().title[i] || defaults().title[2])), t); }); } return sanitize(d); }
 
   // ── numbers ─────────────────────────────────────────────────
   function fin(v){ return typeof v === 'number' && isFinite(v); }
@@ -62,6 +84,7 @@ var ChartKitCore = (function(){
   }
   function linTicks(lo, hi, major, target){
     if (!(hi > lo)) hi = lo + 1;
+    if (major > 0 && (hi - lo) / major > 60) major = 0;   // a step this small is 200 labels on one another: ask for a sensible one
     var step = major > 0 ? major : niceStep(hi - lo, target || 6), a = Math.ceil(lo / step - 1e-9) * step, out = [];
     for (var v = a, g = 0; v <= hi + step * 1e-6 && g < 200; v += step, g++) out.push(+(+v.toPrecision(12)));
     return { step: step, ticks: out };
@@ -72,6 +95,11 @@ var ChartKitCore = (function(){
     if (dec !== null && dec !== undefined && dec !== '') return (+v).toFixed(dec).replace(/^-0(\.0*)?$/, function(m){ return m.slice(1); });
     var a = Math.abs(v); if (a !== 0 && (a >= 1e6 || a < 1e-3)) return (+v).toExponential(1).replace('e+', '×10^').replace('e-', '×10^-');
     return String(+(+v).toPrecision(6));
+  }
+  // The labels of a run of decades: all plain numbers (0.001 … 10000) or all powers of ten, never "10^-3, 0.01, 0.1".
+  function decadeLabels(exps){
+    var plain = exps.every(function(e){ return e >= -3 && e <= 4; });
+    return exps.map(function(e){ return plain ? String(+Math.pow(10, e).toPrecision(6)) : '10^' + e; });
   }
   function fmtX(v){ if (!fin(v)) return ''; var a = Math.abs(v); if (a >= 1e5 || (a > 0 && a < 1e-2)) return '10^' + Math.round(Math.log10(a)); return String(+(+v).toPrecision(3)); }
 
@@ -109,15 +137,64 @@ var ChartKitCore = (function(){
         return { x: p.x, label: p.label != null ? p.label : fmtX(p.x), kept: kept, dropped: dropped, st: st };
       });
       if (spec.x.order === 'asc') pts.sort(function(a, b){ return a.x - b.x; }); else if (spec.x.order === 'desc') pts.sort(function(a, b){ return b.x - a.x; });
-      var fit = null;
+      var fit = null, refitFailed = false;
       if (it.fit || it.refit !== false) {
         var anyOmit = (it.points || []).some(function(p){ return (p.reps || []).some(function(r){ return spec.omit[r.id]; }); });
-        if (anyOmit && doc.refit) { try { fit = doc.refit(it, pts.filter(function(p){ return p.st.n; }).map(function(p){ return { x: p.x, y: p.st.mean, sd: p.st.sd, n: p.st.n, reps: p.kept.map(function(r){ return r.v; }) }; })); } catch (e) { fit = null; } }
+        if (anyOmit && doc.refit) { try { fit = doc.refit(it, pts.filter(function(p){ return p.st.n; }).map(function(p){ return { x: p.x, y: p.st.mean, sd: p.st.sd, n: p.st.n, reps: p.kept.map(function(r){ return r.v; }) }; })); } catch (e) { fit = null; } refitFailed = !fit && !!it.fit; }
         else fit = it.fit || null;
       }
-      items.push({ id: it.id, name: it.name, idx: idx, color: col, pts: pts, fit: fit, hidden: !!spec.hidden[it.id] });
+      items.push({ id: it.id, name: it.name, idx: idx, color: col, pts: pts, fit: fit, refitFailed: refitFailed, hidden: !!spec.hidden[it.id] });
     });
     return items;
+  }
+
+  function fitText(text, size, maxW, F){
+    text = String(text == null ? '' : text); if (measure(text, size, false, false, F) <= maxW) return text;
+    var lo = 0, hi = text.length;
+    while (lo < hi) { var mid = (lo + hi + 1) >> 1; if (measure(text.slice(0, mid) + '\u2026', size, false, false, F) <= maxW) lo = mid; else hi = mid - 1; }
+    return text.slice(0, lo) + '\u2026';
+  }
+  // The legend is a block at the right of the plot. It must stay inside the figure whatever it holds: a long list goes into
+  // columns, then smaller, then each name is cut short (…), so 6 compounds are a column and 40 are a small block, not a
+  // legend that runs off the page and squeezes the plot to nothing.
+  function legendLayout(names, kind, spec, W, H, F){
+    var n = names.length, swW = kind === 'bars' ? spec.legend.swatch : spec.legend.swatch * 1.4, off = swW + 8, gap = 14, cap = Math.max(60, W * 0.4), availH = Math.max(40, H - 20);
+    var ls = spec.legend.size, maxTxt = Math.max(40, W * 0.3), res = null;
+    for (var pass = 0; pass < 16; pass++) {
+      var line = ls * (n > 12 ? 1.45 : 1.7), rowsMax = Math.max(1, Math.floor(availH / line)), rows = Math.min(n, rowsMax), cols = Math.ceil(n / rows); rows = Math.ceil(n / cols);
+      var texts = names.map(function(nm){ return fitText(nm, ls, maxTxt, F); }), colW = [], c, r, i;
+      for (c = 0; c < cols; c++) { var m = 0; for (r = 0; r < rows; r++) { i = c * rows + r; if (i < n) m = Math.max(m, measure(texts[i], ls, false, false, F)); } colW.push(off + m); }
+      var w = colW.reduce(function(a, b){ return a + b; }, 0) + gap * (cols - 1);
+      res = { ls: ls, line: line, rows: rows, cols: cols, colW: colW, w: w, h: rows * line, texts: texts, off: off, gap: gap };
+      if (w <= cap) break;
+      if (ls > 6.5) ls = Math.max(6.5, ls - 1); else if (maxTxt > 30) maxTxt = Math.max(30, maxTxt - 15); else break;
+    }
+    // still too wide (well over a hundred names): keep the columns that fit and say how many are not listed
+    if (res.w > cap && res.cols > 1) {
+      var cols2 = res.cols, rows2 = res.rows, colW2;
+      function widths(cn){ var o = [], c, r, i; for (c = 0; c < cn; c++) { var m = 0; for (r = 0; r < rows2; r++) { i = c * rows2 + r; if (i < n) m = Math.max(m, measure(res.texts[i], res.ls, false, false, F)); } o.push(off + m); } return o; }
+      do { cols2--; colW2 = widths(cols2); } while (cols2 > 1 && colW2.reduce(function(a, b){ return a + b; }, 0) + gap * (cols2 - 1) > cap);
+      res.cols = cols2; res.colW = colW2; res.w = colW2.reduce(function(a, b){ return a + b; }, 0) + gap * (cols2 - 1);
+      var keep = rows2 * cols2; if (keep < n) { res.shown = keep; res.more = n - keep + 1; res.texts = res.texts.slice(0, keep); res.texts[keep - 1] = '+ ' + res.more + ' more'; res.colW = widths(cols2); res.w = res.colW.reduce(function(a, b){ return a + b; }, 0) + gap * (cols2 - 1); }
+    }
+    res.cells = []; var lim = res.shown !== undefined ? res.shown : n;
+    for (var q = 0; q < lim; q++) { var qc = Math.floor(q / res.rows), qx = 0; for (var z = 0; z < qc; z++) qx += res.colW[z] + res.gap; res.cells.push({ i: q, dx: qx, row: q % res.rows }); }
+    return res;
+  }
+  // The legend under the plot: entries run along rows, as many as fit the width, and the whole block is centred.
+  function legendFlow(names, kind, spec, W, F){
+    var swW = kind === 'bars' ? spec.legend.swatch : spec.legend.swatch * 1.4, off = swW + 8, gap = 14, availW = Math.max(60, W - 20), ls = spec.legend.size, res = null;
+    for (var pass = 0; pass < 16; pass++) {
+      var texts = names.map(function(nm){ return fitText(nm, ls, availW - off, F); }), line = ls * 1.55, rows = [], cur = [], curW = 0;
+      texts.forEach(function(t, i){ var w = off + measure(t, ls, false, false, F); if (cur.length && curW + gap + w > availW) { rows.push(cur); cur = []; curW = 0; } cur.push({ i: i, w: w, dx: curW + (cur.length ? gap : 0) }); curW += w + (cur.length > 1 ? gap : 0); });
+      if (cur.length) rows.push(cur);
+      var wmax = 0; rows.forEach(function(r){ var e = r[r.length - 1]; wmax = Math.max(wmax, e.dx + e.w); });
+      var cells = []; rows.forEach(function(r, ri){ r.forEach(function(e){ cells.push({ i: e.i, dx: e.dx, row: ri }); }); });
+      res = { ls: ls, line: line, w: wmax, h: rows.length * line, texts: texts, off: off, gap: gap, cells: cells, rows: rows.length };
+      if (rows.length <= 3 || ls <= 6.5) break;
+      ls = Math.max(6.5, ls - 1);
+    }
+    return res;
   }
 
   // ── the scene ───────────────────────────────────────────────
@@ -148,12 +225,14 @@ var ChartKitCore = (function(){
     if (!fin(lo)) { lo = 0; hi = 1; }
     if (kind === 'bars' && lo > 0) lo = 0;
     var yMin = fin(spec.y.min) ? +spec.y.min : null, yMax = fin(spec.y.max) ? +spec.y.max : null, yTicks;
+    if (yMin !== null && yMax !== null && yMin >= yMax) { yMin = null; yMax = null; }   // a range that is not one: the axis stays on auto
     if (spec.y.log) {
       var l0 = Math.max(1e-12, yMin !== null ? yMin : lo * 0.8), l1 = yMax !== null ? yMax : hi * 1.25;
       yTicks = { step: 0, ticks: [], min: Math.pow(10, Math.floor(Math.log10(l0))), max: Math.pow(10, Math.ceil(Math.log10(l1))) };
       for (var q = Math.log10(yTicks.min); q <= Math.log10(yTicks.max) + 1e-9; q++) yTicks.ticks.push(Math.pow(10, q));
     } else {
       var pad = (hi - lo) * 0.04 || 1, a0 = yMin !== null ? yMin : (lo < 0 ? lo - pad : (kind === 'bars' ? 0 : lo - pad)), a1 = yMax !== null ? yMax : hi + pad;
+      if (a1 <= a0) { if (yMax !== null && yMin === null) a0 = a1 - Math.max(hi - lo, 1); else a1 = a0 + Math.max(hi - lo, 1); }   // one bound set past the data: the other follows it
       var tk = linTicks(a0, a1, +spec.y.major || 0, 6);
       if (yMin === null) a0 = Math.min(a0, tk.ticks.length ? tk.ticks[0] : a0); if (yMax === null) a1 = Math.max(a1, tk.ticks.length ? tk.ticks[tk.ticks.length - 1] : a1);
       if (yMax === null && tk.ticks.length && a1 > tk.ticks[tk.ticks.length - 1] + tk.step * 0.02) a1 = tk.ticks[tk.ticks.length - 1] + (a1 > tk.ticks[tk.ticks.length - 1] + tk.step * 0.5 ? tk.step : 0);
@@ -161,21 +240,44 @@ var ChartKitCore = (function(){
       yTicks = { step: tk.step, ticks: tk.ticks, min: a0, max: a1 };
     }
     var yDec = spec.y.dec !== null && spec.y.dec !== undefined && spec.y.dec !== '' ? +spec.y.dec : decimalsOf(yTicks.step);
-    var yLabels = yTicks.ticks.map(function(v){ return spec.y.log ? fmtX(v) : fmt(v, yDec); });
+    var yLabels = spec.y.log ? decadeLabels(yTicks.ticks.map(function(v){ return Math.round(Math.log10(v)); })) : yTicks.ticks.map(function(v){ return fmt(v, yDec); });
     var yLabW = Math.max.apply(null, yLabels.map(function(l){ return measure(l, spec.y.size, false, false, F); }).concat([0]));
 
     // legend
-    var legItems = vis.filter(function(i){ return i.pts.some(function(p){ return p.st.n; }) || true; }), legW = 0, legH = 0;
-    if (spec.legend.show && legItems.length) { var ls = spec.legend.size; legW = spec.legend.swatch + 8 + Math.max.apply(null, legItems.map(function(i){ return measure(i.name, ls, false, false, F); })); legH = legItems.length * ls * 1.7; }
-
     // x labels height
     var nBarsMax = Math.max.apply(null, vis.map(function(i){ return i.pts.length; }).concat([1]));
     var xLabH = 0;
     if (kind === 'bars' && spec.x.labels) { var lw = Math.max.apply(null, vis.reduce(function(a, i){ return a.concat(i.pts.map(function(p){ return measure(p.label, spec.x.size, false, false, F); })); }, []).concat([0])); xLabH = Math.abs(spec.x.rot) >= 80 ? lw + 6 : spec.x.rot ? lw * Math.sin(Math.abs(spec.x.rot) * Math.PI / 180) + spec.x.size * Math.cos(Math.abs(spec.x.rot) * Math.PI / 180) + 4 : spec.x.size + 4; }
     else if (kind === 'xy') xLabH = spec.x.size + 6;
 
-    var M = spec.margin, pL = 12 + yTitleW + yLabW + spec.tick + 6 + M.l, pR = 14 + (legW && !spec.pos.legend ? legW + 22 : (legW ? 14 : 0)) + M.r, pT = tTop + titleH + 14 + M.t, pB = 10 + xTitleH + xLabH + spec.tick + 4 + M.b;
-    var plot = { x: pL, y: pT, w: Math.max(60, W - pL - pR), h: Math.max(50, H - pT - pB) };
+    var legItems = vis.slice(), legW = 0, legH = 0, LG = null, legBelow = false;
+    if (spec.legend.show && legItems.length) {
+      var names = legItems.map(function(i){ return i.name; }), right = legendLayout(names, kind, spec, W, H, F), below = null, mode = spec.legend.pos || 'auto';
+      // At the right of the plot while the plot keeps at least half the figure; on a narrow figure (a one-column page) the legend goes under it.
+      var plotIfRight = W - (12 + yTitleW + yLabW + spec.tick + 6 + spec.margin.l) - (14 + right.w + 22) - spec.margin.r;
+      if (mode === 'below' || (mode === 'auto' && plotIfRight < Math.max(110, W * 0.5))) {
+        below = legendFlow(names, kind, spec, W, F);
+        if (mode === 'auto') {   // keep whichever leaves the plot more room
+          var pH0 = H - (tTop + titleH + 14 + spec.margin.t) - (10 + xTitleH + xLabH + spec.tick + 4 + spec.margin.b), pW0 = W - (12 + yTitleW + yLabW + spec.tick + 6 + spec.margin.l) - 14 - spec.margin.r;
+          if (Math.max(60, pW0) * Math.max(50, pH0 - below.h - 8) <= Math.max(60, plotIfRight) * Math.max(50, pH0)) below = null;
+        }
+      }
+      LG = below || right; legBelow = !!below; legW = LG.w; legH = LG.h;
+    }
+
+
+    var M = spec.margin, pL = 12 + yTitleW + yLabW + spec.tick + 6 + M.l, pR = 14 + (legW && !legBelow && !spec.pos.legend ? legW + 22 : (legW && !legBelow ? 14 : 0)) + M.r, pT = tTop + titleH + 14 + M.t, legRes = legBelow && !spec.pos.legend ? legH + 8 : 0, pB = 10 + xTitleH + xLabH + spec.tick + 4 + legRes + M.b;
+    // A page too small for its own labels does not get labels on top of one another: the figure grows to what they need, and says so.
+    var grew = null, W0 = W, H0 = H, ysz = spec.yTitle.size, minPH = 60;
+    if (yt) {   // the Y title runs up the plot: set smaller (to 8 pt) when it is longer than the plot is high, and the plot is made high enough for what is left
+      var yl = measure(yt, ysz, spec.yTitle.bold, spec.yTitle.italic, F), ph0 = H - pT - pB;
+      if (yl > ph0 && ph0 > 0) { ysz = Math.max(Math.min(8, ysz), ysz * ph0 / yl); yl = measure(yt, ysz, spec.yTitle.bold, spec.yTitle.italic, F); }
+      minPH = Math.max(60, yl + 4);
+    }
+    if (W - pL - pR < 80) W = pL + pR + 80;
+    if (H - pT - pB < minPH) H = pT + pB + minPH;
+    if (W > W0 + 0.5 || H > H0 + 0.5) grew = { w: W / 72, h: H / 72, askedW: W0 / 72, askedH: H0 / 72 };
+    var plot = { x: pL, y: pT, w: W - pL - pR, h: H - pT - pB };
     els.plot = plot;
     function yPx(v){ if (spec.y.log) { var a = Math.log10(yTicks.min), b = Math.log10(yTicks.max); return plot.y + plot.h - (Math.log10(Math.max(v, yTicks.min)) - a) / (b - a) * plot.h; } return plot.y + plot.h - (v - yTicks.min) / ((yTicks.max - yTicks.min) || 1) * plot.h; }
 
@@ -204,16 +306,24 @@ var ChartKitCore = (function(){
             if (spec.err.dir === 'both') data.push({ t: 'path', pts: [[cx - c, dn], [cx + c, dn]], stroke: ec, sw: spec.err.w, el: 'bar:' + it.id }); }
           var all = (spec.pts.show ? p.kept.map(function(r){ return { v: r.v, o: 0 }; }) : []).concat(p.dropped.map(function(r){ return { v: r.v, o: 1 }; }));
           all.forEach(function(r, ri){ var jx = cx + ((ri % 5) - 2) * Math.min(3, bwReal / 7); data.push({ t: 'circle', cx: jx, cy: yPx(r.v), r: spec.pts.size * (r.o ? 0.85 : 1), fill: r.o ? 'none' : '#ffffff', stroke: r.o ? '#9a9a9a' : darken(ink, 0.35), sw: r.o ? 0.8 : 1, dash: r.o ? '2 1.5' : '', el: 'bar:' + it.id }); });
-          if (spec.x.labels) xTickList.push({ x: cx, label: p.label });
+          if (spec.x.labels) xTickList.push({ x: cx, label: p.label, bi: bi });
         });
       });
+      // so many bars that their labels would sit on one another: every k-th label along the axis is written (the ticks all stay)
+      if (spec.x.labels && xTickList.length > 1) {
+        var rotA = Math.abs(spec.x.rot), szx = spec.x.size, lwMax = Math.max.apply(null, xTickList.map(function(t){ return measure(t.label, szx, false, false, F); })), needX = rotA >= 80 ? szx * 1.15 : rotA ? szx * 1.45 : lwMax + 4, gapX = Infinity, sx = xTickList.map(function(t){ return t.x; }).sort(function(a, b){ return a - b; });
+        for (var gi2 = 1; gi2 < sx.length; gi2++) if (sx[gi2] - sx[gi2 - 1] > 0.01) gapX = Math.min(gapX, sx[gi2] - sx[gi2 - 1]);
+        var kx = isFinite(gapX) ? Math.max(1, Math.ceil(needX / gapX)) : 1;
+        if (kx > 1) xTickList.forEach(function(t, ti){ if (ti % kx) t.label = ''; });
+      }
     } else {
       var xv = []; vis.forEach(function(it){ it.pts.forEach(function(p){ if (p.x > 0) xv.push(p.x); }); });
       var xlo = xv.length ? Math.min.apply(null, xv) : 1, xhi = xv.length ? Math.max.apply(null, xv) : 10;
       var d0 = fin(spec.x.min) && +spec.x.min > 0 ? Math.log10(+spec.x.min) : Math.floor(Math.log10(xlo) - 0.35), d1 = fin(spec.x.max) && +spec.x.max > 0 ? Math.log10(+spec.x.max) : Math.ceil(Math.log10(xhi) + 0.35);
       if (d1 <= d0) d1 = d0 + 1;
       xPx = function(x){ return plot.x + (Math.log10(Math.max(x, 1e-30)) - d0) / (d1 - d0) * plot.w; };
-      for (var e0 = Math.ceil(d0 - 1e-9); e0 <= d1 + 1e-9; e0++) xTickList.push({ x: xPx(Math.pow(10, e0)), label: fmtX(Math.pow(10, e0)), major: true });
+      var exps = []; for (var e0 = Math.ceil(d0 - 1e-9); e0 <= d1 + 1e-9; e0++) exps.push(e0);
+      var dl = decadeLabels(exps); exps.forEach(function(e, i){ xTickList.push({ x: xPx(Math.pow(10, e)), label: dl[i], major: true }); });
       for (var e1 = Math.floor(d0); e1 < d1; e1++) for (var m2 = 2; m2 < 10; m2++) { var vv = m2 * Math.pow(10, e1); if (Math.log10(vv) > d0 && Math.log10(vv) < d1) xTickList.push({ x: xPx(vv), label: '', minor: true }); }
       vis.forEach(function(it){
         var ink = it.color, pts = it.pts.filter(function(p){ return p.x > 0 && p.st.n; });
@@ -257,23 +367,31 @@ var ChartKitCore = (function(){
     });
     // titles
     var ty = tTop + 2;
-    titles.forEach(function(t){ ty += t.t.size * 1.2; prims.push(T('title' + t.i, t.text, plot.x + plot.w / 2, ty, t.t.size, { anchor: 'middle', bold: t.t.bold, italic: t.t.italic })); ty += t.t.size * 0.05; });
-    if (xt) prims.push(T('xTitle', xt, plot.x + plot.w / 2, H - 10 - spec.xTitle.size * 0.2, spec.xTitle.size, { anchor: 'middle', bold: spec.xTitle.bold, italic: spec.xTitle.italic }));
-    if (yt) prims.push(T('yTitle', yt, 14 + spec.yTitle.size * 0.35, plot.y + plot.h / 2, spec.yTitle.size, { anchor: 'middle', rot: -90, bold: spec.yTitle.bold, italic: spec.yTitle.italic }));
+    // a title is centred on the plot, but never runs off the figure: it is moved in, and set smaller if it is wider than the page
+    titles.forEach(function(t){
+      var sz = t.t.size, w0 = measure(t.text, sz, t.t.bold, t.t.italic, F); if (w0 > W - 16) { sz = Math.max(6, sz * (W - 16) / w0); w0 = measure(t.text, sz, t.t.bold, t.t.italic, F); }
+      var cx = clamp(plot.x + plot.w / 2, 8 + w0 / 2, Math.max(8 + w0 / 2, W - 8 - w0 / 2));
+      ty += sz * 1.2; prims.push(T('title' + t.i, t.text, cx, ty, sz, { anchor: 'middle', bold: t.t.bold, italic: t.t.italic })); ty += sz * 0.05;
+    });
+    if (xt) { var xsz = spec.xTitle.size, xw = measure(xt, xsz, spec.xTitle.bold, spec.xTitle.italic, F); if (xw > W - 16) { xsz = Math.max(6, xsz * (W - 16) / xw); xw = measure(xt, xsz, spec.xTitle.bold, spec.xTitle.italic, F); } prims.push(T('xTitle', xt, clamp(plot.x + plot.w / 2, 8 + xw / 2, Math.max(8 + xw / 2, W - 8 - xw / 2)), H - 10 - legRes - xsz * 0.2, xsz, { anchor: 'middle', bold: spec.xTitle.bold, italic: spec.xTitle.italic })); }
+    if (yt) prims.push(T('yTitle', yt, 14 + ysz * 0.35, plot.y + plot.h / 2, ysz, { anchor: 'middle', rot: -90, bold: spec.yTitle.bold, italic: spec.yTitle.italic }));
     // legend
-    if (spec.legend.show && legItems.length) {
-      var lp = pos('legend'), lx0 = plot.x + plot.w + 22 + lp.dx, ly0 = plot.y + plot.h / 2 - legH / 2 + lp.dy, ls2 = spec.legend.size, sw = spec.legend.swatch;
+    if (LG) {
+      var lp = pos('legend'), ls2 = LG.ls, sw = spec.legend.swatch;
+      var lx0 = legBelow ? Math.max(8, (W - legW) / 2) + lp.dx : plot.x + plot.w + 22 + lp.dx, ly0 = (legBelow ? H - 8 - legH : clamp(plot.y + plot.h / 2 - legH / 2, 8, Math.max(8, H - 8 - legH))) + lp.dy;
       var g = { t: 'group', el: 'legend', x: lx0, y: ly0, w: legW, h: legH, kids: [] };
-      legItems.forEach(function(it, i){
-        var cy = ly0 + i * ls2 * 1.7 + ls2 * 0.85, ink = it.color;
+      LG.cells.forEach(function(cell){
+        var i = cell.i, it = legItems[i], lxc = lx0 + cell.dx, cy = ly0 + cell.row * LG.line + ls2 * 0.85, ink = it.color;
         var fillC = spec.fill === 'outline' ? '#ffffff' : spec.fill === 'tint' ? lighten(ink, 0.55) : ink, edge = spec.fill === 'solid' ? darken(ink, 0.35) : ink;
-        if (kind === 'bars') g.kids.push({ t: 'rect', el: 'leg:' + it.id, x: lx0, y: cy - sw / 2, w: sw, h: sw * 0.78, fill: fillC, stroke: edge, sw: 1.2 });
-        else { g.kids.push({ t: 'line', x1: lx0, y1: cy, x2: lx0 + sw * 1.4, y2: cy, stroke: ink, sw: spec.xy.lw, el: 'leg:' + it.id }); g.kids.push({ t: 'marker', type: spec.xy.marker === 'auto' ? MARKERS[it.idx % MARKERS.length] : spec.xy.marker, cx: lx0 + sw * 0.7, cy: cy, r: spec.xy.msize * 0.8, fill: spec.xy.open ? '#ffffff' : ink, stroke: ink, sw: 1, el: 'leg:' + it.id }); }
-        g.kids.push({ t: 'text', el: 'leg:' + it.id, text: it.name, x: lx0 + (kind === 'bars' ? sw : sw * 1.4) + 8, y: cy + ls2 * 0.35, size: ls2, bold: false, italic: false, anchor: 'start', rot: 0, fill: '#000000', font: F, drag: false, w: measure(it.name, ls2, false, false, F) });
+        var isMore = LG.more && i === LG.shown - 1;
+        if (isMore) { /* "+ N more" has no swatch */ }
+        else if (kind === 'bars') g.kids.push({ t: 'rect', el: 'leg:' + it.id, x: lxc, y: cy - sw / 2, w: sw, h: sw * 0.78, fill: fillC, stroke: edge, sw: 1.2 });
+        else { g.kids.push({ t: 'line', x1: lxc, y1: cy, x2: lxc + sw * 1.4, y2: cy, stroke: ink, sw: spec.xy.lw, el: 'leg:' + it.id }); g.kids.push({ t: 'marker', type: spec.xy.marker === 'auto' ? MARKERS[it.idx % MARKERS.length] : spec.xy.marker, cx: lxc + sw * 0.7, cy: cy, r: spec.xy.msize * 0.8, fill: spec.xy.open ? '#ffffff' : ink, stroke: ink, sw: 1, el: 'leg:' + it.id }); }
+        g.kids.push({ t: 'text', el: isMore ? undefined : 'leg:' + it.id, text: LG.texts[i], x: lxc + LG.off, y: cy + ls2 * 0.35, size: ls2, bold: false, italic: false, anchor: 'start', rot: 0, fill: '#000000', font: F, drag: false, w: measure(LG.texts[i], ls2, false, false, F) });
       });
       prims.push(g);
     }
-    return { W: W, H: H, prims: prims, plot: plot, kind: kind, font: F, clip: { x: plot.x, y: plot.y - 2, w: plot.w, h: plot.h + 4 }, items: items, yTicks: yTicks, titles: titles.length };
+    return { W: W, H: H, prims: prims, plot: plot, kind: kind, font: F, clip: { x: plot.x, y: plot.y - 2, w: plot.w, h: plot.h + 4 }, items: items, yTicks: yTicks, titles: titles.length, grew: grew };
   }
   function autoKind(doc, spec){
     var vis = (doc.items || []).filter(function(i){ return !spec.hidden[i.id]; });
@@ -281,5 +399,5 @@ var ChartKitCore = (function(){
     return vis.every(function(i){ return (i.points || []).length < 4; }) ? 'bars' : 'xy';
   }
 
-  return { build: build, defaults: defaults, withDefaults: withDefaults, PALETTES: PALETTES, MARKERS: MARKERS, autoKind: autoKind, model: model, stats: stats, measure: measure, lighten: lighten, darken: darken, rgb: rgb, hex: hex, fin: fin, itemColor: itemColor, merge: merge };
+  return { build: build, defaults: defaults, withDefaults: withDefaults, sanitize: sanitize, RANGE: RANGE, decadeLabels: decadeLabels, PALETTES: PALETTES, MARKERS: MARKERS, autoKind: autoKind, model: model, stats: stats, measure: measure, lighten: lighten, darken: darken, rgb: rgb, hex: hex, fin: fin, itemColor: itemColor, merge: merge };
 })();
