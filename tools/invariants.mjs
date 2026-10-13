@@ -83,6 +83,8 @@
 //                            still opens somewhere sensible; the sign-in notice that was Home's is on Today.
 //   B34 the Week groups       An experiment's steps and linked tasks on one day sit under one header (its code, once); each card ticks on
 //                            its own, a task linked to nothing stays outside the groups, and the header does not drag.
+//   B35 a copy starts undone   Duplicating or repeating an experiment whose steps were ticked gives steps with no ticked sub-step: no
+//                            `li.done` left in a block's html, no autoTicked, no stepDone. Reopening Day 4 of a copy showed crossed-out lines.
 //
 //   Report and exports — one experiment per preset, dressed with marked content:
 //   R1 Report = record, live  Every section carries what the record holds, a change reaches it
@@ -2280,6 +2282,29 @@ async function suite(opts) {
         const loose = [...document.querySelectorAll('.wk-task')].find(x => x.dataset.id === t2);
         if (!loose || loose.closest('.wk-exp')) bad('B34', 'loose task', 'a task with no experiment sits inside a group');
       } finally { delete plannerTasks()[t1]; delete plannerTasks()[t2]; delete LB.data.experiments[e.id]; try { WK_ANCHOR = null; } catch (x) {} selectNode('journal'); }
+    });
+
+    // B35 — a duplicate or a replicate starts undone: the sub-step checkboxes inside a block's html are reset with the block.
+    if (run('B35')) await guard('B35', 'copies', async () => {
+      const e = await mkB('CTG'); clean.push(e); tick('B35');
+      const src = LB.data.experiments[e.id];
+      // No seed preset carries checkboxes; a preset the person saved does (`<ul class="lb-check">`).
+      src.blocks.forEach(b => { b.html = (b.html || '') + '<ul class="lb-check"><li>Plate read + data saved</li></ul>'; });
+      src.blocks.forEach(b => setBlockDone(e.id, b.id, true, true));
+      if (!src.blocks.every(b => /<li[^>]*class="done"/.test(b.html) && b.autoTicked)) { bad('B35', 'harness', 'ticking a step did not tick its checkbox'); return; }
+      const lbPrompt1 = window.lbPrompt; window.lbPrompt = (m, v) => Promise.resolve(v);
+      try {
+        for (const [k, fn] of [['duplicate', () => dupExperiment(e.id)], ['replicate', () => repeatExperiment(e.id)]]) {
+          const before = new Set(Object.keys(LB.data.experiments)); fn(); await sleep(150);
+          const c = Object.keys(LB.data.experiments).filter(id => !before.has(id)).map(id => LB.data.experiments[id])[0];
+          if (!c) { bad('B35', k, 'no copy was made'); continue; } clean.push(c); tick('B35');
+          c.blocks.forEach(b => {
+            if (b.done || b.autoTicked || Object.keys(b.stepDone || {}).length || /<li[^>]*class="[^"]*\bdone\b/.test(b.html || ''))
+              bad('B35', k, `step "${b.title}" of the ${k} still carries a tick from the original`);
+            if (!/lb-check/.test(b.html || '')) bad('B35', k, `step "${b.title}" lost its checklist in the ${k}`);
+          });
+        }
+      } finally { window.lbPrompt = lbPrompt1; }
     });
 
     clean.forEach(cleanup);

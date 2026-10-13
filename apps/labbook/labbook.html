@@ -12480,12 +12480,30 @@ function buildExperimentFrom(sp){
 // (newNote — a meeting or a note filed among experiments — is gone: those are Notebook pages. Records of kind 'note' made before still render.)
 // A duplicate is a fresh plan with the same design — dated from today, nothing ticked, its own
 // code — not a second copy of a finished run carrying the first one's verdict and results.
+// A copied step starts undone. b.done and b.stepDone are only half of "ticked": a preset block's
+// sub-steps are the checkboxes inside its own html (`<li class="done">`), and b.autoTicked
+// remembers which of them the step filled in. Leaving those made a duplicate open with its
+// steps already crossed out under an unticked header.
+function _resetCopiedBlock(b){
+  b.done=false; b.completedAt=null; b.stepDone={}; delete b._openNote; delete b.slipAsked; delete b.carryDismissed;
+  delete b.autoTicked;
+  if(b.proto){ refreshProtoHtml(b); return; }
+  var h=_blkChecklist(b.html,function(lis){
+    var ch=false;
+    for(var i=0;i<lis.length;i++) if(lis[i].classList.contains('done')){
+      lis[i].classList.remove('done');
+      if(!lis[i].className) lis[i].removeAttribute('class');
+      ch=true; }
+    return ch;
+  });
+  if(h!=null) b.html=h;
+}
 function dupExperiment(id){ var e=LB.data.experiments[id]; if(!e) return;
   var c=JSON.parse(JSON.stringify(e)); c.id=uid(); var start=todayStr(), anchor=expAnchorDate(e);
   c.status='planned'; delete c.statusLocked; delete c.archived; delete c.repGroup; delete c.repIndex; delete c.imported;
   c.startDate=start; _freshRecord(c);
   (c.blocks||[]).forEach(function(b){ b.id=uid(); if(b.date&&anchor) b.date=addDays(start, daysBetween(anchor,b.date));
-    b.done=false; b.completedAt=null; b.stepDone={}; delete b._openNote; delete b.slipAsked; delete b.carryDismissed; });
+    _resetCopiedBlock(b); });
   if(e.code) c.code=_dupCode(e.code, start);
   undoMark('Duplicate',['experiments.'+c.id]);
   c.created=Date.now(); c.updated=Date.now(); LB.data.experiments[c.id]=c; save(); SEL.page=c.id; EXP_TAB='steps'; renderAll();
@@ -14548,7 +14566,7 @@ function repeatExperiment(id){
     (c.blocks||[]).forEach(function(b){
       b.id=uid();
       if(b.date) b.date=addDays(start, daysBetween(anchor,b.date));
-      b.done=false; b.completedAt=null; b.stepDone={}; delete b._openNote; delete b.slipAsked; delete b.carryDismissed;
+      _resetCopiedBlock(b);
       // params and notes are kept on purpose: a replicate repeats what you actually did,
       // including the deviations, not the pristine protocol.
     });
