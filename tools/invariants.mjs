@@ -155,6 +155,11 @@
 //   B27 the editor knows what it is for  A plasmid experiment (NanoBRET, reverse transfection) says so on its plate: it shows the
 //                            constructs and their roles, warns when the palette lacks conditions the setup gives, and
 //                            says what is missing when no plasmid is named; one that is not (a Western) shows none of it.
+//   B36 plates, plasmids,   An experiment can have more than one plate (+ Add plate: same conditions, its own title, counted with the
+//       steps                first by the mix table, shown, exported); the plate editor's tabs are numbered steps (Plate · Plasmids ·
+//                            Contents · Dilution · Compounds · Label · Data) that only Back / Next or a click move — not a selection,
+//                            not an applied series, not a layout — and a redraw keeps the panel's scroll; a plasmid is added, renamed
+//                            and removed on the Plasmids step and reaches the setup, the mix table and every plate's palette.
 //   B28 a typed date is a   Repeat as a biological replicate asks for a start date with the date picker and refuses anything that
 //       date                 is not a real day: no step dated "NaN-aN-aN", no code like SP_NBbanana or SP_NB12/10/2026. (it took
 //                            free text; "12/10/2026" — the format the UI shows everywhere — dated every step NaN)
@@ -1823,7 +1828,7 @@ async function suite(opts) {
       const sq = () => document.querySelector('.echo-drop[data-exp="' + e.id + '"]');   // this experiment's, not one left on screen by an earlier check
       if (!e.plate || !plateCompoundSlots(e.plate).length) { bad('B25', 'setup', 'the experiment has no named conditions to test with'); return; }
       if (sq()) bad('B25', 'square', 'a plate with named conditions and no Echo step got the Echo picklist square');
-      openPlateEditor('exp:' + e.id); plSetMode('plate'); await sleep(60);
+      openPlateEditor('exp:' + e.id); plSetMode('data'); await sleep(60);
       if (document.getElementById('pl-side').querySelector('[onclick*="plImportEcho"]')) bad('B25', 'import', 'the plate editor offers Import Echo picklist to an experiment without an Echo');
       closePlateEditor();
       // added on purpose, put away again, and the button to bring it back is there
@@ -1831,7 +1836,7 @@ async function suite(opts) {
       echoSetUse(e.id, true); await sleep(60);
       if (!sq()) { bad('B25', 'added', 'adding the Echo picklist showed no square'); return; }
       if (!sq().querySelector('.ed-x')) bad('B25', 'dismiss', 'the empty square has no way to put it away');
-      openPlateEditor('exp:' + e.id); plSetMode('plate'); await sleep(60);
+      openPlateEditor('exp:' + e.id); plSetMode('data'); await sleep(60);
       if (!document.getElementById('pl-side').querySelector('[onclick*="plImportEcho"]')) bad('B25', 'import', 'an experiment with the Echo added is not offered Import Echo picklist');
       closePlateEditor();
       sq().querySelector('.ed-x').click(); await sleep(60);
@@ -1852,14 +1857,14 @@ async function suite(opts) {
       const on = () => (document.querySelector('#pl-side .pl-tabs button.on') || {}).textContent;
       if (on() !== 'Plasmids') bad('B26', 'opens on', 'a drawn NanoBRET map opened on ' + on() + ', not Plasmids');
       if (!tabs().includes('Compounds')) bad('B26', 'compounds', 'a SPARK screen (doses compounds) has no Compounds tab');
-      if (tabs().length < 3 || tabs()[tabs().length - 1] !== 'Plate') bad('B26', 'tabs', 'tabs are ' + tabs().join(','));
+      if (tabs().length < 3 || tabs()[0] !== 'Plate' || tabs()[tabs().length - 1] !== 'Data') bad('B26', 'tabs', 'the steps are not Plate first and Data last: ' + tabs().join(','));
       const w = document.querySelector('#pl-grid .pl-w').getBoundingClientRect().width, left = document.querySelector('.pl-left').getBoundingClientRect(), g = document.getElementById('pl-grid').getBoundingClientRect();
       if (w < 44) bad('B26', 'fills', 'a 96-well plate is drawn at ' + Math.round(w) + ' px a well in a ' + Math.round(left.width) + ' px column');
       if (g.right > left.right + 1) bad('B26', 'inside', 'the plate runs ' + Math.round(g.right - left.right) + ' px past its column');
       plSetMode('plate'); await sleep(40);
       if (!document.querySelector('#pl-side select[onchange*="plSetFormat"]')) bad('B26', 'plate tab', 'the Plate tab has no format');
       PL.sel = { A1: 1, A2: 1 }; plRender();
-      if (on() === 'Plate') bad('B26', 'selecting', 'selecting wells left the Plate tab showing');
+      if (on() !== 'Plate') bad('B26', 'selecting', 'selecting wells moved the editor off the Plate step to ' + on());
       closePlateEditor();
       // a blank map opens on the Plate tab
       const ex = LB.data.experiments[e.id]; ex.plate.wells = {}; save();
@@ -1878,21 +1883,106 @@ async function suite(opts) {
       buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-10-01', type: 'NB', title: 'INV aware', code: 'INV_B27', setup: su, plate: true });
       const e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); clean.push(e); openExp(e.id); tick('B27');
       const ctx = () => document.querySelector('#pl-side .pl-ctx');
+      const pls = () => document.querySelector('#pl-side .pl-sec-pls');
       openPlateEditor('exp:' + e.id); await sleep(60);
-      if (!ctx() || ctx().classList.contains('warn') || !/donor/.test(ctx().textContent) || !/acceptor/.test(ctx().textContent)) bad('B27', 'roles', 'a NanoBRET plate does not show its donor and acceptor: ' + (ctx() && ctx().textContent));
+      const roles = [...document.querySelectorAll('#pl-side .pl-prole')].map(x => x.value);
+      if (!pls() || !roles.includes('donor') || !roles.includes('acceptor')) bad('B27', 'roles', 'a NanoBRET plate does not list its donor and acceptor: ' + (pls() && pls().textContent));
       e.plate.types = e.plate.types.slice(1); plRender();
       if (!ctx() || !ctx().classList.contains('warn') || !ctx().querySelector('[onclick*="plUseExpTypes"]')) bad('B27', 'drift', 'a palette missing a condition of the setup is not flagged');
       // a reverse transfection with no plasmid named says what it is waiting for, and with one it has a condition
       const keep = [e.type, e.setup.donors, e.setup.acceptors, e.plasmids]; e.type = 'RTX'; e.setup.donors = ''; e.setup.acceptors = ''; e.plasmids = ''; plRender();
-      if (!ctx() || !ctx().classList.contains('warn') || !/No plasmids/.test(ctx().textContent)) bad('B27', 'no plasmids', 'a plasmid experiment with no plasmid named does not say so');
+      if (!pls() || !/No plasmids/.test(pls().textContent)) bad('B27', 'no plasmids', 'a plasmid experiment with no plasmid named does not say so');
       e.plasmids = 'pINV-1'; if (!expPlateTypes(e).some(t => t.name === 'pINV-1')) bad('B27', 'rtx', 'a reverse-transfection plasmid is not a condition of the plate');
       // a type with no plasmids shows none of it
       e.type = 'WB'; plRender();
-      if (ctx() || [...document.querySelectorAll('#pl-side .pl-tabs button')].some(b => b.textContent === 'Plasmids')) bad('B27', 'other type', 'a Western blot plate shows a plasmid tab or panel');
+      if (ctx() || pls() || [...document.querySelectorAll('#pl-side .pl-tabs button')].some(b => b.textContent === 'Plasmids')) bad('B27', 'other type', 'a Western blot plate shows a plasmid tab or panel');
       e.setup.doseSeries = false; plRender();
       if ([...document.querySelectorAll('#pl-side .pl-tabs button')].some(b => /Compounds|Dilution/.test(b.textContent))) bad('B27', 'no doses', 'an experiment that doses nothing still has Compounds and Dilution tabs');
       delete e.setup.doseSeries;
       [e.type, e.setup.donors, e.setup.acceptors, e.plasmids] = keep; closePlateEditor();
+    });
+
+    // B36 — an experiment can have more than one plate, plasmids are added where the plate is painted,
+    // and the steps of the editor never move by themselves.
+    if (run('B36')) await guard('B36', 'plates and steps', async () => {
+      const P = (LB.data.projects || []).find(p => (p.sections || []).length);
+      const key = 'NB_SPARK_SCREEN96', tpl = LB.data.presets[key];
+      if (!tpl) { bad('B36', 'setup', 'the SPARK screen preset is not in the notebook'); return; }
+      const su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup)));
+      const before = new Set(Object.keys(LB.data.experiments));
+      buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-10-01', type: 'NB', title: 'INV plates', code: 'INV_B36', setup: su, plate: true });
+      const e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); clean.push(e); openExp(e.id); tick('B36');
+      const tabs = () => [...document.querySelectorAll('#pl-side .pl-tabs button')].map(b => b.textContent);
+      const on = () => (document.querySelector('#pl-side .pl-tabs button.on') || {}).textContent;
+      const chips = () => [...document.querySelectorAll('#pl-plates .pl-pchip')].map(b => b.textContent);
+      // --- more than one plate
+      if (![...document.querySelectorAll('.bench-top .lean-tog')].some(b => /Add plate/.test(b.textContent))) bad('B36', 'add button', 'an experiment with a plate has no "+ Add plate" on its steps');
+      const t0 = (plateTidCounts(e) || {}), n0 = Object.values(t0).reduce((a, b) => a + b, 0);
+      addMorePlate(e.id); await sleep(80);
+      if (!e.morePlates || e.morePlates.length !== 1 || expPlateList(e).length !== 2) { bad('B36', 'added', 'Add plate did not make a second plate'); return; }
+      if (PL.key !== 'exp:' + e.id + ':2') bad('B36', 'opens', 'the new plate did not open for editing (key ' + PL.key + ')');
+      if (chips().length !== 3) bad('B36', 'chips', 'the editor does not show the two plates and a way to add: ' + chips().join(' | '));
+      if (Object.keys(e.morePlates[0].wells).length) bad('B36', 'blank', 'the new plate is not empty');
+      if (JSON.stringify(e.morePlates[0].types.map(t => t.id)) !== JSON.stringify(e.plate.types.map(t => t.id))) bad('B36', 'conditions', 'the new plate does not carry the first one\'s conditions');
+      if (on() !== 'Plate') bad('B36', 'first step', 'a new plate did not start on the Plate step: ' + on());
+      // wells painted on plate 2 count for the experiment (the mix table is made for all of them)
+      const tid = e.morePlates[0].types.find(t => !/^(mock|untr|blank)$/.test(t.id)).id;
+      PL.sel = { A1: 1, A2: 1, A3: 1 }; plSetMode('contents'); plSetType(tid); await sleep(40);
+      const n1 = Object.values(plateTidCounts(e) || {}).reduce((a, b) => a + b, 0);
+      if (n1 !== n0 + 3) bad('B36', 'counted', 'three wells painted on plate 2 changed the experiment\'s count from ' + n0 + ' to ' + n1);
+      // switching plate keeps the step and drops the selection
+      plSwitchPlate('exp:' + e.id); await sleep(30);
+      if (on() !== 'Contents') bad('B36', 'switch', 'switching plate moved the editor off its step to ' + on());
+      if (plSelIds().length) bad('B36', 'switch sel', 'the selection followed the editor to another plate');
+      closePlateEditor(); await sleep(60);
+      const cards = [...document.querySelectorAll('.blk-plate[data-plate]')].map(c => c.getAttribute('data-plate')).filter((k, i, a) => k.indexOf('exp:' + e.id) === 0 && a.indexOf(k) === i);
+      if (cards.length !== 2) bad('B36', 'cards', 'the steps show ' + cards.length + ' plate card(s): ' + cards.join(', ') + ' (tab ' + EXP_TAB + ')');
+      if (expPlateList(e).map(x => plateLabel(x.key, x.p)).join('|') === '') bad('B36', 'labels', 'plates have no label');
+      // --- the steps are sequential, and nothing moves them
+      openPlateEditor('exp:' + e.id); await sleep(60);
+      plSetMode('plate'); await sleep(20);
+      const order = tabs(), seen = [on()];
+      for (let i = 0; i < order.length - 1; i++) { plStep(1); await sleep(15); seen.push(on()); }
+      if (seen.join('>') !== order.join('>')) bad('B36', 'sequence', 'Next walked ' + seen.join('>') + ', the tabs are ' + order.join('>'));
+      if (!document.querySelector('#pl-side .pl-nav')) bad('B36', 'nav', 'no Back / Next on the last step');
+      plStep(-1); plStep(-1); await sleep(15);
+      if (on() !== order[order.length - 3]) bad('B36', 'back', 'Back twice from the last step is ' + on());
+      const stay = on(); e.setup.doseSeries = true; plRender();
+      for (const sel of [{ A1: 1 }, { A1: 1, A2: 1, A3: 1, B1: 1, B2: 1, B3: 1 }, {}]) { PL.sel = sel; plRender(); if (on() !== stay) bad('B36', 'selection', 'selecting ' + Object.keys(sel).length + ' wells moved the step from ' + stay + ' to ' + on()); }
+      plSetMode('dil'); PL.sel = { C1: 1, C2: 1, C3: 1, C4: 1 }; plRender(); plApplySeries(); await sleep(30);
+      if (on() !== 'Dilution') bad('B36', 'applied', 'applying a series moved the step to ' + on());
+      plSetMode('contents'); plUseExpTypes(); await sleep(60);
+      if (on() !== 'Contents') bad('B36', 'conditions', 'Use this experiment\'s conditions moved the step to ' + on());
+      // the panel keeps its scroll on the same step
+      const side = document.getElementById('pl-side'); side.style.maxHeight = '120px'; side.style.overflowY = 'auto'; plRender(); side.scrollTop = 60; const st = side.scrollTop;
+      PL.sel = { D1: 1 }; plRender();
+      if (st > 0 && side.scrollTop !== st) bad('B36', 'scroll', 'a redraw on the same step sent the panel from ' + st + ' to ' + side.scrollTop);
+      side.style.maxHeight = ''; side.style.overflowY = '';
+      // --- plasmids are added in the editor, once, for every plate
+      PL.sel = {}; plSetMode('plasmids'); await sleep(20);
+      const nameIn = document.getElementById('pl-pls-new');
+      if (!nameIn || !document.getElementById('pl-pls-role')) { bad('B36', 'plasmid form', 'the Plasmids step has no way to add a plasmid'); closePlateEditor(); return; }
+      const accBefore = e.setup.acceptors;
+      nameIn.value = 'pINV-ACC'; document.getElementById('pl-pls-role').value = 'acceptor'; plAddPlasmid(); await sleep(60);
+      if (!String(e.setup.acceptors).includes('pINV-ACC')) bad('B36', 'added', 'the new acceptor is not in the setup: ' + e.setup.acceptors);
+      if (!expConstructs(e).some(c => c.name === 'pINV-ACC' && c.role === 'acceptor')) bad('B36', 'construct', 'the new plasmid is not one of the experiment\'s constructs');
+      const nbBlock = (e.blocks || []).find(b => b.calc && b.calc.kind === 'nbtx');
+      if (nbBlock && !String(nbBlock.calc.inputs.acceptorNames).includes('pINV-ACC')) bad('B36', 'mix table', 'the mix table does not know the new acceptor');
+      for (const [i, x] of expPlateList(e).entries()) if (!(x.p.types || []).some(t => /pINV-ACC/.test(t.name))) bad('B36', 'palette ' + (i + 1), 'plate ' + (i + 1) + ' has no condition with the new plasmid in its palette');
+      if (![...document.querySelectorAll('#pl-side .pl-pn')].some(i => i.value === 'pINV-ACC')) bad('B36', 'listed', 'the Plasmids step does not list the plasmid just added');
+      if (on() !== 'Plasmids') bad('B36', 'stay', 'adding a plasmid moved the step to ' + on());
+      // a plasmid already there is refused rather than doubled
+      nameIn.value = 'pinv-acc'; const nNames = expConstructs(e).length; plAddPlasmid();
+      if (expConstructs(e).length !== nNames) bad('B36', 'duplicate', 'the same plasmid was added twice');
+      // and taken out again
+      const idx = expConstructs(e).findIndex(c => c.name === 'pINV-ACC'); plRemovePlasmid(idx); await sleep(60);
+      if (expConstructs(e).some(c => c.name === 'pINV-ACC')) bad('B36', 'removed', 'removing the plasmid left it in the experiment');
+      if (e.setup.acceptors !== accBefore) bad('B36', 'restored', 'the setup is not what it was before the plasmid came and went: ' + e.setup.acceptors);
+      // the second plate can go; the first becomes plate 1 again
+      removePlateFrom('exp:' + e.id + ':2', true); await sleep(60);
+      if (e.morePlates || expPlateList(e).length !== 1) bad('B36', 'removing', 'removing the second plate left ' + expPlateList(e).length);
+      if (PL.key !== 'exp:' + e.id) bad('B36', 'after remove', 'the editor is on ' + PL.key + ' after the second plate went');
+      closePlateEditor();
     });
 
     // B28 — a date typed into Repeat is a real day or it is refused.
