@@ -7904,6 +7904,44 @@ K1–K8 only drove `tools/chartkit/dev.html`, never the Graph tab inside an app,
 
 Jon prefers the Lumina look (a square with `--r-1` corners) to circles. Lumina, Beacon (`.well`) and Echo (`roundRect`, `cellW*.09`) already were; changed: Labbook's plate editor `.pl-w` and its preview `.pp-w` (were `50%`; preview gap 1 px -> 2 px so squares do not fuse; the editor's fit maths assumes a 2 px gap, left alone), and Blueprint's default `wellShape` (now `'square'`, corner `wellPx*.1`; the circle/square toggle stays as an opt-in). **Not a plate, left round:** Archive `.lp-w`, the vial position picker of a freezer box. Guard: `tools/check_css.py` fails on a `.well` / `.xx-w` selector with `border-radius:50%`/pill (`.lp-w` exempt); proven by putting `.pp-w` back to `50%`.
 
+## Labbook, one hand: ticks, sizes, lines, boxes (2026-10-13)
+
+Jon: *"en labbook, check los experimentos visualmente, tamaños de letra, ticks, dibujos, líneas, cuadros etc., homogeneiza todo esto y corrije errores y alineaciones etc. todo el labbook tiene que verse homogéneo."*
+Method: the sweep's screenshots of every experiment state (planned with a plate, running, done, a Western) at 1440, tall enough to see the whole page, in both
+themes; then a census **inside the page** (every text run's size/weight, every radius, every border, every svg's size and stroke) to see what the eye
+could not name. The result was not off-scale tokens (the scale was clean: one 18px chevron) but **roles that used different steps of the scale**. The rule is in
+`docs/UI.md › Labbook, one hand`; this is what was found and why.
+
+**Found, measured, fixed**
+- **Ticks.** Three shapes (a step's circle, a task's square, a protocol item's square), six sizes (14, 15, 15, 17, 20, 28), a `✓` typed from whichever font was nearest,
+  and `#5e87c5` written literally in 67 places, so a done tick stayed the light-theme blue beside every `var(--accent)` in dark. Now one tick (circle, 1.5px
+  `--text3`, accent fill, a CSS mask for the check) in three sizes by density: 28 step header · 20 due list · 16 inside a line. Checkboxes (13 of them, native, 14/15px
+  with `accent-color`) are the same box as a square, 16px. The outcome chip's `✓ ~ × ?` are svg now and take `--good/--warn/--danger`.
+- **The day button was 15px/400.** `.dg-btn{font:inherit}` came after `.dg-day{font-size;font-weight}` and won: "Day 0" was the only 15px light text in a row of 12px/600 labels.
+- **Step title 13px under 15px text** (11/12/13 depending on the screen). One size, `--fs-5`/600, everywhere a step is drawn; on a phone it wraps instead of being cut.
+- **Setup was a second-class heading** (12px grey) over a grid whose per-cell rule stopped short under the last row, with labels that wrapped differently
+  so the values of one row sat at different heights. It is an `.exp-sec-h` like Steps now, cells have no rule, label on top and value at the bottom of each cell.
+  The overdue pill that said the same thing twice (Setup and Steps) is said once, under Steps.
+- **The header's two action rows did not share a left edge** (the folder arrows ‹ 3/4 › were the first item of row one). They are the right end of the meta line
+  now (two halves, `space-between`), drawn with svg chevrons, and the actions row is pulled 8px left so its first icon stands under the title.
+- **`.lean-tog`** was 10px, 19px high, with a `▸` in front of "+ Add plate" and "Fold done days"; `.exh-setup-edit` was a fourth look for the same button. One 24px `--fs-2` button, no glyph.
+  Also one height for Open/Snooze/Today/+ Note/the folder's "+" (they were 19–26px), 28 for the report's buttons (they were 28, 30 and 34), and 32 for the Experiments and Week
+  toolbars (the segmented control was 38 and 30).
+- **Lines.** Dashed borders were 1px, 1.5px and 2px. Day headers drew their wait plan as a full-width bar under the date (`flex:1 1 100%`) — it is a chip on the day's line now.
+  A banner ("Still outstanding") ran from the pane's edge to the pane's edge over a grid with 20px margins. Four oranges (`#e0803a #c8752f #c07a2e #c47818`) and three reds became
+  `--warn`/`--danger`; Echo's red `#ff5760` stopped colouring a chip and a box (a brand belongs to a logo box and a card).
+- **A drag handle left a 23px gap to the left of every tick**, so a step's tick, its title, its log, the calculator's rule and the numbered text started at six different x.
+  The handle hangs in the margin on a pointer device now (`position:absolute` under `(hover:hover)`); `.bench-group` was `overflow:hidden` and would have clipped it, so it is
+  `display:flow-root` (the block formatting context it was for, without the clip).
+- **Designer cards**: the buttons followed the content, so a row of cards had them at four heights; `margin-top:auto` pins them. The page title was 600 where every other is 700.
+- **The Steps bar** (`+ Add plate`, `+ Echo picklist`, `Fold done days`) was a nowrap flex row with a spacer: on a phone `Fold done days` ran off the screen. Two halves, the buttons wrap.
+
+**How it is held**: `tools/labbook_style_invariants.mjs` T1–T14 (a tick, a checkbox, a heading, a Setup row, the action rows' left edge, no typed chevrons and nothing off the
+type scale, no glyph on a toggle, one height per kind of button, one step-title size, the week banner, the day header, the first tick flush, the Designer foot, the outcome marks drawn). Each was proven by
+putting its bug back (18 mutations, all caught — the first run missed three: a fixture with no planner task, a literal blue that equals `--accent` in light so the check now runs in both themes,
+and an action-row check that measured the folder arrows instead of the first button of each group). `tools/check_css.py` fails on a literal accent in Labbook's stylesheet. `labbook_desktop_sweep` 114 screens at 0.
+Left alone on purpose: the plate editor (`pl-*`; another session was in it), the Archive and the other apps; and `--text3` for outlines, chosen over `--border2` because a tick's ring has to be 3:1.
+
 ## The plate editor: more than one plate, steps that stay put, plasmids where you paint (2026-10-13)
 
 Jon (on NB20261013): an assay needs a second plate for more compounds and there was no way to add one; adding a plasmid to the plates' setup was wrong; the tabs should be sequential — fill one, then the next, and at the last everything is clear — but they jumped forward and back and reset the position.

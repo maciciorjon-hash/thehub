@@ -29,6 +29,12 @@ A fifth: a round well. A plate well is a rounded square (`border-radius:var(--r-
 Blueprint and the Labbook plate editor; Labbook's `.pl-w`/`.pp-w` were `50%` and read as a different product.
 `.lp-w` is exempt: it is a vial position in a freezer box, and a vial is round.
 
+A sixth, Labbook only: the accent written as a literal (`#5e87c5`, `rgba(94,135,197,…)`) in a rule. The accent is `#5e87c5` in the
+light theme and `#8aaee0` in the dark one, so a literal is right in one and a different blue in the other: 67 of them left Labbook's
+step ticks, links, focus rings and chips the old blue beside every `var(--accent)` in dark (found 2026-10-13). Use `var(--accent)`,
+`var(--accent-dim)` (12%) or `var(--accent-soft)` (22%). A `var(--x,#5e87c5)` fallback, the `:root` / `[data-theme]` declarations and
+the print stylesheet (fixed values: paper has one theme) are exempt.
+
   python3 tools/check_css.py                 # every app + the shell
   python3 tools/check_css.py path.html ...
 
@@ -150,6 +156,24 @@ def round_wells(html):
     return out
 
 
+_LITACC = re.compile(r'#5e87c5|rgba\(\s*94\s*,\s*135\s*,\s*197\s*,', re.I)
+
+
+def literal_accent(html):
+    """Labbook rules that write the accent blue as a literal instead of a token (print rules and var() fallbacks are fine)."""
+    out = []
+    for start, css in stylesheets(html):
+        css = re.sub(r'/\*.*?\*/', lambda m: re.sub(r'[^\n]', ' ', m.group(0)), css, flags=re.S)
+        for m in re.finditer(r'([^{}]*)\{([^{}]*)\}', css):
+            sel = m.group(1).strip().split('\n')[-1].strip()
+            if ':root' in sel or 'data-theme' in sel or "'" in sel or 'print' in sel or sel.lstrip('+ ').startswith('.wp-'):
+                continue                      # tokens being defined; a print sheet written inside a JS string
+            dec = re.sub(r'var\(\s*--[\w-]+\s*,\s*(?:#5e87c5|rgba\([^)]*\))\s*\)', '', m.group(2))
+            if _LITACC.search(dec):
+                out.append((start + css.count('\n', 0, m.start(2)), sel[-60:]))
+    return out
+
+
 def bare_headers(html):
     """<header> tags with no class, outside HTML comments. An app may have exactly one: its own."""
     blank = lambda m: re.sub(r'[^\n]', ' ', m.group(0))
@@ -177,9 +201,10 @@ def main():
         missing = undefined_tokens(html)
         inks = white_on_fill(html)
         rounds = round_wells(html)
+        lits = literal_accent(html) if path.replace(os.sep, '/').endswith('apps/labbook/labbook.html') else []
         heads = bare_headers(html) if '/apps/' in path.replace(os.sep, '/') else []
         heads = heads[1:]
-        if hits or missing or inks or heads or rounds:
+        if hits or missing or inks or heads or rounds or lits:
             bad += 1
             parts = []
             if hits:
@@ -192,6 +217,8 @@ def main():
                 parts.append('%d bare <header> after the app header' % len(heads))
             if rounds:
                 parts.append('%d round well' % len(rounds))
+            if lits:
+                parts.append('%d literal accent' % len(lits))
             print('  %s: %s' % (rel, ', '.join(parts)))
             for ln, txt in hits[:8]:
                 print('     line %-6d %s' % (ln, txt))
@@ -201,6 +228,8 @@ def main():
                 print('     line %-6d white on a fill: %s   -> color:var(--on-accent)' % (ln, txt))
             for ln, txt in rounds[:8]:
                 print('     line %-6d a round well: %s   -> border-radius:var(--r-1)' % (ln, txt))
+            for ln, txt in lits[:8]:
+                print('     line %-6d a literal accent: %s   -> var(--accent) / var(--accent-dim) / var(--accent-soft)' % (ln, txt))
             for ln in heads[:8]:
                 print('     line %-6d a <header> with no class: dHUB hides it with the app header -> give it a class' % ln)
         else:
@@ -211,7 +240,8 @@ def main():
                          'an undefined token leaves its property at the inherited or initial value;\n'
                          'white ink on a solid fill is 2.3:1 in the dark theme (use var(--on-accent));\n'
                          'a bare <header> inside an app is hidden by dHUB along with the app header;\n'
-                         'a plate well is a rounded square (border-radius:var(--r-1)), never a circle.\n' % bad)
+                         'a plate well is a rounded square (border-radius:var(--r-1)), never a circle;\n'
+                         'the accent is a token, never #5e87c5 (it is #8aaee0 in the dark theme).\n' % bad)
         return 1
     return 0
 

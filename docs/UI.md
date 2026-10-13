@@ -236,6 +236,37 @@ or an object (a step's grip · camera · ⋯, a plate card's Edit · ⋯, a calc
 the audits. Under `(hover:none)` nothing is hidden: hover would hide them on exactly the
 devices that cannot hover. The experiment banner's actions are always visible on purpose.
 
+## Labbook, one hand (2026-10-13)
+
+Jon: *"check los experimentos visualmente, tamaños de letra, ticks, dibujos, líneas, cuadros… todo el Labbook tiene que verse homogéneo."* The
+tokens were right (no loose px, no second radius scale); what differed was **which step of the scale each role used**, so each role now has
+one answer, and `tools/labbook_style_invariants.mjs` (T1–T14) measures it on every screen:
+
+| role | the one answer |
+|---|---|
+| **tick** (a step, a week card, a task, a protocol item) | a circle, 1.5px `--text3` outline, accent fill, one drawn check (a CSS mask, never a ✓ glyph). 28 on a step's header, 20 in a list of due steps, 16 inside a line of text. Done is `var(--accent)` with `var(--on-accent)` ink, in both themes |
+| **checkbox** | the same box and the same check as the tick, square (`--r-1`), 16px, `appearance:none`. A choice is a square, a completion is a circle |
+| **section heading** (Setup · Steps · Observations · Results · Files · Report) | `.exp-sec-h` + `.exp-sec-t` (`--fs-6`/600/`--text`) over one hairline; Setup is no longer the small grey label |
+| **step title** | `--fs-5`/600/`--text` wherever a step is drawn (experiment, Today, Journal, carried over). It was 11, 12 and 13px and smaller than the 15px text under it |
+| **small bordered button** (Details, Edit, + Add plate, Fold, Open, Snooze, Today, + Note) | 24px, `--r-1`, `--fs-2`/600, `--border2`, no glyph in front (a ▸ read as a disclosure on buttons that disclose nothing). `.lean-tog` is the class |
+| **icon / row button** (the experiment's actions, camera, ⋯, the wait chip, report exports) | 28px, `--r-1`, icon 15px at `stroke-width:2` |
+| **toolbar control** (Experiments, Week) | `--tb-h` 32px, and a segmented group is that height, not 32 plus its own padding |
+| **chevron** | the svg (`tbIco(P_CHEV_L/R,15)`), never `‹ ›` typed at 18px |
+| **form label** | `--fs-2`/600/`--text2` (the Setup summary's read-only label is `--fs-2`/500/`--text3`: quieter than a field) |
+| **dashed border** | 1px; a drop target's outline is 2px |
+| **state colour** | `--good` / `--warn` / `--danger` and `--accent`, never `#e0803a`, `#c8752f`, `#c07a2e` (four oranges), `#b23c38`, `#5e87c5`. A literal is right in one theme and a different colour in the other: `tools/check_css.py` fails on a literal accent in Labbook |
+| **brand colours** | belong to the logo box and the app's card. Echo's red `#ff5760` coloured a chip and a box in the New-experiment dialog |
+
+Layout rules that came with it:
+
+- **A section heading is the only thing that draws the rule above its section.** The experiment header carries none of its own (`.exh.exh-exp`), and Setup's cells carry none either: a rule under each cell stopped short under the last, incomplete row.
+- **A label-over-value grid is `justify-content:space-between` per cell**, so the values of one row share a line however many lines the labels take.
+- **An action row's first icon stands under the title.** The ghost buttons have 8px of padding before the icon, so the row is pulled left by 8px (`.exh.exh-exp .exh-top`) — scoped, because the same row class heads the Planner's Today, where the same pull put the title outside its box.
+- **Two halves and `space-between`, not an auto margin** — the folder arrows ‹ 3/4 › sit at the right of the meta line, the day's count at the right of its header, and each left half wraps inside itself.
+- **A drag handle hangs in the margin on a pointer device** (`position:absolute; left:-19px`, only under `(hover:hover)`), so a step's tick starts where the text and the rules do. That needed `.bench-group` to stop clipping (`display:flow-root`, which keeps the block formatting context `overflow:hidden` was there for).
+- **The actions of a card of a grid sit at its foot** (`margin-top:auto`), so a row of cards has its buttons on one line.
+- **A banner above a grid sits on the grid's margins**, not the pane's edge.
+
 ## Components
 
 **Header** (each app keeps its own — it is what makes the file usable on its own, and the shell
