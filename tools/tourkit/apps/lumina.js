@@ -22,8 +22,8 @@
       'Press **Fit curves →**. The Results tab has the potencies, the curves, a plot, and every export.'],
     tabs: [
       { id: 'plate', label: 'Plate', sel: '.tab[data-tab="input"]', go: plate,
-        lead: 'Where you describe the experiment. One card, laid out in the order the work is done: what the assay is and how big the plate is, then five steps, then the plate itself with a panel beside it that only appears when you select wells.',
-        do: ['Choose the **assay type** — it sets how readings are normalised and what the potency is called — and the plate size, 96 or 384 wells.',
+        lead: 'Where you describe the experiment. One card, laid out in the order the work is done: what the assay is, then five steps, then the plate itself — with its size (96 or 384 wells) in a dropdown right above it — with a panel beside it that only appears when you select wells.',
+        do: ['Choose the **assay type** — it sets how readings are normalised and what the potency is called. The **dropdown above the plate** switches it between 96 and 384 wells.',
           '**Drag across wells** on the plate to say what they are: a rectangle, **Shift** to extend, `⌘` / `Ctrl` to add, a row or column label for a whole line, the corner for the whole plate. Or type a range such as `B2:C11`.',
           'The panel beside the plate asks what the selection is — a gradient, compounds, a control — and shows only that form. Press **Enter** to apply.',
           'More compounds than one plate holds? Press **+** to add a plate: the layout is shared, the compounds continue, and each plate is normalised to its own controls.'],
@@ -35,7 +35,9 @@
         watch: [{ k: 'tip', t: 'A well’s colour tells you what it is: each compound has a colour, shaded dark at its top concentration, so the direction of the series reads without a number. Controls have their own colour.' }],
         steps: [
           { sel: '#lm-card .lm-head', t: 'The assay and the plate', place: 'bottom',
-            b: 'The **assay type** decides how readings are normalised and what the potency is called — DC50, IC50 or EC50. Then 96 or 384 wells. **+** adds a plate that continues the same layout.' },
+            b: 'The **assay type** decides how readings are normalised and what the potency is called — DC50, IC50 or EC50. **+** adds a plate that continues the same layout.' },
+          { sel: '#plate-format', t: 'Plate size', place: 'bottom',
+            b: 'Right above the plate: **96 or 384 wells**. Changing it clears this layout and its readings — `⌘Z` brings them back.' },
           { sel: '#lm-steps', t: 'Five steps, in any order', place: 'bottom',
             b: 'Gradient · Compounds · Controls · Names · Readings. Each says what is done and what is not; **click one** to select that part of the layout. Nothing is lost if you do them in a different order.' },
           { deep: true, sel: '#well-grid', t: 'Drag to say what wells are', place: 'right',

@@ -316,6 +316,25 @@ try { if (hasX) {
   await ev(() => setPlateFormat(384)); await drop(['CTG20260923_144h_Z.xlsx']);
   const t9 = await ev(() => document.getElementById('toast').textContent);
   check('L9 a 96-well file on a 384-well plate says so', /96-well grid/.test(t9), t9);
+
+  // ── L12 the plate size is a dropdown right above the plate ───────────────────────────
+  // The 96/384 buttons sat in the card's head, a whole row of steps away from the plate. It is one
+  // dropdown in the plate's own column now, and it must follow the plate: undo, a loaded session.
+  const l12 = await page.evaluate(async () => {
+    const sel = document.getElementById('plate-format'), wrap = document.getElementById('lm-platewrap'), grid = document.getElementById('well-grid');
+    const out = { inWrap: !!sel && wrap.contains(sel), before: !!sel && !!(sel.compareDocumentPosition(grid) & Node.DOCUMENT_POSITION_FOLLOWING), old: !!document.getElementById('format-seg'), opts: sel ? [...sel.options].map(o => o.value).join() : '' };
+    switchTab('input'); state.activeSubtab = 'layout'; lmAfterChange(); setPlateFormat(96);
+    out.v96 = sel.value; return out;
+  });
+  check('L12 the plate size is one dropdown (96, 384) in the plate column, above the grid, and the old buttons are gone', l12.inWrap && l12.before && !l12.old && l12.opts === '96,384', JSON.stringify(l12));
+  await page.selectOption('#plate-format', '384');
+  const l12b = await page.evaluate(() => { const sel = document.getElementById('plate-format'); return { fmt: state.format, wells: document.querySelectorAll('#well-grid .well').length, focus: document.activeElement === sel, val: sel.value }; });
+  check('L12 choosing 384 in the dropdown makes a 384-well plate, and the focus leaves the dropdown so ⌘V reaches the plate', l12b.fmt === 384 && l12b.wells === 384 && !l12b.focus && l12b.val === '384', JSON.stringify(l12b));
+  const l12c = await page.evaluate(() => {
+    const sel = document.getElementById('plate-format'); lmSetSel(new Set(['A1', 'A2', 'A3'])); LM_SEL = new Set(['A1', 'A2', 'A3']); state.layout.zones.push(['B1', 'B2']); lmAfterChange();
+    setPlateFormat(96); const v1 = sel.value; lmUndo(); return { v1, back: sel.value, fmt: state.format };
+  });
+  check('L12 the dropdown follows the plate: 96 after switching, 384 again after undo', l12c.v1 === '96' && l12c.back === '384' && l12c.fmt === 384, JSON.stringify(l12c));
 } } catch (e) { findings.push('✗ the run stopped: ' + e.message.split('\n')[0]); }
 // _lmReadFmt is arithmetic and needs no file
 {

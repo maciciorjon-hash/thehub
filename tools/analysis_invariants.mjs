@@ -264,6 +264,57 @@ if (run('B7')) await guard('B7', async () => {
   await ctx.close();
 });
 
+if (run('B8')) await guard('B8', async () => {
+  const { ctx, pg } = await open('/apps/beacon/beacon.html');
+  const r = await pg.evaluate(() => {
+    const g = (R, C, f) => Array.from({ length: R }, (_, r) => Array.from({ length: C }, (_, c) => f(r, c)).join('\t')).join('\n');
+    const out = {}, sel = document.getElementById('plate-format');
+    out.start = { plates: state.plates.length, wells: document.querySelectorAll('#well-grid .well').length, fmt: sel.value, above: !!(sel.compareDocumentPosition(document.getElementById('well-grid')) & Node.DOCUMENT_POSITION_FOLLOWING), bar: !!document.querySelector('#lm-platewrap #plate-format') };
+    bPasteText(g(16, 24, (r, c) => 5000 + c)); out.p384 = { rows: bPl().rows, cols: bPl().cols, n: Object.keys(bPl().donor).length, fmt: sel.value, wells: document.querySelectorAll('#well-grid .well').length, plates: state.plates.length };
+    bPasteText(g(16, 24, (r, c) => 100 + c)); out.both = bComplete(bPl());
+    sel.value = '96'; sel.dispatchEvent(new Event('change')); out.to96 = { rows: bPl().rows, n: Object.keys(bPl().donor).length, wells: document.querySelectorAll('#well-grid .well').length, focus: document.activeElement === sel };
+    bUndo(); out.undo = { rows: bPl().rows, n: Object.keys(bPl().donor).length, fmt: sel.value };
+    // a 96-well block on a plate chosen as 384 stays on the 384 plate at A1; a 384 grid on a 96 plate grows it
+    bDelPlate(0); sel.value = '384'; sel.dispatchEvent(new Event('change')); bPasteText(g(8, 12, () => 7)); out.small = { rows: bPl().rows, n: Object.keys(bPl().donor).length, a12: 'A12' in bPl().donor, a13: 'A13' in bPl().donor };
+    bDelPlate(0); out.afterDel = { plates: state.plates.length, rows: bPl().rows };
+    return out;
+  });
+  check('B8', 'Beacon opens on an empty 96-well plate with its size dropdown directly above it: nothing has to be loaded to see the plate', r.start.plates === 1 && r.start.wells === 96 && r.start.fmt === '96' && r.start.above && r.start.bar, r.start);
+  check('B8', 'a 384-well grid pasted onto that plate makes it a 384-well plate (the dropdown follows) — one plate, not a second one', r.p384.rows === 16 && r.p384.cols === 24 && r.p384.n === 384 && r.p384.fmt === '384' && r.p384.wells === 384 && r.p384.plates === 1 && r.both, r.p384);
+  check('B8', 'choosing the other size by hand clears that plate (readings are for the old wells), the focus leaves the dropdown so ⌘V reaches the plate, and ⌘Z brings it back', r.to96.rows === 8 && r.to96.n === 0 && r.to96.wells === 96 && !r.to96.focus && r.undo.rows === 16 && r.undo.n === 384 && r.undo.fmt === '384', { to96: r.to96, undo: r.undo });
+  check('B8', 'a 96-well block pasted on a plate set to 384 stays on it, at A1, and does not shrink it; removing the last plate leaves an empty plate, not none', r.small.rows === 16 && r.small.n === 96 && r.small.a12 && !r.small.a13 && r.afterDel.plates === 1 && r.afterDel.rows === 16, { small: r.small, afterDel: r.afterDel });
+  await ctx.close();
+});
+
+if (run('B9')) await guard('B9', async () => {
+  const { ctx, pg } = await open('/apps/beacon/beacon.html');
+  const r = await pg.evaluate(() => {
+    loadTestData('gain'); state.plates = state.plates.slice(0, 1); state.series = []; bPl().map = {}; state.rev++; bAfterChange();
+    const sel = (a, b) => bSetSel(new Set(PlateEngine.rect(a, b, bDims())));
+    sel({ r: 0, c: 0 }, { r: 7, c: 0 }); bMarkRole('noLigand');
+    sel({ r: 0, c: 1 }, { r: 7, c: 11 }); BM_REPS = 2; BM_DIR = 'right';
+    const set = (n, t) => { document.getElementById('lm-name').value = n; document.getElementById('lm-top').value = t; document.getElementById('lm-unit').value = 'µM'; document.getElementById('lm-fac').value = '3'; bRenderPanel(); };
+    set('Alpha', '10'); bApply();
+    const col = n => getComputedStyle(document.querySelector('.well[data-pos="' + n + '"]')).backgroundColor;
+    const snap = () => { const gr = document.getElementById('well-grid').getBoundingClientRect(); return { h: Math.round(gr.height), top: Math.round(gr.top), cell: Math.round(document.querySelector('.well[data-pos="A3"]').getBoundingClientRect().width), colors: ['A3', 'C3', 'E3', 'G3'].map(col), hex: state.series.map(s => bColor(s.id).join()) }; };
+    const before = snap();
+    // change one compound — a new name and a different top concentration (so the columns no longer share a concentration) — and press OK
+    bSetSel(new Set(bWellsOf(m => m.s === state.series[1].id))); set('Beta', '20'); bApply();
+    const after = snap();
+    // a compound made later takes a colour no compound has, and removing one frees its colour for the next
+    const keep0 = state.series.slice(1).map(s => s.id + ':' + bColor(s.id).join());
+    bSetSel(new Set(bWellsOf(m => m.s === state.series[0].id))); bClearWells();
+    const keep1 = state.series.map(s => s.id + ':' + bColor(s.id).join());
+    sel({ r: 0, c: 2 }, { r: 1, c: 11 }); set('Gamma', '10'); bApply();
+    return { before, after, keep0, keep1, ids: state.series.map(s => s.name + ':' + s.ci), gamma: state.series.filter(s => s.name === 'Gamma')[0].ci };
+  });
+  check('B9', 'pressing OK on a changed compound does not recolour the others, and the renamed one keeps its own colour', JSON.stringify(r.before.colors) === JSON.stringify(r.after.colors) && JSON.stringify(r.before.hex) === JSON.stringify(r.after.hex), { before: r.before, after: r.after });
+  check('B9', 'the plate does not move or resize when a compound is changed (the band a concentration is written in stays while the plate has concentrations)', r.before.h === r.after.h && r.before.top === r.after.top && r.before.cell === r.after.cell, { before: r.before, after: r.after });
+  check('B9', 'removing the first compound leaves every other compound its colour (the colour was its place in the list, so each moved up one)', JSON.stringify(r.keep0) === JSON.stringify(r.keep1), { keep0: r.keep0, keep1: r.keep1 });
+  check('B9', 'a colour freed by removing a compound is the one the next compound takes (no two compounds share one)', new Set(r.ids.map(x => x.split(':')[1])).size === r.ids.length, r.ids);
+  await ctx.close();
+});
+
 if (run('D2')) await guard('D2', async () => {
   const { ctx, pg } = await open('/apps/dora/dora.html');
   const r = await pg.evaluate(async () => {

@@ -6,7 +6,7 @@
   var MISS = 'This fills in once a plate is loaded.';
   tourRegister({
     id: 'beacon', name: 'Beacon',
-    blurb: 'Beacon reads **NanoBRET plates** from the PHERAstar: the mBRET of every well, the controls it was read against, assay quality (Z′) and a dose–response for every compound. Drop the Excel export — or paste from Excel — say which wells are which by dragging across them, and read the result.',
+    blurb: 'Beacon reads **NanoBRET plates** from the PHERAstar: the mBRET of every well, the controls it was read against, assay quality (Z′) and a dose–response for every compound. The plate is on screen from the start: paste the values onto it from Excel, or drop the export — say which wells are which by dragging across them, and read the result.',
     where: function(){ return activeTab; },
     data: { label: 'Load the demo plates', has: function(){ return beaconReady(); }, load: function(){ loadTestData('gain'); } },
     intro: [{ t: 'Welcome to Beacon',
@@ -15,7 +15,7 @@
     outro: [{ t: 'Come back any time', sel: '.tab[data-tab="guide"]', place: 'bottom', go: function(){ switchTab('guide'); },
       b: 'The **Guide** tab has the workflow, how to read Z′ and the fits, and what to do when a number looks off — with a tour of each part.' }],
     quick: [
-      'Drop the PHERAstar `.xlsx` on the **Plate** tab (several files are several plates), or copy the donor and acceptor grids in Excel and press **⌘V**.',
+      'The plate is already on the **Plate** tab: copy the donor grid in Excel and press **⌘V**, then the acceptor — or drop the PHERAstar `.xlsx` on it (several files are several plates). Pick **96-well** or **384-well** in the dropdown above the plate, or just paste: it takes the size of what you paste.',
       'Choose the assay: **protein–protein** (signal rises) or **tracer displacement**.',
       'Drag across the control wells and click what they are — no-ligand, vehicle, donor only, acceptor only, no substrate, mock.',
       'Drag across a dose series: give the top concentration, the dilution and how many replicates — the number of compounds follows. Skip it if the plate has none.',
@@ -23,7 +23,7 @@
     tabs: [
       { id: 'plate', label: 'Plate', sel: '.tab[data-tab="plate"]', go: plate,
         lead: 'Where the data comes in and where you say what each well is. One card, in the order the work is done: the assay and the plates, three steps, then the plate with a panel beside it.',
-        do: ['**Drop the PHERAstar export** anywhere on the card. Plate format and the donor and acceptor channels are found for you, and a file holding several plates becomes several.',
+        do: ['**Paste the plate** — copy its donor grid in Excel and press `⌘V`, then the acceptor — or **drop the PHERAstar export** anywhere on the card. The donor and acceptor channels are found for you, and a file holding several plates becomes several. The dropdown above the plate is **96 or 384 wells**; a paste or a file sets it by itself.',
           '**Drag across wells** to select them: a rectangle, **Shift** to extend, `⌘` / `Ctrl` to add, a row or column label for a whole line, the corner for the plate — or type a range such as `B2:C11`.',
           'The panel asks only what it needs: a **compound** dose series, a **tracer** series, or a **control**. Press **Enter** to apply, **Delete** to clear, `⌘Z` to undo.',
           'The **Corrected / Raw / Layout** switch under the plate changes what the wells show: the mBRET numbers, or what each well is.'],
@@ -33,6 +33,8 @@
         steps: [
           { sel: '#lm-card .lm-head', t: 'The assay and the plates', place: 'bottom',
             b: '**Protein–protein** (signal rises with the interaction) or **tracer displacement** (a compound pushes a tracer off and the signal falls). Several plates are tabs here.' },
+          { sel: '#plate-format', t: 'Plate size', place: 'bottom',
+            b: '**96 or 384 wells**, right above the plate. A grid you paste or a file you drop sets it for you; choosing by hand clears this plate’s readings and layout (`⌘Z` brings them back).' },
           { sel: '#lm-steps', t: 'Three steps, in any order', place: 'bottom',
             b: 'Readings · Controls · Compounds (and Tracer for displacement). Each says what is done; **click one** to select that part of the layout.' },
           { deep: true, sel: '#well-grid', t: 'Drag to say what wells are', place: 'right', miss: MISS,

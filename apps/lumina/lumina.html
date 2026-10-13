@@ -244,6 +244,10 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);
 .lm-read:empty{display:none;}
 /* Its sentence must not set the plate column's width — the plate does. */
 .lm-read{contain:inline-size;}
+/* The plate's own controls sit right above it: its size, then the readings strip. */
+.lm-platebar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin-bottom:10px;}
+.lm-platebar .lm-read{flex:1 1 300px;margin-bottom:0;min-width:0;}
+.lm-assay.lm-fmt{min-width:150px;}   /* the select of the assay, narrower: it only says 96 or 384 */
 .lm-read.empty{border:1.5px dashed var(--border2);border-radius:var(--r-2);padding:10px 14px;cursor:pointer;}
 .lm-read.empty:hover{border-color:var(--accent);background:var(--accent-dim);}
 .lm-read svg{width:18px;height:18px;flex-shrink:0;color:var(--text3);}
@@ -408,7 +412,7 @@ input:checked+.theme-slider{background:var(--accent);}
 .rotate-note svg{flex:none;width:40px;height:40px;color:var(--accent);}
 .rotate-note b{display:block;color:var(--text);font-size:var(--fs-4);margin-bottom:2px;}
 @media (max-width:640px) and (orientation:portrait){
-  body.lm-needs-landscape #lm-steps,body.lm-needs-landscape #lm-body{display:none;}
+  body.lm-needs-landscape #lm-steps,body.lm-needs-landscape #lm-sel,body.lm-needs-landscape #lm-list,body.lm-needs-landscape .well-grid-wrap,body.lm-needs-landscape .lm-read,body.lm-needs-landscape .bc-demo{display:none !important;}   /* the plate size dropdown stays: it is the way back to 96-well */
   body.lm-needs-landscape #lm-rotate{display:flex;}
 }
 /* phone type scale (docs/UI.md): a 10px label is a desktop read. Portrait phones by width, landscape phones by height. */
@@ -759,21 +763,23 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
           <option value="displacement">Displacement</option>
           <option value="gain">Gain of signal</option>
         </select>
-        <div class="seg" id="format-seg" role="group" aria-label="Plate format">
-          <button class="active" onclick="setPlateFormat(96)">96-well</button>
-          <button onclick="setPlateFormat(384)">384-well</button>
-        </div>
         <div class="lm-plates" id="lm-plates"></div>
       </div>
       <div class="lm-steps" id="lm-steps"></div>
       <div class="rotate-note" id="lm-rotate" role="note">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="8" height="13" rx="1.6"/><rect x="12.5" y="13.5" width="9" height="6" rx="1.4"/><path d="M14 7.2c2.7.3 4.6 1.8 5.2 4.2"/><path d="M19.6 8.6l-.4 3.2-3-.9"/></svg>
-        <div><b>Turn your phone sideways</b>A 384-well plate is 24 columns wide, too many to read or tap on a portrait screen. Turn the phone to landscape to lay it out — or switch to 96-well above.</div>
+        <div><b>Turn your phone sideways</b>A 384-well plate is 24 columns wide, too many to read or tap on a portrait screen. Turn the phone to landscape to lay it out — or switch to 96-well with the dropdown below.</div>
       </div>
 
       <div class="lm-body" id="lm-body">
         <div class="lm-platecol" id="lm-platewrap">
-          <div class="lm-read" id="lm-read"></div>
+          <div class="lm-platebar">
+            <select id="plate-format" class="lm-assay lm-fmt" onchange="setPlateFormat(+this.value);this.blur()" aria-label="Plate format" title="The plate: 96 or 384 wells. Changing it clears the layout and readings (⌘Z brings them back)">
+              <option value="96">96-well plate</option>
+              <option value="384">384-well plate</option>
+            </select>
+            <div class="lm-read" id="lm-read"></div>
+          </div>
           <div class="well-grid-wrap"><div id="well-grid" class="well-grid"></div></div>
         </div>
 
@@ -1080,7 +1086,6 @@ function lmLoadSession(sess, link){
   if (vals.length === inputs.length) Array.prototype.forEach.call(inputs, function(el, i){ if (el.type === 'checkbox') el.checked = !!vals[i]; else el.value = vals[i]; });
   rsSyncOpts();
   if (sess.units && (sess.units.u === 'auto' || UNITS[sess.units.u])) { state.units = { u: sess.units.u, log: !!sess.units.log }; try { localStorage.setItem('lumina_units', JSON.stringify(state.units)); } catch(e){} rsSyncUnitsUI(); }
-  document.querySelectorAll('#format-seg button').forEach(function(b, i){ b.classList.toggle('active', (i === 0 && fmt === 96) || (i === 1 && fmt === 384)); });
   state.fitResults = []; state.fitSig = null; state.selectedSample = null; state.lbLink = link || null;
   lmAfterChange();
   return true;
@@ -1225,7 +1230,6 @@ function _restoreSnapshot(snap){
   state.zeroCtrlWells = snap.zeroCtrlWells;
   state.excluded = snap.excluded || new Set();
   var keep = new Set(); LM_SEL.forEach(function(p){ var q = _rc(p); if (q.r < state.rows && q.c < state.cols) keep.add(p); }); LM_SEL = keep;
-  document.querySelectorAll('#format-seg button').forEach(function(b,i){ b.classList.toggle('active', (i===0 && state.format===96) || (i===1 && state.format===384)); });
   lmAfterChange();
   // A curve edit undone from Results must show: the fit is remade from what the plate now says.
   if (document.getElementById('pane-results').classList.contains('active')) { _lmEnsureFit(true); renderResults(); }
@@ -2013,6 +2017,7 @@ function lmAfterChange(){
   document.getElementById('lm-list').style.display = list ? '' : 'none';
   body.classList.toggle('names', list);
   body.classList.toggle('x384', state.cols > 12);
+  var pf = document.getElementById('plate-format'); if (pf) pf.value = String(state.format);
   renderGrid();
   lmRenderPlates();
   lmRenderRead();
@@ -2103,7 +2108,6 @@ function setPlateFormat(fmt){
   state.zeroCtrlWells = new Set();
   state.excluded = new Set(); state.lbLink = null;
   resetAnalysisOutputs();
-  document.querySelectorAll('#format-seg button').forEach(function(b,i){ b.classList.toggle('active', (i===0 && fmt===96) || (i===1 && fmt===384)); });
   lmAfterChange();
   if (had) {
     toastUndo('Switched to ' + fmt + '-well — the layout and readings were cleared; names kept.', function(){
@@ -2367,8 +2371,8 @@ function clearGrid(){
 // with a fixed-offset fallback when auto-detection fails.
 // ══════════════════════════════════════════════════════════════
 function _lmShapeNote(shape){
-  return shape === 'bigger' ? ' The file holds more wells than a ' + state.format + '-well plate — only the first ' + state.rows + ' rows × ' + state.cols + ' columns were read; switch the plate format to read them all.'
-    : shape === 'smaller' ? ' That file is a 96-well grid, but the plate is set to 384-well — the readings sit in A1–H12. Switch the plate to 96-well if that is not what you meant.' : '';
+  return shape === 'bigger' ? ' The file holds more wells than a ' + state.format + '-well plate — only the first ' + state.rows + ' rows × ' + state.cols + ' columns were read; choose 384-well in the dropdown above the plate (it clears the layout) and read the file again to get them all.'
+    : shape === 'smaller' ? ' That file is a 96-well grid, but the plate is set to 384-well — the readings sit in A1–H12. Choose 96-well in the dropdown above the plate if that is not what you meant.' : '';
 }
 var _lmReadShape = '';       // 'bigger' | 'smaller': the file's grid is not the size of the plate on screen
 var _lmReadByPos = false;   // the last file was read by fixed position, not by finding its grid
@@ -2499,7 +2503,7 @@ function lmApplyGrid(parsed, plateIdx, at, source){
     if (h === rows && w === cols) at = { r: 0, c: 0 };   // a whole plate is a whole plate
     r0 = at ? at.r : 0; c0 = at ? at.c : 0;
     if (r0 + h > rows || c0 + w > cols) {
-      return { error: 'That block is ' + h + ' × ' + w + (r0 || c0 ? ' and starts at ' + wellPos(r0, c0) : '') + ' — it does not fit a ' + state.format + '-well plate (' + rows + ' × ' + cols + ').' + (r0 || c0 ? ' Select the well its top-left corner goes in.' : '') };
+      return { error: 'That block is ' + h + ' × ' + w + (r0 || c0 ? ' and starts at ' + wellPos(r0, c0) : '') + ' — it does not fit a ' + state.format + '-well plate (' + rows + ' × ' + cols + ').' + (r0 || c0 ? ' Select the well its top-left corner goes in.' : '') + (state.format === 96 && (h > 8 || w > 12) ? ' For a 384-well plate choose 384-well in the dropdown above the plate first — that clears the layout — then paste again.' : '') };
     }
     parsed.block.forEach(function(row, ri){
       for (var ci = 0; ci < w; ci++) {
@@ -2687,7 +2691,6 @@ async function handleReaderFiles(list, plateIdx){
 function loadLuminaTestData(){
   lmMark(); LM_SEL = new Set(); LM_MODE = null;
   state.format = 96; state.rows = 8; state.cols = 12; state.activeSubtab = 'layout';
-  document.querySelectorAll('#format-seg button').forEach(function(b,i){ b.classList.toggle('active', i===0); });
   document.getElementById('assay-type').value = 'hibit';
   onAssayTypeChange();
   // The layout: one gradient across columns 1–11 (1000 nM, 3-fold), four compounds in
@@ -4836,7 +4839,7 @@ var assistRegister, assistOpen, assistClose, assistAsk, assistToggle;
                 '**Readings:** drop the reader file on the plate, then press **Fit curves**.'],
         tip: 'Nothing is lost if you do them in a different order; the steps only say what is still missing.',
         prep: plate,
-        show: [{ sel: '#assay-type', say: 'Choose the **assay type**. It decides how readings are normalised.' }, { sel: '#format-seg', say: 'Then the **plate size**.' },
+        show: [{ sel: '#assay-type', say: 'Choose the **assay type**. It decides how readings are normalised.' }, { sel: '#plate-format', say: 'The **plate size** — 96 or 384 wells — is the dropdown just above the plate.' },
                { sel: '#lm-steps', say: 'These five steps track your progress. Click one to go there.' }, { sel: '#well-grid', say: 'Then **drag across wells** on the plate to say what they are.' }],
         go: [{ l: 'Load an example plate', fn: 'loadLuminaTestData' }], see: ['gradient', 'compounds', 'readings'] },
       { id: 'assay-types', t: 'Which assay type do I pick?', group: 'Getting started', on: ['plate'],
@@ -5344,8 +5347,8 @@ var tourRegister, appTour, tourEnd, tourGuideRefresh, tourOffer;
       'Press **Fit curves →**. The Results tab has the potencies, the curves, a plot, and every export.'],
     tabs: [
       { id: 'plate', label: 'Plate', sel: '.tab[data-tab="input"]', go: plate,
-        lead: 'Where you describe the experiment. One card, laid out in the order the work is done: what the assay is and how big the plate is, then five steps, then the plate itself with a panel beside it that only appears when you select wells.',
-        do: ['Choose the **assay type** — it sets how readings are normalised and what the potency is called — and the plate size, 96 or 384 wells.',
+        lead: 'Where you describe the experiment. One card, laid out in the order the work is done: what the assay is, then five steps, then the plate itself — with its size (96 or 384 wells) in a dropdown right above it — with a panel beside it that only appears when you select wells.',
+        do: ['Choose the **assay type** — it sets how readings are normalised and what the potency is called. The **dropdown above the plate** switches it between 96 and 384 wells.',
           '**Drag across wells** on the plate to say what they are: a rectangle, **Shift** to extend, `⌘` / `Ctrl` to add, a row or column label for a whole line, the corner for the whole plate. Or type a range such as `B2:C11`.',
           'The panel beside the plate asks what the selection is — a gradient, compounds, a control — and shows only that form. Press **Enter** to apply.',
           'More compounds than one plate holds? Press **+** to add a plate: the layout is shared, the compounds continue, and each plate is normalised to its own controls.'],
@@ -5357,7 +5360,9 @@ var tourRegister, appTour, tourEnd, tourGuideRefresh, tourOffer;
         watch: [{ k: 'tip', t: 'A well’s colour tells you what it is: each compound has a colour, shaded dark at its top concentration, so the direction of the series reads without a number. Controls have their own colour.' }],
         steps: [
           { sel: '#lm-card .lm-head', t: 'The assay and the plate', place: 'bottom',
-            b: 'The **assay type** decides how readings are normalised and what the potency is called — DC50, IC50 or EC50. Then 96 or 384 wells. **+** adds a plate that continues the same layout.' },
+            b: 'The **assay type** decides how readings are normalised and what the potency is called — DC50, IC50 or EC50. **+** adds a plate that continues the same layout.' },
+          { sel: '#plate-format', t: 'Plate size', place: 'bottom',
+            b: 'Right above the plate: **96 or 384 wells**. Changing it clears this layout and its readings — `⌘Z` brings them back.' },
           { sel: '#lm-steps', t: 'Five steps, in any order', place: 'bottom',
             b: 'Gradient · Compounds · Controls · Names · Readings. Each says what is done and what is not; **click one** to select that part of the layout. Nothing is lost if you do them in a different order.' },
           { deep: true, sel: '#well-grid', t: 'Drag to say what wells are', place: 'right',

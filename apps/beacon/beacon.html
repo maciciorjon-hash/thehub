@@ -146,7 +146,7 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
    column is read for the whole column, which is what "the same gradient across the plate" is. */
 .well-collbl .hc,.well-rowlbl .hc{font-size:10px;font-weight:600;color:var(--text2);white-space:nowrap;font-variant-numeric:tabular-nums;letter-spacing:0;}
 .well-grid.x384 .well-collbl .hc,.well-grid.vh .well-collbl .hc{writing-mode:vertical-rl;transform:rotate(180deg);font-size:10px;}   /* "12.3 nM" is wider than a 22px column; standing up it is not */
-.well-grid.hconc .well-collbl{justify-content:flex-end;padding-bottom:3px;}
+.well-grid.hconc .well-collbl{justify-content:flex-end;padding-bottom:3px;min-height:var(--hdr,22px);box-sizing:border-box;}
 .well-grid.vconc .well-rowlbl{width:auto;justify-content:space-between;padding:0 6px 0 4px;}
 .well-rowlbl{width:20px;}
 .well{
@@ -334,17 +334,14 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
 .lm-go[disabled]{opacity:.45;cursor:default;}
 .lm-toolbar{align-items:center;}
 .lm-toolbar .seg button{height:36px;padding-top:0;padding-bottom:0;}
-.lm-body.bc-none{grid-template-columns:minmax(0,1fr);}
 .bc-name{margin-bottom:10px;}
 .bc-name input{width:100%;box-sizing:border-box;}
 .lm-cpd .field.f-dir{grid-column:1/-1;}
-.bc-empty{display:none;max-width:640px;}
-.bc-drop{display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;padding:38px 24px;border:1.5px dashed var(--border2);border-radius:var(--r-3);cursor:pointer;color:var(--text2);font-size:var(--fs-3);line-height:1.5;transition:border-color var(--dur-1) var(--ease),background-color var(--dur-1) var(--ease);}
-.bc-drop:hover,.bc-drop:focus-visible{border-color:var(--accent);background:var(--accent-dim);outline:none;}
-.bc-drop svg{width:34px;height:34px;color:var(--text3);}
-.bc-drop b{font-size:var(--fs-5);font-weight:600;color:var(--text);}
-.bc-alt{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin-top:14px;font-size:var(--fs-3);color:var(--text2);}
-.bc-demo{display:flex;flex-wrap:wrap;align-items:center;gap:4px 16px;margin-top:10px;font-size:var(--fs-3);color:var(--text3);}
+/* The plate's own controls sit right above it: its size, then the readings strip. */
+.lm-platebar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin-bottom:10px;}
+.lm-platebar .lm-read{flex:1 1 300px;margin-bottom:0;min-width:0;}
+.lm-assay.lm-fmt{min-width:150px;}   /* the select of the assay, narrower: it only says 96 or 384 */
+.bc-demo{display:none;flex-wrap:wrap;align-items:center;gap:4px 16px;margin:-2px 0 10px;font-size:var(--fs-3);color:var(--text3);}
 .lm-read .bc-ch{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 10px;border:1px solid var(--border2);border-radius:var(--r-full);background:var(--surface);color:var(--text2);font-family:var(--sans);font-size:var(--fs-3);cursor:pointer;}
 .lm-read .bc-ch b{font-weight:700;color:var(--text3);}
 .lm-read .bc-ch.has b{color:var(--good);}
@@ -425,7 +422,7 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
 .rotate-note svg{flex:none;width:40px;height:40px;color:var(--accent);}
 .rotate-note b{display:block;color:var(--text);font-size:var(--fs-4);margin-bottom:2px;}
 @media (max-width:640px) and (orientation:portrait){
-  body.lm-needs-landscape #lm-steps,body.lm-needs-landscape #lm-body{display:none;}
+  body.lm-needs-landscape #lm-steps,body.lm-needs-landscape #lm-sel,body.lm-needs-landscape #lm-list,body.lm-needs-landscape .well-grid-wrap,body.lm-needs-landscape .lm-read,body.lm-needs-landscape .bc-demo{display:none !important;}   /* the plate size dropdown stays: it is the way back to 96-well */
   body.lm-needs-landscape #lm-rotate{display:flex;}
 }
 .cv-hint{font-size:var(--fs-2);color:var(--text3);padding:6px 2px 0;line-height:1.45;}
@@ -708,7 +705,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
      One card laid out in the order the work is done: what the assay is and which plates there
      are, the steps (each says what is done), then the plate with its panel beside it. The panel
      says what is on the plate until wells are selected, then asks what they are. Nothing is a
-     setup: a plate exists because a file or a paste brought it. -->
+     setup: the plate is on screen from the start — paste the values onto it, or drop the file. -->
 <div class="panel active" id="panel-plate">
   <div class="card lm-card" id="lm-card">
     <div class="lm-head">
@@ -721,27 +718,22 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     <div class="lm-steps" id="lm-steps"></div>
     <div class="rotate-note" id="lm-rotate" role="note">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="8" height="13" rx="1.6"/><rect x="12.5" y="13.5" width="9" height="6" rx="1.4"/><path d="M14 7.2c2.7.3 4.6 1.8 5.2 4.2"/><path d="M19.6 8.6l-.4 3.2-3-.7"/></svg>
-      <div><b>Turn your phone sideways</b>A 384-well plate is 24 columns wide, too many to read or tap on a portrait screen. Turn the phone to landscape to read it.</div>
+      <div><b>Turn your phone sideways</b>A 384-well plate is 24 columns wide, too many to read or tap on a portrait screen. Turn the phone to landscape to read it — or switch to 96-well with the dropdown below.</div>
     </div>
 
     <div class="lm-body" id="lm-body">
       <div class="lm-platecol" id="lm-platewrap">
-        <div class="bc-empty" id="bc-empty">
-          <div class="bc-drop" role="button" tabindex="0" onclick="bPickFiles()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();bPickFiles()}">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4M7.5 8.5L12 4l4.5 4.5"/><path d="M4 15v3a2 2 0 002 2h12a2 2 0 002-2v-3"/></svg>
-            <b>Drop the PHERAstar export here</b>
-            <span>One file, or several &mdash; every plate in them is read, donor and acceptor found for you. Or click to choose.</span>
-          </div>
-          <div class="bc-alt">
-            <button class="btn btn-sec" onclick="bPasteButton()" title="Copy the donor grid, or the acceptor grid, or a Well table in Excel first">Paste from Excel</button>
-            <span>or press &#8984;V / Ctrl+V anywhere on this card &mdash; a donor grid, an acceptor grid, or both together</span>
-          </div>
-          <div class="bc-demo"><span>No plate to hand?</span>
-            <button class="lm-link" onclick="loadTestData('gain')">Protein&ndash;protein demo (2 plates)</button>
-            <button class="lm-link" onclick="loadTestData('displacement')">Tracer displacement demo</button>
-          </div>
+        <div class="lm-platebar">
+          <select id="plate-format" class="lm-assay lm-fmt" onchange="bSetFormat(+this.value);this.blur()" aria-label="Plate format" title="The plate: 96 or 384 wells. A grid you paste or a file you drop sets it for you; changing it by hand clears this plate’s readings and layout (⌘Z brings them back)">
+            <option value="96">96-well plate</option>
+            <option value="384">384-well plate</option>
+          </select>
+          <div class="lm-read" id="lm-read"></div>
         </div>
-        <div class="lm-read" id="lm-read"></div>
+        <div class="bc-demo" id="bc-demo"><span>No plate to hand?</span>
+          <button class="lm-link" onclick="loadTestData('gain')">Protein&ndash;protein demo (2 plates)</button>
+          <button class="lm-link" onclick="loadTestData('displacement')">Tracer displacement demo</button>
+        </div>
         <div class="well-grid-wrap"><div id="well-grid" class="well-grid"></div></div>
       </div>
 
@@ -1345,7 +1337,14 @@ function bViewNow(){
 function bSeriesById(id){ return state.series.filter(function(s){ return s.id === id; })[0] || null; }
 function bSeriesIndex(id){ for (var i = 0; i < state.series.length; i++) if (state.series[i].id === id) return i; return 0; }
 function bFindSeries(name){ var n = String(name).trim().toLowerCase(); return state.series.filter(function(s){ return s.name.trim().toLowerCase() === n; })[0] || null; }
-function bNewSeries(name){ var s = { id: 's' + (++state.seq), name: name }; state.series.push(s); return s; }
+// A compound's colour is its own, taken when it is made and kept: it used to be its place in the list, so
+// renaming one compound (made again at the end of the list) recoloured every compound after it.
+function bNewSeries(name){
+  var used = {}; state.series.forEach(function(x, i){ used[x.ci !== undefined ? x.ci : i] = 1; });
+  var ci = 0; while (used[ci] && ci < BM_PAL.length) ci++;
+  if (ci >= BM_PAL.length) ci = state.series.length % BM_PAL.length;
+  var s = { id: 's' + (++state.seq), name: name, ci: ci }; state.series.push(s); return s;
+}
 function bPruneSeries(){
   var used = {};
   state.plates.forEach(function(pl){ Object.keys(pl.map).forEach(function(p){ if (pl.map[p].s) used[pl.map[p].s] = 1; }); });
@@ -1356,7 +1355,7 @@ function bFreshName(){
   while (bFindSeries(n) && guard++ < 60) n = PlateEngine.nextName(n);
   return n;
 }
-function bColor(id){ return BM_PAL[bSeriesIndex(id) % BM_PAL.length]; }
+function bColor(id){ var s = bSeriesById(id); return BM_PAL[(s && s.ci !== undefined ? s.ci : bSeriesIndex(id)) % BM_PAL.length]; }
 
 // ── Undo ────────────────────────────────────────────────────────────────────────────────────
 var _bUndo = [], _bRedo = [];
@@ -1389,6 +1388,25 @@ function bCloneMap(m, rows, cols){
 function bNewPlate(rows, cols, from){
   return { name: '', nameSrc: '', file: '', fkey: '', rows: rows, cols: cols, donor: {}, acceptor: {}, map: from ? bCloneMap(from.map, rows, cols) : {}, meta: null, metaRows: null };
 }
+state.plates.push(bNewPlate(8, 12, null));   // the plate is on screen from the start, empty, and ⌘V fills it
+// A plate's size is 96 or 384 wells. Moving a plate to the other size starts it over: a layout drawn
+// for one format is not a layout for the other, and the wells of a 96-well read are not the first
+// wells of a 384. The name a person gave it stays.
+function bResizePlate(pl, rows, cols){
+  if (pl.rows === rows && pl.cols === cols) return;
+  pl.rows = rows; pl.cols = cols;
+  pl.donor = {}; pl.acceptor = {}; pl.map = {}; pl.file = ''; pl.fkey = ''; pl.meta = null; pl.metaRows = null;
+  if (pl.nameSrc !== 'user') { pl.name = ''; pl.nameSrc = ''; }
+  bPruneSeries();
+}
+// The dropdown above the plate: the plate on screen becomes a 96- or a 384-well plate.
+function bSetFormat(fmt){
+  var pl = bPl(), rows = fmt === 384 ? 16 : 8, cols = fmt === 384 ? 24 : 12;
+  if (!pl || (pl.rows === rows && pl.cols === cols)) { bRenderHead(); return; }
+  var had = bHasReads(pl) || Object.keys(pl.map).length > 0;
+  bMark(); bResizePlate(pl, rows, cols); BM_SEL = new Set(); BM_CH = null; state.view = null; bAfterChange();
+  beaconToast('Plate set to ' + (rows * cols) + ' wells.' + (had ? ' Its readings and layout were cleared — ⌘Z brings them back.' : ' Paste its values, or drop the file.'));
+}
 function bGoPlate(p){ state.plate = Math.max(0, Math.min(p, state.plates.length - 1)); BM_SEL = new Set(); bAfterChange(); }
 function bAddPlate(){
   var last = state.plates[state.plates.length - 1], d = last ? { r: last.rows, c: last.cols } : { r: 8, c: 12 };
@@ -1399,7 +1417,7 @@ function bAddPlate(){
   beaconToast('Plate ' + state.plates.length + ' added' + (last && Object.keys(last.map).length ? ' with the same layout' : '') + ' — drop its file, or paste its values.');
 }
 function bDelPlate(p){
-  if (state.plates.length < 2) { bMark(); state.plates = []; state.plate = 0; state.series = []; BM_SEL = new Set(); bAfterChange(); return; }
+  if (state.plates.length < 2) { bMark(); var sz = bPl() || { rows: 8, cols: 12 }; state.plates = [bNewPlate(sz.rows, sz.cols, null)]; state.plate = 0; state.series = []; BM_SEL = new Set(); BM_CH = null; bAfterChange(); return; }
   bMark();
   state.plates.splice(p, 1);
   state.plate = Math.min(state.plate, state.plates.length - 1);
@@ -1576,6 +1594,15 @@ function bGridDims(g){
   var big = g.h > 8 || g.w > 12;
   return big ? { r: 16, c: 24 } : { r: 8, c: 12 };
 }
+// The plate a set of grids needs, for the plate that will take them: an empty plate keeps its size
+// unless the data is bigger (a 384 chosen in the dropdown takes a 96-well block at A1); a plate that
+// already holds readings is the size it is.
+function bGridsDims(grids, pl){
+  var d = { r: 8, c: 12 };
+  grids.forEach(function(g){ var x = bGridDims(g); d.r = Math.max(d.r, x.r); d.c = Math.max(d.c, x.c); });
+  if (pl && !bHasReads(pl)) return { r: Math.max(d.r, pl.rows), c: Math.max(d.c, pl.cols) };
+  return pl ? { r: pl.rows, c: pl.cols } : d;
+}
 // Which channel a file or a paste is, when its name says. Donor = the NanoLuc channel (460 nm).
 function bChannelOf(name){
   var n = String(name || '');
@@ -1604,7 +1631,10 @@ function bPlaceReadings(plates, srcName, meta, metaRows, opts){
     if (k < 0) { var last = state.plates[state.plates.length - 1]; pl = bNewPlate(x.rows, x.cols, last || null); state.plates.push(pl); k = state.plates.length - 1; }
     else {
       pl = state.plates[k];
-      if (pl.rows !== x.rows || pl.cols !== x.cols) { pl.map = bCloneMap(pl.map, x.rows, x.cols); pl.rows = x.rows; pl.cols = x.cols; }
+      // An empty plate takes the size of what arrives — unless it is already the bigger (a 96-well read of
+      // the corner of a 384 plate): the wells are named, so they land where they say.
+      if (!bHasReads(pl) && (x.rows > pl.rows || x.cols > pl.cols)) bResizePlate(pl, Math.max(x.rows, pl.rows), Math.max(x.cols, pl.cols));
+      else if (bHasReads(pl) && (pl.rows !== x.rows || pl.cols !== x.cols)) { pl.map = bCloneMap(pl.map, x.rows, x.cols); pl.rows = x.rows; pl.cols = x.cols; }
     }
     pl.donor = x.donor; pl.acceptor = x.acceptor; pl.file = srcName; pl.fkey = key; pl.meta = meta || null; pl.metaRows = metaRows || null;
     if (pl.nameSrc !== 'user') { pl.name = plates.length > 1 ? (x.sheet || base + ' · ' + (i + 1)) : base; pl.nameSrc = 'file'; }
@@ -1616,6 +1646,11 @@ function bPlaceReadings(plates, srcName, meta, metaRows, opts){
 // channel, else the next one that does, else a new plate.
 function bPlaceChannel(ch, vals, clear, dims, srcName, forcePlate){
   var k = forcePlate;
+  // The plate asked for is too small for these wells: an empty one grows to fit, one with readings is left alone.
+  if (k !== undefined && state.plates[k] && (state.plates[k].rows < dims.r || state.plates[k].cols < dims.c)) {
+    if (!bHasReads(state.plates[k])) bResizePlate(state.plates[k], Math.max(dims.r, state.plates[k].rows), Math.max(dims.c, state.plates[k].cols));
+    else k = undefined;
+  }
   if (k === undefined) {
     var order = []; for (var j = 0; j < state.plates.length; j++) order.push((state.plate + j) % state.plates.length);
     k = order.filter(function(j){ var pl = state.plates[j]; return pl.rows === dims.r && pl.cols === dims.c && !Object.keys(pl[ch]).length; })[0];
@@ -1669,7 +1704,7 @@ async function bHandleFiles(list, into){
 // Grids from a file or a paste: two grids are donor then acceptor; one is the channel its name
 // says, or the one the plate is waiting for.
 function bPlaceGrids(grids, srcName, into){
-  var dims = bGridDims(grids[0]);
+  var dims = bGridsDims(grids, state.plates[into !== undefined ? into : state.plate]);
   if (grids.length >= 2) {
     var a = bGridVals(grids[0], dims.r, dims.c), b = bGridVals(grids[1], dims.r, dims.c);
     if (a.error || b.error) throw new Error(a.error || b.error);
@@ -1708,7 +1743,7 @@ function bPasteText(text){
   }
   var grids = bParseGrid(text);
   if (!grids.length) return false;
-  var pl = bPl(), dims = pl ? { r: pl.rows, c: pl.cols } : bGridDims(grids[0]);
+  var pl = bPl(), dims = bGridsDims(grids, pl), was = pl ? pl.rows * pl.cols : 0;
   var at = null; if (BM_SEL.size && grids.length === 1) { var b = PlateEngine.box(BM_SEL); at = { r: b.r0, c: b.c0 }; }
   bMark();
   try {
@@ -1729,6 +1764,9 @@ function bPasteText(text){
       said = (ch === 'donor' ? 'Donor (460 nm)' : 'Acceptor (610 nm)') + ' pasted — ' + Object.keys(g.vals).length + ' wells' + (grids[0].labelled ? ', placed by their row letters' : '') + '.' + (wait ? ' Now paste the ' + other + '.' : '');
       if (wait) BM_CH = other; else BM_CH = null;
     }
+    var np = state.plates[k], full96 = grids.some(function(g){ return g.h === 8 && g.w === 12; });
+    if (np && was && np.rows * np.cols !== was) said += ' The plate is now ' + (np.rows * np.cols) + '-well to fit it.';
+    else if (np && np.rows * np.cols > 96 && full96) said += ' That is a 96-well block, so it sits in A1–H12 of the 384-well plate — choose 96-well above the plate if that is not what you meant.';
     state.plate = k; state.view = null; bAfterChange();
     beaconToast(said + ' ⌘Z undoes it.');
   } catch (e) { bDropMark(); beaconToast(e.message, 'err'); }
@@ -1927,6 +1965,10 @@ function bDosePlan(kind){
   var bp = kind === 'trc' ? { zones: [cells], uneven: false, pts: [sp.n] } : PlateEngine.bandPlan(cells, { reps: reps, split: split, pointOf: function(p){ return sp.idx[p]; } });
   return { cells: cells, sp: sp, reps: reps, zones: bp.zones, uneven: bp.uneven, pts: bp.pts, skipped: all.length - cells.length, lines: lines };
 }
+// Is this compound on any well that the zone does not cover (on this plate or another)?
+function bUsedOutside(id, pl, zone){
+  return state.plates.some(function(o){ return Object.keys(o.map).some(function(p){ return o.map[p].s === id && !(o === pl && zone.has(p)); }); });
+}
 function bPlanNames(k, plan){
   var pl = bPl(), f = bForm(), base = f.name;
   if (!base) {
@@ -1957,8 +1999,17 @@ function bApplyDose(kind){
   if (plan.sp.n > 1 && !(f.fac > 1)) { document.getElementById('lm-fac').focus(); beaconToast('The dilution factor has to be above 1.', 'err'); return; }
   bMark();
   var fac = plan.sp.n > 1 ? f.fac : 1, names = kind === 'cpd' ? bPlanNames(plan.zones.length, plan) : null;
+  var taken = {};
   plan.zones.forEach(function(z, j){
-    var s = kind === 'cpd' ? (bFindSeries(names[j]) || bNewSeries(names[j])) : null;
+    var s = null;
+    if (kind === 'cpd') {
+      // Changing a compound that is only here is the same compound under a new name: it keeps its id and its colour.
+      var zs = new Set(z), own = _bUniq(z.map(function(p){ return pl.map[p] && pl.map[p].k === 'cpd' ? pl.map[p].s : null; }).filter(Boolean));
+      var owner = own.length === 1 && !taken[own[0]] ? bSeriesById(own[0]) : null, there = bFindSeries(names[j]);
+      if (owner && !there && !bUsedOutside(owner.id, pl, zs)) owner.name = names[j];
+      s = there || (owner && owner.name === names[j] ? owner : bNewSeries(names[j]));
+      taken[s.id] = 1;
+    }
     z.forEach(function(p){ pl.map[p] = kind === 'cpd' ? { k: 'cpd', s: s.id, c: f.top * f.unit / Math.pow(fac, plan.sp.idx[p]) } : { k: 'trc', c: f.top * f.unit / Math.pow(fac, plan.sp.idx[p]) }; });
   });
   if (plan.sp.n > 1) _bLastDir = plan.sp.dir;
@@ -2040,7 +2091,7 @@ function bRenderSteps(){
   var nRead = bReadyPlates().length, wells = 0; if (pl) wells = Object.keys(pl.donor).length;
   var kd = bKinds(), base = pl && bBase(pl);
   var ser = pl ? bSeriesOnPlate(pl) : [];
-  var rTxt = !P ? 'Drop a file or paste (⌘V)' : P === 1 ? (bComplete(pl) ? wells + ' wells read' : bHasReads(pl) ? 'One channel missing' : 'No readings yet') : nRead + ' of ' + P + ' plates read';
+  var rTxt = !P ? 'Paste (⌘V) or drop a file' : P === 1 ? (bComplete(pl) ? wells + ' wells read' : bHasReads(pl) ? 'One channel missing' : 'Paste (⌘V) or drop a file') : nRead + ' of ' + P + ' plates read';
   var roles = pl ? BM_ROLES.filter(function(r){ return bWellsOf(function(m){ return m.k === r.key; }).length; }) : [];
   var cTxt = !pl || !kd.flat ? 'Recommended' : roles.map(function(r){ return r.tag; }).join(' · ');
   var dTxt = !ser.length ? 'Optional — a dose series' : ser.length === 1 ? (function(){ var sh = bShapeOf(pl, ser[0].wells); return sh.pts + ' pts × ' + sh.reps + ' · ' + bFmtConc(sh.hi) + (sh.pts > 1 ? ' → ' + bFmtConc(sh.lo) : ''); })() : ser.length + ' compounds';
@@ -2054,7 +2105,7 @@ function bRenderSteps(){
 // A step is where you go to see or change that part: the layout steps select their wells.
 function bStepGo(i){
   var pl = bPl();
-  if (i === 1) { if (!state.plates.length) bPickFiles(); else { state.view = null; BM_SEL = new Set(); bAfterChange(); } return; }
+  if (i === 1) { if (!pl || !bHasReads(pl)) bPickFiles(state.plates.length ? state.plate : undefined); else { state.view = null; BM_SEL = new Set(); bAfterChange(); } return; }
   if (!pl) { bPickFiles(); return; }
   var set = new Set();
   if (i === 2) bWellsOf(function(m){ return bIsFlat(m.k); }).forEach(function(p){ set.add(p); });
@@ -2126,10 +2177,11 @@ function bRenderPanel(){
 }
 function bIdleHtml(){
   var pl = bPl();
-  if (!pl) return '<b>Add a plate first.</b>Drop the reader export on this card, or copy the plate’s values in Excel and press ⌘V.';
+  if (!pl) return '<b>Paste the plate.</b>Copy its values in Excel and press ⌘V, or drop the reader export on this card.';
   var kd = bKinds(), disp = state.assayMode === 'displacement', rows = [], t;
   var base = bBase(pl), ser = bSeriesOnPlate(pl);
-  if (!bComplete(pl)) t = '<b>This plate needs its ' + (Object.keys(pl.donor).length ? 'acceptor' : 'donor') + ' channel.</b>Drop the file or paste the grid — the strip above the plate says which channel ⌘V goes to.';
+  if (!bHasReads(pl)) t = '<b>Copy the donor grid in Excel and press ⌘V.</b>The wells above are this plate — 96 or 384, it takes the size of what you paste. Then the acceptor. Or drop the PHERAstar export.';
+  else if (!bComplete(pl)) t = '<b>This plate needs its ' + (Object.keys(pl.donor).length ? 'acceptor' : 'donor') + ' channel.</b>Paste the grid or drop the file — the strip above the plate says which channel ⌘V goes to.';
   else if (!kd.flat && !kd.cpd && !kd.trc) t = '<b>Drag across wells to say what they are.</b>A column of controls, a block of dose series — the panel asks only what it needs. The numbers are already here.';
   else if (!base) t = '<b>Mark the ' + (disp ? 'no-tracer' : 'no-ligand') + ' wells.</b>That is what the corrected mBRET subtracts. Until then the plate shows raw mBRET.';
   else if (disp && !kd.trc) t = '<b>Mark the tracer titration.</b>A series of tracer concentrations gives its Kd, and from it the Ki of each compound.';
@@ -2164,8 +2216,9 @@ function bRenderToolbar(){
 }
 function bRenderRead(){
   var el = document.getElementById('lm-read'); if (!el) return;
-  var pl = bPl();
+  var pl = bPl(), dm = document.getElementById('bc-demo');
   el.onclick = null; el.onkeydown = null; el.removeAttribute('role'); el.removeAttribute('tabindex');
+  if (dm) dm.style.display = pl && state.plates.length === 1 && !bHasReads(pl) && !Object.keys(pl.map).length ? 'flex' : 'none';
   if (!pl) { el.innerHTML = ''; el.className = 'lm-read'; return; }
   var nd = Object.keys(pl.donor).length, na = Object.keys(pl.acceptor).length;
   var want = !nd ? 'donor' : !na ? 'acceptor' : null;
@@ -2174,7 +2227,7 @@ function bRenderRead(){
     el.onclick = function(){ bPickFiles(state.plate); };
     el.onkeydown = function(e){ if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); bPickFiles(state.plate); } };
     el.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4M7.5 8.5L12 4l4.5 4.5"/><path d="M4 15v3a2 2 0 002 2h12a2 2 0 002-2v-3"/></svg>' +
-      '<span><b>Drop the PHERAstar export for ' + esc(bPlateName(state.plate)) + '</b> here or anywhere on this card, or click to choose it. Any reader: copy its donor and acceptor grids in Excel and press ⌘V.</span>' +
+      '<span><b>Paste the plate: copy the donor grid in Excel and press ⌘V</b> — then the acceptor. Or drop the PHERAstar export for ' + esc(bPlateName(state.plate)) + ' here or anywhere on this card, or click to choose it.</span>' +
       '<button class="btn btn-sec btn-sm" onclick="event.stopPropagation();bPasteButton()">Paste values</button>';
     return;
   }
@@ -2246,8 +2299,6 @@ function _bReadFmt(v, fit){
 function bRenderGrid(){
   var grid = document.getElementById('well-grid'), pl = bPl();
   var none = !pl;
-  document.getElementById('lm-body').classList.toggle('bc-none', none);
-  document.getElementById('bc-empty').style.display = none ? 'block' : 'none';
   document.querySelector('.well-grid-wrap').style.display = none ? 'none' : '';
   document.getElementById('lm-sel').style.display = none ? 'none' : '';
   document.getElementById('lm-body').classList.toggle('x384', !!pl && pl.cols > 12);
@@ -2271,14 +2322,21 @@ function bRenderGrid(){
   var colHdr = [], rowHdr = [], anyCol = false, anyRow = false;
   for (var c1 = 0; c1 < cols; c1++) { colHdr[c1] = one(colC[c1]); if (colHdr[c1] !== undefined) anyCol = true; }
   for (var r1 = 0; r1 < rows; r1++) { rowHdr[r1] = anyCol ? undefined : one(rowC[r1]); if (rowHdr[r1] !== undefined) anyRow = true; }
-  grid.dataset.cols = cols; grid.dataset.rows = rows; grid.dataset.lbl = anyRow ? 58 : 24;
+  // The band a concentration is written in is kept for as long as the plate has concentrations, whether or not
+  // every well of a column shares one right now: editing a compound must not make the header come and go,
+  // because the wells are sized to leave room for it and the whole plate would jump with every OK.
+  var hasConc = Object.keys(pl.map).some(function(p){ return pl.map[p].c !== undefined; });
+  pl.hdr = anyCol ? 'col' : anyRow ? 'row' : (hasConc ? (pl.hdr || 'col') : '');
+  var resCol = pl.hdr === 'col', resRow = pl.hdr === 'row';
+  grid.dataset.cols = cols; grid.dataset.rows = rows; grid.dataset.lbl = resRow ? 58 : 24;
   grid.classList.toggle('x384', cols > 12);
   document.body.classList.toggle('lm-needs-landscape', cols > 12);
-  grid.classList.toggle('hconc', anyCol);
-  grid.classList.toggle('vh', anyCol && cols <= 12 && cellPx < 46);
-  grid.classList.toggle('vconc', anyRow);
+  grid.classList.toggle('hconc', resCol);
+  grid.classList.toggle('vh', resCol && cols <= 12 && cellPx < 46);
+  grid.classList.toggle('vconc', resRow);
   cellPx = _bCellPx(cols, rows);   // again, now the header it has to leave room for is known
-  grid.style.gridTemplateColumns = (anyRow ? 58 : 24) + 'px repeat(' + cols + ', ' + cellPx + 'px)';
+  grid.style.setProperty('--hdr', (resCol ? ((cols > 12 || grid.classList.contains('vh')) ? 58 : 40) : 22) + 'px');
+  grid.style.gridTemplateColumns = (resRow ? 58 : 24) + 'px repeat(' + cols + ', ' + cellPx + 'px)';
   // The rank of a concentration inside its series, highest darkest, so a series reads without a number.
   var rank = {};
   Object.keys(pl.map).forEach(function(p){ var m = pl.map[p]; if (m.c === undefined) return; var key = m.k === 'trc' ? 'T' : m.s; (rank[key] = rank[key] || {})[m.c.toPrecision(6)] = m.c; });
@@ -2325,6 +2383,7 @@ function bRenderGrid(){
 }
 function bRenderHead(){
   var sel = document.getElementById('assay-mode'); if (sel && sel.value !== state.assayMode) sel.value = state.assayMode;
+  var pf = document.getElementById('plate-format'), pl = bPl(); if (pf && pl) pf.value = pl.cols > 12 ? '384' : '96';
 }
 function bRenderAll(){
   bRenderHead(); bRenderPlates(); bRenderGrid(); bRenderRead(); bRenderPanel();
@@ -3511,7 +3570,7 @@ var tourRegister, appTour, tourEnd, tourGuideRefresh, tourOffer;
   var MISS = 'This fills in once a plate is loaded.';
   tourRegister({
     id: 'beacon', name: 'Beacon',
-    blurb: 'Beacon reads **NanoBRET plates** from the PHERAstar: the mBRET of every well, the controls it was read against, assay quality (Z′) and a dose–response for every compound. Drop the Excel export — or paste from Excel — say which wells are which by dragging across them, and read the result.',
+    blurb: 'Beacon reads **NanoBRET plates** from the PHERAstar: the mBRET of every well, the controls it was read against, assay quality (Z′) and a dose–response for every compound. The plate is on screen from the start: paste the values onto it from Excel, or drop the export — say which wells are which by dragging across them, and read the result.',
     where: function(){ return activeTab; },
     data: { label: 'Load the demo plates', has: function(){ return beaconReady(); }, load: function(){ loadTestData('gain'); } },
     intro: [{ t: 'Welcome to Beacon',
@@ -3520,7 +3579,7 @@ var tourRegister, appTour, tourEnd, tourGuideRefresh, tourOffer;
     outro: [{ t: 'Come back any time', sel: '.tab[data-tab="guide"]', place: 'bottom', go: function(){ switchTab('guide'); },
       b: 'The **Guide** tab has the workflow, how to read Z′ and the fits, and what to do when a number looks off — with a tour of each part.' }],
     quick: [
-      'Drop the PHERAstar `.xlsx` on the **Plate** tab (several files are several plates), or copy the donor and acceptor grids in Excel and press **⌘V**.',
+      'The plate is already on the **Plate** tab: copy the donor grid in Excel and press **⌘V**, then the acceptor — or drop the PHERAstar `.xlsx` on it (several files are several plates). Pick **96-well** or **384-well** in the dropdown above the plate, or just paste: it takes the size of what you paste.',
       'Choose the assay: **protein–protein** (signal rises) or **tracer displacement**.',
       'Drag across the control wells and click what they are — no-ligand, vehicle, donor only, acceptor only, no substrate, mock.',
       'Drag across a dose series: give the top concentration, the dilution and how many replicates — the number of compounds follows. Skip it if the plate has none.',
@@ -3528,7 +3587,7 @@ var tourRegister, appTour, tourEnd, tourGuideRefresh, tourOffer;
     tabs: [
       { id: 'plate', label: 'Plate', sel: '.tab[data-tab="plate"]', go: plate,
         lead: 'Where the data comes in and where you say what each well is. One card, in the order the work is done: the assay and the plates, three steps, then the plate with a panel beside it.',
-        do: ['**Drop the PHERAstar export** anywhere on the card. Plate format and the donor and acceptor channels are found for you, and a file holding several plates becomes several.',
+        do: ['**Paste the plate** — copy its donor grid in Excel and press `⌘V`, then the acceptor — or **drop the PHERAstar export** anywhere on the card. The donor and acceptor channels are found for you, and a file holding several plates becomes several. The dropdown above the plate is **96 or 384 wells**; a paste or a file sets it by itself.',
           '**Drag across wells** to select them: a rectangle, **Shift** to extend, `⌘` / `Ctrl` to add, a row or column label for a whole line, the corner for the plate — or type a range such as `B2:C11`.',
           'The panel asks only what it needs: a **compound** dose series, a **tracer** series, or a **control**. Press **Enter** to apply, **Delete** to clear, `⌘Z` to undo.',
           'The **Corrected / Raw / Layout** switch under the plate changes what the wells show: the mBRET numbers, or what each well is.'],
@@ -3538,6 +3597,8 @@ var tourRegister, appTour, tourEnd, tourGuideRefresh, tourOffer;
         steps: [
           { sel: '#lm-card .lm-head', t: 'The assay and the plates', place: 'bottom',
             b: '**Protein–protein** (signal rises with the interaction) or **tracer displacement** (a compound pushes a tracer off and the signal falls). Several plates are tabs here.' },
+          { sel: '#plate-format', t: 'Plate size', place: 'bottom',
+            b: '**96 or 384 wells**, right above the plate. A grid you paste or a file you drop sets it for you; choosing by hand clears this plate’s readings and layout (`⌘Z` brings them back).' },
           { sel: '#lm-steps', t: 'Three steps, in any order', place: 'bottom',
             b: 'Readings · Controls · Compounds (and Tracer for displacement). Each says what is done; **click one** to select that part of the layout.' },
           { deep: true, sel: '#well-grid', t: 'Drag to say what wells are', place: 'right', miss: MISS,

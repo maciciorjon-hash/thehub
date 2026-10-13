@@ -39,7 +39,7 @@
                 '**Readings:** drop the reader file on the plate, then press **Fit curves**.'],
         tip: 'Nothing is lost if you do them in a different order; the steps only say what is still missing.',
         prep: plate,
-        show: [{ sel: '#assay-type', say: 'Choose the **assay type**. It decides how readings are normalised.' }, { sel: '#format-seg', say: 'Then the **plate size**.' },
+        show: [{ sel: '#assay-type', say: 'Choose the **assay type**. It decides how readings are normalised.' }, { sel: '#plate-format', say: 'The **plate size** — 96 or 384 wells — is the dropdown just above the plate.' },
                { sel: '#lm-steps', say: 'These five steps track your progress. Click one to go there.' }, { sel: '#well-grid', say: 'Then **drag across wells** on the plate to say what they are.' }],
         go: [{ l: 'Load an example plate', fn: 'loadLuminaTestData' }], see: ['gradient', 'compounds', 'readings'] },
       { id: 'assay-types', t: 'Which assay type do I pick?', group: 'Getting started', on: ['plate'],
