@@ -315,6 +315,43 @@ if (run('B9')) await guard('B9', async () => {
   await ctx.close();
 });
 
+if (run('B10')) await guard('B10', async () => {
+  const { ctx, pg } = await open('/apps/beacon/beacon.html');
+  const r = await pg.evaluate(() => {
+    const zone = (pl, s, r0, c0, c1) => { for (let r = r0; r < r0 + 2; r++) for (let c = c0; c <= c1; c++) pl.map[bPos(r, c)] = { k: 'cpd', s: s.id, c: 1000 / Math.pow(3, c - c0) }; };
+    const out = {};
+    // plate 1: S1 on the right of the top rows, S2 on the left below it; plate 2: S3 (its own compound)
+    state.plates = [bNewPlate(8, 12, null), bNewPlate(8, 12, null)]; state.series = []; state.queue = [];
+    const s1 = bNewSeries('S1'), s2 = bNewSeries('S2'), s3 = bNewSeries('S3');
+    zone(state.plates[0], s1, 0, 6, 11); zone(state.plates[0], s2, 2, 0, 5); zone(state.plates[1], s3, 0, 0, 5);
+    bAfterChange(); bSetList(true);
+    const names = () => bListRows().map(x => bSeriesById(x.sid).name).join();
+    BM_LORD = 'cols'; out.cols = names(); BM_LORD = 'rows'; out.rows = names(); BM_LORD = 'made'; out.made = names();
+    BM_LSCOPE = 'plate'; BM_LORD = 'cols'; out.thisPlate = names(); BM_LSCOPE = 'all'; out.all = names();
+    // a column pasted into the first name fills downwards, across plates; what does not fit waits
+    const inp = document.querySelector('#lm-idle .bc-nm[data-i="0"]'), dt = new DataTransfer(); dt.setData('text', 'Alpha\nBeta\nGamma\nDelta\nEpsilon');
+    inp.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+    out.afterPaste = names(); out.queue = state.queue.slice(); out.series = state.series.length;
+    // the waiting names go to the next compounds made, in order
+    BM_LIST = false; bSelect(new Set(PlateEngine.rect({ r: 4, c: 0 }, { r: 7, c: 5 }, bDims())), 'cpd'); BM_REPS = 2; BM_DIR = 'right';
+    document.getElementById('lm-name').value = ''; document.getElementById('lm-top').value = '10'; document.getElementById('lm-unit').value = 'µM'; document.getElementById('lm-fac').value = '3'; bRenderPanel(); bApply();
+    out.made2 = state.series.map(x => x.name).join(); out.queue2 = state.queue.slice();
+    // typing a new name into a row renames that compound in place (same id, same colour) — and undo restores
+    BM_LIST = true; bRenderPanel(); const row = bListRows()[0], id0 = row.sid, col0 = bColor(id0).join();
+    const inp2 = document.querySelector('#lm-idle .bc-nm[data-i="0"]'); inp2.value = 'Renamed'; inp2.dispatchEvent(new Event('change', { bubbles: true }));
+    out.renamed = { name: bSeriesById(id0).name, same: bListRows()[0].sid === id0 || !!bSeriesById(id0), col: bColor(id0).join() === col0 };
+    bUndo(); out.undone = bSeriesById(id0).name;
+    return out;
+  });
+  check('B10', 'the list is ordered as asked: down the columns (S2, whose wells are further left, first), along the rows (S1 first), or as made', r.cols === 'S2,S1' && r.rows === 'S1,S2' && r.made === 'S1,S2', r);
+  check('B10', 'down columns puts the compound that is further left first, along rows the one that is higher first', r.thisPlate === 'S2,S1' && r.rows.indexOf('S1') < r.rows.indexOf('S2'), r);
+  check('B10', 'one list can cover all plates (plate 1\'s compounds, then plate 2\'s) or just the one on screen', r.all === 'S2,S1,S3', r);
+  check('B10', 'a column pasted into a name fills downwards in that order across plates, and what does not fit waits as the next names (nothing is invented)', r.afterPaste === 'Alpha,Beta,Gamma' && r.queue.join() === 'Delta,Epsilon' && r.series === 3, r);
+  check('B10', 'compounds made next take the waiting names, in order, instead of "Compound A"', /Delta/.test(r.made2) && /Epsilon/.test(r.made2) && r.queue2.length === 0, r);
+  check('B10', 'renaming a compound in the list keeps its colour, and ⌘Z puts the name back', r.renamed.name === 'Renamed' && r.renamed.col && r.undone === 'Alpha', r);
+  await ctx.close();
+});
+
 if (run('D2')) await guard('D2', async () => {
   const { ctx, pg } = await open('/apps/dora/dora.html');
   const r = await pg.evaluate(async () => {

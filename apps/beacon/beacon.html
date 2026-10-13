@@ -358,6 +358,22 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
 .bc-role em{font-style:normal;font-weight:500;font-size:var(--fs-2);color:var(--text3);flex:none;}
 .bc-role.on{border-color:var(--accent);background:var(--accent-dim);}
 .bc-role.on em{color:var(--accent);font-weight:600;}
+.bc-listgo{display:block;margin-top:10px;}
+.bc-lhd{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;}
+.bc-lhd b{margin:0;}
+.bc-lopt{display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:var(--fs-2);color:var(--text3);}
+.bc-lopt > span{width:48px;flex:none;}
+.bc-lseg button{height:30px;padding-top:0;padding-bottom:0;font-size:var(--fs-2);}
+.bc-lnone{margin:6px 0 4px;color:var(--text2);}
+.bc-lplate{margin:12px 0 4px;font-size:var(--fs-2);font-weight:600;color:var(--text3);}
+.bc-lrow{display:grid;grid-template-columns:14px minmax(0,1fr) auto;align-items:center;gap:8px;margin-bottom:4px;}
+.bc-lrow i{width:14px;height:14px;border-radius:var(--r-1);border:1px solid var(--border2);}
+.bc-lrow .bc-nm{width:100%;box-sizing:border-box;height:32px;}
+.bc-nm,.bc-lq textarea{padding:6px 10px;border-radius:var(--r-1);border:1px solid var(--border2);background:var(--surface);color:var(--text);font-family:var(--sans);font-size:var(--fs-4);outline:none;}
+.bc-nm:focus,.bc-lq textarea:focus{border-color:var(--accent);}
+.bc-lrow .v{font-size:var(--fs-2);color:var(--text2);font-variant-numeric:tabular-nums;white-space:nowrap;}
+.bc-lq{display:block;margin-top:14px;font-size:var(--fs-2);color:var(--text3);}
+.bc-lq textarea{display:block;width:100%;box-sizing:border-box;margin-top:4px;resize:vertical;}
 .bc-sums{display:flex;flex-direction:column;gap:2px;margin-top:14px;}
 .bc-sum{display:grid;grid-template-columns:14px minmax(0,1fr) auto;align-items:center;gap:9px;min-height:36px;padding:4px 8px;margin:0 -8px;border:none;border-radius:var(--r-1);background:none;color:var(--text);font-family:var(--sans);font-size:var(--fs-3);text-align:left;cursor:pointer;}
 .bc-sum:hover{background:var(--surface3);}
@@ -1246,7 +1262,8 @@ var state = {
   assayMode: 'gain',   // 'gain' (two proteins) | 'displacement' (a protein and a tracer)
   plates: [],          // {name, nameSrc, file, fkey, rows, cols, donor:{pos:n}, acceptor:{pos:n}, map:{pos:{k,s,c}}, meta, metaRows}
   plate: 0,            // the plate on screen
-  series: [],          // compounds: {id, name}; the tracer is not one — it is its own role
+  series: [],          // compounds: {id, name, ci}; the tracer is not one — it is its own role
+  queue: [],           // names waiting for the next compounds made, in order (from a pasted list)
   seq: 0,
   view: null,          // 'corr' | 'raw' | 'layout'; null = corrected when there is a baseline
   tracerConc: null,    // the tracer concentration the Ki is worked out at; null = the suggested one
@@ -1359,10 +1376,10 @@ function bColor(id){ var s = bSeriesById(id); return BM_PAL[(s && s.ci !== undef
 
 // ── Undo ────────────────────────────────────────────────────────────────────────────────────
 var _bUndo = [], _bRedo = [];
-function _bSnap(){ return JSON.stringify({ plates: state.plates, plate: state.plate, series: state.series, seq: state.seq, mode: state.assayMode }); }
+function _bSnap(){ return JSON.stringify({ plates: state.plates, plate: state.plate, series: state.series, seq: state.seq, mode: state.assayMode, queue: state.queue }); }
 function _bRestore(s){
   var o = JSON.parse(s);
-  state.plates = o.plates; state.plate = Math.max(0, Math.min(o.plate, o.plates.length - 1)); state.series = o.series; state.seq = o.seq; state.assayMode = o.mode;
+  state.plates = o.plates; state.plate = Math.max(0, Math.min(o.plate, o.plates.length - 1)); state.series = o.series; state.seq = o.seq; state.assayMode = o.mode; state.queue = o.queue || [];
   BM_SEL = new Set(); bAfterChange();
 }
 function bMark(){ _bUndo.push(_bSnap()); if (_bUndo.length > 40) _bUndo.shift(); _bRedo = []; bSyncUndo(); }
@@ -1970,15 +1987,117 @@ function bUsedOutside(id, pl, zone){
   return state.plates.some(function(o){ return Object.keys(o.map).some(function(p){ return o.map[p].s === id && !(o === pl && zone.has(p)); }); });
 }
 function bPlanNames(k, plan){
-  var pl = bPl(), f = bForm(), base = f.name;
+  var pl = bPl(), f = bForm(), base = f.name, q = state.queue.slice(), took = 0;
+  function take(){ if (!q.length) return null; took++; return q.shift(); }
   if (!base) {
     var ss = _bUniq(plan.cells.map(function(p){ return pl.map[p] && pl.map[p].k === 'cpd' ? pl.map[p].s : null; }));
-    base = (k === 1 && ss.length === 1 && ss[0] && bSeriesById(ss[0])) ? bSeriesById(ss[0]).name : bFreshName();
+    base = (k === 1 && ss.length === 1 && ss[0] && bSeriesById(ss[0])) ? bSeriesById(ss[0]).name : (take() || bFreshName());
   }
   var names = [base];
-  for (var i = 1; i < k; i++) { var n = PlateEngine.nextName(names[i - 1]), g = 0; while ((bFindSeries(n) || names.indexOf(n) >= 0) && g++ < 60) n = PlateEngine.nextName(n); names.push(n); }
+  // names listed beforehand are used in order; once they run out the next one is made from the last
+  for (var i = 1; i < k; i++) { var n = take(); if (n === null) { n = PlateEngine.nextName(names[i - 1]); var g = 0; while ((bFindSeries(n) || names.indexOf(n) >= 0) && g++ < 60) n = PlateEngine.nextName(n); } names.push(n); }
+  names.took = took;
   return names;
 }
+
+// ── The list: every compound's name in one place ────────────
+// Compounds are made by dragging, which names them Alpha, Alpha 2, … The list is where they are
+// named properly: one row per compound in an order that is chosen (down the columns, along the rows,
+// or as they were made), and a column pasted from Excel into any row fills downwards in that order.
+// With several plates the list can cover them all — plate 1's compounds first, then plate 2's — so one
+// paste names every plate. Names that are left over wait in a queue and are given to the next compounds
+// made, in order, so the list can be written before the layout is drawn.
+var BM_LIST = false, BM_LORD = 'cols', BM_LSCOPE = 'plate';
+function bSetList(on){ BM_LIST = !!on; bRenderPanel(); }
+function bSetListOrder(o){ BM_LORD = o; bRenderPanel(); }
+function bSetListScope(sc){ BM_LSCOPE = sc; bRenderPanel(); }
+function bListRows(){
+  var scope = state.plates.length > 1 ? BM_LSCOPE : 'plate', plates = scope === 'all' ? state.plates.map(function(x, i){ return i; }) : [state.plate], rows = [], seen = {};
+  plates.forEach(function(pi){
+    var pl = state.plates[pi]; if (!pl) return;
+    var by = {};
+    Object.keys(pl.map).forEach(function(p){ var m = pl.map[p]; if (m.k === 'cpd' && bSeriesById(m.s)) (by[m.s] = by[m.s] || []).push(p); });
+    var items = Object.keys(by).map(function(sid){
+      var key = 1e9;
+      by[sid].forEach(function(p){ var q = PlateEngine.rc(p); key = Math.min(key, BM_LORD === 'rows' ? q.r * 1000 + q.c : q.c * 1000 + q.r); });
+      if (BM_LORD === 'made') key = bSeriesIndex(sid);
+      return { sid: sid, plate: pi, wells: by[sid], key: key, on: [pi] };
+    }).sort(function(a, b){ return a.key - b.key; });
+    items.forEach(function(it){ if (scope === 'all' && seen[it.sid]) { seen[it.sid].on.push(pi); return; } seen[it.sid] = it; rows.push(it); });
+  });
+  return rows;
+}
+// A compound renamed is the same compound under a new name when it is not on a plate that is left out;
+// otherwise its wells (on the plates the row covers) move to the compound of that name.
+function bRenameCompound(row, name){
+  name = String(name == null ? '' : name).replace(/\s+/g, ' ').trim().slice(0, 60);
+  var cur = bSeriesById(row.sid); if (!cur || !name || name === cur.name) return false;
+  var there = bFindSeries(name), covered = {}; row.on.forEach(function(pi){ covered[pi] = 1; });
+  var elsewhere = state.plates.some(function(o, pi){ return !covered[pi] && Object.keys(o.map).some(function(p){ return o.map[p].s === row.sid; }); });
+  if (!there && !elsewhere) { cur.name = name; return true; }
+  var target = there || bNewSeries(name);
+  row.on.forEach(function(pi){ var o = state.plates[pi]; Object.keys(o.map).forEach(function(p){ if (o.map[p].s === row.sid) o.map[p].s = target.id; }); });
+  return true;
+}
+// Names, from row i downwards. What does not fit the compounds that exist waits for the next ones.
+function bListFill(from, names){
+  var rows = bListRows(), n = 0, left = [];
+  bMark();
+  names.forEach(function(nm, k){ var row = rows[from + k]; if (row) { if (bRenameCompound(row, nm)) n++; } else left.push(nm); });
+  if (left.length) state.queue = state.queue.concat(left);
+  bPruneSeries(); bAfterChange();
+  return { n: n, left: left.length };
+}
+function bListQueue(text){
+  var lines = PlateEngine.pasteList(text); bMark(); state.queue = lines; bAfterChange();
+  beaconToast(lines.length ? bPlural(lines.length, 'name') + ' waiting — the next compounds you make are named from them, in order.' : 'The waiting names were cleared.');
+}
+function bListHtml(){
+  var rows = bListRows(), P = state.plates.length, scope = P > 1 ? BM_LSCOPE : 'plate', h = '';
+  function seg(cur, items, fn){ return '<div class="seg bc-lseg">' + items.map(function(x){ return '<button type="button" class="' + (cur === x[0] ? 'active' : '') + '" onclick="' + fn + '(\'' + x[0] + '\')">' + x[1] + '</button>'; }).join('') + '</div>'; }
+  h += '<div class="bc-lhd"><b>Compounds</b><button class="lm-link" onclick="bSetList(false)">Back to the plate</button></div>';
+  h += '<div class="bc-lopt"><span>Order</span>' + seg(BM_LORD, [['cols', 'Down columns'], ['rows', 'Along rows'], ['made', 'As made']], 'bSetListOrder') + '</div>';
+  if (P > 1) h += '<div class="bc-lopt"><span>Covers</span>' + seg(scope, [['plate', 'This plate'], ['all', 'All ' + P + ' plates']], 'bSetListScope') + '</div>';
+  if (!rows.length) h += '<div class="bc-lnone">No compounds on ' + (scope === 'all' ? 'any plate' : 'this plate') + ' yet. Write the names below and they go to the compounds you make next, in order — or drag a dose series on the plate first.</div>';
+  else {
+    var lastPlate = -1;
+    rows.forEach(function(r, i){
+      if (scope === 'all' && r.plate !== lastPlate) { lastPlate = r.plate; h += '<div class="bc-lplate">' + esc(bPlateName(r.plate)) + '</div>'; }
+      var sr = bSeriesById(r.sid), sh = bShapeOf(state.plates[r.plate], r.wells), c = bColor(r.sid);
+      h += '<div class="bc-lrow"><i style="background:rgb(' + c.join(',') + ')"></i><input class="bc-nm" data-i="' + i + '" value="' + esc(sr.name) + '" aria-label="Name of compound ' + (i + 1) + '" autocomplete="off" spellcheck="false">' +
+        '<span class="v" title="' + esc(bRangeText(r.wells)) + '">' + sh.pts + ' × ' + sh.reps + (r.on.length > 1 ? ' · ' + r.on.length + ' plates' : '') + '</span></div>';
+    });
+    h += '<div class="lm-keys">Paste a column from Excel into any name: it fills downwards in this order' + (P > 1 && scope === 'plate' ? ' — choose <b>All plates</b> to carry on onto the next plate' : '') + '.</div>';
+  }
+  h += '<label class="bc-lq"><span>' + (rows.length ? 'Names still to place' : 'Names for the next compounds') + '</span><textarea id="bc-queue" rows="4" placeholder="One per line — paste a column from Excel" spellcheck="false">' + esc(state.queue.join('\n')) + '</textarea></label>';
+  return h;
+}
+(function wireList(){
+  var el = document.getElementById('lm-idle');
+  function commit(t){ var rows = bListRows(), row = rows[+t.dataset.i]; if (!row || !t.value.trim() || t.value.trim() === bSeriesById(row.sid).name) { t.value = row ? bSeriesById(row.sid).name : t.value; return false; } bMark(); var ok = bRenameCompound(row, t.value); if (!ok) bDropMark(); bPruneSeries(); bAfterChange(); return true; }
+  el.addEventListener('change', function(e){
+    var t = e.target;
+    if (t.classList && t.classList.contains('bc-nm')) commit(t);
+    else if (t.id === 'bc-queue') bListQueue(t.value);
+  });
+  el.addEventListener('keydown', function(e){
+    var t = e.target; if (!t.classList || !t.classList.contains('bc-nm')) return;
+    if (e.key === 'Enter' || e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      var i = +t.dataset.i + (e.key === 'ArrowUp' ? -1 : 1);
+      if (e.key === 'Enter') commit(t);
+      var nx = el.querySelector('.bc-nm[data-i="' + i + '"]'); if (nx) { nx.focus(); nx.select(); }
+    }
+  });
+  el.addEventListener('paste', function(e){
+    var t = e.target; if (!t.classList || !t.classList.contains('bc-nm')) return;
+    var lines = PlateEngine.pasteList((e.clipboardData || window.clipboardData).getData('text') || '');
+    if (lines.length < 2) return;
+    e.preventDefault();
+    var r = bListFill(+t.dataset.i, lines);
+    beaconToast(r.n + ' compound' + (r.n === 1 ? '' : 's') + ' named' + (r.left ? ', ' + r.left + ' more waiting for the next compounds you make' : '') + '. ⌘Z undoes it.');
+  });
+})();
 
 // ── Actions ──────────────────────────────────────────────────
 function bSetDir(d){ BM_DIR = d; bRenderPanel(); }
@@ -1999,6 +2118,7 @@ function bApplyDose(kind){
   if (plan.sp.n > 1 && !(f.fac > 1)) { document.getElementById('lm-fac').focus(); beaconToast('The dilution factor has to be above 1.', 'err'); return; }
   bMark();
   var fac = plan.sp.n > 1 ? f.fac : 1, names = kind === 'cpd' ? bPlanNames(plan.zones.length, plan) : null;
+  if (names) state.queue = state.queue.slice(names.took || 0);
   var taken = {};
   plan.zones.forEach(function(z, j){
     var s = null;
@@ -2148,7 +2268,7 @@ function bRenderPanel(){
   } else if (form && isDose) {
     var plan = bDosePlan(m), f = bForm();
     document.querySelectorAll('#lm-dir button').forEach(function(b){ b.classList.toggle('active', !!plan && b.dataset.d === plan.sp.dir); });
-    var ph = document.getElementById('lm-name'); if (ph) ph.placeholder = bFreshName();
+    var ph = document.getElementById('lm-name'); if (ph) ph.placeholder = state.queue.length ? state.queue[0] : bFreshName();
     if (m === 'cpd' && plan) {
       var eff = plan.reps;
       document.querySelectorAll('#lm-reps button').forEach(function(b){ b.classList.toggle('active', b.dataset.n === 'all' ? BM_REPS === 'all' : (BM_REPS !== 'all' && +b.dataset.n === eff)); });
@@ -2177,6 +2297,7 @@ function bRenderPanel(){
 }
 function bIdleHtml(){
   var pl = bPl();
+  if (BM_LIST && pl) return bListHtml();
   if (!pl) return '<b>Paste the plate.</b>Copy its values in Excel and press ⌘V, or drop the reader export on this card.';
   var kd = bKinds(), disp = state.assayMode === 'displacement', rows = [], t;
   var base = bBase(pl), ser = bSeriesOnPlate(pl);
@@ -2197,7 +2318,8 @@ function bIdleHtml(){
   });
   if (kd.trc) { var tw = bWellsOf(function(m){ return m.k === 'trc'; }), sh2 = bShapeOf(pl, tw); rows.push('<button class="bc-sum" onclick="bSelect(new Set(bWellsOf(function(m){return m.k===\'trc\';})),\'trc\')"><i style="background:' + BM_TRACER_COLOR + '"></i><span class="n">Tracer</span><span class="v">' + sh2.pts + ' pts × ' + sh2.reps + ' · ' + bFmtConc(sh2.hi) + (sh2.pts > 1 ? ' → ' + bFmtConc(sh2.lo) : '') + '</span></button>'); }
   var hint = '<div class="lm-keys">Drag to select · Shift extends · ⌘/Ctrl adds · a row or column label takes the line · double-click takes everything of that kind · Enter applies · Delete clears · ⌘V pastes values from Excel · ⌘Z undoes</div>';
-  return t + (rows.length ? '<div class="bc-sums" aria-label="On this plate">' + rows.join('') + '</div>' : '') + hint;
+  var lnk = ser.length || state.queue.length ? '<button class="lm-link bc-listgo" onclick="bSetList(true)" title="Name every compound in one list, paste a column from Excel, choose the order">Name compounds as a list' + (state.queue.length ? ' (' + state.queue.length + ' waiting)' : '') + '</button>' : '<button class="lm-link bc-listgo" onclick="bSetList(true)" title="Write the names first: the compounds you make next take them in order">Write the compound names first</button>';
+  return t + (rows.length ? '<div class="bc-sums" aria-label="On this plate">' + rows.join('') + '</div>' : '') + lnk + hint;
 }
 function bRenderToolbar(){
   bSyncUndo();
