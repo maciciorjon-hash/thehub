@@ -2125,9 +2125,19 @@ async function rb34() {
   check('RB34', 'Shift and scroll move the structure with the fingers, and do not zoom', Math.abs(Math.abs(pan.dy) - 80) < 8 && Math.abs(pan.dx) < 2 && Math.abs(pan.dz) < 1e-6, pan);
   // a drag let go while turning keeps turning, then settles
   const q = () => E(() => viewer.getView().slice(4)), dist = (a, b) => Math.hypot(...a.map((v, i) => v - b[i]));
-  const flick = async (pause, beforeUp) => { await fit(); const q0 = await q(); await pg.mouse.move(cx - 100, cy); await pg.mouse.down(); for (let i = 1; i <= 14; i++) { await pg.mouse.move(cx - 100 + i * 14, cy); await sleep(12); }
-    if (pause) await sleep(pause); if (beforeUp) await beforeUp(); await pg.mouse.up();                            // let go at once: a pause (or a round trip) before it is "it had stopped"
-    await sleep(40); const qa = await q(); await sleep(250); const qb = await q(); await sleep(1300); const qc = await q(); await sleep(300); const qd = await q();
+  // The finger is sent with its own clock (CDP timestamps), not through pg.mouse: pg.mouse awaits the page after every event, so on a
+  // slow runner each move takes the page a few hundred ms and the "finger" really does stop before it leaves, which is not what a hand
+  // does to a busy page (its events queue with the times they happened). The timestamps are in the past, so none is "from the future".
+  const cdp = await ctx.newCDPSession(pg);
+  const flick = async (pause, beforeUp) => { await fit(); const q0 = await q(); await pg.mouse.move(cx - 100, cy);
+    const T0 = Date.now() / 1000 - 1.5, ev = (type, x, k) => cdp.send('Input.dispatchMouseEvent', { type, x, y: cy, button: 'left', buttons: type === 'mouseReleased' ? 0 : 1, clickCount: 1, timestamp: T0 + k * 0.03 });
+    await ev('mousePressed', cx - 100, 0); for (let i = 1; i <= 14; i++) await ev('mouseMoved', cx - 100 + i * 14, i);
+    if (pause) await sleep(pause); if (beforeUp) await beforeUp();
+    await ev('mouseReleased', cx - 100 + 14 * 14, 14 + Math.max(1, pause / 30));                    // let go 30 ms after the last move (a pause: that long after it); 14 px / 30 ms is a quick drag, not a hard flick
+    await sleep(40); const qa = await q(); await sleep(250); const qb = await q();
+    // the loop clamps a frame to 64 ms, so on a slow page the glide lasts longer in wall time: wait for it to end rather than for a fixed time
+    await sleep(1000); const t0 = Date.now(); while (Date.now() - t0 < 25000 && await E(() => rbCamBusy())) await sleep(200);
+    const qc = await q(); await sleep(300); const qd = await q();
     return { turned: dist(q0, qa), moved: Math.min(dist(qa, qb), 2 - dist(qa, qb)), settle: dist(qc, qd), busy: await E(() => rbCamBusy()) }; };
   const f1 = await flick(0);
   check('RB34', 'a drag let go while turning keeps turning (3Dmol stops dead)', f1.moved > 0.03, f1);
