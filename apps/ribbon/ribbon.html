@@ -2315,24 +2315,28 @@ function _cGestureChange(e){ e.preventDefault(); if(!_cG||!viewer||!currentModel
   _cz.t=Math.max(-RBCAM.maxTarget,Math.min(RBCAM.maxTarget,_cz.t+d)); _cz.x=e.clientX; _cz.y=e.clientY; _cKick(); }
 function _cGestureEnd(e){ e.preventDefault(); _cG=null; }
 // A drag that is let go while it is still turning keeps turning and settles. The speed is read from the view itself (the
-// quaternion each frame), so it is whatever 3Dmol made of the drag, and a drag that rotates nothing (select, measure) has none.
-function _cSample(){
-  if(!_cDrag) return;
-  if(viewer){ var v=viewer.getView(); _cDrag.s.push({t:performance.now(),q:v.slice(4)}); if(_cDrag.s.length>9) _cDrag.s.shift(); }
-  _cDrag.raf=requestAnimationFrame(_cSample);
+// quaternion at each pointer move), so it is whatever 3Dmol made of the drag, and a drag that rotates nothing (select, measure)
+// has none. It is sampled on the pointer's own events and their own times, not on animation frames: a slow frame (CI's software
+// GL, a long garbage collection) would leave a whole drag with one sample and none of its speed.
+function _cSample(e){
+  var d=_cDrag; if(!d||!viewer) return;
+  var t=(e.timeStamp>0&&e.timeStamp<=performance.now()+5)?e.timeStamp:performance.now();
+  d.s.push({t:t,q:viewer.getView().slice(4)}); d.mt=t;                         // the view as it was before this move: one move behind its time, which a speed does not mind
+  while(d.s.length>2&&t-d.s[0].t>250) d.s.shift();
 }
 function _cDown(e){
   _cIn=null; _cz.t=0; _cp.x=_cp.y=0;
-  if(e.button===0&&!e.ctrlKey&&!_cDrag&&viewer&&currentModel){ _cDrag={s:[],raf:0}; _cSample(); }
+  if(e.button===0&&!e.ctrlKey&&!_cDrag&&viewer&&currentModel){ _cDrag={s:[],mt:0}; _cSample(e); }
 }
 function _cUp(e){
   var d=_cDrag; if(!d||e.button>0) return;
-  _cDrag=null; cancelAnimationFrame(d.raf);
+  _cDrag=null;
   if(reducedMotion()||!viewer||!currentModel) return;
-  var S=d.s, n=S.length, now=performance.now(); if(n<3) return;
+  var te=(e.timeStamp>0&&e.timeStamp<=performance.now()+5)?e.timeStamp:performance.now();   // when the finger left, not when a busy page got round to hearing of it
+  if(te-d.mt>120) return;                                                      // it had stopped before it was let go (a flick leaves within a few frames; a hold lasts longer than this)
+  d.s.push({t:te,q:viewer.getView().slice(4)});                                // now every move is in the view
+  var S=d.s, n=S.length; if(n<3) return;
   var last=S[n-1], ref=S[0], i; for(i=n-2;i>=0;i--) if(last.t-S[i].t>=70){ ref=S[i]; break; }
-  var te=(e.timeStamp>0&&e.timeStamp<=now+5)?e.timeStamp:now;                 // when the finger left, not when a busy page got round to hearing of it
-  if(te-last.t>80) return;                                                    // it had stopped before it was let go
   var dtm=last.t-ref.t; if(dtm<24) return;
   var dq=_qmul(last.q,_qconj(ref.q)); if(dq[3]<0) dq=[-dq[0],-dq[1],-dq[2],-dq[3]];
   var s=Math.hypot(dq[0],dq[1],dq[2]); if(s<1e-6) return;
@@ -2346,6 +2350,7 @@ function rbCamInit(){
   vp.addEventListener('gesturechange',_cGestureChange,{capture:true,passive:false});
   vp.addEventListener('gestureend',_cGestureEnd,{capture:true,passive:false});
   vp.addEventListener('pointerdown',_cDown,true);
+  document.addEventListener('pointermove',_cSample,true);
   document.addEventListener('pointerup',_cUp,true); document.addEventListener('pointercancel',_cUp,true);
 }
 

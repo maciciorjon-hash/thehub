@@ -329,6 +329,8 @@ async function open(o = {}) {
   await pg.goto(base + (o.file || args.file || 'apps/ribbon/ribbon.html') + '?_ts=' + Date.now(), { waitUntil: 'load' });
   await pg.waitForTimeout(o.settle ?? 1500);
   const E = (f, a) => pg.evaluate(f, a);
+  // RB_THROTTLE=6 slows the page like CI's software GL does, so a suite that only fails there can be reproduced on a laptop
+  if (+process.env.RB_THROTTLE > 1) { const cdp = await ctx.newCDPSession(pg); await cdp.send('Emulation.setCPUThrottlingRate', { rate: +process.env.RB_THROTTLE }); }
   // Soft is the default light and its occlusion pass costs ~0.4 s a draw without a GPU (CI, a laptop on software GL): the suites open with Flat,
   // which is what Simple cost them before, and the ones about light set their own.
   if (o.light !== false) await pg.evaluate(() => { try { state.lighting = 'flat'; } catch (e) {} });
@@ -2131,8 +2133,16 @@ async function rb34() {
   check('RB34', 'a drag let go while turning keeps turning (3Dmol stops dead)', f1.moved > 0.03, f1);
   check('RB34', 'and settles, with nothing left running', f1.settle < 1e-3 && !f1.busy, f1);
   // the page is busy (a long frame, a garbage collection, CI's software GL) at the moment the finger leaves: the let-go is heard late
-  const f1s = await flick(0, () => E(() => { setTimeout(() => { const t0 = performance.now(); while (performance.now() - t0 < 220); }, 0); }));
+  // the busy page is inside the let-go itself (a window listener runs before Ribbon's, and holds the page for 220 ms): the test must not put its own round trip between the last move and the up
+  await E(() => { window._busyUp = () => { const t0 = performance.now(); while (performance.now() - t0 < 220); }; window.addEventListener('pointerup', window._busyUp, true); });
+  const f1s = await flick(0);
+  await E(() => window.removeEventListener('pointerup', window._busyUp, true));
   check('RB34', 'a drag let go while the page is busy is still a drag let go (the finger left when it left, not when the page heard)', f1s.moved > 0.03, f1s);
+  // frames starved: no animation frame runs while the finger is down (CI's software GL: one frame is longer than the whole drag), and the speed must still be read
+  await E(() => { window._raf0 = window.requestAnimationFrame; window.requestAnimationFrame = () => 0; });
+  const f1f = await flick(0, () => E(() => { window.requestAnimationFrame = window._raf0; }));
+  await E(() => { if (window._raf0) window.requestAnimationFrame = window._raf0; });
+  check('RB34', 'a drag let go after frames that never came is still a drag let go (its speed is read from the pointer, not from the frame rate)', f1f.moved > 0.03, f1f);
   const f2 = await flick(250);
   check('RB34', 'a drag that had stopped before it was let go does not drift', f2.moved < 1e-3, f2);
   await pg.emulateMedia({ reducedMotion: 'reduce' }); const f3 = await flick(0); await pg.emulateMedia({ reducedMotion: 'no-preference' });
@@ -2191,9 +2201,13 @@ async function rb36() {
   if (!(await has3d(pg))) { skipped.push('RB36 (3Dmol could not load from its CDN)'); await ctx.close(); return; }
   await go('8CAM'); await sleep(400);
   // pixels of the structure: mean and spread of the luminance (the background is skipped)
-  const stats = () => E(() => new Promise(res => { viewer.render(); const img = new Image(); img.onload = () => { const c = document.createElement('canvas'); c.width = img.width; c.height = img.height; const x = c.getContext('2d'); x.drawImage(img, 0, 0);
+  // A frame that comes back empty (n = 0) is a frame the runner had not drawn yet, or a lost WebGL context: it is drawn again and read again
+  // before it is believed, and when it stays empty the answer says why.
+  const stats1 = () => E(() => new Promise(res => { viewer.render(); const img = new Image(); img.onload = () => { const c = document.createElement('canvas'); c.width = img.width; c.height = img.height; const x = c.getContext('2d'); x.drawImage(img, 0, 0);
     const d = x.getImageData(0, 0, c.width, c.height).data; let n = 0, s = 0; const h = new Array(256).fill(0); for (let i = 0; i < d.length; i += 4) { if (d[i + 3] < 8 || (d[i] > 250 && d[i + 1] > 250 && d[i + 2] > 250)) continue; const l = Math.round((d[i] + d[i + 1] + d[i + 2]) / 3); n++; s += l; h[l]++; }
     const pc = q => { let a = 0; for (let l = 0; l < 256; l++) { a += h[l]; if (a >= n * q) return l; } return 255; }; res({ n, mean: s / n, spread: pc(0.9) - pc(0.1) }); }; img.src = viewer.pngURI(); }));
+  const stats = async () => { let r; for (let i = 0; i < 12; i++) { r = await stats1(); if (r.n > 0) return r; await sleep(700); }
+    r.why = await E(() => { const gl = document.querySelector('#viewport canvas').getContext('webgl2') || document.querySelector('#viewport canvas').getContext('webgl'); return { style: state.style, lost: gl && gl.isContextLost(), surfaces: Object.keys(viewer.surfaces || {}).length, busy: typeof _surfBusy !== 'undefined' && _surfBusy, models: viewer.getNumModels && viewer.getNumModels(), size: [innerWidth, innerHeight] }; }); return r; };
   const setup = (o) => E(async o => { Object.assign(state, o); applyBackground(); applyBorder(); buildGeometry(); fitToView(); await new Promise(r => setTimeout(r, 900)); }, o);
   await setup({ style: 'surface', surfaceOpacity: 1, border: 'none', bg: 'white', color: 'uniform', depth: 0, projection: 'perspective' });
   const shot = {};
@@ -2207,7 +2221,7 @@ async function rb36() {
   // depth: the far side fades into the background
   await setup({ style: 'cartoon', border: 'thin', bg: 'white', color: 'uniform', lighting: 'soft' });
   const d0 = await stats(); await E(() => setDepth(50)); await sleep(250); const d50 = await stats(); await E(() => setDepth(100)); await sleep(250); const d100 = await stats();
-  check('RB36', 'Depth fades what is further away, more as it is turned up (it moved the mean by ~4 levels before)', d50.mean > d0.mean + 5 && d100.mean > d50.mean + 5, { d0: d0.mean, d50: d50.mean, d100: d100.mean });
+  check('RB36', 'Depth fades what is further away, more as it is turned up (it moved the mean by ~4 levels before)', d50.mean > d0.mean + 5 && d100.mean > d50.mean + 5, { d0: d0.mean, d50: d50.mean, d100: d100.mean, why: d0.why });
   const fogAt = () => E(() => { viewer.render(); const v = viewer.getView(), dc = viewer.CAMERA_Z - v[3], R = _structRadius(), f = viewer.scene.fog; return { dc, R, near: f && f.near, far: f && f.far, want: 2 * R / _invSmooth(0.7) }; });
   const fog = await fogAt();
   check('RB36', 'the fog starts at the structure\'s front tip and ends 70 % of the way past its back at full depth, not at a slab two or three times its size', fog.near != null && Math.abs(fog.near - (fog.dc - fog.R)) < 1 && Math.abs((fog.far - fog.near) - fog.want) < 1, fog);
@@ -2737,7 +2751,8 @@ const srv = spawn('python3', ['-m', 'http.server', String(port), '--bind', '127.
 base = `http://127.0.0.1:${port}/`;
 try {
   await waitHttp(base);
-  browser = await chromium.launch();
+  // RB_SWGL=1 renders WebGL in software, as CI's runner does (a laptop's GPU hides every bug that only a slow frame shows)
+  browser = await chromium.launch(process.env.RB_SWGL ? { args: ['--disable-gpu', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] } : {});
   for (const [id, fn] of SUITES) {
     if (!run(id)) continue;
     const t0 = Date.now();
