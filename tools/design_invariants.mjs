@@ -28,6 +28,8 @@
 //   B12 a toggle keeps its    The Types and Brackets buttons keep their icon and chevron when they open
 //       icon                  and close (the Brackets one rewrote its own innerHTML), and say so in
 //                             aria-expanded.
+//   B13 a series is its own   Setting a dilution series colours the wells by it (the top is the type's own colour, each step paler, replicate
+//       gradient              rows alike) and there is no gradient/Reset tool to ask for that separately.
 //   N1 Beacon paste shapes    Beacon's grid parser (a pasted block or a CSV; Lumina's rules) reads tab, space,
 //                             lettered, semicolon/decimal-comma and comma grids, and a blank A1
 //                             stays in column 1. (It read a space-separated grid as one column.)
@@ -155,6 +157,20 @@ async function blueprint(pg) {
     check('B6', 'both directions offered for a block', r.shown.join('|') === '|', r.shown);
     check('B6', 'across a block', JSON.stringify(r.across) === JSON.stringify(['1µM', '100nM', '10nM', '1µM', '100nM', '10nM']), r.across);
     check('B6', 'down a block', JSON.stringify(r.down) === JSON.stringify(['1µM', '100nM', '1µM', '100nM']), r.down);
+  }
+  if (run('B13')) {
+    await fresh();
+    const r = await E(() => {
+      selection = new Set(['C1', 'C2', 'C3', 'D1', 'D2', 'D3']); updateSelToolbar();
+      document.getElementById('dil-start').value = '1000'; document.getElementById('dil-factor').value = '10'; document.getElementById('dil-unit').value = 'nM';
+      applyDilution('row');
+      const lum = h => { const n = parseInt(String(h).replace('#', ''), 16); return 0.3 * ((n >> 16) & 255) + 0.59 * ((n >> 8) & 255) + 0.11 * (n & 255); };
+      const col = ['C1', 'C2', 'C3', 'D1', 'D2', 'D3'].map(i => wellState[i].color);
+      return { col, dark: col[0] && col[2] ? lum(col[0]) < lum(col[1]) && lum(col[1]) < lum(col[2]) : false, tool: !!(document.getElementById('grad-row-btn') || document.getElementById('grad-col-btn') || window.applyGradient) };
+    });
+    check('B13', 'a dilution colours the wells', r.col.every(Boolean) && r.col[0] === r.col[3] && r.col[2] === r.col[5], r.col);
+    check('B13', 'top is darkest, each step paler', r.dark, r.col);
+    check('B13', 'no separate gradient tool', !r.tool, r.tool);
   }
   if (run('B7')) {
     const T = `5" insert <b>x</b> & 'y'`;

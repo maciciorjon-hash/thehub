@@ -1309,7 +1309,7 @@ html.lb-loading body > *{visibility:hidden;}
 #pl-band{position:fixed;display:none;z-index:300;pointer-events:none;border:1.5px dashed var(--accent);
   background:var(--accent-dim);border-radius:var(--r-1);}
 .pl-corner{width:26px;}
-.pl-cl{display:flex;align-items:flex-end;justify-content:center;font-size:var(--fs-1);font-weight:600;color:var(--text2);padding-bottom:2px;overflow:hidden;white-space:nowrap;}
+.pl-cl{display:flex;align-items:flex-end;justify-content:center;font-size:var(--fs-1);font-weight:600;color:var(--text2);padding-bottom:2px;overflow:hidden;white-space:nowrap;line-height:1.25;min-height:16px;box-sizing:border-box;}   /* a header written from the concentrations (µ has a descender) is two staggered rows on a dense plate: each row is as tall as its text */
 .pl-cltitle{display:flex;align-items:flex-end;justify-content:center;font-size:var(--fs-1);font-weight:700;color:var(--text3);padding-bottom:2px;}
 .pl-gl{display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:2;box-shadow:inset 0 0 0 1.5px rgba(0,0,0,.3);border-radius:var(--r-1);}
 .pl-gl span{font-size:var(--fs-2);font-weight:700;color:#1a1d2e;background:rgba(255,255,255,.8);border-radius:var(--r-1);padding:1px 7px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
@@ -1436,6 +1436,11 @@ details.pl-sec>*:not(summary):last-child{padding-bottom:11px;}
 .pl-cols2>div>.pl-sub-t:first-child{margin-top:0;}
 .pl-side .cc-inputs{grid-template-columns:repeat(auto-fit,minmax(160px,1fr));}
 .pl-cols2 .cc-inputs{grid-template-columns:repeat(auto-fit,minmax(118px,1fr));}
+.pl-det{margin-top:12px;}
+.pl-det>summary{cursor:pointer;font-size:var(--fs-2);font-weight:600;color:var(--text2);padding:4px 0;list-style:none;}
+.pl-det>summary::-webkit-details-marker{display:none;}
+.pl-det>summary::before{content:'\203A';display:inline-block;margin-right:6px;transition:transform var(--dur-1) var(--ease);}
+.pl-det[open]>summary::before{transform:rotate(90deg);}
 /* Which plate of the experiment this is, and the way to add another. */
 .pl-plates{display:inline-flex;flex-wrap:wrap;gap:4px;margin-left:10px;}
 .pl-pchip{max-width:22ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:inherit;font-size:var(--fs-2);font-weight:600;padding:3px 11px;border:1px solid var(--border2);border-radius:var(--r-full);background:var(--surface);color:var(--text2);cursor:pointer;}
@@ -5964,8 +5969,35 @@ function _mixWhite(hex,t){ var m=/^#?([0-9a-f]{6})$/i.exec(hex||''); if(!m) retu
   var n=parseInt(m[1],16), r=(n>>16)&255, g=(n>>8)&255, b=n&255;
   r=Math.round(r+(255-r)*t); g=Math.round(g+(255-g)*t); b=Math.round(b+(255-b)*t);
   return '#'+((1<<24)|(r<<16)|(g<<8)|b).toString(16).slice(1); }
+// A well's colour is its condition's colour, paler the lower its concentration sits in its series:
+// the top of a series is the condition's own colour and the bottom is 80% towards white, evenly by
+// point (the rule Lumina and Beacon draw by), so giving a gradient its concentrations is all it takes
+// for the map to show which end is high. There is no shading to apply by hand. A well with no
+// concentration keeps the `shade` it was given (an Echo picklist, a layout): `p._shW` carries the
+// derived shades and is only on the copy that plateView() hands the renderers, never in the record.
+function plateShadeMap(p){ var m=new Map(), groups={};
+  Object.keys(p.wells||{}).forEach(function(id){ var w=p.wells[id]; if(!w||!w.conc||w.typeId==='blank') return;
+    var v=_parseConcNM(w.conc); if(!(isFinite(v)&&v>0)) return;
+    var k=w.sid||(w.groupId?('g:'+w.groupId):'all'), g=groups[k]||(groups[k]={w:[],v:{}}); g.w.push([w,v]); g.v[v]=1; });
+  Object.keys(groups).forEach(function(k){ var g=groups[k], vs=Object.keys(g.v).map(Number).sort(function(a,b){ return b-a; }), n=vs.length;
+    g.w.forEach(function(x){ m.set(x[0], n>1?Math.round(vs.indexOf(x[1])/(n-1)*0.8*1000)/1000:0); }); });
+  return m; }
+// Column headers: what was typed over what the wells say. A column whose dosed wells all hold one
+// concentration is headed by it (the same rule Lumina draws its headers by), so a series along the
+// columns needs no "write the headers" step. A plate of one concentration has nothing to read.
+function plateColLabelsOf(p){ var out={}; if(!p) return out; var per={};
+  Object.keys(p.wells||{}).forEach(function(id){ var w=p.wells[id]; if(!w||!w.conc||w.typeId==='blank') return;
+    var x=wellRC(id); if(!x) return; var v=_parseConcNM(w.conc); if(!(isFinite(v)&&v>0)) return;
+    var o=per[x.c]||(per[x.c]={n:0,v:{},s:w.conc}); o.n++; o.v[v]=1; });
+  var auto={}, seen={}; Object.keys(per).forEach(function(c){ var o=per[c]; if(o.n>=2&&Object.keys(o.v).length===1){ auto[c]=o.s; seen[Object.keys(o.v)[0]]=1; } });
+  if(Object.keys(seen).length>1) Object.keys(auto).forEach(function(c){ out[c]=auto[c]; });
+  var ex=p.colLabels||{}; Object.keys(ex).forEach(function(c){ if(ex[c]!=null&&ex[c]!=='') out[c]=ex[c]; });
+  return out; }
+// What every renderer draws from: the record plus the colours and headers its concentrations give.
+function plateView(p){ if(!p) return p; var v=Object.assign({},p); v.colLabels=plateColLabelsOf(p); v._shW=plateShadeMap(p); return v; }
 function plateWellColor(p,w){ if(!w) return null; var t=plateTypeById(p,w.typeId); if(!t) return null;
-  return (w.shade>0)?_mixWhite(t.color,Math.min(0.85,+w.shade)):t.color; }
+  var sh=(p&&p._shW&&p._shW.has(w))?p._shW.get(w):(+w.shade||0);
+  return (sh>0)?_mixWhite(t.color,Math.min(0.85,sh)):t.color; }
 // A block of wells sharing one label, written once in the middle (compound 125 across B2–C12)
 // rather than repeated in every well. `plate.groups[gid].label`, wells carry `groupId`.
 // Contiguous wells holding the same condition are one block, and one block gets one number.
@@ -6061,7 +6093,7 @@ function plateGroupBoxes(p){
     var b=box[g]; return {gid:g,label:(p.groups[g].label||''),r1:b.r1,r2:b.r2,c1:b.c1,c2:b.c2}; })
     .sort(function(a,b){ return (a.r1-b.r1)||(a.c1-b.c1); });
 }
-function plateHasColLabels(p){ return !!(p&&p.colLabels&&Object.keys(p.colLabels).length); }
+function plateHasColLabels(p){ return Object.keys(plateColLabelsOf(p)).length>0; }
 function wellIdOf(r,c){ return PLATE_ROWS.charAt(r)+(c+1); }
 // Well ids are unpadded ("A1", "A10") — always resolve through this, never sort them as strings.
 // Columns are 1-based, so 'A0' is not a well — it used to come back as column -1, an index that
@@ -6262,7 +6294,7 @@ function plateSummary(p){
 // Column headers are part of the record too — "Cols 2–12 · 1000 → 0.02 nM".
 function plateColSummary(p){
   if(!plateHasColLabels(p)) return [];
-  var cl=p.colLabels, cols=Object.keys(cl).map(Number).sort(function(a,b){return a-b;});
+  var cl=plateColLabelsOf(p), cols=Object.keys(cl).map(Number).sort(function(a,b){return a-b;});
   var runs=[], s=cols[0], pv=cols[0];
   for(var i=1;i<cols.length;i++){ if(cols[i]===pv+1) pv=cols[i]; else { runs.push([s,pv]); s=cols[i]; pv=cols[i]; } }
   runs.push([s,pv]);
@@ -6408,7 +6440,7 @@ function copyPlateSummary(key){ var p=plateOf(key); if(!p) return;
 // a canvas rather than screenshotted, so it does not depend on what is scrolled into view and
 // comes out at print resolution.
 function plateToPNG(p,name){
-  if(!p) return;
+  if(!p) return; p=plateView(p);
   var d=plateDims(p), W=Math.max(18,Math.round(760/d.c)), HDR=26, PAD=18, S=2;
   var hasCL=plateHasColLabels(p);
   var titleH=(p.title?26:0), clH=hasCL?18:0;
@@ -7529,7 +7561,7 @@ function _plHdrCell(ca, ncols, stag, rowBase){
   if(end>ncols) end=ncols; if(start<0) start=0;
   return {row:rowBase+(even?0:1), col:(start+1)+' / '+(end+1), cls:even?' l':' r'};
 }
-function platePreviewHtml(p,key,readonly){ if(!p) return '';
+function platePreviewHtml(p,key,readonly){ if(!p) return ''; p=plateView(p);
   var d=plateDims(p), n=plateCount(p), wpx=PLATE_PREV_WPX[String(p.format)]||21, grid='';
   var showText=wpx>=26, boxes=plateGroupBoxes(p), grouped={};
   boxes.forEach(function(b){ grouped[b.gid]=1; });
@@ -7878,7 +7910,7 @@ function _plFitWpx(p,host){
     fit=Math.min(fit,Math.floor((availH-26)/d.r)-2); wpx=Math.max(wpx,PLATE_WPX_MAX[String(p.format)]||wpx); }
   return Math.max(floor, Math.min(wpx, fit));
 }
-function plRenderGrid(){ var p=plCur(), host=el('pl-grid'); if(!p||!host) return;
+function plRenderGrid(){ var p=plCur(), host=el('pl-grid'); if(!p||!host) return; p=plateView(p);
   var pm=el('plate-modal'); if(pm) pm.classList.toggle('pl-384', String(p.format)==='384');   // in portrait the grid gives way to a note (see #pl-rotate)
   if(pm) pm.style.setProperty('--pl-bodyh', Math.min(_plRoom(),580)+'px');   // both columns are this tall on every step: the dialog does not move when you walk the steps
   var d=plateDims(p), wpx=_plFitWpx(p,host), fs=Math.max(6,Math.round(wpx/4.2));
@@ -8182,7 +8214,7 @@ function plRenamePlasmid(i,v){ var e=_plExp(), o=_plateOwner(PL.key); if(!e||!o|
   toast('Renamed — the wells painted with it keep their place'); }
 function _plIdleHtml(p,tab){ var touch=_lbTouch();
   var say={ plasmids:(touch?'Drag a finger over':'Drag across')+' the wells that share one condition</b>, then click it — the DNA mix those wells were transfected with.',
-    contents:(touch?'Drag a finger over the wells':'Drag across the wells')+'</b> you want to work on: say what is in them, write a name across a block, shade it dark to light, or title its columns.',
+    contents:(touch?'Drag a finger over the wells':'Drag across the wells')+'</b> you want to work on: say what is in them, write text in them or a name across a block.',
     dose:(touch?'Drag a finger over':'Drag across')+' the area the compounds fill.</b> Set the dilution series on it, then make the compounds — one block of replicates each — and name them here.' };
   return '<div class="pl-idle"><b>'+say[tab||'contents']
     +((touch||(tab&&tab!=='contents'&&tab!=='plasmids'))?'':'<div class="pl-keys">Shift extends · ⌘/Ctrl adds · a row or column label takes the line · double-click takes a well’s block · Enter applies · Delete clears · ⌘C ⌘V copy a block · ⌘Z undo</div>')+'</div>'; }
@@ -8200,10 +8232,7 @@ function plRenderSide(){ var p=plCur(), host=el('pl-side'); if(!p||!host) return
       +(_nos?('<span class="pl-cond-c">'+(c?(c+' well'+(c===1?'':'s')):'—')+'</span>'):'')+'</button>'; }).join('')
     +'<button class="pl-type pl-type-add" onclick="plAddType()" title="Add a well type">+</button>';
   var _expFlags=PLATE_FLAGS.filter(function(f){ return (f.types||[]).indexOf((_plExp()||{}).type)>=0; });
-  function shared(k){ if(!n) return ''; var v=null; for(var i=0;i<n;i++){ var w=(p.wells||{})[ids[i]]||{}; var x=w[k]||'';
-      if(v===null) v=x; else if(v!==x) return null; } return v||''; }
-  function fld(k,lbl,list){ var v=shared(k), mixed=(v===null);
-    return '<label class="ci-f"><span>'+lbl+'</span><input '+(list?'list="'+list+'" ':'')+'data-pf="'+k+'" value="'+esc(mixed?'':v)+'" placeholder="'+(mixed?'Mixed…':'')+'"'+(n?'':' disabled')+' oninput="plApplyFields()"></label>'; }
+  function fld(k,lbl,list){ return _plFld(p,ids,k,lbl,list); }
   // The selection bar: how many, where (type a range to select one), and the way out.
   var bar='<div class="pl-selbar"><b>'+(n?(n+' well'+(n===1?'':'s')):'Select wells')+'</b>'
     +'<input class="pl-range" value="'+esc(n?PlateEngine.rangeText(ids):'')+'" placeholder="A1:B11" aria-label="Wells to select" onkeydown="if(event.key===\'Enter\'){event.preventDefault();plSelectRangeText(this.value);}">'
@@ -8239,8 +8268,7 @@ function plRenderSide(){ var p=plCur(), host=el('pl-side'); if(!p||!host) return
       form=(plas?'':('<div class="pl-howto">'+(_nos?'Click the condition these wells hold':'Click what these wells are')+' — it goes on straight away.</div>'
         +'<div class="pl-types'+(_nos?' pl-conds':'')+'">'+pal+'</div>'))
         +'<div class="pl-cols2"'+(plas?'':' style="margin-top:12px"')+'><div><div class="pl-sub-t">In these wells</div><div class="cc-inputs">'+fld('cellLine','Cell line','pl-cl')
-        +(dosing?(fld('compound','Compound')+fld('conc','Concentration')):'')
-        +fld('label','Label (override)')+fld('note','Note')+'</div></div>'
+        +fld('note','Note')+'</div></div>'
         +'<div><div class="pl-sub-t">On the map</div>'+_plMapLabelHtml(p,ids)+'</div></div>';
     } else {
       // Compounds: the series the wells are dosed with, and the compounds made from that area.
@@ -8251,8 +8279,7 @@ function plRenderSide(){ var p=plCur(), host=el('pl-side'); if(!p||!host) return
         +'<label class="ci-f"><span>Unit</span><select id="pl-dose-unit" onchange="PL.doseUnit=this.value;_plPrevUpd()">'+['nM','µM','mM'].map(function(u){ return '<option'+((PL.doseUnit||'nM')===u?' selected':'')+'>'+u+'</option>'; }).join('')+'</select></label>'
         +'<label class="ci-f"><span>Dilution factor</span><input type="number" id="pl-dose-fold" value="'+esc(PL.doseFold||'3')+'" step="0.5" oninput="PL.doseFold=this.value;_plPrevUpd()" onkeydown="if(event.key===\'Enter\'){event.preventDefault();plApplySeries();}"></label></div>'
         +'<div class="pl-sub-t" style="margin-top:9px">Highest concentration</div><div class="pl-dirs">'+dirs.map(function(x){ return '<button class="pl-btn'+(gp&&gp.dir===x[0]?' on':'')+'" title="'+x[2]+'" onclick="plSetDir(\''+x[0]+'\')">'+x[1]+'</button>'; }).join('')+'</div>'
-        +'<div class="pl-row2"><button class="pl-btn primary" onclick="plApplySeries()">Set the series ⏎</button>'
-        +(gp&&gp.dir&&(gp.dir==='right'||gp.dir==='left')?'<button class="pl-btn" onclick="plDoseToCols('+(gp.dir==='right'?1:-1)+')">Also as column headers</button>':'')+'</div>'
+        +'<div class="pl-row2"><button class="pl-btn primary" onclick="plApplySeries()">Set the series ⏎</button></div>'
         +'<div class="pl-prev" id="pl-prev"'+(prevS?'':' hidden')+'>'+prevS+'</div>';
       var cp=_plCpdPlan(p,ids), k=cp?cp.zones.length:0, R=PL.reps||2, prevC='';
       if(cp){ var pmin=Math.min.apply(null,cp.pts), pmax=Math.max.apply(null,cp.pts);
@@ -8268,7 +8295,8 @@ function plRenderSide(){ var p=plCur(), host=el('pl-side'); if(!p||!host) return
           +'<button class="pl-btn'+(cp.split==='rows'?' on':'')+'" onclick="plSetSplit(\'rows\')">Rows</button><button class="pl-btn'+(cp.split==='cols'?' on':'')+'" onclick="plSetSplit(\'cols\')">Columns</button></div>'):'')
         +'<div class="pl-row2"><button class="pl-btn primary"'+(k?'':' disabled')+' onclick="plMakeCompounds()">'+(k?('Make '+k+' compound'+(k===1?'':'s')+' ⏎'):'Make compounds')+'</button></div>'
         +'<div class="pl-prev" id="pl-prev-c">'+prevC+'</div>';
-      form='<div class="pl-cols2"><div>'+dilHtml+'</div><div>'+cpdHtml+'</div></div>'; prevInForm=true;
+      form='<div class="pl-cols2"><div>'+dilHtml+'</div><div>'+cpdHtml+'</div></div>'
+        +'<div class="pl-sub" style="margin-top:12px"><div class="pl-sub-t">3 · Or just these wells</div><div class="cc-inputs">'+fld('compound','Compound')+fld('conc','Concentration')+'</div></div>'; prevInForm=true;
     }
     var clearable=ids.some(function(id){ return (p.wells||{})[id]; });
     body=(tab==='plasmids'?_plContextHtml(p):'')+bar+'<div class="pl-sec pl-sec-sel">'+form
@@ -8334,28 +8362,32 @@ function _plSeriesPrev(p,ids,gp,f){ if(!gp) return '';
   return t; }
 function _plPrevUpd(){ var p=plCur(), pv=el('pl-prev'); if(!p||!pv) return; var ids=plSelIds();
   var t=_plSeriesPrev(p,ids,PlateEngine.seriesPlan(ids,PL.dir||PL.lastDir),_plSeriesForm()); pv.innerHTML=t; pv.hidden=!t; }
-// How the map shows the selected wells: a name across a block, a shade, the headers of its columns.
-// (These were the Label tab; they belong with what the wells hold.)
+// One well field (cell line, compound, concentration, text, note) for the selection: the value they
+// share, or "Mixed…". Typing writes it to every selected well (plApplyFields).
+function _plFld(p,ids,k,lbl,list){ var n=ids.length, v=null, mixed=false;
+  if(n){ for(var i=0;i<n;i++){ var w=(p.wells||{})[ids[i]]||{}; var x=w[k]||''; if(v===null) v=x; else if(v!==x){ mixed=true; break; } } }
+  v=mixed?'':(v||'');
+  return '<label class="ci-f"><span>'+lbl+'</span><input '+(list?'list="'+list+'" ':'')+'data-pf="'+k+'" value="'+esc(v)+'" placeholder="'+(mixed?'Mixed…':'')+'"'+(n?'':' disabled')+' oninput="plApplyFields()"></label>'; }
+// How the map shows the selected wells: the text in each well and a name across a block. Colour is
+// not here: it follows the concentrations (plateShadeMap), and so do the column headers.
 function _plMapLabelHtml(p,ids){
   var curGrp=plSelGroupLabel();
-  return '<div class="cc-inputs"><label class="ci-f"><span>Name shown across these wells</span>'
+  return '<div class="cc-inputs">'+_plFld(p,ids,'label','Text in each well')
+    +'<label class="ci-f"><span>Name across the block</span>'
     +'<input id="pl-grp" value="'+esc(curGrp===null?'':curGrp)+'" placeholder="'+(curGrp===null?'Mixed…':'e.g. Mock')+'" onkeydown="if(event.key===\'Enter\'){event.preventDefault();plGroupLabel(this.value);}"></label></div>'
-    +'<div class="pl-row2"><button class="pl-btn primary" onclick="plGroupLabel(el(\'pl-grp\').value)">Label the block</button><button class="pl-btn" onclick="plUngroup()">Ungroup</button></div>'
-    +'<div class="pl-sub-t" style="margin-top:12px">Shading — dark is the strong end</div>'
-    +'<div class="pl-dirs"><button class="pl-btn" onclick="plApplyShade(\'right\')" title="Dark on the left">Dark &#8594;</button><button class="pl-btn" onclick="plApplyShade(\'left\')" title="Dark on the right">&#8592; Dark</button>'
-    +'<button class="pl-btn" onclick="plApplyShade(\'down\')" title="Dark at the top">Dark &#8595;</button><button class="pl-btn" onclick="plApplyShade(\'up\')" title="Dark at the bottom">Dark &#8593;</button><button class="pl-btn" onclick="plApplyShade(null)">None</button></div>'
-    +_plColsHtml(p,ids); }
+    +'<div class="pl-row2"><button class="pl-btn primary" onclick="plGroupLabel(el(\'pl-grp\').value)">Name the block</button><button class="pl-btn" onclick="plUngroup()">Ungroup</button></div>'
+    +'<details class="pl-det"><summary>Custom column headers</summary>'+_plColsHtml(p,ids)+'</details>'; }
 // Column headers — words on the plate rather than well contents.
 function _plColsHtml(p,ids){
   var _colsSel={}; ids.forEach(function(id){ var x=wellRC(id); if(x) _colsSel[x.c]=1; });
-  var _colShared=null;
+  var _colShared=null, _auto=plateColLabelsOf(Object.assign({},p,{colLabels:{}}));
   Object.keys(_colsSel).forEach(function(c,i){ var v=(p.colLabels||{})[c]||''; if(i===0) _colShared=v; else if(_colShared!==v) _colShared=null; });
-  var _anyCols=plateHasColLabels(p);
-  return '<div class="pl-sub-t" style="margin-top:12px">Column headers</div>'
+  var _anyCols=!!(p.colLabels&&Object.keys(p.colLabels).length);
+  return '<div class="pl-howto" style="margin-top:6px">A column whose wells all hold one concentration is headed by it, without anything typed here. Write a header only to say something else.</div>'
     +'<div class="cc-inputs"><label class="ci-f"><span>Units</span><input value="'+esc(p.colTitle||'')+'" placeholder="nM" onchange="plSetColTitle(this.value)"></label>'
-    +'<label class="ci-f"><span>Header for these columns</span><input value="'+esc(_colShared===null?'':_colShared)+'" placeholder="'+(_colShared===null?'Mixed…':'e.g. 1000')+'" onchange="plSetColLabel(this.value)"></label></div>'
-    +'<div class="pl-row2"><button class="pl-btn" onclick="plClearColLabels(0)">Clear these columns</button>'
-    +'<button class="pl-btn"'+(_anyCols?'':' disabled')+' onclick="plClearColLabels(1)">Clear all headers</button></div>'; }
+    +'<label class="ci-f"><span>Header for these columns</span><input value="'+esc(_colShared===null?'':_colShared)+'" placeholder="'+(_colShared===null?'Mixed…':'e.g. Mock')+'" onchange="plSetColLabel(this.value)"></label></div>'
+    +'<div class="pl-row2"><button class="pl-btn" onclick="plClearColLabels(0)">Back to automatic for these</button>'
+    +'<button class="pl-btn"'+(_anyCols?'':' disabled')+' onclick="plClearColLabels(1)">Back to automatic for all</button></div>'; }
 
 // Selection
 // A −ligand well holds the same mix as its pair with something left out at the read, so it is a
@@ -8532,22 +8564,6 @@ function plUngroup(){ var p=plCur(); if(!p) return; plMark('Ungroup');
 function _plGcGroups(p){ if(!p.groups) return; var live={};
   Object.keys(p.wells||{}).forEach(function(id){ var g=p.wells[id].groupId; if(g) live[g]=1; });
   Object.keys(p.groups).forEach(function(g){ if(!live[g]) delete p.groups[g]; }); }
-// Shading
-function plApplyShade(dir){ var p=plCur(); if(!p) return; var ids=plSelIds(); if(!ids.length) return;
-  if(!dir){ plMark('Clear shading'); ids.forEach(function(id){ var w=(p.wells||{})[id]; if(w) delete w.shade; }); platePersist(PL.key); plRender(); return; }
-  plMark('Shade wells');
-  var rs=[], cs=[]; ids.forEach(function(id){ var x=wellRC(id); if(x){ rs.push(x.r); cs.push(x.c); } });
-  var lo, hi, byCol=(dir==='right'||dir==='left');
-  if(byCol){ lo=Math.min.apply(null,cs); hi=Math.max.apply(null,cs); }
-  else { lo=Math.min.apply(null,rs); hi=Math.max.apply(null,rs); }
-  var span=Math.max(1,hi-lo);
-  // `right` and `down` put the dark end first; `left` and `up` reverse it. Reading the direction
-  // off "is it a column?" is what left the fourth one unreachable.
-  var flip=(dir==='left'||dir==='up');
-  ids.forEach(function(id){ var x=wellRC(id); var pos=(byCol?x.c:x.r)-lo;
-    var t=flip?(1-pos/span):(pos/span);
-    _plWell(p,id).shade=Math.round(t*0.8*1000)/1000; });
-  platePersist(PL.key); plRender(); }
 // Column headers
 // Taking headers off: the selected columns, or the whole row. Writing one was always possible
 // and removing one was not.
@@ -8587,6 +8603,7 @@ function _plFeedsHtml(){ var e=_plExp(); if(!e) return '';
     var st='<span class="pl-fd-s ok">follows the map</span>';
     if(PLATE_FED[k]){ var n=plateWellsFor(e,b);
       if(b.done) st='<span class="pl-fd-s">done — as it was</span>';
+      else if(n!=null&&!plateFedOwn(b,'nWells')&&+b.calc.inputs.nWells!==n) st='<span class="pl-fd-s own">says '+esc(String(b.calc.inputs.nWells))+' · map says '+n+' <button class="ci-relink" onclick="calcRelinkPlate(\''+b.id+'\',\'nWells\')">update</button></span>';
       else if(n!=null&&plateFedOwn(b,'nWells')) st='<span class="pl-fd-s own">typed '+esc(String(b.calc.inputs.nWells))+' · map says '+n+' <button class="ci-relink" onclick="calcRelinkPlate(\''+b.id+'\',\'nWells\')">use the map</button></span>';
       else if(n==null) st='<span class="pl-fd-s">nothing on the map for it yet</span>'; }
     rows.push('<tr><td class="pl-fd-t" title="'+esc(b.title||'')+'">'+esc(String(b.title||'step').replace(/\s+/g,' '))+'</td><td class="pl-fd-v">'+esc(line)+'</td><td>'+st+'</td></tr>'); });
@@ -8600,24 +8617,6 @@ function plSetColLabel(v){ var p=plCur(); if(!p) return; var cols={};
   if(!p.colLabels) p.colLabels={};
   ks.forEach(function(c){ if(String(v||'').trim()) p.colLabels[c]=String(v).trim(); else delete p.colLabels[c]; });
   platePersist(PL.key); plRender(); }
-// Write the dose series into the column headers instead of every well — the compact style
-// where the concentration is stated once per column.
-function plDoseToCols(dir){ var p=plCur(); if(!p) return;
-  var ax=plSelAxis(); if(ax!=='row'&&ax!=='block') return;
-  plMark('Write column headers');
-  // One header per column, however many rows of the block sit under it.
-  var seen={}, ids=plSelIds().slice().sort(function(a,b){ return wellRC(a).c-wellRC(b).c; })
-    .filter(function(id){ var c=wellRC(id).c; if(seen[c]) return false; seen[c]=1; return true; });
-  if(dir<0) ids.reverse();
-  var fold=+((el('pl-dose-fold')||{}).value)||3;
-  var top=_toNM((el('pl-dose-top')||{}).value,(el('pl-dose-unit')||{}).value||'nM');
-  if(!p.colLabels) p.colLabels={};
-  if(!p.colTitle) p.colTitle=(el('pl-dose-unit')||{}).value||'nM';
-  var unit=p.colTitle;
-  ids.forEach(function(id,i){ var nM=top/Math.pow(fold,i);
-    p.colLabels[wellRC(id).c]=_cn(unit==='µM'?nM/1e3:(unit==='mM'?nM/1e6:nM)); });
-  platePersist(PL.key); plRender();
-  toast(ids.length+' column headers written'); }
 // Switching format keeps every well that still fits the new grid (Blueprint wipes them — don't).
 function plSetFormat(f){ var p=plCur(); if(!p) return; var d=PLATE_FORMATS[String(f)]; if(!d) return;
   plMark('Change plate format');
@@ -21431,7 +21430,7 @@ function _labBodyHtml(b,bench,no){
 // strength. The information is in the numbers, the outlines and the legend, not in the hue.
 function _printTint(col){ if(!col) return null; try{ return _mixWhite(col,0.5); }catch(e){ return col; } }
 function printPlateHtml(p,title,opts){
-  if(!p) return '';
+  if(!p) return ''; p=plateView(p);
   opts=opts||{};
   var d=plateDims(p); if(!d) return '';
   // Jon, on the exported map (2026-09-16): the labels that belong together were not joined and

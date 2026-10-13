@@ -165,6 +165,11 @@
 //       the steps            transfection mix over the transfected ones) follow the map as it is painted, over every plate; the plan moves with
 //                            them (following the map is not a deviation), a number typed over stays, a ticked step is not rewritten, "use the map"
 //                            gives it back; and the editor says so under the plate (What it feeds). (digitonin 192 wells on a plate of 84)
+//   B40 a series colours it  Giving a gradient its concentrations is all it takes for the map to show it: each well is its condition's colour,
+//                            paler by point down its series (top = the condition's own colour), in the editor, the card and the printout, and a
+//                            column whose dosed wells share one concentration is headed by it. No shading or "also as column headers" to
+//                            ask for; compound/concentration live with the series (Compounds), text in the wells with the map (Contents);
+//                            a typed header wins, a well with no concentration keeps its own shade, a plate of one concentration has no headers.
 //   B36 plates, plasmids,   An experiment can have more than one plate (+ Add plate: same conditions, its own title, counted with the
 //       steps                first by the mix table, shown, exported); the plate editor's tabs are numbered steps (Plate · Plasmids ·
 //                            Contents · Dilution · Compounds · Label · Data) that only Back / Next or a click move — not a selection,
@@ -2071,6 +2076,7 @@ async function suite(opts) {
       rtx.calc.inputs.nWells = 200; rtx.calcSeed.nWells = 200;
       openPlateEditor('exp:' + e.id); await sleep(60);
       const tag = n => 'devs=' + expDeviations(e).filter(d => /^(nWells|nPlus|nMinus)$/.test(d.key)).map(d => d.key + ':' + d.from + '→' + d.to).join(',') + ' ' + n;
+      if (!/says 192 · map says \d+/.test((document.getElementById('pl-feeds') || {}).textContent || '')) bad('B39', 'stale offer', 'a step that still says 192 wells is not offered the map\'s count: ' + ((document.getElementById('pl-feeds') || {}).textContent || '').slice(0, 160));
       PL.sel = { A1: 1 }; plEraseSel(); await sleep(30);   // any painting makes the map the plan
       const used = () => plateDosedWells(e, true), dosedN = () => plateDosedWells(e, false);
       if (+all.calc.inputs.nWells !== used()) bad('B39', 'all wells', 'the spike over every well says ' + all.calc.inputs.nWells + ' and the map has ' + used());
@@ -2097,6 +2103,58 @@ async function suite(opts) {
       closePlateEditor(); openExp(e.id); await sleep(60);
       calcRelinkPlate(all.id, 'nWells');
       if (+all.calc.inputs.nWells !== used() || (all.calc.own && all.calc.own.nWells)) bad('B39', 'relink', 'use the map left ' + all.calc.inputs.nWells + ' (map ' + used() + ', own ' + JSON.stringify(all.calc.own) + ')');
+    });
+
+    // B40 — the concentrations are the colours: no shading to apply, headers from the series.
+    if (run('B40')) await guard('B40', 'series colours', async () => {
+      const P = (LB.data.projects || []).find(p => (p.sections || []).length);
+      const key = 'NB_SPARK_SCREEN96', tpl = LB.data.presets[key];
+      if (!tpl) { bad('B40', 'setup', 'the SPARK screen preset is not in the notebook'); return; }
+      const su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup)));
+      const before = new Set(Object.keys(LB.data.experiments));
+      buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-10-01', type: 'NB', title: 'INV colours', code: 'INV_B40', setup: su, plate: true });
+      const e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); clean.push(e); openExp(e.id); tick('B40');
+      addMorePlate(e.id, true); await sleep(50);
+      const p = expPlateList(e)[1].p, k2 = 'exp:' + e.id + ':2';
+      const tid = p.types[0].id;
+      const lum = c => { const n = parseInt(String(c).replace('#', ''), 16); return 0.3 * ((n >> 16) & 255) + 0.59 * ((n >> 8) & 255) + 0.11 * (n & 255); };
+      const ids = ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6'];
+      ids.forEach(id => { p.wells[id] = { typeId: tid }; });
+      PL.sel = {}; ids.forEach(id => PL.sel[id] = 1); PL.doseTop = '1000'; PL.doseFold = '10'; PL.doseUnit = 'nM'; PL.dir = 'left'; plSetMode('dose'); await sleep(30);
+      plApplySeries(); await sleep(50);
+      const v = plateView(p), colors = ['B1', 'B2', 'B3', 'B4', 'B5', 'B6'].map(id => plateWellColor(v, p.wells[id]));
+      if (!(lum(colors[0]) < lum(colors[1]) && lum(colors[1]) < lum(colors[2]) && lum(colors[4]) < lum(colors[5]))) bad('B40', 'shading', 'a 6-point series is not drawn dark to light: ' + colors.join(' '));
+      if (plateWellColor(v, p.wells.B1) !== plateWellColor(v, p.wells.C1)) bad('B40', 'replicates', 'two replicates of one point are different colours');
+      if (plateWellColor(v, p.wells.B1) !== (p.types.find(t => t.id === tid) || {}).color) bad('B40', 'top', 'the top of the series is not the condition\'s own colour');
+      const hdr = plateColLabelsOf(p);
+      if (Object.keys(hdr).length !== 6 || !/1 µM/.test(hdr[0]) || !/10 pM|0\.01 nM/.test(hdr[5])) bad('B40', 'headers', 'the six columns are not headed by their concentrations: ' + JSON.stringify(hdr));
+      // the editor's own grid and the card
+      plSwitchPlate(k2); plSetMode('contents'); await sleep(40);
+      const gridBg = id => getComputedStyle(document.querySelector('#pl-grid .pl-w[data-w="' + id + '"]')).backgroundColor;
+      if (gridBg('B1') === gridBg('B6')) bad('B40', 'editor grid', 'the editor draws the first and last point of the series the same colour: ' + gridBg('B1'));
+      if (!document.querySelector('#pl-grid .pl-cl') || !/1/.test(document.querySelector('#pl-grid .pl-cl').textContent)) bad('B40', 'editor headers', 'the editor shows no column header over the series');
+      // nothing to apply by hand, and the fields live with what they are about
+      PL.sel = { B1: 1 }; plRender();
+      const side = document.getElementById('pl-side'), html = () => side.innerHTML;
+      if (/plApplyShade|Shading|plDoseToCols|Also as column headers/.test(html())) bad('B40', 'manual tools', 'a shading or write-the-headers control is still offered on Contents');
+      if (!side.querySelector('[data-pf="label"]') || side.querySelector('[data-pf="conc"]') || side.querySelector('[data-pf="compound"]')) bad('B40', 'contents', 'Contents should hold the text in the wells and not the compound and concentration');
+      plSetMode('dose'); PL.sel = { B1: 1 }; plRender();
+      if (/plApplyShade|plDoseToCols|Also as column headers/.test(html())) bad('B40', 'manual tools (compounds)', 'a shading or write-the-headers control is on Compounds');
+      if (!side.querySelector('[data-pf="conc"]') || !side.querySelector('[data-pf="compound"]')) bad('B40', 'compounds', 'the Compounds step has no compound / concentration for the wells');
+      closePlateEditor(); await sleep(60); openExp(e.id); await sleep(80);
+      const card = [...document.querySelectorAll('.blk-plate[data-plate="' + k2 + '"]')].find(c => c.querySelector('.pp-grid'));
+      if (!card) bad('B40', 'card', 'plate 2 has no card on the page');
+      else {
+        const wells = [...card.querySelectorAll('.pp-w')].map(x => getComputedStyle(x).backgroundColor), uniq = new Set(wells.filter(Boolean));
+        if (uniq.size < 6) bad('B40', 'card colours', 'the card shows ' + uniq.size + ' colours for a 6-point series');
+        if (!card.querySelector('.pp-cl')) bad('B40', 'card headers', 'the card has no column headers over the series');
+      }
+      // a typed header wins; one concentration needs no header; a well with no concentration keeps its own shade
+      p.colLabels = { 0: 'Mock' }; if (plateColLabelsOf(p)[0] !== 'Mock') bad('B40', 'typed', 'a typed header did not win over the concentration'); delete p.colLabels;
+      const flat = { format: '96', types: p.types, wells: { A1: { typeId: tid, conc: '10 µM' }, B1: { typeId: tid, conc: '10 µM' }, A2: { typeId: tid, conc: '10 µM' }, B2: { typeId: tid, conc: '10 µM' } } };
+      if (Object.keys(plateColLabelsOf(flat)).length) bad('B40', 'one concentration', 'a plate of one concentration is given column headers');
+      const echo = { format: '96', types: p.types, wells: { A1: { typeId: tid, shade: 0.6 } } };
+      if (plateWellColor(plateView(echo), echo.wells.A1) === p.types.find(t => t.id === tid).color) bad('B40', 'explicit shade', 'a well with no concentration lost the shade it was given');
     });
 
     // B28 — a date typed into Repeat is a real day or it is refused.

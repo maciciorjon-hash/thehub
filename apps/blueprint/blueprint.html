@@ -682,11 +682,6 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
       <div class="st-lbl">Block tools</div>
       <div class="st-col">
         <div class="st-row">
-          <button class="btn btn-sec pd-tb-btn st-sm st-grow" id="grad-row-btn" onclick="applyGradient('row')" style="display:none;" title="Darker → lighter, left to right. Replicate rows in the same column share a shade.">Gradient &#8594;</button>
-          <button class="btn btn-sec pd-tb-btn st-sm st-grow" id="grad-col-btn" onclick="applyGradient('col')" style="display:none;" title="Darker → lighter, top to bottom. Replicate columns in the same row share a shade.">Gradient &#8595;</button>
-          <button class="btn btn-sec pd-tb-btn st-sm" onclick="clearGradient()" title="Remove gradient shading from selection">Reset</button>
-        </div>
-        <div class="st-row">
           <button class="btn btn-primary pd-tb-btn st-sm st-grow" onclick="applyMergedLabel()" title="Use the Label field above as one label spanning the whole selection">Merge label</button>
           <button class="btn btn-sec pd-tb-btn st-sm" onclick="ungroupSelection()" title="Split a merged label back into individual wells">Split</button>
         </div>
@@ -3603,8 +3598,6 @@ function updateSelToolbar() {
   const showGrad = prs.length >= 2 && (canRow || canCol);
   document.getElementById('grad-sep').style.display = showGrad ? '' : 'none';
   document.getElementById('grad-wrap').style.display = showGrad ? '' : 'none';
-  document.getElementById('grad-row-btn').style.display = canRow ? '' : 'none';
-  document.getElementById('grad-col-btn').style.display = canCol ? '' : 'none';
 
   // Position after all content is shown so offsetHeight is accurate
   positionToolbar();
@@ -3636,10 +3629,15 @@ function applyDilution(dir) {
   const pos = id => dir === 'row' ? wellRowCol(id).col : rls.indexOf(wellRowCol(id).row);
   const steps = [...new Set(selArr.map(pos))].sort((a, b) => a - b);
   selArr.forEach(id => {
-    const conc = start / Math.pow(factor, steps.indexOf(pos(id)));
+    const i = steps.indexOf(pos(id));
+    const conc = start / Math.pow(factor, i);
     const lbl = pdDilAutoUnit ? fmtConcAuto(toNM(conc, unit)) : fmtConc(conc, unit);
     if (!wellState[id]) wellState[id] = {typeId: activeTypeId, label: lbl};
     else wellState[id].label = lbl;
+    // The concentrations are the gradient: the top of the series is the condition's own colour and
+    // each step down is paler, so the map shows which end is high without a second tool to ask for it.
+    const bt = typeById(wellState[id].typeId);
+    wellState[id].color = shadeColor(bt ? bt.color : '#90caf9', steps.length > 1 ? i / (steps.length - 1) : 0);
   });
   drawPlateCanvas(document.getElementById('plate-canvas-main')); renderLegend(); updateSelToolbar();
 }
@@ -3662,7 +3660,7 @@ function fmtConcAuto(valInNM) {
   return parseFloat((valInNM*1e3).toPrecision(3)) + 'pM';
 }
 
-// ─── Dose gradient (darker → lighter pastel shading, no numbers needed) ───────
+// ─── Concentration shading (darker → lighter pastel; applyDilution uses it) ───────
 function _hexToHsl(hex) {
   hex = hex.replace('#', '');
   const r = parseInt(hex.substr(0,2),16)/255, g = parseInt(hex.substr(2,2),16)/255, b = parseInt(hex.substr(4,2),16)/255;
@@ -3700,58 +3698,6 @@ function shadeColor(baseHex, t) {
   const {h, s, l} = _hexToHsl(baseHex);
   const lo = Math.max(30, l - 20), hi = Math.min(94, l + 28);
   return _hslToHex(h, s, lo + t * (hi - lo));
-}
-
-// Each gradient button toggles direction on every click (row: L↔R, col: T↔B) instead of
-// needing 4 separate buttons — _gradRowRev/_gradColRev track which way the next click applies.
-let _gradRowRev = false, _gradColRev = false;
-function applyGradient(dir) {
-  const selArr = Array.from(selection).filter(id => wellRowCol(id));
-  if (selArr.length < 2) return;
-  const baseType = typeById(activeTypeId);
-  const baseColor = baseType ? baseType.color : '#90caf9';
-  const rls = ROWS_ALL.slice(0, FORMATS[currentFormat].rows);
-  if (dir === 'row') {
-    const cols_ = [...new Set(selArr.map(id => wellRowCol(id).col))].sort((a,b) => a-b);
-    if (_gradRowRev) cols_.reverse();
-    cols_.forEach((c, i) => {
-      const shade = shadeColor(baseColor, cols_.length > 1 ? i/(cols_.length-1) : 0);
-      selArr.filter(id => wellRowCol(id).col === c).forEach(id => {
-        if (!wellState[id]) wellState[id] = {typeId: activeTypeId, label: ''};
-        wellState[id].typeId = activeTypeId;
-        wellState[id].color = shade;
-      });
-    });
-    _gradRowRev = !_gradRowRev;
-    const btn = document.getElementById('grad-row-btn');
-    if (btn) {
-      btn.innerHTML = _gradRowRev ? 'Gradient &#8592;' : 'Gradient &#8594;';
-      btn.title = _gradRowRev ? 'Darker → lighter, right to left.' : 'Darker → lighter, left to right.';
-    }
-  } else {
-    const rows_ = [...new Set(selArr.map(id => wellRowCol(id).row))].sort((a,b) => rls.indexOf(a)-rls.indexOf(b));
-    if (_gradColRev) rows_.reverse();
-    rows_.forEach((r, i) => {
-      const shade = shadeColor(baseColor, rows_.length > 1 ? i/(rows_.length-1) : 0);
-      selArr.filter(id => wellRowCol(id).row === r).forEach(id => {
-        if (!wellState[id]) wellState[id] = {typeId: activeTypeId, label: ''};
-        wellState[id].typeId = activeTypeId;
-        wellState[id].color = shade;
-      });
-    });
-    _gradColRev = !_gradColRev;
-    const btn = document.getElementById('grad-col-btn');
-    if (btn) {
-      btn.innerHTML = _gradColRev ? 'Gradient &#8593;' : 'Gradient &#8595;';
-      btn.title = _gradColRev ? 'Darker → lighter, bottom to top.' : 'Darker → lighter, top to bottom.';
-    }
-  }
-  drawPlateCanvas(document.getElementById('plate-canvas-main')); renderLegend(); updateSelToolbar();
-}
-
-function clearGradient() {
-  selection.forEach(id => { if (wellState[id]) delete wellState[id].color; });
-  drawPlateCanvas(document.getElementById('plate-canvas-main')); updateSelToolbar();
 }
 
 // ─── Merged multi-well label (one label spanning a whole selection block) ─────
