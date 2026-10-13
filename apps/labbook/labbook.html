@@ -1181,8 +1181,8 @@ html.lb-loading body > *{visibility:hidden;}
 /* ── Plate maps ── */
 /* Inline read-only card (experiment, step, notebook) */
 .blk-plate{padding:6px 0 10px;margin:0 0 10px;}
-.cc-tag.plate{color:#6d7bd0;flex:1 1 auto;min-width:60px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.blk-plate .cc-hd .grow{flex:0 0 0;}
+.cc-tag.plate{color:#6d7bd0;flex:0 1 auto;min-width:60px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}   /* the title takes what it needs: 96-well and the count sit beside it, not at the far edge of an empty card */
+.blk-plate .cc-hd .grow{flex:1 1 0;}
 .pp-n{font-size:var(--fs-1);color:var(--text3);white-space:nowrap;flex:none;}
 .blk-plate .cc-hd .cc-src{white-space:nowrap;flex:none;}   /* the chips beside a plate's title stay on one line ("96-/well"); the title is what gives way */
 .plate-act{font-size:var(--fs-1);font-weight:600;padding:2px 8px;border-radius:var(--r-1);}
@@ -1190,8 +1190,9 @@ html.lb-loading body > *{visibility:hidden;}
 .pp-grid-wrap{overflow-x:auto;padding:2px 0;flex:0 1 auto;}
 @media (max-width:420px){ .pp-grid{grid-template-columns:repeat(var(--c),minmax(0,1fr)) !important;} }   /* a 384-well preview in a 290px card: the columns give way instead of the last two going behind a swipe */
 .pp-grid{display:grid;gap:2px;}
-.pp-grid.dose{width:100%;}
-.pp-grid-wrap:has(.pp-grid.dose){flex:1 1 320px;min-width:0;}
+/* Every plate of an experiment fills its card up to the same cap, whether or not it has doses: two plates of one format are one size (a dose plate used to grow to twice the base pitch and a plain one stayed at the base, so plate 1 and plate 2 of the same experiment came out 41 and 21 px). */
+.pp-grid{width:100%;}
+.pp-grid-wrap{flex:1 1 320px;min-width:0;}
 .pp-w{aspect-ratio:1;border-radius:var(--r-1);background:var(--surface3);}   /* a well is a rounded square, as in Lumina, Beacon and Echo */
 .pp-w.empty{background:transparent;box-shadow:inset 0 0 0 1px var(--border);}
 /* A control well is its pair's mix with something left out, so it is the same colour and the
@@ -1321,7 +1322,7 @@ html.lb-loading body > *{visibility:hidden;}
 /* The grid gets the room first and the list scrolls in what is left. It is off by default: it
    is a read of the map rather than a tool for drawing one, and it grew a line per condition
    until it was taller than the plate it describes. */
-.pl-sumbar{margin-top:10px;display:flex;}
+.pl-sumbar{margin-top:10px;display:flex;gap:6px;}
 .pl-sumtog{font-size:var(--fs-2);}
 .pl-sum{display:none;margin-top:8px;border-top:1px solid var(--border);padding-top:9px;overflow-y:auto;flex:0 1 auto;max-height:34%;min-height:88px;}
 .pl-sum.on{display:block;}
@@ -1339,6 +1340,18 @@ details.pl-sec[open]>summary{border-bottom:1px solid var(--border);margin-bottom
 details.pl-sec>*:not(summary){padding:0 11px;}
 details.pl-sec>*:not(summary):last-child{padding-bottom:11px;}
 .pl-sum-empty{font-size:var(--fs-3);color:var(--text3);}
+/* What the layout feeds: one row per step whose numbers the map decides. */
+#pl-sumwrap[data-low="feeds"] #pl-sum,#pl-sumwrap[data-low="feeds"] #pl-vals-legend{display:none;}
+#pl-sumwrap[data-low="list"] #pl-feeds{display:none;}
+.pl-fd-h{font-size:var(--fs-2);color:var(--text2);line-height:1.45;margin-bottom:6px;}
+.pl-fd-h b{color:var(--text);}
+.pl-fd{border-collapse:collapse;width:100%;font-size:var(--fs-2);}
+.pl-fd td{padding:4px 8px 4px 0;vertical-align:top;border-bottom:1px solid var(--border);}
+.pl-fd-t{color:var(--text);font-weight:600;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.pl-fd-v{color:var(--text2);font-variant-numeric:tabular-nums;}
+.pl-fd-s{font-size:var(--fs-1);color:var(--text3);}
+.pl-fd-s.ok{color:var(--accent);font-weight:600;}
+.pl-fd-s.own{color:var(--warn);}
 .pl-side{width:auto;flex:none;max-height:72vh;max-height:72dvh;max-height:var(--pl-bodyh,72dvh);overflow-y:auto;}
 .pl-sec{border:1px solid var(--border);border-radius:var(--r-2);background:var(--surface2);padding:9px 11px 11px;margin-bottom:10px;}
 .pl-sec-t{font-size:var(--fs-3);font-weight:600;color:var(--text2);margin-bottom:7px;}
@@ -3124,8 +3137,8 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
           <div><b>Turn your phone sideways</b>A 384-well plate is 24 columns wide, too many to read or tap on a portrait screen. Turn the phone to landscape to edit it. Its layout is unchanged.</div>
         </div>
         <div class="pl-gridwrap"><div id="pl-grid" class="pl-grid"></div></div>
-        <div class="pl-sumbar"><button class="pl-btn pl-sumtog" id="pl-sumtog" aria-expanded="false" onclick="plToggleSum()">Layout list</button></div>
-        <div class="pl-sum" id="pl-sumwrap"><div id="pl-vals-legend"></div><div id="pl-sum"></div></div>
+        <div class="pl-sumbar"><button class="pl-btn pl-sumtog" id="pl-feedtog" aria-expanded="false" onclick="plSetLow('feeds')" title="The numbers in this experiment's steps that this layout decides">What it feeds</button><button class="pl-btn pl-sumtog" id="pl-sumtog" aria-expanded="false" onclick="plSetLow('list')">Layout list</button></div>
+        <div class="pl-sum" id="pl-sumwrap"><div id="pl-feeds"></div><div id="pl-vals-legend"></div><div id="pl-sum"></div></div>
       </div>
       <div id="pl-side" class="pl-side"></div>
     </div>
@@ -4929,6 +4942,11 @@ function calcInputsHtml(b){ if(b.calc.kind==='archive') return archiveCalcHtml(b
     // A number the setup wrote wears that too. "# plates" could be changed here or in Edit
     // setup, and nothing said which was the plan and which the record: the chip is the plan's
     // door, and a value typed over it reads "yours" instead.
+    // The wells an addition goes into are the plate's to say.
+    if(!_tag&&(PLATE_FED[b.calc.kind]||[]).indexOf(f.k)>=0){ var _pe=_curExp(), _pn=_pe?plateWellsFor(_pe,b):null;
+      if(_pn!=null) _tag=plateFedOwn(b,f.k)
+        ? (' <button class="ci-relink" title="The plate map has '+_pn+' wells for this step — go back to following it" onclick="calcRelinkPlate(\''+b.id+'\',\''+f.k+'\')">yours &middot; plate says '+_pn+'</button>')
+        : ' <span class="ci-derived" title="Counted from the plate map — it follows the map as you paint">from the plate</span>'; }
     if(!_tag){ var _st=_setupTag(b,f.k); if(_st) _tag=_st; }
     // A volume, a count and a dilution are all non-negative. Archive's inputs have carried min
     // since they were written; these never did, so a minus sign propagated into every recipe.
@@ -4975,7 +4993,7 @@ function calcUpd(id,key){ var b=_blkById(id); if(!b||!b.calc) return; var wrap=d
   // Typing into a derived field claims it. The whole panel is read back on every keystroke, so
   // without knowing *which* box moved every derived value would be claimed the moment you edited
   // anything else in the same calculator.
-  if(key && (CHAINED_INPUTS[b.calc.kind]||[]).indexOf(key)>=0){
+  if(key && ((CHAINED_INPUTS[b.calc.kind]||[]).indexOf(key)>=0||(PLATE_FED[b.calc.kind]||[]).indexOf(key)>=0)){
     if(!b.calc.own) b.calc.own={};
     b.calc.own[key]=1;
   }
@@ -5005,6 +5023,14 @@ function calcRelink(id,key){ var b=_blkById(id); if(!b||!b.calc||!b.calc.own) re
   var e=_curExp(); if(e) syncChainedInputs(e);
   save(); renderEditor();
   toast('Following the steps above again'); }
+// Give a number the plate answers back to the plate.
+function calcRelinkPlate(id,key){ var b=_blkById(id), e=_curExp(); if(!b||!b.calc||!e) return;
+  var n=plateWellsFor(e,b); if(n==null) return;
+  if(b.calc.own) delete b.calc.own[key];
+  if(b.calcSeed) b.calcSeed[key]=n;
+  b.calc.inputs[key]=n; e.updated=Date.now(); save(); renderEditor();
+  if(PL.key&&el('plate-modal')&&el('plate-modal').classList.contains('open')) plRenderSum();
+  toast('Following the plate again: '+n+' wells'); }
 // Debounced, because calcUpd runs on every keystroke: a construct renamed letter by letter would
 // otherwise put one condition in the palette per letter typed.
 var _nbSyncT=null;
@@ -6626,16 +6652,39 @@ function plateConditionCounts(e){
     else if(id.indexOf('a:')===0||id==='ht'||id==='acceptor'){ c.acceptor++; c.transfected++; }
     else if(id==='mock'){ c.mock++; c.transfected++; }
     else if(id==='untr'){ c.untr++; }
+    // The biosensor plate is one plasmid in every well, so its wells are named for what they are
+    // dosed with or left out of rather than for the DNA: a dose or vehicle well, a well without the
+    // HaloTag ligand, a well without substrate. All of them are transfected; the middle one is the
+    // − ligand suspension. Read as nothing, a 96-well biosensor plate fed no calculator at all.
+    else if(id==='dose'||id==='dmso'||id==='noht'||id==='nosub'){ c.transfected++; if(id==='noht'&&!w.noLig) c.noLig++; if(id==='nosub'&&!w.noSub) c.noSub++; }
   }); });
   return c;
 }
+// The inputs the plate answers: how many wells an addition goes into. A step that says "spike into all
+// 84 wells" follows the map as you paint it, until you type over the number (b.calc.own) or the step
+// is ticked (what was pipetted is what the step says). The plan moves with it, so following the map
+// is not a deviation from the plan — the map IS the plan.
+var PLATE_FED={spike:['nWells'], rtxmix:['nWells']};
+function plateDosedWells(e,any){ var n=0;
+  expPlates(e).forEach(function(p){ Object.keys(p.wells||{}).forEach(function(k){ var w=p.wells[k]; if(w&&w.typeId&&w.typeId!=='blank'&&(any||w.conc)) n++; }); });
+  return n; }
+// How many wells this block's addition goes into, counted over every plate of the experiment: all of
+// them for a spike, the dosed ones for a compound series, the transfected ones for a transfection
+// mix. null when the plate cannot say (no wells, or nothing of the kind on it).
+function plateWellsFor(e,b){ var k=b&&b.calc&&b.calc.kind; if(!PLATE_FED[k]||!e) return null;
+  var c=plateConditionCounts(e); if(!c||!c.total) return null; var n=null;
+  if(k==='rtxmix') n=c.transfected;
+  else if(k==='spike') n=plateDosedWells(e,!(b.calc.inputs&&b.calc.inputs.series));   // a blank well holds no cells and takes nothing
+  return n>0?n:null; }
+// A number typed over the plan is the number that run used: either the box said so (own) or it no
+// longer equals what the plan last planted (the same test the setup's own values pass).
+function plateFedOwn(b,k){ var I=b.calc.inputs||{};
+  return !!(b.calc.own&&b.calc.own[k])||!!(b.calcSeed&&b.calcSeed[k]!==undefined&&String(b.calcSeed[k])!==String(I[k])); }
+function _plateFedSet(b,k,n){ var I=b.calc.inputs; if(+I[k]===n) return false;
+  if(b.calcSeed&&b.calcSeed[k]!==undefined&&String(b.calcSeed[k])===String(I[k])) b.calcSeed[k]=n;
+  I[k]=n; return true; }
 function syncPlateToCalcs(e){
   var c=plateConditionCounts(e); if(!c||!c.total) return null;
-  // A plate with no recognisable transfected well is not evidence that there are none — it is a
-  // plate this function cannot read. Writing its zeros into the calculators is how a NanoBRET
-  // came to report six deviations against itself, every count struck through and replaced by 0,
-  // for a plate that plainly had 64 wells on it.
-  if(!c.transfected) return null;
   var hit=[];
   (e.blocks||[]).forEach(function(b){
     var I=b.calc&&b.calc.inputs; if(!I) return;
@@ -6648,13 +6697,27 @@ function syncPlateToCalcs(e){
       // and it could only ever run in the one-donor-one-ratio case anyway.
       return;
     } else if(b.calc.kind==='nbsusp'){
+      // A plate with no recognisable transfected well is not evidence that there are none — it is a
+      // plate this function cannot read. Writing its zeros into the calculators is how a NanoBRET
+      // came to report six deviations against itself, every count struck through and replaced by 0,
+      // for a plate that plainly had 64 wells on it.
+      if(!c.transfected) return;
       // A well with no ligand is still a transfected well: it belongs to the − ligand
       // suspension, not to a different DNA condition.
       // An untransfected well holds cells like any other — it is the control for what the
       // transfection itself does — so it takes a suspension too. Counting only the transfected
       // wells left it out of both.
       var plus=Math.max(0,(c.transfected+c.untr)-c.noLig), minus=c.noLig;
-      if(I.nPlus!==plus||I.nMinus!==minus){ I.nPlus=plus; I.nMinus=minus; hit.push('cell suspensions'); }
+      if(I.nPlus!==plus||I.nMinus!==minus){
+        if(b.calcSeed){ if(b.calcSeed.nPlus!==undefined&&String(b.calcSeed.nPlus)===String(I.nPlus)) b.calcSeed.nPlus=plus;
+                        if(b.calcSeed.nMinus!==undefined&&String(b.calcSeed.nMinus)===String(I.nMinus)) b.calcSeed.nMinus=minus; }
+        I.nPlus=plus; I.nMinus=minus; hit.push('cell suspensions'); }
+    } else if(PLATE_FED[b.calc.kind]){
+      if(b.done) return;
+      PLATE_FED[b.calc.kind].forEach(function(k){
+        if(plateFedOwn(b,k)) return;
+        var n=plateWellsFor(e,b); if(n==null) return;
+        if(_plateFedSet(b,k,n)) hit.push(b.calc.kind==='rtxmix'?'transfection mix':String(I.name||b.title||'a step').replace(/\s+/g,' ').slice(0,30)); });
     }
   });
   return hit.length?hit:null;
@@ -6716,7 +6779,7 @@ function platePersist(key){ var o=_plateOwner(key); if(!o) return;
   // The map and the mix table are one thing seen twice, so the table moves with the map — while
   // the editor is still open, not when it is closed.
   refreshCalcRecipes(o.exp);
-  if(changed) toast('Well counts from the plate → '+changed.join(' and '));
+  if(changed) toast('Well counts from the plate → '+(changed.length>3?changed.slice(0,3).join(', ')+' and '+(changed.length-3)+' more':changed.join(', ')));
   else if(setupFrom) toast('Setup follows the plate → '+setupFrom.join(', ').toLowerCase());
   return changed; }
 function addPlateTo(key,fmt){ var o=_plateOwner(key); if(!o) return;
@@ -7450,6 +7513,8 @@ function exportPlateCSV(key){ var p=plateOf(key); if(!p) return;
 // Compact, read-only card shown inline in the experiment / step / notebook.
 // Preview well size — big formats get room for the text, dense ones stay a compact overview.
 var PLATE_PREV_WPX={'6':56,'12':44,'24':34,'48':26,'96':21,'384':12};
+// The most a well grows to when the card is wide: the same for every plate of a format.
+var PLATE_CARD_WPX_MAX={'6':120,'12':96,'24':72,'48':60,'96':56,'384':30};
 // Column headers on a dense plate. At a 21px pitch "12.3 nM" is 40px wide, so twelve of them
 // printed over each other ("12.3 nM4.12 nM1.37 nM"). Under 30px a header takes two columns'
 // width and the headers alternate between two rows — evens up, odds down — each one aligned to
@@ -7541,7 +7606,7 @@ function platePreviewHtml(p,key,readonly){ if(!p) return '';
       : '<div class="pp-two">'
       // A map with dose blocks has a concentration to print in every well, so its wells grow
       // with the room they are given (up to 2× the base size); a plain map keeps its fixed pitch.
-      +'<div class="pp-grid-wrap"><div class="pp-grid'+(showText?' txt':'')+(hasCL?' cl':'')+(boxes.some(function(b){ return b.dose; })?' dose':'')+'" style="--c:'+d.c+';grid-template-columns:repeat('+d.c+',minmax('+wpx+'px,1fr));max-width:'+(d.c*wpx*2+d.c)+'px">'+grid+'</div>'
+      +'<div class="pp-grid-wrap"><div class="pp-grid'+(showText?' txt':'')+(hasCL?' cl':'')+(boxes.some(function(b){ return b.dose; })?' dose':'')+'" style="--c:'+d.c+';grid-template-columns:repeat('+d.c+',minmax('+wpx+'px,1fr));max-width:'+(d.c*(PLATE_CARD_WPX_MAX[String(p.format)]||wpx*2)+d.c)+'px">'+grid+'</div>'
         +(leg?'<div class="pp-leg">'+leg+'</div>':'')+'</div>'
       +(sum?'<div class="pp-sum">'+sum+'</div>':'')
     +'</div>')+'</div>'; }
@@ -7742,7 +7807,7 @@ var PlateEngine = (function(){
 // ═══ PLATE ENGINE — END ═════════════════════════════════════════════════════════════════════
 
 var PL={key:null,sel:{},anchor:null,type:'compound',drag:false,band:null,clip:null,mode:null,memo:{},dir:null,lastDir:null,reps:2,split:null,
-  sumOpen:(function(){ try{ return localStorage.getItem('lb_pl_sum')!=='0'; }catch(e){ return true; } })(),
+  low:(function(){ try{ var v=localStorage.getItem('lb_pl_low'); return v===null?'feeds':v; }catch(e){ return 'feeds'; } })(),
   _selSig:''};
 function plCur(){ return plateOf(PL.key); }
 function plSelIds(){ return Object.keys(PL.sel); }
@@ -7777,6 +7842,7 @@ function closePlateEditor(){ var wasDs=/^ds:/.test(String(PL.key||'')); el('plat
 function plMark(label,coalesce){ var o=_plateOwner(PL.key); if(o&&o.ds){ if(!coalesce) dsUndoMark(); return; } if(o&&o.exp) undoMark(label,['experiments.'+o.exp.id],coalesce); }
 function plRender(){ var p=plCur(); if(!p) return; plRenderPlates(); plRenderGrid(); plRenderSide(); plRenderSum(); plApplySumState(); }
 function plRenderSum(){ var p=plCur(), host=el('pl-sum'); if(!p||!host) return;
+  var fd=el('pl-feeds'); if(fd) fd.innerHTML=_plFeedsHtml();
   var lg=el('pl-vals-legend'); if(lg) lg.innerHTML=plValuesLegend(p);
   host.innerHTML=plateSummaryHtml(p)||'<div class="pl-sum-empty">Nothing filled in yet — select wells and type what is in them.</div>'; }
 // The well pitch is a constant per format on a desktop. On a phone the plate is fitted to the
@@ -8494,12 +8560,38 @@ function plClearColLabels(all){ var p=plCur(); if(!p||!p.colLabels) return;
   platePersist(PL.key); plRender(); }
 // The layout list is a read of the map, not a tool for drawing it, and it grows a line per
 // condition until it is taller than the plate. Off by default, remembered per device.
-function plToggleSum(){ PL.sumOpen=!PL.sumOpen;
-  try{ localStorage.setItem('lb_pl_sum',PL.sumOpen?'1':'0'); }catch(e){}
+// The area under the plate has two readings of the same map: what it feeds (the numbers in the
+// experiment's steps this layout decides) and the layout list (ranges -> what is in them). One is
+// open, or neither; the choice is remembered.
+function _plLow(){ var o=_plExp(); var m=PL.low==='list'||PL.low==='feeds'?PL.low:''; if(m==='feeds'&&!o) m='list'; return m; }
+function plSetLow(m){ PL.low=(_plLow()===m)?'':m;
+  try{ localStorage.setItem('lb_pl_low',PL.low); }catch(e){}
   plApplySumState(); }
-function plApplySumState(){ var w=el('pl-sumwrap'), b=el('pl-sumtog'); if(!w) return;
-  w.classList.toggle('on',!!PL.sumOpen);
-  if(b){ b.classList.toggle('on',!!PL.sumOpen); b.setAttribute('aria-expanded',PL.sumOpen?'true':'false'); } }
+function plApplySumState(){ var w=el('pl-sumwrap'); if(!w) return; var low=_plLow(), o=_plExp();
+  w.classList.toggle('on',!!low); w.setAttribute('data-low',low);
+  [['pl-feedtog','feeds'],['pl-sumtog','list']].forEach(function(x){ var b=el(x[0]); if(!b) return;
+    b.classList.toggle('on',low===x[1]); b.setAttribute('aria-expanded',low===x[1]?'true':'false');
+    if(x[1]==='feeds') b.hidden=!o; }); }
+// What this layout decides in the experiment: every step whose numbers come from the map, with the
+// number it now has. It is the answer to "does the experiment follow the plate?" — painted live.
+function _plFeedsHtml(){ var e=_plExp(); if(!e) return '';
+  var L=expPlateList(e), wells=0; L.forEach(function(x){ wells+=plateCount(x.p); });
+  var rows=[];
+  (e.blocks||[]).forEach(function(b){ if(!b.calc||!b.calc.inputs) return; var k=b.calc.kind;
+    if(['nbtx','nbsusp','rtxmix','spike'].indexOf(k)<0) return;
+    var v=calcValuesOf(b,e); if(!v) return;
+    var line=(k==='nbtx')?(v.wells+' · '+v.nMixes)
+      :(k==='nbsusp')?(v.cellsTotal+' · '+v.volTotal)
+      :(k==='rtxmix')?(v.nWells+' · '+v.total+' of mix')
+      :(v.nWells+' · '+v.totalUL+' to make');
+    var st='<span class="pl-fd-s ok">follows the map</span>';
+    if(PLATE_FED[k]){ var n=plateWellsFor(e,b);
+      if(b.done) st='<span class="pl-fd-s">done — as it was</span>';
+      else if(n!=null&&plateFedOwn(b,'nWells')) st='<span class="pl-fd-s own">typed '+esc(String(b.calc.inputs.nWells))+' · map says '+n+' <button class="ci-relink" onclick="calcRelinkPlate(\''+b.id+'\',\'nWells\')">use the map</button></span>';
+      else if(n==null) st='<span class="pl-fd-s">nothing on the map for it yet</span>'; }
+    rows.push('<tr><td class="pl-fd-t" title="'+esc(b.title||'')+'">'+esc(String(b.title||'step').replace(/\s+/g,' '))+'</td><td class="pl-fd-v">'+esc(line)+'</td><td>'+st+'</td></tr>'); });
+  return '<div class="pl-fd-h"><b>'+wells+' well'+(wells===1?'':'s')+'</b> on '+L.length+' plate'+(L.length===1?'':'s')+(rows.length?' — the steps below take their numbers from the map and follow it as you paint, until you type over one.':'. No step of this experiment takes its numbers from the plate.')+'</div>'
+    +(rows.length?'<table class="pl-fd">'+rows.join('')+'</table>':''); }
 function plSetColTitle(v){ var p=plCur(); if(!p) return; plMark('Column units',true); p.colTitle=String(v||''); platePersist(PL.key); plRender(); }
 function plSetColLabel(v){ var p=plCur(); if(!p) return; var cols={};
   plSelIds().forEach(function(id){ var x=wellRC(id); if(x) cols[x.c]=1; });

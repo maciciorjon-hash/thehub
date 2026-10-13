@@ -159,6 +159,12 @@
 //       room, the plate none the same height on every step, with or without a selection, so the dialog does not move; the steps are Plate ·
 //                            Plasmids · Contents · Compounds · Data (Dilution and Label are not tabs of their own: 'dil' and 'cpd' are Compounds,
 //                            'label' is Contents); the compound names are all visible, not in a short scrolling list.
+//   B38 plates on a page    The plate cards of one experiment are one size: a plate with doses and one without are drawn at the same well
+//                            pitch, and each fills its card up to the cap (it was 41 px and 21 px, left-aligned in a card three times as wide).
+//   B39 the layout feeds    The wells an addition goes into are the plate's to say: a spike over every well and one over the dosed wells (and a
+//       the steps            transfection mix over the transfected ones) follow the map as it is painted, over every plate; the plan moves with
+//                            them (following the map is not a deviation), a number typed over stays, a ticked step is not rewritten, "use the map"
+//                            gives it back; and the editor says so under the plate (What it feeds). (digitonin 192 wells on a plate of 84)
 //   B36 plates, plasmids,   An experiment can have more than one plate (+ Add plate: same conditions, its own title, counted with the
 //       steps                first by the mix table, shown, exported); the plate editor's tabs are numbered steps (Plate · Plasmids ·
 //                            Contents · Dilution · Compounds · Label · Data) that only Back / Next or a click move — not a selection,
@@ -2021,6 +2027,76 @@ async function suite(opts) {
       const nm = document.querySelector('#pl-side .pl-names');
       if (nm && nm.scrollHeight > nm.clientHeight + 1) bad('B37', 'names', 'the compound names scroll inside a ' + nm.clientHeight + ' px box (' + nm.scrollHeight + ' px of names)');
       closePlateEditor();
+    });
+
+    // B38 — the plate cards of an experiment are one size, and they fill the card instead of leaving it empty.
+    if (run('B38')) await guard('B38', 'plate cards', async () => {
+      const P = (LB.data.projects || []).find(p => (p.sections || []).length);
+      const key = 'NB_SPARK_SCREEN96', tpl = LB.data.presets[key];
+      if (!tpl) { bad('B38', 'setup', 'the SPARK screen preset is not in the notebook'); return; }
+      const su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup)));
+      const before = new Set(Object.keys(LB.data.experiments));
+      buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-10-01', type: 'NB', title: 'INV cards', code: 'INV_B38', setup: su, plate: true });
+      const e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); clean.push(e); tick('B38');
+      // plate 2: the same conditions, painted without a single concentration
+      addMorePlate(e.id, false); closePlateEditor();
+      const L = expPlateList(e), p1 = L[0].p, p2 = L[1].p;
+      p2.wells = JSON.parse(JSON.stringify(p1.wells)); Object.keys(p2.wells).forEach(k => { delete p2.wells[k].conc; delete p2.wells[k].sid; });
+      p2.colLabels = {}; save(); openExp(e.id); await sleep(150);
+      const seen = new Set(), cards = [...document.querySelectorAll('.blk-plate[data-plate]')].filter(c => { const k = c.getAttribute('data-plate'); if (k.indexOf('exp:' + e.id) !== 0 || seen.has(k) || !c.querySelector('.pp-grid')) return false; seen.add(k); return true; });
+      if (cards.length !== 2) { bad('B38', 'cards', 'expected two plate cards, found ' + cards.length); return; }
+      const wells = cards.map(c => Math.round(c.querySelector('.pp-w').getBoundingClientRect().width));
+      if (Math.abs(wells[0] - wells[1]) > 1) bad('B38', 'same size', 'two plates of one experiment are drawn at ' + wells.join(' px and ') + ' px a well');
+      cards.forEach((c, i) => {
+        const g = c.querySelector('.pp-grid').getBoundingClientRect(), box = c.getBoundingClientRect(), want = Math.min(box.width, 12 * PLATE_CARD_WPX_MAX['96'] + 12);
+        if (g.width < want * 0.85) bad('B38', 'fills ' + (i + 1), 'plate ' + (i + 1) + ' is ' + Math.round(g.width) + ' px wide in a ' + Math.round(box.width) + ' px card (it should reach about ' + Math.round(want) + ')');
+        const hd = c.querySelector('.cc-hd'), chip = hd.querySelector('.cc-src').getBoundingClientRect(), title = hd.querySelector('.cc-tag').getBoundingClientRect();
+        if (chip.left - title.right > 24) bad('B38', 'header ' + (i + 1), 'the "96-well" chip is ' + Math.round(chip.left - title.right) + ' px from the plate title');
+      });
+    });
+
+    // B39 — the steps follow the layout: the wells an addition goes into come from the map, never over a typed number or a ticked step.
+    if (run('B39')) await guard('B39', 'layout feeds the steps', async () => {
+      const P = (LB.data.projects || []).find(p => (p.sections || []).length);
+      const key = 'NB_BIO_RTX96', tpl = LB.data.presets[key];
+      if (!tpl) { bad('B39', 'setup', 'the biosensor preset is not in the notebook'); return; }
+      const su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup)));
+      const before = new Set(Object.keys(LB.data.experiments));
+      buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-10-01', type: 'NB', title: 'INV feeds', code: 'INV_B39', setup: su, plate: true });
+      const e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); clean.push(e); openExp(e.id); tick('B39');
+      const spikes = (e.blocks || []).filter(b => b.calc && b.calc.kind === 'spike'), rtx = (e.blocks || []).find(b => b.calc && b.calc.kind === 'rtxmix');
+      const all = spikes.find(b => !b.calc.inputs.series), dosed = spikes.find(b => b.calc.inputs.series);
+      if (!all || !dosed || !rtx) { bad('B39', 'blocks', 'the biosensor run has no transfection mix, spike over every well and spike over the dosed wells'); return; }
+      all.calc.inputs.nWells = 192; all.calcSeed.nWells = 192;   // what a preset's default says, which is not the plate
+      rtx.calc.inputs.nWells = 200; rtx.calcSeed.nWells = 200;
+      openPlateEditor('exp:' + e.id); await sleep(60);
+      const tag = n => 'devs=' + expDeviations(e).filter(d => /^(nWells|nPlus|nMinus)$/.test(d.key)).map(d => d.key + ':' + d.from + '→' + d.to).join(',') + ' ' + n;
+      PL.sel = { A1: 1 }; plEraseSel(); await sleep(30);   // any painting makes the map the plan
+      const used = () => plateDosedWells(e, true), dosedN = () => plateDosedWells(e, false);
+      if (+all.calc.inputs.nWells !== used()) bad('B39', 'all wells', 'the spike over every well says ' + all.calc.inputs.nWells + ' and the map has ' + used());
+      const transfected = () => plateConditionCounts(e).transfected;
+      if (+rtx.calc.inputs.nWells !== transfected()) bad('B39', 'transfection mix', 'the master mix says ' + rtx.calc.inputs.nWells + ' wells and the map has ' + transfected() + ' transfected');
+      if (+dosed.calc.inputs.nWells !== dosedN()) bad('B39', 'dosed wells', 'the compound addition says ' + dosed.calc.inputs.nWells + ' and the map has ' + dosedN() + ' dosed wells');
+      if (expDeviations(e).some(d => /^(nWells|nPlus|nMinus)$/.test(d.key))) bad('B39', 'not a deviation', 'following the map is reported as a deviation from the plan: ' + tag(''));
+      const feeds = document.getElementById('pl-feeds');
+      if (!feeds || !/follows the map/.test(feeds.textContent) || !/ wells? on 1 plate/.test(feeds.textContent)) bad('B39', 'feeds panel', 'the editor does not say what the layout feeds: ' + (feeds && feeds.textContent.slice(0, 80)));
+      // a second plate counts too
+      addMorePlate(e.id, true); await sleep(40);
+      const p2 = expPlateList(e)[1].p, w0 = used();
+      p2.wells = { A1: { typeId: expPlateList(e)[0].p.types[0].id, conc: '1 µM' }, A2: { typeId: expPlateList(e)[0].p.types[0].id, conc: '1 µM' } }; platePersist('exp:' + e.id + ':2');
+      if (+all.calc.inputs.nWells !== w0 + 2 || used() !== w0 + 2) bad('B39', 'second plate', 'two wells on plate 2 gave ' + all.calc.inputs.nWells + ', expected ' + (w0 + 2));
+      // typed over: stays
+      all.calc.inputs.nWells = 50; all.calc.own = Object.assign({}, all.calc.own, { nWells: 1 });
+      PL.sel = { B1: 1 }; plSwitchPlate('exp:' + e.id); PL.sel = { H1: 1, H2: 1 }; plEraseSel(); await sleep(30);
+      if (+all.calc.inputs.nWells !== 50) bad('B39', 'typed', 'a number typed over the map was rewritten to ' + all.calc.inputs.nWells);
+      // a ticked step: what was pipetted is what it says
+      dosed.done = true; const keep = dosed.calc.inputs.nWells; PL.sel = { H3: 1, H4: 1 }; plEraseSel(); await sleep(30);
+      if (+dosed.calc.inputs.nWells !== +keep) bad('B39', 'done', 'a ticked step had its number rewritten: ' + keep + ' → ' + dosed.calc.inputs.nWells);
+      dosed.done = false;
+      // and the way back
+      closePlateEditor(); openExp(e.id); await sleep(60);
+      calcRelinkPlate(all.id, 'nWells');
+      if (+all.calc.inputs.nWells !== used() || (all.calc.own && all.calc.own.nWells)) bad('B39', 'relink', 'use the map left ' + all.calc.inputs.nWells + ' (map ' + used() + ', own ' + JSON.stringify(all.calc.own) + ')');
     });
 
     // B28 — a date typed into Repeat is a real day or it is refused.
