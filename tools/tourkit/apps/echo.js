@@ -190,6 +190,17 @@
         steps: [{ sel: '#props-panel', t: 'Structures and properties', place: 'top', miss: 'Add a SMILES file on Setup › Files and run the analysis to fill this tab.',
           b: 'One row per compound with its structure, molecular weight, logP, polar surface area and rule-of-five violations. Sort by any column.' }] },
 
+      { id: 'graph', label: 'Graph', sel: tabSel('graph'), go: tabGo('graph'), needs: 'data',
+        lead: 'The figure, made like a Prism graph: grouped **bars** when a compound has fewer than four concentrations, **curves** when it has more — both drawn from the readings in Results.',
+        do: ['Click anything on the chart to edit it. **Drag** the titles and the legend; they **snap** to each other, to the plot and to the middle of the figure (hold **Alt** to move freely, **arrow keys** nudge, ⌘Z undoes).',
+          '**Data** lists every replicate: click one to **leave it out** of the figure — the mean, the error bar and the fit are made again without it. (This changes the figure only, not Results.)',
+          '**Colours** has palettes (Prism, colour-blind safe, pastel, one-hue, greys…) and a colour for each compound; **Style** has the error bars (SD, SEM, 95 % CI, range), bar width and gaps, markers and the legend; **Axes** has the ranges, ticks, labels and the reference line; **Page** the size of the figure.',
+          'Export a **PNG at 300, 600 or 1200 dpi** (the file is tagged with its dpi), a **vector PDF**, or an SVG.'],
+        ref: [['Auto · Bars · Curves', 'Auto chooses from the data. Force bars or curves with the switch above the chart.'],
+          ['Saved style', 'The palette, sizes and options are remembered. What you did to one set of data — omitted replicates, colours, moved titles — is not carried to the next.']],
+        steps: [{ deep: true, sel: '#eg-root', t: 'The figure', place: 'top', miss: MISS,
+          b: 'Click a bar, a curve, a title or the legend to edit it. The panel on the right has the details. **PNG** and **PDF** export what you see.' }] },
+
       { id: 'log', label: 'Console', sel: tabSel('log'), go: tabGo('log'), full: false,
         lead: 'Everything the analysis did, line by line with the time: files read, wells left unread, control wells left out, settings that fell back to a default, warnings. Open it when a number surprises you.',
         do: ['Read from the top: files, then each plate, then the fits.',

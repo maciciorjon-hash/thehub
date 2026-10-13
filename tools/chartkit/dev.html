@@ -1,0 +1,23 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ChartKit — test bench</title>
+<link rel="stylesheet" href="chartkit.css">
+<style>
+:root{--bg:#0f1117;--surface:#171a23;--surface3:#232837;--border:rgba(255,255,255,.08);--border2:rgba(255,255,255,.14);--text:#e8eaf2;--text2:#aab0c4;--text3:#7a8196;--accent:#6b8ef5;--accent-dim:rgba(107,142,245,.18);--on-accent:#0b1020;--sans:Inter,system-ui,sans-serif;--mono:ui-monospace,monospace;--r-1:4px;--r-2:8px;--fs-2:11px;--fs-3:12.5px;--fs-4:14px}
+body{margin:0;padding:24px;background:var(--bg);color:var(--text);font-family:var(--sans)}
+.btn{border:1px solid var(--border2);background:var(--surface);color:var(--text);border-radius:var(--r-1);padding:0 12px;font-family:var(--sans);font-size:var(--fs-3);cursor:pointer}.btn-primary{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+.seg{display:inline-flex;border:1px solid var(--border2);border-radius:var(--r-1);overflow:hidden}.seg button{border:none;background:var(--surface);color:var(--text2);padding:0 10px;font-family:var(--sans);font-size:var(--fs-3);cursor:pointer}.seg button.active{background:var(--accent);color:var(--on-accent)}
+.lm-link{border:none;background:none;color:var(--accent);cursor:pointer;font-family:var(--sans);font-size:var(--fs-3);padding:0}
+</style></head><body><div id="root"></div>
+<script src="ck-core.js"></script><script src="ck-export.js"></script><script src="ck-ui.js"></script>
+<script>
+// The figure the request came with: nine compounds at 100 / 33 / 11 µM, three replicates each, read as BRET relative to DMSO.
+function demoDoc(kind){
+  var names = ['DDS-00045053','DDS-00050887','DDS-00062672','DDS-00062834','DDS-00063898','DDS-00064545','DDS-00064567','DDS-00064569','DDS-00064579'];
+  var seed = 7; function rnd(){ seed = (seed * 16807) % 2147483647; return seed / 2147483647; }
+  var concs = kind === 'xy' ? [10000, 3333, 1111, 370, 123, 41, 13.7, 4.6] : [100, 33, 11];
+  return { title: ['Compound screen @1h', 'Permeabilized', 'NB20260929'], xTitle: '[compound] (µM)', yTitle: 'BRET relative to DMSO', refLine: { y: 1 },
+    items: names.slice(0, kind === 'xy' ? 3 : 9).map(function(nm, i){ return { id: 'c' + i, name: nm, points: concs.map(function(c, j){ var m = kind === 'xy' ? 1 - 0.95 / (1 + Math.pow(c / (300 * (i + 1)), -1.1)) : 0.95 + rnd() * 0.04; return { x: c, label: String(c), reps: [0, 1, 2].map(function(r){ return { id: 'c' + i + ':' + j + ':' + r, v: m + (rnd() - 0.5) * (kind === 'xy' ? 0.08 : 0.05) }; }) }; }),
+      fit: kind === 'xy' ? { fn: function(x){ return 1 - 0.95 / (1 + Math.pow(x / (300 * (i + 1)), -1.1)); } } : null }; }) };
+}
+var kind = new URLSearchParams(location.search).get('kind') || 'bars';
+window.kit = ChartKit.mount(document.getElementById('root'), { key: 'dev-' + kind, doc: function(){ return demoDoc(kind); }, filename: function(){ return 'bench'; } });
+</script></body></html>

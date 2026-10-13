@@ -352,6 +352,36 @@ if (run('B10')) await guard('B10', async () => {
   await ctx.close();
 });
 
+if (run('B11')) await guard('B11', async () => {
+  const { ctx, pg } = await open('/apps/beacon/beacon.html');
+  const r = await pg.evaluate(() => {
+    const out = {};
+    loadTestData('gain'); state.plates = state.plates.slice(0, 1);
+    const full = bGraphDoc(); out.fullKind = ChartKitCore.autoKind(full, ChartKitCore.defaults()); out.n = full.items.length; out.pts = full.items[0].points.length;
+    // the x values are written in the unit the title names (top 10 µM → "10"), not in nM
+    out.x0 = full.items[0].points[0].x; out.label0 = full.items[0].points[0].label; out.xt = full.xTitle;
+    // the fit is the same curve the Results tab fits (EC50 in the same place): half-maximal in the doc's own unit
+    const f = bFits().filter(x => x.name === 'Compound A')[0]; out.ec50nM = f.fit && f.ec50;
+    const it = full.items[0], fn = it.fit.fn, P = f.fit.params; out.fnAtEc50 = fn(f.ec50 / 1000); out.fnTop = fn(10);
+    // relative to the vehicle: the vehicle's own mean is 1
+    const vehVals = []; bPl().map && Object.keys(bPl().map).forEach(p => { if (bPl().map[p].k === 'veh') vehVals.push(bVal(bPl(), p, true)); }); out.vehMean = vehVals.reduce((a, b) => a + b, 0) / vehVals.length;
+    BG_Y = 'corr'; const raw = bGraphDoc(); BG_Y = 'rel'; out.ratio = raw.items[0].points[0].reps[0].v / full.items[0].points[0].reps[0].v; out.yRaw = raw.yTitle; out.yRel = full.yTitle;
+    // three concentrations a compound: bars
+    const pl = bPl(); Object.keys(pl.map).forEach(p => { const q = PlateEngine.rc(p); if (pl.map[p].k === 'cpd' && q.c > 4) delete pl.map[p]; }); state.rev++;
+    out.threeKind = ChartKitCore.autoKind(bGraphDoc(), ChartKitCore.defaults());
+    // the ids are the wells, so an omitted replicate is a well: it leaves the mean
+    const d3 = bGraphDoc(), rep = d3.items[0].points[0].reps; const spec = ChartKitCore.withDefaults(null); const m0 = ChartKitCore.model(d3, spec)[0].pts[0].st.mean; spec.omit[rep[0].id] = true; const m1 = ChartKitCore.model(d3, spec)[0].pts[0].st.mean;
+    out.omit = { ids: rep.map(r => r.id).join(), moved: Math.abs(m0 - m1) > 1e-9, ok: /^\d+:[A-P]\d+$/.test(rep[0].id) };
+    return out;
+  });
+  check('B11', 'a compound with 10 concentrations is a curve, with 3 a bar chart (the editor decides from the data)', r.fullKind === 'xy' && r.threeKind === 'bars' && r.n === 4 && r.pts === 10, r);
+  check('B11', 'the x values are in the unit the axis title names (10 µM is 10, not 10 000)', r.x0 === 10 && r.label0 === '10' && /µM/.test(r.xt), { x0: r.x0, label: r.label0, xt: r.xt });
+  check('B11', 'the curve drawn is the curve Results fits: at the EC50 (in the chart\'s unit) it is half way, and at the top dose it is near the top', r.ec50nM > 0 && r.fnAtEc50 > 1 && r.fnAtEc50 < 2.5 && r.fnTop > r.fnAtEc50, { ec50: r.ec50nM, atEc50: r.fnAtEc50, top: r.fnTop });
+  check('B11', 'relative to the vehicle divides by the vehicle\'s mean (corrected mBU / vehicle mean) and is labelled so', Math.abs(r.ratio / r.vehMean - 1) < 1e-6 && /vehicle/.test(r.yRel) && /mBU/.test(r.yRaw), { ratio: r.ratio, vehMean: r.vehMean });
+  check('B11', 'a replicate is a well (plate:well), so omitting it takes that well out of the mean', r.omit.ok && r.omit.moved, r.omit);
+  await ctx.close();
+});
+
 if (run('D2')) await guard('D2', async () => {
   const { ctx, pg } = await open('/apps/dora/dora.html');
   const r = await pg.evaluate(async () => {
