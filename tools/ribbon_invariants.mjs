@@ -2253,6 +2253,25 @@ async function rb37() {
     if (fresh !== after) bad.push(id);
   }
   check('RB37', 'a style gives the same look whatever was applied before it (they used to stack)', !bad.length, bad);
+  // styles clicked faster than a surface is worked out: the figure is what the toolbar says. 3Dmol hands each addSurface in flight the
+  // same free id, and the stale one's removeSurface took the live surface away: Surface lit, a cartoon on screen.
+  const racy = [];
+  for (const seq of [['surface', 'paper', 'hydro'], ['surface', 'hydro', 'surface', 'hydro'], ['hydro', 'ink', 'surface'], ['surface', 'night', 'paper'], ['paper', 'surface', 'hydro', 'cover', 'surface']]) {
+    await E(s => { s.forEach(id => applyPreset(id)); }, seq);
+    await E(async () => { const t0 = Date.now(); while (((typeof _surfBusy !== 'undefined' && _surfBusy) || (state.style === 'surface' && !currentSurfs.length)) && Date.now() - t0 < 8000) await new Promise(r => setTimeout(r, 60)); await new Promise(r => setTimeout(r, 250)); });
+    const r = await E(() => ({ style: state.style, cur: currentSurfs.length, live: Object.keys(viewer.surfaces || {}).length }));
+    const want = r.style === 'surface' ? 1 : 0;
+    if (r.cur !== want || r.live !== want) racy.push({ seq: seq.join('>'), ...r });
+  }
+  check('RB37', 'styles applied faster than a surface is computed leave one live surface when the last is a surface style, none when it is not', !racy.length, racy);
+  // the colour key's two ends never touch ("9 lowhigh 42"), and it stays inside the viewer
+  const keys2 = await E(async () => { const o = []; for (const m of ['hydro', 'elec', 'conf']) { state.color = m; $('topColor').value = m; updateColorOrOpacity(); await new Promise(r => setTimeout(r, 150)); const e = $('legend'); if (!e.classList.contains('show')) continue; const q = [...e.querySelectorAll('.lg-ends span')].map(s => s.getBoundingClientRect()), v = $('viewport').getBoundingClientRect(), b = e.getBoundingClientRect(); o.push({ m, gap: q.length === 2 ? Math.round(q[1].left - q[0].right) : 99, inside: b.left >= v.left - 1 && b.right <= v.right + 1 }); } return o; });
+  check('RB37', 'the colour key (hydrophobicity, charge, B-factor) keeps a gap of at least 8 px between its two ends and stays inside the viewer', keys2.length >= 2 && keys2.every(k => k.gap >= 8 && k.inside), keys2);
+  // the command line in a narrow viewer: neither the placeholder nor the message is cut with an ellipsis
+  await pg.setViewportSize({ width: 820, height: 1000 }); await sleep(500);
+  const bar = await E(async () => { runCommand('select within 5 of ligand', { noHistory: true }); await new Promise(r => setTimeout(r, 200)); const i = $('cmdInput'), o = $('cmdOut'), n = $('cmdInsp'), c = document.createElement('canvas').getContext('2d'), cs = getComputedStyle(i); c.font = cs.fontStyle + ' ' + cs.fontWeight + ' ' + cs.fontSize + ' ' + cs.fontFamily; return { ph: Math.round(c.measureText(i.placeholder.replace(/\s+/g, ' ')).width), room: i.clientWidth - 12, outClipped: !o.hidden && o.scrollWidth > o.clientWidth + 1, inspClipped: !n.hidden && n.scrollWidth > n.clientWidth + 1 }; });
+  await pg.setViewportSize({ width: 1280, height: 800 }); await sleep(300);
+  check('RB37', 'in a narrow viewer the command line shows a placeholder that fits and a message that is not cut off', bar.ph <= bar.room && !bar.outClipped && !bar.inspClipped, bar);
   // pastel first: the default figure is pastel
   await E(() => { applyPreset('paper'); });
   const paper = await E(() => ({ pal: state.palette, light: state.lighting, ortho: state.projection, bg: state.bg, mode: state.color }));

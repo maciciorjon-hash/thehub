@@ -505,9 +505,13 @@ function nearestLigandDist(a){
   if(!best||isLigandAtom(a)) return null; var d=Math.sqrt(bd); return d<=12?{d:d,l:best.l}:null;
 }
 function isLigandAtom(a){ return _isLigAtom(a); }
+// The placeholder is the examples; where the field is too narrow to show them it says only how to ask for help (a cut sentence reads as broken).
+var _PH_LONG='Type a command — color ligand yellow · select within 5 of ligand · help        ( / )', _PH_SHORT='Type a command · help  ( / )';
+function cmdPlaceholder(){ var inp=$('cmdInput'), f=inp&&inp.parentNode; if(!f||!f.clientWidth) return; var ph=f.clientWidth>=520?_PH_LONG:_PH_SHORT; if(inp.placeholder!==ph) inp.placeholder=ph; }
 function cmdWire(){
   cmdLoad();
   var inp=$('cmdInput'), pop=$('cmdPop');
+  cmdPlaceholder(); if(window.ResizeObserver) new ResizeObserver(cmdPlaceholder).observe($('cmdBar')); else window.addEventListener('resize',cmdPlaceholder);
   inp.addEventListener('input',function(){ CMD.si=-1; CMD.hi=-1; CMD.helpOpen=false; cmdRefresh(); });
   inp.addEventListener('focus',function(){ document.body.classList.add('cmd-focus'); cmdRefresh(); });
   inp.addEventListener('blur',function(){ document.body.classList.remove('cmd-focus'); setTimeout(function(){ if(document.activeElement!==inp){ pop.hidden=true; $('cmdGhost').innerHTML=''; } },120); });

@@ -350,6 +350,7 @@ body.cmd-focus .cmd-prompt{color:var(--accent);}
 .cmd-out.ok{color:var(--text);background:color-mix(in srgb,#22c55e 14%,var(--surface));}
 .cmd-out.err{color:var(--danger);background:color-mix(in srgb,var(--danger) 10%,var(--surface));}
 .cmd-insp{flex:0 1 auto;min-width:0;max-width:46%;font:500 var(--fs-2)/1.2 var(--mono);color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+@media(max-width:1100px){ .cmd-bar{flex-wrap:wrap;padding-top:4px;padding-bottom:4px;row-gap:2px;} .cmd-out,.cmd-insp{flex:1 1 100%;max-width:none;order:3;} .cmd-out{white-space:normal;border-radius:var(--r-2);} }   /* a narrow viewer: the message and the inspector get a line of their own instead of an ellipsis */
 .cmd-pop{position:absolute;left:8px;bottom:calc(100% + 6px);z-index:60;width:min(640px,calc(100% - 16px));max-height:min(420px,60vh);overflow:auto;background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-3);box-shadow:var(--shadow-lg);padding:4px;}
 .cmd-pop[hidden]{display:none;}
 .cp-it{display:grid;grid-template-columns:50px minmax(0,auto) minmax(0,1fr);align-items:center;gap:10px;min-height:32px;padding:0 8px;border-radius:var(--r-2);cursor:pointer;}
@@ -438,13 +439,13 @@ body.cmd-focus .cmd-prompt{color:var(--accent);}
   display:none;align-items:center;justify-content:center;font-size:var(--fs-5);color:var(--accent);font-weight:600;pointer-events:none;}
 #drop-veil.show{display:flex;}
 #legend{position:absolute;right:14px;bottom:14px;z-index:5;background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-2);
-  padding:8px 10px;box-shadow:var(--shadow-xs);font-size:var(--fs-2);color:var(--text2);display:none;flex-direction:column;gap:4px;max-width:210px;}
+  padding:8px 10px;box-shadow:var(--shadow-xs);font-size:var(--fs-2);color:var(--text2);display:none;flex-direction:column;gap:4px;min-width:150px;max-width:min(260px,calc(100% - 28px));}
 #legend.show{display:flex;}
 #legend .lg-t{font-weight:600;color:var(--text);}
 #legend .lg-r{display:flex;align-items:center;gap:8px;}
 #legend .lg-sw{width:12px;height:12px;border-radius:3px;flex:none;}
 #legend .lg-bar{height:10px;border-radius:5px;border:1px solid var(--border);}
-#legend .lg-ends{display:flex;justify-content:space-between;font-family:var(--mono);font-size:var(--fs-1);color:var(--text3);}
+#legend .lg-ends{display:flex;justify-content:space-between;gap:14px;white-space:nowrap;font-family:var(--mono);font-size:var(--fs-1);color:var(--text3);}   /* two ends that touch read as one word ("9 lowhigh 42") */
 #frame-ctl{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:6;background:var(--surface);border:1px solid var(--border2);
   border-radius:var(--r-4);padding:4px 10px;box-shadow:var(--shadow-xs);display:none;align-items:center;gap:8px;font-size:var(--fs-2);color:var(--text2);max-width:calc(100% - 28px);}
 #frame-ctl.show{display:flex;}
@@ -1675,7 +1676,7 @@ function renderStructure(text,fmt,meta){
   }
 }
 function buildModel(text,fmt,meta,nm){
-  viewer.clear(); currentSurfs=[]; stopHover();
+  viewer.clear(); currentSurfs=[]; _surfTok++; stopHover();
   Object.keys(labelEls).forEach(removeLabelEl);
   state.chainColors={}; state.chainLabels={}; state.labelOffsets={}; state.labelAnchors={};
   state.residueLabels=[]; state.hiddenChains={}; state.off={}; state.reps=[]; state.hide=[]; state.inter=null; state.site=null; state.lys=null; state.views=[]; state.highlights=[]; state.ligColors={}; state.pockets={}; state.measures=[]; state.iface=null; _if=null; state.overlay=null; ovl=null; state.values=null; clearMeasPending(); Object.keys(measEls).forEach(removeMeasEl);
@@ -1943,15 +1944,23 @@ function rebuildStyles(){
   });
   applyOverlayStyle();   // last, so nothing drawn for this structure above reaches the second one
 }
+// One surface is worked out at a time. 3Dmol gives every addSurface the next free id when it is *called*, so two in flight share
+// id 0, and the stale one's removeSurface(0) took away the live one: the toolbar said Surface and the figure showed the
+// cartoon, whenever styles were clicked faster than a surface is computed. A call that finds one running asks for another
+// pass when it ends (with the colours, chains and projection of that moment).
+var _surfBusy=false, _surfAgain=false;
 function addSurfaces(){
   currentSurfs=[];
   var vis=visibleChains(); if(!vis.length) return;
+  if(_surfBusy){ _surfAgain=true; return; }
+  _surfBusy=true; _surfAgain=false;
   var sel={hetflag:false,model:currentModel}; if(vis.length<chainList.length) sel.chain=vis;
-  var tok=++_surfTok;
-  viewer.addSurface($3Dmol.SurfaceType.SES,{opacity:state.surfaceOpacity,colorfunc:makeColorFn()},sel).then(function(id){
-    if(tok!==_surfTok||state.style!=='surface'){ try{viewer.removeSurface(id);}catch(e){} return; }
-    currentSurfs=[{id:id}]; viewer.render();
-  });
+  var tok=++_surfTok, done=function(){ _surfBusy=false; if(_surfAgain){ _surfAgain=false; if(state.style==='surface'&&currentModel) addSurfaces(); return true; } return false; };
+  var p; try{ p=viewer.addSurface($3Dmol.SurfaceType.SES,{opacity:state.surfaceOpacity,colorfunc:makeColorFn()},sel); }catch(e){ done(); return; }
+  p.then(function(id){
+    if(tok!==_surfTok||state.style!=='surface'||_surfAgain){ try{viewer.removeSurface(id);}catch(e){} done(); return; }
+    _surfBusy=false; currentSurfs=[{id:id}]; viewer.render();
+  },function(){ done(); });
 }
 function applySurfaceMaterials(){
   var fn=makeColorFn();
@@ -5814,9 +5823,13 @@ function nearestLigandDist(a){
   if(!best||isLigandAtom(a)) return null; var d=Math.sqrt(bd); return d<=12?{d:d,l:best.l}:null;
 }
 function isLigandAtom(a){ return _isLigAtom(a); }
+// The placeholder is the examples; where the field is too narrow to show them it says only how to ask for help (a cut sentence reads as broken).
+var _PH_LONG='Type a command — color ligand yellow · select within 5 of ligand · help        ( / )', _PH_SHORT='Type a command · help  ( / )';
+function cmdPlaceholder(){ var inp=$('cmdInput'), f=inp&&inp.parentNode; if(!f||!f.clientWidth) return; var ph=f.clientWidth>=520?_PH_LONG:_PH_SHORT; if(inp.placeholder!==ph) inp.placeholder=ph; }
 function cmdWire(){
   cmdLoad();
   var inp=$('cmdInput'), pop=$('cmdPop');
+  cmdPlaceholder(); if(window.ResizeObserver) new ResizeObserver(cmdPlaceholder).observe($('cmdBar')); else window.addEventListener('resize',cmdPlaceholder);
   inp.addEventListener('input',function(){ CMD.si=-1; CMD.hi=-1; CMD.helpOpen=false; cmdRefresh(); });
   inp.addEventListener('focus',function(){ document.body.classList.add('cmd-focus'); cmdRefresh(); });
   inp.addEventListener('blur',function(){ document.body.classList.remove('cmd-focus'); setTimeout(function(){ if(document.activeElement!==inp){ pop.hidden=true; $('cmdGhost').innerHTML=''; } },120); });
