@@ -87,7 +87,9 @@ const args = Object.fromEntries(process.argv.slice(2).map(a => {
 }));
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const ONLY = args.only ? String(args.only).split(',') : null;
-const run = id => !ONLY || ONLY.includes(id);
+// --shard=2/3 runs every third suite, offset by one: CI splits the file over runners (one pass took 40 minutes on a 2-vCPU runner)
+const SHARD = args.shard ? String(args.shard).split('/').map(Number) : null;
+const run = id => (!ONLY || ONLY.includes(id)) && (!SHARD || (parseInt(id.slice(2)) - 1) % SHARD[1] === SHARD[0] - 1);
 const freePort = () => new Promise(res => { const s = net.createServer(); s.listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => res(p)); }); });
 async function waitHttp(url, ms = 8000) { const t0 = Date.now(); while (Date.now() - t0 < ms) { try { const r = await fetch(url); if (r.ok) return; } catch (e) {} await new Promise(r => setTimeout(r, 120)); } throw new Error('server did not come up: ' + url); }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -2121,24 +2123,31 @@ async function rb34() {
   check('RB34', 'Shift and scroll move the structure with the fingers, and do not zoom', Math.abs(Math.abs(pan.dy) - 80) < 8 && Math.abs(pan.dx) < 2 && Math.abs(pan.dz) < 1e-6, pan);
   // a drag let go while turning keeps turning, then settles
   const q = () => E(() => viewer.getView().slice(4)), dist = (a, b) => Math.hypot(...a.map((v, i) => v - b[i]));
-  const flick = async (pause) => { await fit(); const q0 = await q(); await pg.mouse.move(cx - 100, cy); await pg.mouse.down(); for (let i = 1; i <= 14; i++) { await pg.mouse.move(cx - 100 + i * 14, cy); await sleep(12); }
-    if (pause) await sleep(pause); await pg.mouse.up();                            // let go at once: a pause (or a round trip) before it is "it had stopped"
+  const flick = async (pause, beforeUp) => { await fit(); const q0 = await q(); await pg.mouse.move(cx - 100, cy); await pg.mouse.down(); for (let i = 1; i <= 14; i++) { await pg.mouse.move(cx - 100 + i * 14, cy); await sleep(12); }
+    if (pause) await sleep(pause); if (beforeUp) await beforeUp(); await pg.mouse.up();                            // let go at once: a pause (or a round trip) before it is "it had stopped"
     await sleep(40); const qa = await q(); await sleep(250); const qb = await q(); await sleep(1300); const qc = await q(); await sleep(300); const qd = await q();
     return { turned: dist(q0, qa), moved: Math.min(dist(qa, qb), 2 - dist(qa, qb)), settle: dist(qc, qd), busy: await E(() => rbCamBusy()) }; };
   const f1 = await flick(0);
   check('RB34', 'a drag let go while turning keeps turning (3Dmol stops dead)', f1.moved > 0.03, f1);
   check('RB34', 'and settles, with nothing left running', f1.settle < 1e-3 && !f1.busy, f1);
+  // the page is busy (a long frame, a garbage collection, CI's software GL) at the moment the finger leaves: the let-go is heard late
+  const f1s = await flick(0, () => E(() => { setTimeout(() => { const t0 = performance.now(); while (performance.now() - t0 < 220); }, 0); }));
+  check('RB34', 'a drag let go while the page is busy is still a drag let go (the finger left when it left, not when the page heard)', f1s.moved > 0.03, f1s);
   const f2 = await flick(250);
   check('RB34', 'a drag that had stopped before it was let go does not drift', f2.moved < 1e-3, f2);
   await pg.emulateMedia({ reducedMotion: 'reduce' }); const f3 = await flick(0); await pg.emulateMedia({ reducedMotion: 'no-preference' });
   check('RB34', 'with reduced motion a let-go drag stops where it is', f3.moved < 1e-3, f3);
   // one draw a frame, and the cheap look while it moves
   await E(() => { state.lighting = 'soft'; applyBorder(); }); await fit();
-  const cost = await E(async () => { const R = viewer.renderer, real = R.render, calls = []; let draws = 0; R.render = function () { draws++; return real.apply(this, arguments); };
+  // draws and frames are counted over the same window, ending when the camera is at rest and the soft light is back: on a slow
+  // runner a frame is 100 ms and a fixed 500 ms window holds six of them while the settle that follows draws on, unaccounted for
+  const cost = await E(async () => { const R = viewer.renderer, real = R.render, calls = []; let draws = 0, frames = 0, run = true; R.render = function () { draws++; return real.apply(this, arguments); };
     const so = viewer.setViewStyle.bind(viewer); viewer.setViewStyle = s => { calls.push(JSON.stringify(s)); return so(s); };
-    let frames = 0; const c = document.querySelector('#viewport canvas'); c.dispatchEvent(new WheelEvent('wheel', { deltaY: -120, bubbles: true, cancelable: true, clientX: 400, clientY: 300 }));
-    const t0 = performance.now(); while (performance.now() - t0 < 500) { await new Promise(requestAnimationFrame); frames++; }
-    await new Promise(r => setTimeout(r, 400)); R.render = real; viewer.setViewStyle = so; return { draws, frames, calls }; });
+    (function tick() { if (!run) return; frames++; requestAnimationFrame(tick); })();
+    const c = document.querySelector('#viewport canvas'); c.dispatchEvent(new WheelEvent('wheel', { deltaY: -120, bubbles: true, cancelable: true, clientX: 400, clientY: 300 }));
+    await new Promise(r => setTimeout(r, 500));
+    const t0 = performance.now(); while ((rbCamBusy() || !/ambientOcclusion/.test(calls[calls.length - 1] || '')) && performance.now() - t0 < 10000) await new Promise(r => setTimeout(r, 100));
+    await new Promise(r => setTimeout(r, 300)); run = false; R.render = real; viewer.setViewStyle = so; return { draws, frames, calls }; });
   check('RB34', 'the camera draws once a frame', cost.draws <= cost.frames + 3, cost);
   check('RB34', 'soft light is dropped while it moves and comes back after', cost.calls[0] === '{}' && /ambientOcclusion/.test(cost.calls[cost.calls.length - 1]), cost.calls);
   const fr = await E(async () => { const R = viewer.renderer, real = R.render; let draws = 0, frames = 0; R.render = function () { draws++; return real.apply(this, arguments); };

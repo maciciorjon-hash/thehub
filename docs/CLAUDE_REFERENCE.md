@@ -7775,3 +7775,11 @@ Jon: *"audit completo de labbook de funciones, código y visual output. Break it
 **Checked and left alone:** hostile-input monkey 0 findings; 400 random clicks 0 errors; every screen ≤ 45 ms at 520 experiments (15 MB), save flush 46 ms; text typed then reload at 0 ms is kept; `lbRailCounts`/`lbTaskCount` are used by the shell; the Planner's *Today* is a separate page from the Journal's day (do vs record), as Jon asked. The phone sweep is red only for one cause — white on `--accent` is 3.65:1 and that sweep wants 4.5 (study D1).
 
 Open for Jon: the eight questions at the end of the study (first: what he does today with the NanoBRET read, which decides whether closing the results loop comes first).
+
+## CI: the Ribbon job that never finished (2026-10-13)
+
+Three separate things, found from the logs of runs 38302230872 / 38317913891:
+- **RB34 failed on every complete CI run** (not flaky). (1) *Let-go inertia*: `_cUp` judged "it had stopped" by `performance.now() - lastSample`, which on a runner with a busy main thread is the time the page *heard* of the release, not the time the finger left. It now uses `e.timeStamp`. New RB34 case blocks the page 220 ms before the release (CI's exact signature: `turned 1.91, moved 0`; fails with the old line, passes with the new). (2) *"One draw a frame"* counted draws over 900 ms and frames over the first 500 ms; on a slow runner (6 frames in 500 ms) the settle's draws made `draws > frames + 3`. Both are now counted over one window that ends when the camera is at rest and the soft light is back.
+- **The job was cut off by its 60-minute timeout**: one pass of `ribbon_invariants.mjs` takes ~40 min on a 2-vCPU runner, so the retry could never fit. The file takes `--shard=i/n` (every n-th RB suite) and `deploy.yml` runs it as 3 matrix jobs; the Blueprint file rides with shard 1.
+- The pasted phone-sweep failure (`day-lbl` under `day-pick`) was already fixed in 1c1c618; its run's "The Hub in a browser" passed. The `truncated` rows at 844x390 are advisory and do not fail the step.
+Local note: `--only=RB34` takes ~50 s; the whole Ribbon file takes more than 10 min even on this Mac.
