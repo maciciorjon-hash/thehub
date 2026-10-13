@@ -25,6 +25,10 @@ A third: white ink literally written on a solid fill (`background:var(--accent|g
 `color:#fff`). In the dark theme every one of those fills is a light pastel, so white on the primary
 button was 2.3:1 (1.7 on the green). Ink on a fill is `var(--on-accent)`: white in light, near-black in dark.
 
+A fifth: a round well. A plate well is a rounded square (`border-radius:var(--r-1)`), as in Lumina, Beacon, Echo,
+Blueprint and the Labbook plate editor; Labbook's `.pl-w`/`.pp-w` were `50%` and read as a different product.
+`.lp-w` is exempt: it is a vial position in a freezer box, and a vial is round.
+
   python3 tools/check_css.py                 # every app + the shell
   python3 tools/check_css.py path.html ...
 
@@ -130,6 +134,22 @@ def white_on_fill(html):
     return out
 
 
+_ROUND = re.compile(r'border-radius\s*:\s*(?:50%|999\d*px|var\(--r-(?:full|pill)[^)]*\))', re.I)
+_WELLSEL = re.compile(r'(?<![-\w])\.(?:well|[a-z]+-w)(?![-\w])')
+
+
+def round_wells(html):
+    """Plate-well selectors (.well, .pl-w, .pp-w ...) given a round shape. .lp-w (a vial in a freezer box) may be round."""
+    out = []
+    for start, css in stylesheets(html):
+        css = re.sub(r'/\*.*?\*/', lambda m: re.sub(r'[^\n]', ' ', m.group(0)), css, flags=re.S)
+        for m in re.finditer(r'([^{}]*)\{([^{}]*)\}', css):
+            sel = m.group(1).strip().split('\n')[-1].strip()
+            if _ROUND.search(m.group(2)) and _WELLSEL.search(sel) and '.lp-w' not in sel:
+                out.append((start + css.count('\n', 0, m.start(2)), sel[-60:]))
+    return out
+
+
 def bare_headers(html):
     """<header> tags with no class, outside HTML comments. An app may have exactly one: its own."""
     blank = lambda m: re.sub(r'[^\n]', ' ', m.group(0))
@@ -156,9 +176,10 @@ def main():
             hits += orphans(css, start)
         missing = undefined_tokens(html)
         inks = white_on_fill(html)
+        rounds = round_wells(html)
         heads = bare_headers(html) if '/apps/' in path.replace(os.sep, '/') else []
         heads = heads[1:]
-        if hits or missing or inks or heads:
+        if hits or missing or inks or heads or rounds:
             bad += 1
             parts = []
             if hits:
@@ -169,6 +190,8 @@ def main():
                 parts.append('%d white ink on a solid fill' % len(inks))
             if heads:
                 parts.append('%d bare <header> after the app header' % len(heads))
+            if rounds:
+                parts.append('%d round well' % len(rounds))
             print('  %s: %s' % (rel, ', '.join(parts)))
             for ln, txt in hits[:8]:
                 print('     line %-6d %s' % (ln, txt))
@@ -176,6 +199,8 @@ def main():
                 print('     %-18s used %d time(s), never defined' % (name, n))
             for ln, txt in inks[:8]:
                 print('     line %-6d white on a fill: %s   -> color:var(--on-accent)' % (ln, txt))
+            for ln, txt in rounds[:8]:
+                print('     line %-6d a round well: %s   -> border-radius:var(--r-1)' % (ln, txt))
             for ln in heads[:8]:
                 print('     line %-6d a <header> with no class: dHUB hides it with the app header -> give it a class' % ln)
         else:
@@ -185,7 +210,8 @@ def main():
                          'An orphan declaration is folded into the next selector and drops that rule silently;\n'
                          'an undefined token leaves its property at the inherited or initial value;\n'
                          'white ink on a solid fill is 2.3:1 in the dark theme (use var(--on-accent));\n'
-                         'a bare <header> inside an app is hidden by dHUB along with the app header.\n' % bad)
+                         'a bare <header> inside an app is hidden by dHUB along with the app header;\n'
+                         'a plate well is a rounded square (border-radius:var(--r-1)), never a circle.\n' % bad)
         return 1
     return 0
 
