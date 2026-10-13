@@ -28,7 +28,7 @@
 //   B12 a toggle keeps its    The Types and Brackets buttons keep their icon and chevron when they open
 //       icon                  and close (the Brackets one rewrote its own innerHTML), and say so in
 //                             aria-expanded.
-//   N1 Beacon paste shapes    Beacon's plate-reader parser (the fourth copy) reads tab, space,
+//   N1 Beacon paste shapes    Beacon's grid parser (a pasted block or a CSV; Lumina's rules) reads tab, space,
 //                             lettered, semicolon/decimal-comma and comma grids, and a blank A1
 //                             stays in column 1. (It read a space-separated grid as one column.)
 //   R1 save = load            Every field a Ribbon design is read back with is written when it
@@ -282,9 +282,9 @@ async function beacon(pg) {
       const g = [...Array(R)].map((_, i) => [...Array(C)].map((_, j) => i * 100 + j + 1));
       const shapes = { tab: g.map(r => r.join('\t')), spaces: g.map(r => r.join(' ')), lettered: g.map((r, i) => L[i] + '  ' + r.join('   ')),
         semi: g.map(r => r.map(x => x + ',5').join(';')), csv: g.map(r => r.join(',')), blankA1: g.map((r, i) => (i === 0 ? '' : r[0]) + '\t' + r.slice(1).join('\t')) };
-      for (const [n, l] of Object.entries(shapes)) { const x = parsePlateCSV(l.join('\n'), fmt), add = n === 'semi' ? 0.5 : 0;
-        const okAll = !!x && x.length === R && x.every((row, i) => row.vals.length === C && row.vals.every((v, j) => (n === 'blankA1' && i === 0 && j === 0) ? v == null : v === i * 100 + j + 1 + add));
-        out.push([fmt + ' ' + n, okAll, x ? x.map(row => row.vals.slice(0, 3)).slice(0, 2) : null]); } }
+      for (const [n, l] of Object.entries(shapes)) { const gs = bParseGrid(l.join('\n')), add = n === 'semi' ? 0.5 : 0, v = gs.length === 1 ? bGridVals(gs[0], R, C).vals : null;
+        const okAll = !!v && gs.length === 1 && [...Array(R)].every((_, i) => [...Array(C)].every((_, j) => { const w = bPos(i, j); return (n === 'blankA1' && i === 0 && j === 0) ? !(w in v) : v[w] === i * 100 + j + 1 + add; }));
+        out.push([fmt + ' ' + n, okAll, v ? [v.A1, v.B1, v.A2] : null]); } }
     return out; });
   r.forEach(([n, ok, d]) => check('N1', n, ok, d));
 }

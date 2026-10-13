@@ -16,7 +16,7 @@ const APPS = {
   tempo: { url: '/apps/tempo/tempo.html', seed: ['loadTestData()'], wait: 1500, views: ['tpTab("plate")', 'tpTab("curves")', 'tpTab("results")', 'tpTab("compare")', 'tpOpenSettings()'] },
   dora: { url: '/apps/dora/dora.html', seed: ['loadTestData()'], wait: 800 },
   bca: { url: '/apps/bca/bca.html', seed: ['loadTestData()'], wait: 800, views: ['switchTab("import")', 'switchTab("standards")', 'switchTab("samples")'] },
-  beacon: { url: '/apps/beacon/beacon.html', seed: ["loadTestData('gain')"], wait: 800, views: ['openSetupModal(); switchSetupTab("assay")', 'openSetupModal(); switchSetupTab("platemap")', 'switchTab("qc")', 'switchTab("dose")'] },
+  beacon: { url: '/apps/beacon/beacon.html', seed: ["loadTestData('gain')"], wait: 800, views: ['switchTab("results")', 'switchTab("plate"); bSetSel(new Set())', 'switchTab("plate"); bSelect(new Set(PlateEngine.rect({r:2,c:2},{r:5,c:11},bDims())), "cpd")', 'switchTab("plate"); bSelect(new Set(["A1","B1","C1"]), "ctl")'] },
   lumina: { url: '/apps/lumina/lumina.html', seed: ['loadLuminaTestData()'], wait: 800 },
   blot: { url: '/apps/western-blot/western-blot.html', seed: ["(function(){ var c=document.createElement('canvas'); c.width=600; c.height=120; var x=c.getContext('2d'); x.fillStyle='#f4f4f4'; x.fillRect(0,0,600,120); for(var i=0;i<12;i++){ x.fillStyle='rgba(0,0,0,'+(0.15+i*0.06)+')'; x.fillRect(i*50+8,55,34,10); } var u=c.toDataURL('image/png'); FIG.panels.forEach(function(p,i){ p.src=u; p.cropped=u; p.prot=['BRD4','GAPDH'][i]||''; }); save(); render(); })()"], wait: 800, views: ['render()', 'openCrop(0)', 'openQuant(0)', 'openMarkers(0)'] },
 };

@@ -5015,6 +5015,70 @@ fixed colour is fixed too.
 which concentration, where — so the numbers that come off it are complete. Other readers
 (GloMax) after that. Tracer displacement is untouched; Jon is not running it yet.
 
+## Beacon, rebuilt around the plate (2026-10-13)
+
+Jon: *"beacon needs a rework in controls, files and output. learn from lumina, context dependent
+(not always compounds present), but if there are easier controls to say where they are, how many,
+replicates, doses etc. also doesnt read well if there are more than one plate now"* — and, mid-work,
+*"añade también como en lumina la opción de pegar directamente de Excel, aparte del menú tipo tabs
+que me gusta tanto"* (keep the tab bar; add ⌘V).
+
+The old Beacon was a **Setup modal** (Files · Assay Info · Plate Map, each greyed until the one before
+it was done) over **seven tabs**, and **one plate**: `state.donor`/`state.acceptor` were single grids, so a
+PHERAstar list holding two plates was read as one plate whose wells the last plate overwrote. The
+plate map painted roles with a click mode and a pending-group chip per dose point; one compound only.
+It is now Lumina's plate card, with what NanoBRET adds. **Tabs: Plate · Results · Guide.**
+
+- **A plate is a reading and its layout** (`state.plates[]`: `donor{}`, `acceptor{}`, `map{pos:{k,s,c}}`,
+  per-plate size). There is no format setting and no Setup: a plate exists because a file or a paste
+  brought it. A new plate starts as a copy of the layout of the one before; **Layout → all plates**
+  copies the plate on screen onto the rest.
+- **Files in** (`bHandleFiles`, `bParseWorkbook`, `bParseTableRows`): a "Table End point" list is a plate
+  per run — the `Well` header repeating, *or the same wells coming round again* — and per sheet; several
+  files are several plates in name order; the same file again replaces its plate (`fkey`). A well with no
+  reading is absent, never 0. A grid file (`.csv`/`.txt`, or an `.xlsx` with no PHERAstar list) is read like a paste.
+- **⌘V from Excel** (`bPasteText`, off-screen textarea exactly as Lumina): a lone grid goes to the channel
+  the plate is still waiting for (donor, then acceptor — the strip's two chips say which, and clicking one
+  aims ⌘V at it); two grids (blank-line separated, or stacked, or both lettered) are donor then acceptor;
+  a PHERAstar-style `Well` table fills both. With both channels read a lone grid is refused and says why.
+  `bParseGrid` is Lumina's `lmParseGrid` rules (delimiter chosen not collapsed, decimal comma, row letters
+  win, header row only if it is not plate-tall), grown to return several grids; design invariant N1 now tests it.
+- **Say what wells are by dragging** (the shared `PlateEngine`, now also copied into Beacon by
+  `tools/sync_plate_engine.py`, drift-checked by `check_shared.py`): the panel asks only what it needs.
+  *Compound* = name · top · unit · dilution · which end is highest · **replicates per compound** (1–4, All);
+  points and replicates come from the shape, the number of compounds follows ("4 compounds × 2 replicates ·
+  11 points · 10 µM → 0.17 nM"), and the preview says what applying will replace. Wells that already hold a
+  control are left alone, so one drag over a whole block is enough. *Tracer* (displacement only) = one series.
+  *Control* = one click per role (no ligand · vehicle · donor only · acceptor only · no substrate · mock).
+  An unmarked selection is read as controls when it is a line or a handful of wells, as a dose series when it is
+  a block (`bMode`). The idle panel is the **legend and the summary** — what is on this plate, how many, and
+  `pts × reps · hi → lo` — and clicking a row selects its wells. Three steps (four with a tracer) say what is done.
+- **Background and no-ligand were two roles doing one job** (`pm.background` fed the fit, `noLigand` fed the
+  plate view). It is one: **no HaloTag ligand** (labelled *No tracer* in displacement). Corrected mBRET =
+  raw − the mean raw mBRET of **that plate's own** no-ligand wells; none marked → raw, and every view says so.
+- **A compound is a name.** The same name on two plates is one compound; Results pools its replicates,
+  each plate first corrected against its own baseline (B4 proves it: a plate reading 200 mBU higher lands on
+  the same levels). **Per plate** splits them. Previously a second compound or a second plate was impossible.
+- **Results** is read from the layout, answer first: *Dose–response* (one row per compound, a curve beside it,
+  the others grey; EC50 in protein–protein, IC50 in displacement; a midpoint past the top dose is `> limit`, not the fitted
+  number; **a flat series is n.d.** — found by invariant B5 when a saturated series fitted a confident 4.7 nM), *Tracer
+  titration* (Kd, working concentration, the Ki of every compound follows the concentration typed), *Plate quality* (one
+  row per plate: baseline, vehicle, window, S/B, Z′ — Z′ needs 2+ wells of each, n/a otherwise), *Controls* (donor and
+  acceptor counts, plate switch), run details. **Export** is one menu: workbook (Results · Plates · Assay Protocol ·
+  PHERAstar Protocol · Prism Copy), plate mBRET, CSV, copy table, plot PNG. The Report tab, the "just show ratios"
+  mode and the manual condition cards are gone — the plate view is the ratios, and Z′ pairs are read from the roles.
+  Cells that would be formulas are written as text (`=`/`@` always, `+`/`-` only before a letter or bracket).
+- **Tooling that moved with it:** `tools/tourkit/apps/beacon.js`, `tools/ctxkit/apps/beacon.js` (re-run
+  `sync_tour.py` / `sync_ctxkit.py` — they write into the app), monkey / inputs audit views, tour `ready` is
+  `beaconReady()`. Invariants **B1–B7** in `tools/analysis_invariants.mjs`, each proven by putting the bug back
+  (B4's first draft asserted the potency, which an additive baseline error does not move — it asserts the corrected
+  levels now). `loadTestData('gain'|'displacement')` is built as a PHERAstar list (two plates in one sheet) and read
+  through the real parser.
+- **Not done, stated:** no `sendResultsToLabbook` (Lumina has it; Beacon's potencies stop at the export), no confidence
+  intervals, no hook-effect (bell-shaped) fit, GloMax reader, no paste of a column of compound names (Lumina's
+  Compounds list) — names are typed one compound at a time and the rest of a block follow the engine's `nextName`
+  ("Alpha" → "Alpha 2"; "Compound A" → "Compound B").
+
 ## Cmd+K stopped answering "no matches" to things that exist (2026-09-22)
 
 Jon: *"la búsqueda tiene que ser más intuitiva. al escribir algo parecido debería sugerirte el

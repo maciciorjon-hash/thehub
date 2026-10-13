@@ -8,7 +8,14 @@
 //   C4  text is data             HTML in a name is shown as text everywhere it is shown.
 //   D2  Echo's word is Echo's    Dora opening an Echo analysis uses the potency Echo stands behind: a flat curve is n.d. (not its fitted 0.4 nM), a midpoint past the doses is a bound at the
 //                                dose limit (not the fitted number).
-//   B1  a range is on the plate  Beacon's well ranges never invent wells outside a 24-column plate: "A1:A99999999" is 24 wells in a blink, "A0" and "A25" are none.
+//   B1  a range is on the plate  Beacon's well ranges never invent wells outside the plate: "A1:A99999999" is none (or clipped) in a blink, "A0", "A13" on a 96-well and "Q1" are none.
+//   B2  one plate, one plate     A reader list holding two plates (the Well header repeated, or the same wells coming round again) is two plates, each with its own numbers — it used to be one plate
+//                                whose wells the last plate overwrote. A well with no reading is absent, never 0.
+//   B3  paste lands right        Values copied from Excel go to the channel the plate is waiting for; two grids (stacked or blank-line separated) are donor then acceptor; a Well table fills both.
+//   B4  a plate is not a dose    The same compound name on two plates pools its replicates, each plate corrected against its OWN baseline: a plate that reads 200 mBU higher lands on the same levels (bottom 0, top 500, no spread) and the same potency.
+//   B5  a bound is a bound       A midpoint past the top dose is reported as > the dose limit, never as the fitted number; a flat series or one of 3 concentrations is n.d., not a curve.
+//   B6  a drag is a layout       Selecting a block and applying gives the compounds, replicates, points and concentrations the preview said; controls inside the block are left alone; undo restores it.
+//   B7  exports are text         A name that would be a formula leaves the workbook and the CSV as text; the rest of a header ("--- ASSAY ---", "-0.5") is left alone.
 //   D1  a bound is a bound       Dora keeps "> 10000" and "< 1" as bounds (shown with their sign, drawn hollow, never "good" when the bound is in the wrong direction), a DC50 of 0
 //                                or less and "n/a" are no potency, and a missing Dmax is a dash, not a 0 with an empty bar.
 //
@@ -125,12 +132,135 @@ if (run('C4')) await guard('C4', async () => {
 if (run('B1')) await guard('B1', async () => {
   const { ctx, pg } = await open('/apps/beacon/beacon.html');
   const r = await pg.evaluate(() => {
-    const t0 = performance.now(), big = parseWellRange('A1:A99999'), big2 = parseWellRange('A1:P99999'), ms = performance.now() - t0;
-    return { bigN: big.length, big2N: big2.length, ms, zero: parseWellRange('A0'), over: parseWellRange('A25'), rev: parseWellRange('A12:A1').join(), fwd: parseWellRange('A01-A12').join(), rect: parseWellRange('B2:C3').join(), lower: parseWellRange('b2:c3').join(), list: parseWellRange('A1, b2, Z9, A0, C24, C25').join(), col: parseWellRange('A3-P3').length };
+    const d96 = { r: 8, c: 12 }, d384 = { r: 16, c: 24 }, t0 = performance.now();
+    const big = PlateEngine.parseRange('A1:A99999', d96), big2 = PlateEngine.parseRange('A1:P99999999', d384), ms = performance.now() - t0;
+    return { big: big ? big.length : 0, big2: big2 ? big2.length : 0, ms, zero: PlateEngine.parseRange('A0', d96), over: PlateEngine.parseRange('A13', d96), q: PlateEngine.parseRange('Q1', d384),
+      rev: (PlateEngine.parseRange('A12:A1', d96) || []).join(), fwd: (PlateEngine.parseRange('A1:A12', d96) || []).join(), rect: (PlateEngine.parseRange('B2:C3', d96) || []).join(), lower: (PlateEngine.parseRange('b2:c3', d96) || []).join(),
+      list: (PlateEngine.parseRange('A1, b2, Z9, P24', d384) || []).join(), col: (PlateEngine.parseRange('A1:H1', d96) || []).length };
   });
-  check('B1', 'a column past the plate is clipped to it: "A1:A99999" is 24 wells and "A1:P99999" is 384, instantly', r.bigN === 24 && r.big2N === 384 && r.ms < 200, { bigN: r.bigN, big2N: r.big2N, ms: Math.round(r.ms) });
-  check('B1', 'column 0 and column 25 are not wells; a list keeps the wells that exist and drops the rest', r.zero.length === 0 && r.over.length === 0 && r.list === 'A01,B02,C24', { zero: r.zero, over: r.over, list: r.list });
-  check('B1', 'ranges still mean what they did: reversed or forward the same wells, a rectangle, a column, either case', r.rev === 'A01,A02,A03,A04,A05,A06,A07,A08,A09,A10,A11,A12' && r.fwd === r.rev && r.rect === 'B02,B03,C02,C03' && r.lower === r.rect && r.col === 16, r);
+  check('B1', 'a column past the plate is no well, and a huge range costs nothing: "A1:A99999" and "A1:P99999999" are instant and never invent wells', r.big <= 24 && r.big2 <= 384 && r.ms < 200, { big: r.big, big2: r.big2, ms: Math.round(r.ms) });
+  check('B1', 'column 0, column 13 on a 96-well and row Q are not wells; a list keeps the wells that exist and drops the rest', r.zero === null && r.over === null && r.q === null && r.list === 'A1,B2,P24', { zero: r.zero, over: r.over, q: r.q, list: r.list });
+  check('B1', 'ranges still mean what they did: reversed or forward the same wells, a rectangle, a column, either case', r.rev === r.fwd && r.rect === 'B2,B3,C2,C3' && r.lower === r.rect && r.col === 8, r);
+  await ctx.close();
+});
+
+if (run('B2')) await guard('B2', async () => {
+  const { ctx, pg } = await open('/apps/beacon/beacon.html');
+  const r = await pg.evaluate(() => {
+    const hdr = ['Well', 'Type', '665 (LUM)', '620 (LUM) LP'], L = 'AB';
+    const plate = k => { const rows = [hdr.slice()]; for (const l of L) for (let c = 1; c <= 3; c++) rows.push([l + '0' + c, 'Sample', 1000 * k + c, 100 * k + c]); return rows; };
+    // A: the header repeated. B: no second header, the wells simply come round again. C: a hole (no reading) must stay a hole.
+    const A = bParseTableRows(plate(1).concat(plate(2))), B = bParseTableRows(plate(1).concat(plate(2).slice(1)));
+    const rowsC = plate(1); rowsC[2][2] = ''; rowsC[3][3] = 'n/a'; const C = bParseTableRows(rowsC);
+    // D: several sheets, each a plate
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(plate(1)), 'Table End point'); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(plate(2)), 'Table End point (2)');
+    const D = bParseWorkbook(wb);
+    // placement: two plates in -> two plates on screen, the second not overwriting the first; the same file again replaces rather than duplicates
+    state.plates = []; state.series = []; bPlaceReadings(A, 'f.xlsx', null, null); const n1 = state.plates.length; bPlaceReadings(A, 'f.xlsx', null, null); const n2 = state.plates.length;
+    return { A: A.map(p => [Object.keys(p.donor).length, p.donor.A1, p.donor.B3, p.acceptor.A1]), B: B.length, Bv: B[1] && B[1].donor.A1, C: C.map(p => [Object.keys(p.donor).length, Object.keys(p.acceptor).length, 'A2' in p.donor, 'A3' in p.acceptor]), D: D.plates.length, n1, n2, names: state.plates.map(p => p.name), raw0: bRaw({ donor: { A1: 0 }, acceptor: { A1: 5 } }, 'A1'), rawNeg: bRaw({ donor: { A1: 10 }, acceptor: { A1: -5 } }, 'A1'), rawOk: bRaw({ donor: { A1: 1000 }, acceptor: { A1: 500 } }, 'A1') };
+  });
+  check('B2', 'a list with the Well header repeated is two plates, each with its own numbers (not one plate with the last one\'s wells)', r.A.length === 2 && r.A[0][1] === 1001 && r.A[1][1] === 2001 && r.A[0][3] === 101 && r.A[1][3] === 201 && r.A[0][0] === 6, r.A);
+  check('B2', 'the same wells coming round again, with no second header, is the next plate', r.B === 2 && r.Bv === 2001, { B: r.B, Bv: r.Bv });
+  check('B2', 'a well with no reading ("", "n/a") is absent from its plate, never 0', r.C.length === 1 && r.C[0][0] === 5 && r.C[0][1] === 5 && r.C[0][2] === false && r.C[0][3] === false, r.C);
+  check('B2', 'every Table End point sheet is a plate', r.D === 2, r.D);
+  check('B2', 'the plates land as two tabs; reading the same file again replaces them instead of adding two more', r.n1 === 2 && r.n2 === 2, { n1: r.n1, n2: r.n2, names: r.names });
+  check('B2', 'a donor of zero or an acceptor below zero is no ratio (null), not 0 and not Infinity', r.raw0 === null && r.rawNeg === null && r.rawOk === 500, { raw0: r.raw0, rawNeg: r.rawNeg, rawOk: r.rawOk });
+  await ctx.close();
+});
+
+if (run('B3')) await guard('B3', async () => {
+  const { ctx, pg } = await open('/apps/beacon/beacon.html');
+  const r = await pg.evaluate(() => {
+    const out = {}, L = 'ABCDEFGH', g = f => L.split('').map((l, r) => [...Array(12)].map((_, c) => f(r, c)).join('\t')).join('\n');
+    const reset = () => { state.plates = []; state.series = []; state.plate = 0; BM_SEL = new Set(); BM_CH = null; _bUndo = []; };
+    reset(); bPasteText(g((r, c) => 5000 + r)); const a = state.plates.map(p => [Object.keys(p.donor).length, Object.keys(p.acceptor).length]); const aim = BM_CH;
+    bPasteText(g((r, c) => 100 + c)); out.seq = { a, aim, b: state.plates.map(p => [Object.keys(p.donor).length, Object.keys(p.acceptor).length]), v: state.plates[0].acceptor.A5 };
+    reset(); bPasteText(g((r, c) => 5000 + r) + '\n\n' + g((r, c) => 100 + c)); out.blank = state.plates.map(p => [Object.keys(p.donor).length, Object.keys(p.acceptor).length, p.donor.A1, p.acceptor.A1]);
+    reset(); bPasteText(g((r, c) => 5000 + r) + '\n' + g((r, c) => 100 + c)); out.stacked = state.plates.map(p => [Object.keys(p.donor).length, Object.keys(p.acceptor).length, p.donor.H12, p.acceptor.H12]);
+    reset(); bPasteText(L.split('').map((l, r) => l + '\t' + [...Array(12)].map((_, c) => 5000 + r * 10 + c).join('\t')).join('\n')); out.lettered = state.plates.map(p => [Object.keys(p.donor).length, p.donor.C4]);
+    reset(); const rows = ['Well\tType\t665 (LUM)\t620 (LUM) LP']; for (let c = 1; c <= 12; c++) rows.push('A' + (c < 10 ? '0' + c : c) + '\tSample\t5000\t' + (100 + c)); bPasteText(rows.join('\n')); out.table = state.plates.map(p => [Object.keys(p.donor).length, Object.keys(p.acceptor).length, p.acceptor.A12]);
+    reset(); bPasteText(g((r, c) => 5000 + r)); bPasteText(g((r, c) => 100 + c)); out.third = bPasteText(g((r, c) => 7)); out.third2 = state.plates.length;
+    reset(); out.junk = bPasteText('hello world\nnot numbers'); out.junkPlates = state.plates.length;
+    reset(); bPasteText(g((r, c) => (r === 0 && c === 0) ? '' : 5000 + r)); out.hole = [Object.keys(state.plates[0].donor).length, 'A1' in state.plates[0].donor];
+    return out;
+  });
+  check('B3', 'a lone grid goes to the channel the plate is waiting for (donor, then acceptor) and the strip is aimed at the next one', r.seq.a[0][0] === 96 && r.seq.a[0][1] === 0 && r.seq.aim === 'acceptor' && r.seq.b.length === 1 && r.seq.b[0][1] === 96 && r.seq.v === 104, r.seq);
+  check('B3', 'two grids, blank-line separated or one above the other, are donor then acceptor of one plate', r.blank.length === 1 && r.blank[0][0] === 96 && r.blank[0][1] === 96 && r.blank[0][2] === 5000 && r.blank[0][3] === 100 && r.stacked.length === 1 && r.stacked[0][2] === 5007 && r.stacked[0][3] === 111, { blank: r.blank, stacked: r.stacked });
+  check('B3', 'a lettered grid lands by its row letters; a PHERAstar-style Well table fills both channels', r.lettered[0][0] === 96 && r.lettered[0][1] === 5023 && r.table[0][0] === 12 && r.table[0][1] === 12 && r.table[0][2] === 112, { lettered: r.lettered, table: r.table });
+  check('B3', 'with both channels read, a lone grid is refused and says why — it never silently overwrites', r.third === true && r.third2 === 1, { third: r.third, plates: r.third2 });
+  check('B3', 'text with no numbers is not a paste (false), and an empty cell in a grid is a hole, not 0', r.junk === false && r.junkPlates === 0 && r.hole[0] === 95 && r.hole[1] === false, { junk: r.junk, hole: r.hole });
+  await ctx.close();
+});
+
+if (run('B4')) await guard('B4', async () => {
+  const { ctx, pg } = await open('/apps/beacon/beacon.html');
+  const r = await pg.evaluate(() => {
+    // two plates, the same compound, the same curve (EC50 100 nM, gain), plate 2 reading 200 mBU higher all over
+    const mk = off => { const pl = bNewPlate(8, 12, null); for (let r = 0; r < 8; r++) { pl.donor[bPos(r, 0)] = 5000; pl.acceptor[bPos(r, 0)] = (50 + off) * 5; if (r < 4) pl.map[bPos(r, 0)] = { k: 'noLigand' };
+      for (let c = 1; c < 11; c++) { const conc = 10000 / Math.pow(3, c - 1), y = 50 + off + 500 / (1 + Math.pow(10, Math.log10(100) - Math.log10(conc))); pl.donor[bPos(r, c)] = 5000; pl.acceptor[bPos(r, c)] = y * 5; if (r < 2) pl.map[bPos(r, c)] = { k: 'cpd', s: 's1', c: conc }; } } return pl; };
+    state.plates = [mk(0), mk(200)]; state.series = [{ id: 's1', name: 'X' }]; state.assayMode = 'gain'; state.rev++; RS_PER = false; _bFitC = null;
+    const pooled = bFits(); RS_PER = true; state.rev++; const per = bFits(); RS_PER = false; state.rev++;
+    // plate 2 without a baseline: raw, and the fit says so
+    state.plates[1].map = bCloneMap(state.plates[1].map, 8, 12); Object.keys(state.plates[1].map).forEach(p => { if (state.plates[1].map[p].k === 'noLigand') delete state.plates[1].map[p]; }); state.rev++; const half = bFits();
+    return { pooled: pooled.map(f => [f.ec50, f.plates.length, f.pts.length, f.unc.length]), per: per.map(f => f.ec50), lvl: pooled.map(f => [f.bottom, f.top, Math.max.apply(null, f.pts.map(p => p.sd))]), half: half.map(f => [f.unc.join(), f.nW]) };
+  });
+  const near = (a, b, t) => Math.abs(a / b - 1) < t;
+  check('B4', 'per plate, a plate that reads 200 mBU higher gives the same potency (each corrected against its own baseline)', r.per.length === 2 && near(r.per[0], 100, 0.05) && near(r.per[1], 100, 0.05), r.per);
+  check('B4', 'pooled, the same name is ONE compound over both plates (20 wells per concentration x 2 plates, 10 concentrations) and the potency is the same 100 nM, not a blend of two baselines', r.pooled.length === 1 && r.pooled[0][1] === 2 && r.pooled[0][2] === 10 && near(r.pooled[0][0], 100, 0.05), r.pooled);
+  check('B4', 'and the pooled points really are one population: bottom 0, top 500 and no spread between the plates (a plate corrected against another plate\'s baseline sits 200 mBU away and shows as SD ~100 at every concentration)', r.lvl.length === 1 && Math.abs(r.lvl[0][0]) < 2 && Math.abs(r.lvl[0][1] - 500) < 3 && r.lvl[0][2] < 0.5, r.lvl);
+  check('B4', 'a plate with no baseline is flagged as raw (and pooled with its siblings only because it is said)', r.half.length === 1 && r.half[0][0] === '1' && r.half[0][1] === 40, r.half);
+  await ctx.close();
+});
+
+if (run('B5')) await guard('B5', async () => {
+  const { ctx, pg } = await open('/apps/beacon/beacon.html');
+  const r = await pg.evaluate(() => {
+    const mk = (ec, concs) => { const pl = bNewPlate(8, 12, null); for (let r = 0; r < 8; r++) { pl.donor[bPos(r, 0)] = 5000; pl.acceptor[bPos(r, 0)] = 250; if (r < 4) pl.map[bPos(r, 0)] = { k: 'noLigand' };
+      concs.forEach((conc, i) => { const c = i + 1, y = 50 + 500 / (1 + Math.pow(10, Math.log10(ec) - Math.log10(conc))); pl.donor[bPos(r, c)] = 5000; pl.acceptor[bPos(r, c)] = y * 5; if (r < 2) pl.map[bPos(r, c)] = { k: 'cpd', s: 's1', c: conc }; }); } return pl; };
+    const run = (ec, concs) => { state.plates = [mk(ec, concs)]; state.series = [{ id: 's1', name: 'X' }]; state.assayMode = 'gain'; state.rev++; _bFitC = null; const f = bFits()[0]; return { bound: f.bound, limit: f.limit, fit: !!f.fit, ec50: f.ec50, n: f.pts.length }; };
+    const dec = [...Array(8)].map((_, i) => 10000 / Math.pow(3, i));
+    return { inside: run(300, dec), above: run(5e6, dec), flat: run(1e-4, dec), few: run(100, [10, 100, 1000]) };
+  });
+  check('B5', 'a midpoint inside the doses is a number', r.inside.bound === '' && r.inside.fit && Math.abs(r.inside.ec50 / 300 - 1) < 0.1, r.inside);
+  check('B5', 'a midpoint past the top dose is "> the top dose" with the dose limit, not the fitted 108 000 nM', r.above.bound === '>' && Math.abs(r.above.limit - 10000) < 1, r.above);
+  check('B5', 'a series that is flat across every dose (all on the plateau) has no midpoint: n.d., not a potency the optimiser made up', r.flat.fit === false && r.flat.n === 8, r.flat);
+  check('B5', 'a series of 3 concentrations is not a curve (no fit), whatever it looks like', r.few.fit === false && r.few.n === 3, r.few);
+  await ctx.close();
+});
+
+if (run('B6')) await guard('B6', async () => {
+  const { ctx, pg } = await open('/apps/beacon/beacon.html');
+  const r = await pg.evaluate(() => {
+    loadTestData('gain'); state.plates = state.plates.slice(0, 1); state.series = []; const pl = bPl(); pl.map = {}; state.rev++; _bUndo = [];
+    const sel = (a, b) => bSetSel(new Set(PlateEngine.rect(a, b, bDims())));
+    // controls first: column 1 no ligand
+    sel({ r: 0, c: 0 }, { r: 7, c: 0 }); const m0 = bMode(); bMarkRole('noLigand');
+    // then a block over EVERYTHING else, 2 replicates: eight rows -> four compounds; the control column is inside the drag and must be left alone
+    sel({ r: 0, c: 0 }, { r: 7, c: 11 }); BM_REPS = 2; BM_DIR = 'right';
+    document.getElementById('lm-name').value = 'Alpha'; document.getElementById('lm-top').value = '10'; document.getElementById('lm-unit').value = '\u00b5M'; document.getElementById('lm-fac').value = '3'; bRenderPanel();
+    const plan = bDosePlan('cpd'); const planned = { zones: plan.zones.length, reps: plan.reps, n: plan.sp.n, skipped: plan.skipped, preview: document.getElementById('lm-preview').textContent };
+    bApply();
+    const names = state.series.map(s => s.name), a1 = pl.map.A1, b2 = pl.map.B2, h12 = pl.map.H12, a12 = pl.map.A12;
+    const concs = [pl.map.A2.c, pl.map.A3.c, pl.map.A11.c, pl.map.A12.c];
+    bUndo(); const afterUndo = Object.keys(bPl().map).length; bRedo();
+    // a tracer series is one series however many rows
+    state.assayMode = 'displacement'; sel({ r: 6, c: 1 }, { r: 7, c: 4 }); BM_MODE = 'trc'; BM_DIR = 'right'; document.getElementById('lm-top').value = '1'; document.getElementById('lm-unit').value = '\u00b5M'; document.getElementById('lm-fac').value = '2'; bApplyDose('trc');
+    return { m0, planned, names, a1: a1 && a1.k, a2: pl.map.A2 && pl.map.A2.s, b2s: b2 && b2.s, h12s: h12 && h12.s, concs, afterUndo, afterRedo: Object.keys(bPl().map).length, trc: bPl().map.G2 && bPl().map.G2.k, trcC: [bPl().map.G2 && bPl().map.G2.c, bPl().map.G3 && bPl().map.G3.c], trcWells: Object.keys(bPl().map).filter(p => bPl().map[p].k === 'trc').length, series: state.series.length };
+  });
+  check('B6', 'a column on an empty plate reads as controls; a block as a dose series', r.m0 === 'ctl', r.m0);
+  check('B6', 'eight rows of 11 points at 2 replicates is four compounds x 2 replicates x 11 points; the 8 control wells inside the drag are left out and the preview says so', r.planned.zones === 4 && r.planned.reps === 2 && r.planned.n === 11 && r.planned.skipped === 8 && /4 compounds/.test(r.planned.preview) && /8 control wells left out/.test(r.planned.preview), r.planned);
+  check('B6', 'applying names them in order (Alpha, Alpha 2…), puts the same compound on both replicate rows, and leaves the control column a control', r.names.length === 4 && r.names[0] === 'Alpha' && r.names[1] === 'Alpha 2' && r.a1 === 'noLigand' && r.a2 === r.b2s && r.a2 !== r.h12s, { names: r.names, a1: r.a1 });
+  check('B6', 'the concentrations are the series asked for: 10 µM at the left, 3-fold, 11 points (10 000 → 0.169 nM)', Math.abs(r.concs[0] - 10000) < 1e-6 && Math.abs(r.concs[1] - 10000 / 3) < 1e-6 && Math.abs(r.concs[3] - 10000 / Math.pow(3, 10)) < 1e-9, r.concs);
+  check('B6', 'undo takes the whole block back to the controls alone (8 wells) and redo returns it', r.afterUndo === 8 && r.afterRedo >= 80, { afterUndo: r.afterUndo, afterRedo: r.afterRedo });
+  check('B6', 'a tracer series is wells of one tracer (not a compound): G2:H5 at 1 µM, 2-fold, replaces what was there, and no phantom compound is left', r.trc === 'trc' && Math.abs(r.trcC[0] - 1000) < 1e-6 && Math.abs(r.trcC[1] - 500) < 1e-6 && r.trcWells === 8, { trc: r.trc, trcC: r.trcC, trcWells: r.trcWells, series: r.series });
+  await ctx.close();
+});
+
+if (run('B7')) await guard('B7', async () => {
+  const { ctx, pg } = await open('/apps/beacon/beacon.html');
+  const r = await pg.evaluate(() => ({ f: _xlsxSafeCell('=HYPERLINK("http://x","y")'), at: _xlsxSafeCell('@SUM(A1)'), plus: _xlsxSafeCell('+cmd'), dash: _xlsxSafeCell('--- ASSAY ---'), neg: _xlsxSafeCell('-0.5'), num: _xlsxSafeCell(-0.5), txt: _xlsxSafeCell('Compound A'), csv: _bCsvCell('=1+1'), csvOk: _bCsvCell('a,b') }));
+  check('B7', 'a name that would be a formula leaves the workbook and the CSV as text, with a quote in front', r.f === '\'=HYPERLINK("http://x","y")' && r.at[0] === '\'' && r.plus[0] === '\'' && r.csv === '\'=1+1', r);
+  check('B7', 'a header, a negative number or a name is left exactly as it is; a comma is quoted', r.dash === '--- ASSAY ---' && r.neg === '-0.5' && r.num === -0.5 && r.txt === 'Compound A' && r.csvOk === '"a,b"', r);
   await ctx.close();
 });
 

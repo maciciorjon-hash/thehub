@@ -18,7 +18,7 @@ const APPS = {
   tempo: { url: '/apps/tempo/tempo.html', seed: ['loadTestData()'], views: ['tpTab("plate")', 'tpTab("curves")', 'tpTab("results")', 'tpTab("compare")', 'tpTab("plate"); tpOpenSettings()'], wait: 1500 },
   dora: { url: '/apps/dora/dora.html', seed: ['loadTestData()'], views: ['switchTab("table")', 'switchTab("scatter")'], wait: 800 },
   bca: { url: '/apps/bca/bca.html', seed: ['loadTestData()'], views: ['switchTab("import")', 'switchTab("standards")', 'switchTab("samples")'], wait: 800 },
-  beacon: { url: '/apps/beacon/beacon.html', seed: ["loadTestData('gain')"], views: ['switchTab("qc")', 'switchTab("dose")', 'openSetupModal(); switchSetupTab("assay")', 'openSetupModal(); switchSetupTab("platemap")'], wait: 800 },
+  beacon: { url: '/apps/beacon/beacon.html', seed: ["loadTestData('gain')"], views: ['switchTab("results")', 'switchTab("plate"); bSetSel(new Set())', 'switchTab("plate"); bSelect(new Set(PlateEngine.rect({r:2,c:2},{r:5,c:11},bDims())), "cpd")', 'switchTab("plate"); bSelect(new Set(["A1","B1","C1"]), "ctl")'], wait: 800 },
   blueprint: { url: '/apps/blueprint/blueprint.html', seed: [], views: ['', 'selectAll()', "switchTab('gel',document.querySelectorAll('.tab')[1]);document.querySelectorAll('.gd-sec').forEach(d=>d.open=true)"], wait: 600 },
   lumina: { url: '/apps/lumina/lumina.html', seed: ['loadLuminaTestData()'], views: ['', ''], wait: 800 },
 };

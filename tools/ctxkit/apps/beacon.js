@@ -1,9 +1,10 @@
-// Beacon: setup, fits, downloads.
+// Beacon: readings in, results out.
 ctxApp(null, { acts: [
-  { l: 'Setup…', f: 'openSetupModal' },
-  { l: 'Compute the dose-response fit', f: 'computeDoseResponse' },
-  { l: 'Compute the tracer titration fit', f: 'computeTracerTitration' },
-  { l: 'Download mBRET plate (.xlsx)', f: 'exportPlateMBretXLSX' },
-  { l: 'Download ratios (.xlsx)', f: 'exportLiteRatiosXLSX' },
-  { l: 'Download the full report (.xlsx)', f: 'generateOutputXLSX' }
+  { l: 'Choose reader files…', f: 'bPickFiles' },
+  { l: 'Paste values from the clipboard', f: 'bPasteButton' },
+  { l: 'Add a plate', f: 'bAddPlate' },
+  { l: 'Download plate mBRET (.xlsx)', f: 'exportPlateMBretXLSX' },
+  { l: 'Download results (.csv)', f: 'exportResultsCSV' },
+  { l: 'Copy the results table', f: 'copyResultsTSV' },
+  { l: 'Download the full workbook (.xlsx)', f: 'generateOutputXLSX' }
 ] });

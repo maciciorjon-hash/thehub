@@ -18,7 +18,7 @@ import os, sys
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CANON = 'apps/lumina/lumina.html'
-COPIES = ['apps/labbook/labbook.html']
+COPIES = ['apps/labbook/labbook.html', 'apps/beacon/beacon.html']
 BEGIN = '// ═══ PLATE ENGINE — BEGIN'
 END = '// ═══ PLATE ENGINE — END'
 

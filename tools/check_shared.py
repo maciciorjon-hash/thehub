@@ -99,7 +99,7 @@ def main():
 # The shared plate engine (selection geometry, ranges, dilution series, compound blocks, pasted
 # name lists) — canonical in Lumina, copied into the apps below by tools/sync_plate_engine.py.
 PE_CANON = 'apps/lumina/lumina.html'
-PE_COPIES = ['apps/labbook/labbook.html']
+PE_COPIES = ['apps/labbook/labbook.html', 'apps/beacon/beacon.html']
 PE_BEGIN = '// ═══ PLATE ENGINE — BEGIN'
 PE_END = '// ═══ PLATE ENGINE — END'
 
