@@ -170,6 +170,10 @@
 //                            column whose dosed wells share one concentration is headed by it. No shading or "also as column headers" to
 //                            ask for; compound/concentration live with the series (Compounds), text in the wells with the map (Contents);
 //                            a typed header wins, a well with no concentration keeps its own shade, a plate of one concentration has no headers.
+//   B41 duplicate the       The Plate step copies the layout (wells, conditions, concentrations, blocks, headers) onto the next plate, or onto a new one
+//       layout               when there is none; the source is untouched, the copy is a copy (not shared), compound names and reader values are not
+//                            carried, a next plate with wells asks first and a refusal changes nothing, the mix table counts both plates, and ⌘Z
+//                            puts it back.
 //   B36 plates, plasmids,   An experiment can have more than one plate (+ Add plate: same conditions, its own title, counted with the
 //       steps                first by the mix table, shown, exported); the plate editor's tabs are numbered steps (Plate · Plasmids ·
 //                            Contents · Dilution · Compounds · Label · Data) that only Back / Next or a click move — not a selection,
@@ -2157,6 +2161,60 @@ async function suite(opts) {
       if (Object.keys(plateColLabelsOf(flat)).length) bad('B40', 'one concentration', 'a plate of one concentration is given column headers');
       const echo = { format: '96', types: p.types, wells: { A1: { typeId: tid, shade: 0.6 } } };
       if (plateWellColor(plateView(echo), echo.wells.A1) === p.types.find(t => t.id === tid).color) bad('B40', 'explicit shade', 'a well with no concentration lost the shade it was given');
+    });
+
+    // B41 — duplicate the layout to the next plate.
+    if (run('B41')) await guard('B41', 'duplicate layout', async () => {
+      const P = (LB.data.projects || []).find(p => (p.sections || []).length);
+      const key = 'NB_SPARK_SCREEN96', tpl = LB.data.presets[key];
+      if (!tpl) { bad('B41', 'setup', 'the SPARK screen preset is not in the notebook'); return; }
+      const su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup)));
+      const before = new Set(Object.keys(LB.data.experiments));
+      buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-10-01', type: 'NB', title: 'INV dup', code: 'INV_B41', setup: su, plate: true });
+      const e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); clean.push(e); openExp(e.id); tick('B41');
+      const p1 = e.plate;
+      openPlateEditor('exp:' + e.id); await sleep(60);
+      PL.sel = {}; Object.keys(p1.wells).forEach(id => { if (p1.wells[id].conc) PL.sel[id] = 1; }); PL.reps = 2; plSetMode('dose'); plRender(); plMakeCompounds(); await sleep(40); PL.sel = {};
+      const n1 = Object.keys(p1.wells).length, concs1 = Object.values(p1.wells).filter(w => w.conc).length;
+      p1.values = { data: { A1: 1, A2: 2 }, min: 1, max: 2 };
+      const cpdGroups = Object.keys(p1.groups || {}).filter(g => p1.groups[g].cpd);
+      if (!cpdGroups.length) { bad('B41', 'compounds', 'the SPARK plate has no compound blocks to carry'); return; }
+      cpdGroups.forEach(g => { p1.groups[g].named = true; p1.groups[g].label = 'MyCpd ' + g; });
+      const snap1 = JSON.stringify(p1);
+      plSetMode('plate'); await sleep(60);
+      if (!/Duplicate layout to a new plate/.test(document.getElementById('pl-side').textContent)) bad('B41', 'button', 'the Plate step has no "Duplicate layout to a new plate"');
+      const t0 = Object.values(plateTidCounts(e) || {}).reduce((a, b) => a + b, 0);
+      plDuplicateToNext(); await sleep(80);
+      if (!e.morePlates || e.morePlates.length !== 1) { bad('B41', 'new plate', 'duplicating from the last plate did not make a new one'); return; }
+      const p2 = e.morePlates[0];
+      if (PL.key !== 'exp:' + e.id + ':2') bad('B41', 'opens', 'the editor did not move to the copy (key ' + PL.key + ')');
+      if (JSON.stringify(p1) !== snap1) bad('B41', 'source', 'the source plate changed when it was copied');
+      if (Object.keys(p2.wells).length !== n1 || Object.values(p2.wells).filter(w => w.conc).length !== concs1) bad('B41', 'wells', 'the copy has ' + Object.keys(p2.wells).length + ' wells / ' + Object.values(p2.wells).filter(w => w.conc).length + ' concentrations, the source ' + n1 + ' / ' + concs1);
+      if (JSON.stringify(p2.types.map(t => t.id)) !== JSON.stringify(p1.types.map(t => t.id))) bad('B41', 'conditions', 'the copy has other conditions');
+      if (p2.values) bad('B41', 'values', 'reader values were copied to the other plate');
+      if (Object.values(p2.groups || {}).some(g => g.cpd && /MyCpd/.test(g.label || ''))) bad('B41', 'names', 'compound names were carried to the other plate');
+      if (!/Compound \d/.test(Object.values(p2.groups || {}).filter(g => g.cpd).map(g => g.label).join(' '))) bad('B41', 'placeholders', 'the copied blocks are not "Compound n" placeholders');
+      if (p2.title !== 'Plate 2') bad('B41', 'title', 'the copy is titled ' + JSON.stringify(p2.title));
+      const k = Object.keys(p2.wells)[0]; p2.wells[k].conc = 'CHANGED'; if (p1.wells[k].conc === 'CHANGED') bad('B41', 'shared', 'the two plates share their wells');
+      p2.wells[k].conc = p1.wells[k].conc;
+      const t1 = Object.values(plateTidCounts(e) || {}).reduce((a, b) => a + b, 0);
+      if (t1 !== t0 * 2) bad('B41', 'counted', 'the experiment counts ' + t1 + ' wells after the copy, expected ' + t0 * 2);
+      // a next plate with wells asks first
+      plSwitchPlate('exp:' + e.id); p1.wells.A1 = Object.assign({}, p1.wells.A1, { note: 'ONLY-ON-1' }); p2.wells = { H12: { typeId: p2.types[0].id } };
+      const orig = window.lbConfirm; let asked = 0, say = false;
+      try {
+        window.lbConfirm = () => { asked++; return Promise.resolve(say); };
+        if (!/Copy layout to Plate 2/.test(document.getElementById('pl-side').textContent)) { plRender(); }
+        plDuplicateToNext(); await sleep(60);
+        if (asked !== 1) bad('B41', 'asks', 'a next plate with wells was overwritten without asking (' + asked + ' questions)');
+        if (Object.keys(p2.wells).join() !== 'H12') bad('B41', 'refused', 'refusing the question still changed the next plate');
+        say = true; plDuplicateToNext(); await sleep(80);
+        if (Object.keys(p2.wells).length !== n1 || !p2.wells.A1 || p2.wells.H12 && !p1.wells.H12) bad('B41', 'replaced', 'agreeing did not replace the next plate\'s layout');
+        if (e.morePlates.length !== 1) bad('B41', 'no third', 'copying onto an existing next plate made another plate');
+        lbUndo(); await sleep(60);
+        const back = LB.data.experiments[e.id]; if (!back.morePlates || Object.keys(back.morePlates[0].wells).join() !== 'H12') bad('B41', 'undo', 'undo did not put the next plate back');   // undo restores the record, so read it again
+      } finally { window.lbConfirm = orig; }
+      closePlateEditor();
     });
 
     // B28 — a date typed into Repeat is a real day or it is refused.

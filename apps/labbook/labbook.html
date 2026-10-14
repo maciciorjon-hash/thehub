@@ -7876,6 +7876,44 @@ function openPlateEditor(key){
   el('plate-modal').classList.add('open'); plRender(); plApplySumState(); }
 // Another plate of the same experiment, in the same editor: the steps stay where they are, the
 // selection belongs to the plate it was made on.
+// The plate after this one in the experiment, if there is one.
+function _plNextPlate(){ var o=_plateOwner(PL.key); if(!o||o.ds||!o.exp) return null;
+  var L=expPlateList(o.exp), i=-1; L.forEach(function(x,k){ if(x.key===PL.key) i=k; });
+  return (i>=0&&L[i+1])?L[i+1]:null; }
+function _plDupLabel(){ var nx=_plNextPlate(), o=_plateOwner(PL.key);
+  return nx?('Copy layout to '+esc(plateLabel(nx.key,nx.p))):'Duplicate layout to a new plate'; }
+// The layout of one plate onto another: which wells hold what, at what concentration, in which
+// blocks, under which headers. Not its title, and not what was read off it (reader values belong to
+// the plate they were read from). Compound names are not carried: the usual reason for a second plate
+// is more compounds, and the same name on two plates is a wrong record that looks right — the blocks
+// come back as "Compound n" to be named.
+function _plCopyLayout(src,tgt){ var c=JSON.parse(JSON.stringify(src));
+  tgt.format=c.format; tgt.types=c.types; tgt.wells=c.wells||{}; tgt.groups=c.groups||{};
+  if(c.colLabels) tgt.colLabels=c.colLabels; else delete tgt.colLabels;
+  if(c.colTitle) tgt.colTitle=c.colTitle; else delete tgt.colTitle;
+  if(c.dosing!=null) tgt.dosing=c.dosing;
+  delete tgt.values;
+  Object.keys(tgt.groups).forEach(function(g){ var G=tgt.groups[g]; if(G&&G.cpd){ delete G.named; G.label=''; } });
+  Object.keys(tgt.wells).forEach(function(id){ var w=tgt.wells[id]; if(w&&w.compound) delete w.compound; });
+  _plRenumberCpds(tgt); }
+// Duplicate this plate's layout onto the next plate of the experiment — or onto a new one when this is
+// the last. A next plate that already has wells is only overwritten after you say so; ⌘Z puts it back.
+function plDuplicateToNext(){ var key=PL.key, o=_plateOwner(key); if(!o||o.ds||!o.exp) return;
+  var e=o.exp, src=plCur(); if(!src||!plateCount(src)){ toast('Nothing on this plate to copy'); return; }
+  var nx=_plNextPlate();
+  function go(){
+    undoMark('Duplicate layout',['experiments.'+e.id]);
+    var tgt, tkey;
+    if(nx){ tgt=nx.p; tkey=nx.key; }
+    else { tgt=newPlate(src.format); if(!e.morePlates) e.morePlates=[]; e.morePlates.push(tgt);
+      var no=e.morePlates.length+1; tgt.title='Plate '+no; tkey='exp:'+e.id+':'+no; }
+    _plCopyLayout(src,tgt);
+    platePersist(tkey); e.updated=Date.now(); save();
+    var lab=plateLabel(tkey,tgt);
+    PL.mode=_plMode(); plSwitchPlate(tkey);
+    toast('Layout copied to '+lab+(Object.keys(tgt.groups).some(function(g){ return tgt.groups[g].cpd; })?' — name its compounds':'')); }
+  if(nx&&plateCount(nx.p)) lbConfirm('Replace the layout of '+plateLabel(nx.key,nx.p)+' with this one? Its wells are overwritten (⌘Z puts them back).',{title:'Copy layout',ok:'Replace',danger:true}).then(function(ok){ if(ok) go(); });
+  else go(); }
 function plSwitchPlate(key){ var p=plateOf(key); if(!p) return;
   PL.key=key; PL.sel={}; PL.anchor=null; PL.band=null; PL.type=(plateTypes(p)[1]||plateTypes(p)[0]).id; PL._selSig='';
   if(!_plHasStep(PL.mode)) PL.mode=_plSteps()[0][0];
@@ -8359,7 +8397,8 @@ function _plPlateCard(p,dosing,ex,inExp,many){
     +(ex?('<label class="ci-f chk pl-dosechk"><span>Concentrations on this plate</span>'
       +'<input type="checkbox"'+(dosing?' checked':'')+' onchange="plSetDosing(this.checked)"'
       +' title="Turns on the Compounds step and the compound and concentration fields"></label>'):'')
-    +(inExp?('<div class="pl-row2"><button class="pl-btn" onclick="addMorePlate(\''+ex.id+'\',true)" title="Another plate for this experiment — more compounds, a repeat of the layout">+ Add another plate</button>'
+    +(inExp?('<div class="pl-row2"><button class="pl-btn" onclick="addMorePlate(\''+ex.id+'\',true)" title="Another plate for this experiment, with the same conditions and nothing on it">+ Add another plate</button>'
+      +(plateCount(p)?('<button class="pl-btn" onclick="plDuplicateToNext()" title="The same wells, concentrations and blocks on the next plate (or on a new one), ready to name its compounds">'+_plDupLabel()+'</button>'):'')
       +(many||ex.plate?'<button class="pl-btn danger" onclick="removePlateFrom(PL.key,true)">Remove this plate</button>':'')+'</div>'):'')
     +'</div>'; }
 // Beside the plate's settings: what comes in from the reader and what goes out to a file.
