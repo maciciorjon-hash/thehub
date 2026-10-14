@@ -20,6 +20,8 @@
 //   T12 tick is flush       the first tick of a day starts where the section headings and the rules do
 //   T13 designer foot       a row of design cards has its buttons on one line
 //   T14 drawn marks         an outcome's mark (chip, list, band, picker) is an svg, never a typed ✓ × ~ ?
+//   T15 step text = menu    a step's title, its text and its calculator's amounts are the size of the side menu beside it (13px), and the step's
+//                           (T1 holds the tick at the list's 20px): 15px text and a 28px tick read as a louder document than the menus (Jon, 2026-10-14)
 //
 //   node tools/labbook_style_invariants.mjs [--url=URL] [--only=T1,T5]
 import { chromium } from 'playwright';
@@ -92,7 +94,7 @@ const CHECKS = [
       S.all('.blk-done,.wk-cb,.pstep-tick').forEach(function(e){ var cs=getComputedStyle(e), r=e.getBoundingClientRect(), c=S.cls(e)+' ('+th+')';
         if(!(cs.borderTopLeftRadius==='50%'||parseFloat(cs.borderTopLeftRadius)>=r.width/2-.5)) bad.push(c+' is not a circle ('+cs.borderTopLeftRadius+')');
         if((e.textContent||'').trim()) bad.push(c+' carries a glyph "'+e.textContent.trim()+'" instead of the drawn check');
-        var want=e.closest('.bench-row')?28:(e.classList.contains('blk-done')?20:16);
+        var want=e.classList.contains('blk-done')?20:16;
         if(Math.abs(r.width-want)>.6||Math.abs(r.height-want)>.6) bad.push(c+' is '+r.width+'x'+r.height+', a tick here is '+want);
         var on=e.classList.contains('on')||!!e.closest('.nbt.done,.wk-blk.done,.wk-task.done');
         if(on){ var af=getComputedStyle(e,'::after'); if(!/url\\(/.test(af.webkitMaskImage||af.maskImage||'')) bad.push(c+' is done and draws no check');
@@ -132,7 +134,7 @@ const CHECKS = [
     Object.keys(H).forEach(function(s){ S.all(s).forEach(function(e){ var h=e.getBoundingClientRect().height; if(Math.abs(h-H[s])>1.2) bad.push(S.cls(e)+' "'+(e.textContent||'').trim().slice(0,14)+'" is '+Math.round(h)+'px high, '+s+' is '+H[s]); }); });
     return bad.slice(0,8); })()`],
   ['T9', ['exp_running', 'journal_day'], `(function(){ var S=__st, bad=[];
-    S.all('.dfx-blk-t,.dfx-blk-t2').forEach(function(e){ var fs=getComputedStyle(e).fontSize, fw=getComputedStyle(e).fontWeight; if(fs!=='15px'||+fw<600) bad.push('a step title is '+fs+'/'+fw+' in '+S.cls(e.parentElement)+', it is 15px/600 everywhere'); }); return bad.slice(0,4); })()`],
+    S.all('.dfx-blk-t,.dfx-blk-t2').forEach(function(e){ var fs=getComputedStyle(e).fontSize, fw=getComputedStyle(e).fontWeight; if(fs!=='13px'||+fw<600) bad.push('a step title is '+fs+'/'+fw+' in '+S.cls(e.parentElement)+', it is 13px/600 everywhere'); }); return bad.slice(0,4); })()`],
   ['T10', ['week'], `(function(){ var S=__st, bad=[]; var od=S.all('.wk-od')[0], cols=S.all('.wk-col'); if(!od||!cols.length) return ['the Week fixture has no outstanding step to measure'];
     var a=od.getBoundingClientRect(), f=cols[0].getBoundingClientRect(), l=cols[cols.length-1].getBoundingClientRect();
     if(Math.abs(a.left-f.left)>1.5||Math.abs(a.right-l.right)>1.5) bad.push('the outstanding banner spans '+Math.round(a.left)+'–'+Math.round(a.right)+' and the grid '+Math.round(f.left)+'–'+Math.round(l.right)); return bad; })()`],
@@ -145,6 +147,11 @@ const CHECKS = [
   ['T13', ['designer'], `(function(){ var S=__st, bad=[], rows={};
     S.all('.dg-card').forEach(function(c){ var k=Math.round(c.getBoundingClientRect().top/6); var a=c.querySelector('.dg-act'); if(a) (rows[k]=rows[k]||[]).push(Math.round(a.getBoundingClientRect().bottom)); });
     Object.keys(rows).forEach(function(k){ var b=rows[k]; if(b.length>1&&Math.max.apply(null,b)-Math.min.apply(null,b)>1) bad.push('design cards in one row have their buttons at '+b.join(' / ')); }); return bad; })()`],
+  ['T15', ['exp_planned', 'exp_running', 'exp_done'], `(function(){ var S=__st, bad=[], n=0; var menu=S.all('.proj-name')[0]; if(!menu) return ['no side menu on this screen to measure against'];
+    var want=getComputedStyle(menu).fontSize;
+    [['.bench-row .dfx-blk-t','a step title'],['.bench-row .rt.dfx-blk','a step text'],['.bench-row .cc-amt','a calculator amount']].forEach(function(x){
+      S.all(x[0]).slice(0,6).forEach(function(e){ n++; var fs=getComputedStyle(e).fontSize; if(fs!==want) bad.push(x[1]+' is '+fs+' where the side menu is '+want); }); });
+    if(!n) bad.push('no step on this screen to measure'); return bad.slice(0,5); })()`],
   ['T14', ['exp_done', 'outcome_picker'], `(function(){ var S=__st, bad=[], n=0;
     S.all('.oc-chip i,.xv-oc,.oc-band .oc-v i,.dlg-item .ic').forEach(function(e){ n++; var t=(e.textContent||'').trim();
       if(e.closest('.dlg-item')&&!e.closest('.dlg-item').querySelector('.ic-svg')&&/^[✓×~?–]$/.test(t)&&!/Not yet/.test(e.closest('.dlg-item').textContent)) bad.push('the outcome picker draws "'+t+'" as text');

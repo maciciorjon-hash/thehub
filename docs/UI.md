@@ -244,10 +244,10 @@ one answer, and `tools/labbook_style_invariants.mjs` (T1–T14) measures it on e
 
 | role | the one answer |
 |---|---|
-| **tick** (a step, a week card, a task, a protocol item) | a circle, 1.5px `--text3` outline, accent fill, one drawn check (a CSS mask, never a ✓ glyph). 28 on a step's header, 20 in a list of due steps, 16 inside a line of text. Done is `var(--accent)` with `var(--on-accent)` ink, in both themes |
+| **tick** (a step, a week card, a task, a protocol item) | a circle, 1.5px `--text3` outline, accent fill, one drawn check (a CSS mask, never a ✓ glyph). 20 on a step's header and in a list of due steps (it was 28 on the header until 2026-10-14: too loud beside 13px text), 16 inside a line of text. Done is `var(--accent)` with `var(--on-accent)` ink, in both themes |
 | **checkbox** | the same box and the same check as the tick, square (`--r-1`), 16px, `appearance:none`. A choice is a square, a completion is a circle |
 | **section heading** (Setup · Steps · Observations · Results · Files · Report) | `.exp-sec-h` + `.exp-sec-t` (`--fs-6`/600/`--text`) over one hairline; Setup is no longer the small grey label |
-| **step title** | `--fs-5`/600/`--text` wherever a step is drawn (experiment, Today, Journal, carried over). It was 11, 12 and 13px and smaller than the 15px text under it |
+| **step title and step text** | `--fs-4` (13px, the side menus' size) wherever a step is drawn (experiment, Today, Journal, carried over): title 600/`--text`, the recipe and the calculator's amounts the same 13px. It was 15px (2026-10-13 had made it 15 so it stood above 15px text; Jon: too big, it should read like the menus). Section headings are `--fs-5`, the experiment's title `--fs-7` |
 | **small bordered button** (Details, Edit, + Add plate, Fold, Open, Snooze, Today, + Note) | 24px, `--r-1`, `--fs-2`/600, `--border2`, no glyph in front (a ▸ read as a disclosure on buttons that disclose nothing). `.lean-tog` is the class |
 | **icon / row button** (the experiment's actions, camera, ⋯, the wait chip, report exports) | 28px, `--r-1`, icon 15px at `stroke-width:2` |
 | **toolbar control** (Experiments, Week) | `--tb-h` 32px, and a segmented group is that height, not 32 plus its own padding |
@@ -264,6 +264,7 @@ Layout rules that came with it:
 - **An action row's first icon stands under the title.** The ghost buttons have 8px of padding before the icon, so the row is pulled left by 8px (`.exh.exh-exp .exh-top`) — scoped, because the same row class heads the Planner's Today, where the same pull put the title outside its box.
 - **Two halves and `space-between`, not an auto margin** — the folder arrows ‹ 3/4 › sit at the right of the meta line, the day's count at the right of its header, and each left half wraps inside itself.
 - **A drag handle hangs in the margin on a pointer device** (`position:absolute; left:-19px`, only under `(hover:hover)`), so a step's tick starts where the text and the rules do. That needed `.bench-group` to stop clipping (`display:flow-root`, which keeps the block formatting context `overflow:hidden` was there for).
+- **The plates of a run share a row** (`.exp-plates`, flex-wrap): each card takes ~260px (a 96 is ~21–34px a well, `PLATE_CARD_WPX_MAX`), grows to its cap, and the row is filled before a new one starts — two to a row at least above 560px, one per row under it (a half-width plate's column headers print over each other on a phone). One card per line left the right of the page empty.
 - **The actions of a card of a grid sit at its foot** (`margin-top:auto`), so a row of cards has its buttons on one line.
 - **A banner above a grid sits on the grid's margins**, not the pane's edge.
 

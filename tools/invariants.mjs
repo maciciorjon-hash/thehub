@@ -174,6 +174,12 @@
 //       layout               when there is none; the source is untouched, the copy is a copy (not shared), compound names and reader values are not
 //                            carried, a next plate with wells asks first and a refusal changes nothing, the mix table counts both plates, and ⌘Z
 //                            puts it back.
+//   B42 the setup says no   A step the setup switches off (NanoBRET "MG132 pre-treatment: no") is not in the plan: not at creation, not after Setup › Edit,
+//       and a plasmid plate   not in "what it feeds", and the next step starts from the volume it really has (100 µL, not 111). Answering yes puts the
+//       has no Contents tab   preset's step back in its place; a ticked step, one with its numbers typed over, and a finished run are never touched. A plate
+//                            made of plasmids has Plate · Plasmids (· Compounds): naming wells and blocks is a fold under the selection, not a step.
+//   B43 plates side by side  The plate cards of a run are ~34 px a well at most and sit in a row that fills the width (two at least), not one card per
+//                            line with the right of the page empty; the step text (13 px, the side menu's size) and the tick (20 px) are in T15.
 //   B36 plates, plasmids,   An experiment can have more than one plate (+ Add plate: same conditions, its own title, counted with the
 //       steps                first by the mix table, shown, exported); the plate editor's tabs are numbered steps (Plate · Plasmids ·
 //                            Contents · Dilution · Compounds · Label · Data) that only Back / Next or a click move — not a selection,
@@ -1951,7 +1957,7 @@ async function suite(opts) {
       if (n1 !== n0 + 3) bad('B36', 'counted', 'three wells painted on plate 2 changed the experiment\'s count from ' + n0 + ' to ' + n1);
       // switching plate keeps the step and drops the selection
       plSwitchPlate('exp:' + e.id); await sleep(30);
-      if (on() !== 'Contents') bad('B36', 'switch', 'switching plate moved the editor off its step to ' + on());
+      if (on() !== 'Plasmids') bad('B36', 'switch', 'switching plate moved the editor off its step to ' + on());   // 'contents' is Plasmids on a plasmid plate (B42)
       if (plSelIds().length) bad('B36', 'switch sel', 'the selection followed the editor to another plate');
       closePlateEditor(); await sleep(60);
       const cards = [...document.querySelectorAll('.blk-plate[data-plate]')].map(c => c.getAttribute('data-plate')).filter((k, i, a) => k.indexOf('exp:' + e.id) === 0 && a.indexOf(k) === i);
@@ -1971,7 +1977,7 @@ async function suite(opts) {
       plSetMode('dil'); PL.sel = { C1: 1, C2: 1, C3: 1, C4: 1 }; plRender(); plApplySeries(); await sleep(30);
       if (on() !== 'Compounds') bad('B36', 'applied', 'applying a series moved the step to ' + on());
       plSetMode('contents'); plUseExpTypes(); await sleep(60);
-      if (on() !== 'Contents') bad('B36', 'conditions', 'Use this experiment\'s conditions moved the step to ' + on());
+      if (on() !== 'Plasmids') bad('B36', 'conditions', 'Use this experiment\'s conditions moved the step to ' + on());
       // the panel keeps its scroll on the same step
       const side = document.getElementById('pl-side'); side.style.maxHeight = '120px'; side.style.overflowY = 'auto'; plRender(); side.scrollTop = 60; const st = side.scrollTop;
       PL.sel = { D1: 1 }; plRender();
@@ -2016,12 +2022,12 @@ async function suite(opts) {
       openPlateEditor('exp:' + e.id); await sleep(80);
       const tabs = () => [...document.querySelectorAll('#pl-side .pl-tabs button')].map(b => b.textContent);
       const on = () => (document.querySelector('#pl-side .pl-tabs button.on') || {}).textContent;
-      if (tabs().join(',') !== 'Plate,Plasmids,Contents,Compounds') bad('B37', 'steps', 'the steps are ' + tabs().join(',') + ', not Plate,Plasmids,Contents,Compounds');
+      if (tabs().join(',') !== 'Plate,Plasmids,Compounds') bad('B37', 'steps', 'the steps are ' + tabs().join(',') + ', not Plate,Plasmids,Compounds');
       plSetMode('data'); if (on() !== 'Plate') bad('B37', 'alias data', "plSetMode('data') is " + on());
       if (!document.querySelector('#pl-side [onclick*="plPasteValues"]') || !document.querySelector('#pl-side [onclick*="exportPlateCSV"]') || !document.querySelector('#pl-side [onclick*="exportPlatePNG"]') || !document.querySelector('#pl-side select[onchange*="plSetFormat"]')) bad('B37', 'plate step', 'the Plate step does not hold both the plate settings and the reader values / CSV / PNG');
       plSetMode('dil'); if (on() !== 'Compounds') bad('B37', 'alias dil', "plSetMode('dil') is " + on());
       plSetMode('cpd'); if (on() !== 'Compounds') bad('B37', 'alias cpd', "plSetMode('cpd') is " + on());
-      plSetMode('label'); if (on() !== 'Contents') bad('B37', 'alias label', "plSetMode('label') is " + on());
+      plSetMode('label'); if (on() !== 'Plasmids') bad('B37', 'alias label', "plSetMode('label') is " + on());
       const rect = q => { const r = document.querySelector(q).getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)]; };
       const left = rect('.pl-left'), side = rect('#pl-side');
       if (side[2] < left[2] * 1.15) bad('B37', 'proportion', 'the steps panel is ' + side[2] + ' px beside a ' + left[2] + ' px plate column');
@@ -2215,6 +2221,78 @@ async function suite(opts) {
         const back = LB.data.experiments[e.id]; if (!back.morePlates || Object.keys(back.morePlates[0].wells).join() !== 'H12') bad('B41', 'undo', 'undo did not put the next plate back');   // undo restores the record, so read it again
       } finally { window.lbConfirm = orig; }
       closePlateEditor();
+    });
+
+    // B42 — a step the setup says no to is not in the plan; a plasmid plate has no Contents tab.
+    if (run('B42')) await guard('B42', 'setup gates, no Contents', async () => {
+      const P = (LB.data.projects || []).find(p => (p.sections || []).length);
+      const key = 'NB_BIO_RTX96', tpl = LB.data.presets[key];
+      if (!tpl) { bad('B42', 'setup', 'the biosensor preset is not in the notebook'); return; }
+      const mk = (code, over) => {
+        const su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup || {})), over);
+        const before = new Set(Object.keys(LB.data.experiments));
+        buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-10-01', type: 'NB', title: 'INV gate', code, setup: su, plate: true });
+        const e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); clean.push(e); return e; };
+      const mg = e => e.blocks.find(b => /^MG132 pre-treatment/.test(b.title)), titles = e => e.blocks.map(b => b.title).join(' > ');
+      const wellVol = e => e.blocks.find(b => /^Test compounds/.test(b.title)).calc.inputs.wellVolUL;
+      const edit = (e, v) => { const prev = e.setup, next = JSON.parse(JSON.stringify(prev)); next.mg132 = v; e.blocks = applySetupToBlocks(e.type, next, e.blocks, prev, e.presetKey); e.setup = next; };
+      const yes = mk('INV_B42A', { mg132: true }), no = mk('INV_B42B', { mg132: false }); tick('B42');
+      if (!mg(yes)) bad('B42', 'yes', 'MG132 pre-treatment: yes has no MG132 step');
+      if (mg(no)) bad('B42', 'created no', 'an experiment created with MG132 pre-treatment: no still has the step: ' + titles(no));
+      if (wellVol(no) !== 100) bad('B42', 'volume', 'without the MG132 spike the compounds go onto ' + wellVol(no) + ' µL, not 100');
+      edit(yes, false);
+      if (mg(yes)) bad('B42', 'answer no', 'answering no in the setup left the MG132 step in the plan: ' + titles(yes));
+      if (wellVol(yes) !== 100) bad('B42', 'volume after no', 'after answering no the compounds go onto ' + wellVol(yes) + ' µL, not 100');
+      edit(yes, true);
+      const order = titles(yes);
+      if (!mg(yes) || !/Seed onto the complexes > MG132 pre-treatment > Test compounds/.test(order)) bad('B42', 'answer yes', 'answering yes did not put the step back where it was: ' + order);
+      else if (!mg(yes).calc || mg(yes).calc.inputs.name !== 'MG132' || !mg(yes).tpl) bad('B42', 'back whole', 'the step that came back has no calculator or template');
+      mg(yes).done = true; edit(yes, false);
+      if (!mg(yes)) bad('B42', 'ticked', 'a ticked MG132 step was taken out of the record');
+      const typed = mk('INV_B42C', { mg132: true }); mg(typed).calc.inputs.finalUM = 25; edit(typed, false);
+      if (!mg(typed)) bad('B42', 'typed', 'an MG132 step with its numbers typed over was taken out');
+      const late = mk('INV_B42D', { mg132: true }); late.setup.mg132 = false; _gatesFromSetup();
+      if (mg(late)) bad('B42', 'load pass', 'an experiment whose setup says no kept the step through the load pass');
+      const fin = mk('INV_B42E', { mg132: true }); fin.setup.mg132 = false; fin.status = 'done'; _gatesFromSetup();
+      if (!mg(fin)) bad('B42', 'finished', 'the load pass edited a finished experiment');
+      // the editor: what it feeds does not list the step, and there is no Contents tab on a plasmid plate
+      openExp(no.id); openPlateEditor('exp:' + no.id); await sleep(80);
+      if (/MG132/.test(_plFeedsHtml())) bad('B42', 'feeds', 'the plate editor still says MG132 feeds from the map');
+      const tabs = () => [...document.querySelectorAll('#pl-side .pl-tabs button')].map(b => b.textContent);
+      if (tabs().includes('Contents')) bad('B42', 'tab', 'a plate of plasmids still has a Contents step: ' + tabs().join(','));
+      plSetMode('contents'); PL.sel = { C1: 1, C2: 1 }; plRender(); await sleep(20);
+      if (!/Plasmids/.test((document.querySelector('#pl-side .pl-tabs button.on') || {}).textContent || '')) bad('B42', 'alias', "plSetMode('contents') did not land on Plasmids");
+      const fold = document.querySelector('#pl-side details.pl-det-name');
+      if (!fold || !fold.querySelector('[data-pf="label"]') || !fold.querySelector('[data-pf="note"]') || !fold.querySelector('#pl-grp')) bad('B42', 'names', 'naming wells, a note and a block is not offered under the selection');
+      if (fold && fold.open) bad('B42', 'closed', 'the naming fold is open before anyone asked for it');
+      closePlateEditor();
+    });
+
+    // B43 — the plate cards of a run share the row.
+    if (run('B43')) await guard('B43', 'plates side by side', async () => {
+      const P = (LB.data.projects || []).find(p => (p.sections || []).length);
+      const key = 'NB_BIO_RTX96', tpl = LB.data.presets[key];
+      const su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup || {})));
+      const before = new Set(Object.keys(LB.data.experiments));
+      buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-10-01', type: 'NB', title: 'INV cards', code: 'INV_B43', setup: su, plate: true });
+      const e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); clean.push(e); tick('B43');
+      addMorePlate(e.id); closePlateEditor(); addMorePlate(e.id); closePlateEditor(); openExp(e.id); await sleep(120);
+      const row = document.querySelector('.exp-plates'), cards = row ? [...row.querySelectorAll(':scope > .blk-plate')] : [];
+      if (cards.length !== 3) { bad('B43', 'row', 'the three plates are not in one .exp-plates row (' + cards.length + ')'); return; }
+      const W = row.getBoundingClientRect().width, r = cards.map(c => c.getBoundingClientRect());
+      const first = r.filter(x => Math.abs(x.top - r[0].top) < 2).length, fit = Math.max(2, Math.min(3, Math.floor((W + 18) / (260 + 18))));
+      if (W >= 560 && first < fit) bad('B43', 'fills', 'only ' + first + ' of 3 plates are on the first line of a ' + Math.round(W) + ' px row (room for ' + fit + ')');
+      if (r.some(x => x.right > row.getBoundingClientRect().right + 1)) bad('B43', 'inside', 'a plate card runs past the row');
+      const w0 = cards[0].querySelector('.pp-w').getBoundingClientRect().width;
+      if (w0 > 36) bad('B43', 'size', 'a well of the first plate is ' + Math.round(w0) + ' px; a plate is an overview, not a poster (36 at most)');
+      if (r[0].width > 440) bad('B43', 'width', 'the first plate card is ' + Math.round(r[0].width) + ' px wide (440 at most)');
+      // one plate alone is not stretched across the page either (it was 56 px a well, a 680 px card, with the right of the page empty)
+      const b1 = new Set(Object.keys(LB.data.experiments));
+      buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-10-01', type: 'NB', title: 'INV card one', code: 'INV_B43B', setup: su, plate: true });
+      const e1 = Object.values(LB.data.experiments).find(x => !b1.has(x.id)); clean.push(e1); openExp(e1.id); await sleep(120);
+      const one = document.querySelector('.exp-plates > .blk-plate'), ow = one && one.querySelector('.pp-w');
+      if (!one || !ow) bad('B43', 'one', 'a single plate has no card');
+      else if (ow.getBoundingClientRect().width > 36 || one.getBoundingClientRect().width > 440) bad('B43', 'one plate', 'a single plate is a ' + Math.round(one.getBoundingClientRect().width) + ' px card with ' + Math.round(ow.getBoundingClientRect().width) + ' px wells');
     });
 
     // B28 — a date typed into Repeat is a real day or it is refused.
