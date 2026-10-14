@@ -180,6 +180,9 @@
 //                            made of plasmids has Plate · Plasmids (· Compounds): naming wells and blocks is a fold under the selection, not a step.
 //   B43 plates side by side  The plate cards of a run are ~34 px a well at most and sit in a row that fills the width (two at least), not one card per
 //                            line with the right of the page empty; the step text (13 px, the side menu's size) and the tick (20 px) are in T15.
+//   B44 no footnotes in    A shipped step is its instructions and its numbers, not a paragraph that explains why (.lb-fn). Jon (NB20261013): "mas comentarios de estos
+//       the steps             que encima estan mal ... no aportan nada". No built-in or curated preset, no library step and no step of a notebook preset
+//                            carries a .lb-fn; the only ones left are the two Western blot lines that list typical dilutions and variations (data).
 //   B36 plates, plasmids,   An experiment can have more than one plate (+ Add plate: same conditions, its own title, counted with the
 //       steps                first by the mix table, shown, exported); the plate editor's tabs are numbered steps (Plate · Plasmids ·
 //                            Contents · Dilution · Compounds · Label · Data) that only Back / Next or a click move — not a selection,
@@ -2293,6 +2296,17 @@ async function suite(opts) {
       const one = document.querySelector('.exp-plates > .blk-plate'), ow = one && one.querySelector('.pp-w');
       if (!one || !ow) bad('B43', 'one', 'a single plate has no card');
       else if (ow.getBoundingClientRect().width > 36 || one.getBoundingClientRect().width > 440) bad('B43', 'one plate', 'a single plate is a ' + Math.round(one.getBoundingClientRect().width) + ' px card with ' + Math.round(ow.getBoundingClientRect().width) + ' px wells');
+    });
+
+    // B44 — no explanatory footnote in any shipped step.
+    if (run('B44')) await guard('B44', 'no footnotes', async () => {
+      const KEEP = /^(Typical dilutions|Variations)/, found = [];
+      const scan = (where, html) => { const d = document.createElement('div'); d.innerHTML = String(html || '');
+        d.querySelectorAll('.lb-fn').forEach(n => { if (!KEEP.test(n.textContent.trim())) found.push(where + ': ' + n.textContent.trim().slice(0, 60)); }); };
+      Object.keys(LB.data.presets).forEach(k => ((LB.data.presets[k] || {}).blocks || []).forEach(b => scan('preset ' + k + ' / ' + b.title, b.html)));
+      Object.keys(EXTRA_PRESET_SEED).forEach(k => (EXTRA_PRESET_SEED[k].blocks || []).forEach(b => scan('curated ' + k + ' / ' + b.title, b.html)));
+      (STEP_LIBRARY || []).forEach(l => scan('library ' + l.id, l.html)); tick('B44');
+      if (found.length) bad('B44', 'footnote', found.length + ' explanatory footnote(s) in shipped steps: ' + found.slice(0, 3).join(' | '));
     });
 
     // B28 — a date typed into Repeat is a real day or it is refused.
