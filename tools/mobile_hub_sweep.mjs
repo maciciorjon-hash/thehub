@@ -30,6 +30,7 @@
 //        [--shots=DIR] [--json=FILE] [--verbose] [--min-font=11]
 //        [--escape]   also run tools/audit_escape.js on every screen: nothing leaves the box drawn around it, no text lands on its neighbour
 //        [--desktop]  a mouse and a desktop browser instead of an iPhone, for the sizes you pass (e.g. --sizes=1440x900,1024x768); skips the phone-only checks (the rotate note, text under 10px)
+//        Phone sizes skip the laptop-only apps (LAPTOP_ONLY in mobile_hub_scenarios.mjs: data analysis); --only=<id> or --desktop brings them back.
 // Exit 1 on any finding.
 import { chromium, webkit } from 'playwright';
 import fs from 'node:fs';
@@ -447,9 +448,10 @@ async function main() {
     for (let a = 0; ; a++) { try { await page.goto(URL0, { timeout: 120000 }); break; } catch (e) { if (a >= 2) throw e; } }
     await page.waitForTimeout(1200);
     await page.evaluate(DETECT);
-    const { SCENARIOS } = await import('./mobile_hub_scenarios.mjs');
+    const { SCENARIOS, LAPTOP_ONLY } = await import('./mobile_hub_scenarios.mjs');
     for (const sc of SCENARIOS) {
       if (ONLY && !ONLY.includes(sc.id)) continue;
+      if (!DESKTOP && LAPTOP_ONLY.has(sc.id) && !(ONLY && ONLY.includes(sc.id))) continue;   // data analysis is a laptop job: phone sizes skip it unless asked for by name
       if (DESKTOP && sc.id === 'rotate') continue;   // the rotate-your-phone contract is about a phone
       try { await sc.run({ page, ctx, measure: (label, frame, o) => measure(page, `${sc.id}:${label}`, ctx, frame, o), frameOf: id => frameOf(page, id), DETECT, report: (label, msg) => findings.push({ size: `${w}x${h}`, theme, screen: `${sc.id}:${label}`, where: 'app', msg }), measureOn: (pg, label, frame, o) => measure(pg, `${sc.id}:${label}`, ctx, frame, o),
               fresh: async (o = {}) => { const pg = await context.newPage(); if (o.visitor) await pg.addInitScript(() => { window.__STUB_NOUSER = 1; }); await pg.goto(URL0, { timeout: 120000 }); await pg.waitForTimeout(1200); await pg.evaluate(DETECT); return pg; } }); }

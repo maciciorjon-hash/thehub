@@ -44,7 +44,8 @@ const SEED = `(function(){
     return Object.values(LB.data.experiments).filter(function(x){ return !before[x.id]; })[0]||null; }
   function day(n){ return addDays(todayStr(),n); }
   out.spark=mk('NB_SPARK_SCREEN96','ST_NB_SPARK',day(0),{nConc:3,nReps:2,topUM:100,df:3});
-  out.ctg=mk('CTG','ST_CTG',day(-2));
+  /* three days before this week's Monday: a step left over from last week on every weekday (day(-2) was last week only on Mon/Tue, so T10 had nothing to measure from Wednesday on) */
+  out.ctg=mk('CTG','ST_CTG',addDays(wkMonday(todayStr()),-3));
   out.bio=mk('NB_BIO_RTX96','ST_NB_BIO',day(-6));
   out.wb=mk('WB','ST_WB',day(-1));
   [out.ctg,out.bio].forEach(function(e,i){ if(!e) return; (e.blocks||[]).forEach(function(b,j){ if(i===1||j<1){ b.done=true; b.completedAt=Date.now()-86400000; } }); });

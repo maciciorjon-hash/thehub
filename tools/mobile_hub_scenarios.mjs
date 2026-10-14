@@ -117,6 +117,9 @@ const GATES = [
   { app: 'pd',     how: "setFormat('384')",                                                                           note: '#pd-rotate', thing: '#plate-scroll-area' },
 ];
 
+// Data-analysis apps are a laptop job (Jon, 2026-10-13: no phone support, no phone checks). The phone sweep leaves them out;
+// the desktop sweeps (--desktop) still walk every one of them.
+export const LAPTOP_ONLY = new Set(['echo', 'hitfinder', 'tempo', 'deg', 'spectra', 'beacon', 'lumina']);
 export const APPS = ['echo', 'hitfinder', 'tempo', 'deg', 'pd', 'dna', 'pt', 'spectra', 'cryo', 'cuppa', 'beacon', 'lumina', 'ribbon', 'protocols', 'cellarchive', 'incubator', 'blot'];
 
 export const SCENARIOS = [
@@ -159,6 +162,7 @@ export const SCENARIOS = [
       const portrait = ctx.h > ctx.w && ctx.w <= 640;
       await asAdmin(page);
       for (const g of GATES) {
+        if (LAPTOP_ONLY.has(g.app)) continue;   // the rotate note is a phone contract; these apps have no phone layout
         const fr = await openAppFrame(page, g.app);
         await fr.evaluate(g.how).catch(() => {});
         await settle(page, 700);

@@ -2078,15 +2078,17 @@ async function rb34() {
   const { ctx, pg, E, go } = await open({ tag: 'RB34 ' });
   if (!(await has3d(pg))) { skipped.push('RB34 (3Dmol could not load from its CDN)'); await ctx.close(); return; }
   await go('8CAM'); await sleep(500);
-  const fit = async () => { await E(() => fitToView()); await sleep(900); };
+  const fit = async () => { await E(() => fitToView()); await sleep(900); await E(() => window.__idle()); };
   const ext = () => E(() => { let x0 = 1e9, x1 = -1e9; currentModel.selectedAtoms({ atom: 'CA' }).forEach(a => { const p = viewer.modelToScreen({ x: a.x, y: a.y, z: a.z }); x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); }); return x1 - x0; });
   const box = await pg.locator('#viewport').boundingBox(), cx = box.x + box.width / 2, cy = box.y + box.height / 2;
   const wheel = (o) => E(o => { const c = document.querySelector('#viewport canvas'); c.dispatchEvent(new WheelEvent('wheel', Object.assign({ bubbles: true, cancelable: true }, o))); }, o);
+  await E(() => { window.__idle = () => new Promise(res => { const t0 = Date.now(); (function w() { if (!rbCamBusy() || Date.now() - t0 > 8000) res(); else setTimeout(w, 60); })(); }); });
   await fit(); await pg.mouse.move(cx, cy);
   // direction, and in-then-out
-  const e0 = await ext(); await pg.mouse.wheel(0, -120); await sleep(600); const e1 = await ext();
+  const settle = async () => { await sleep(150); for (let i = 0; i < 80 && await E(() => rbCamBusy()); i++) await sleep(100); };   // a slow runner glides longer than any fixed sleep
+  const e0 = await ext(); await pg.mouse.wheel(0, -120); await settle(); const e1 = await ext();
   check('RB34', 'scrolling up zooms in (the web convention; 3Dmol zoomed out)', e1 > e0 * 1.1, { e0, e1 });
-  await pg.mouse.wheel(0, 120); await sleep(600); const e2 = await ext();
+  await pg.mouse.wheel(0, 120); await settle(); const e2 = await ext();
   check('RB34', 'a notch in and a notch out come back to the same size (3Dmol: 26 in, 14 out)', Math.abs(e2 - e0) / e0 < 0.03, { e0, e2 });
   // eased: one event is many frames, and it arrives
   await fit();
@@ -2098,30 +2100,30 @@ async function rb34() {
   check('RB34', 'and it arrives (it stops moving)', Math.abs(zs[zs.length - 1] - zs[zs.length - 4]) < 1e-3, zs.slice(-4));
   check('RB34', 'nothing runs at rest: the loop has stopped', await E(() => !rbCamBusy()));
   // a line-mode wheel (Firefox) and a hard flick (Safari)
-  await fit(); const ea = await ext(); await wheel({ deltaY: -48, deltaMode: 0, clientX: cx, clientY: cy }); await sleep(600); const eb = await ext();
-  await fit(); await wheel({ deltaY: -3, deltaMode: 1, clientX: cx, clientY: cy }); await sleep(600); const ec = await ext();
+  await fit(); const ea = await ext(); await wheel({ deltaY: -48, deltaMode: 0, clientX: cx, clientY: cy }); await sleep(600); await settle(); const eb = await ext();
+  await fit(); await wheel({ deltaY: -3, deltaMode: 1, clientX: cx, clientY: cy }); await sleep(600); await settle(); const ec = await ext();
   check('RB34', 'a wheel that counts in lines zooms as much as the same distance in pixels (3Dmol: 0.3 of 14)', Math.abs(ec - eb) / Math.max(1, eb - ea) < 0.1 && eb > ea * 1.05, { ea, eb, ec });
-  await fit(); await wheel({ deltaY: -50000, clientX: cx, clientY: cy }); await sleep(900); const ed = await ext();
+  await fit(); await wheel({ deltaY: -50000, clientX: cx, clientY: cy }); await sleep(900); await settle(); const ed = await ext();
   check('RB34', 'one hard flick cannot run away (Safari took it to 19,000 px)', ed < ea * 3.2 && ed > ea, { ea, ed });
   // to the pointer: in orthographic the point under the pointer does not move
-  const anch = await E(async () => { state.projection = 'orthographic'; applyProjection(); fitToView(); await new Promise(r => setTimeout(r, 900));
+  const anch = await E(async () => { state.projection = 'orthographic'; applyProjection(); fitToView(); await new Promise(r => setTimeout(r, 900)); await window.__idle();
     const vp = document.getElementById('viewport').getBoundingClientRect(), a = currentModel.selectedAtoms({ atom: 'CA' })[40], p0 = viewer.modelToScreen({ x: a.x, y: a.y, z: a.z });
     const c = document.querySelector('#viewport canvas'); c.dispatchEvent(new WheelEvent('wheel', { deltaY: -120, bubbles: true, cancelable: true, clientX: p0.x, clientY: p0.y }));
-    await new Promise(r => setTimeout(r, 900)); const p1 = viewer.modelToScreen({ x: a.x, y: a.y, z: a.z }); return { p0, p1 }; });
+    await new Promise(r => setTimeout(r, 900)); await window.__idle(); const p1 = viewer.modelToScreen({ x: a.x, y: a.y, z: a.z }); return { p0, p1 }; });
   check('RB34', 'zoom goes to the pointer: the atom under it stays under it', Math.hypot(anch.p1.x - anch.p0.x, anch.p1.y - anch.p0.y) < 3, anch);
   await E(() => { state.projection = 'perspective'; applyProjection(); });
   // Safari's pinch
-  const pin = await E(async () => { state.projection = 'orthographic'; applyProjection(); fitToView(); await new Promise(r => setTimeout(r, 900));
+  const pin = await E(async () => { state.projection = 'orthographic'; applyProjection(); fitToView(); await new Promise(r => setTimeout(r, 900)); await window.__idle();
     const c = document.querySelector('#viewport canvas'), ev = n => { const e = new Event(n, { bubbles: true, cancelable: true }); e.scale = 1; e.clientX = 400; e.clientY = 300; return e; };
     const ext = () => { let x0 = 1e9, x1 = -1e9; currentModel.selectedAtoms({ atom: 'CA' }).forEach(a => { const p = viewer.modelToScreen({ x: a.x, y: a.y, z: a.z }); x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); }); return x1 - x0; };
-    const e0 = ext(); const s = ev('gesturestart'); c.dispatchEvent(s); const m = ev('gesturechange'); m.scale = 1.5; c.dispatchEvent(m); await new Promise(r => setTimeout(r, 700)); const e1 = ext(); c.dispatchEvent(ev('gestureend'));
+    const e0 = ext(); const s = ev('gesturestart'); c.dispatchEvent(s); const m = ev('gesturechange'); m.scale = 1.5; c.dispatchEvent(m); await new Promise(r => setTimeout(r, 700)); await window.__idle(); const e1 = ext(); c.dispatchEvent(ev('gestureend'));
     state.projection = 'perspective'; applyProjection(); return { ratio: e1 / e0, prevented: m.defaultPrevented }; });
   check('RB34', 'a Safari pinch (gesture events) zooms by the pinch and is not left to the page', Math.abs(pin.ratio - 1.5) < 0.1 && pin.prevented, pin);
   // Shift and scroll moves it
   await fit();
   const pan = await E(async () => { const C = (() => { const v = viewer.getView(); return { x: -v[0], y: -v[1], z: -v[2] }; })(), s0 = viewer.modelToScreen(C), z0 = viewer.getView()[3];
     const c = document.querySelector('#viewport canvas'); c.dispatchEvent(new WheelEvent('wheel', { deltaX: 0, deltaY: 80, shiftKey: true, bubbles: true, cancelable: true, clientX: 400, clientY: 300 }));
-    await new Promise(r => setTimeout(r, 700)); const s1 = viewer.modelToScreen(C); return { dx: s1.x - s0.x, dy: s1.y - s0.y, dz: viewer.getView()[3] - z0 }; });
+    await new Promise(r => setTimeout(r, 700)); await window.__idle(); const s1 = viewer.modelToScreen(C); return { dx: s1.x - s0.x, dy: s1.y - s0.y, dz: viewer.getView()[3] - z0 }; });
   check('RB34', 'Shift and scroll move the structure with the fingers, and do not zoom', Math.abs(Math.abs(pan.dy) - 80) < 8 && Math.abs(pan.dx) < 2 && Math.abs(pan.dz) < 1e-6, pan);
   // a drag let go while turning keeps turning, then settles
   const q = () => E(() => viewer.getView().slice(4)), dist = (a, b) => Math.hypot(...a.map((v, i) => v - b[i]));
