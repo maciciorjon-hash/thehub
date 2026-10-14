@@ -1441,6 +1441,7 @@ details.pl-sec>*:not(summary):last-child{padding-bottom:11px;}
 /* A step with two jobs puts them side by side when the panel is wide enough, and stacks them when it is not. */
 .pl-cols2{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:14px 22px;align-items:start;}
 .pl-cols2>div>.pl-sub-t:first-child{margin-top:0;}
+.pl-cols-cards>.pl-sec{margin-bottom:0;}
 .pl-side .cc-inputs{grid-template-columns:repeat(auto-fit,minmax(160px,1fr));}
 .pl-cols2 .cc-inputs{grid-template-columns:repeat(auto-fit,minmax(118px,1fr));}
 .pl-det{margin-top:12px;}
@@ -8032,7 +8033,9 @@ function _plCpdList(p){ var by={};
 function _plRenumberCpds(p){ _plCpdList(p).forEach(function(c){
     var g=p.groups[c.gid]; if(!g.named) g.label='Compound '+c.no;
     c.wells.forEach(function(id){ p.wells[id].compound=g.label; }); }); }
-// Plate · Plasmids · Contents · Compounds · Data. Dilution and Compounds were two tabs over the same
+// Plate · Plasmids · Contents · Compounds. Data (reader values in, CSV/PNG/Echo out) is on the Plate step beside the
+// plate's own settings: both are about the plate as a whole, neither needs wells, and a step of its own held three
+// buttons. Dilution and Compounds were two tabs over the same
 // selection (a series is what a compound is made from), and Label was three more controls for the
 // same wells as Contents: each opened on the same "select wells" box and a hint, which read as one
 // tab said three times.
@@ -8040,10 +8043,9 @@ function _plSteps(){ var s=[['plate','Plate']];
   if(_plPlasmids()) s.push(['plasmids','Plasmids']);
   s.push(['contents','Contents']);
   if(_plDosing()) s.push(['dose','Compounds']);
-  s.push(['data','Data']);
   return s; }
 // The old names still arrive — a step remembered for a plate, a test, a macro — and mean the step that took them over.
-var _PL_STEP_ALIAS={dil:'dose',cpd:'dose',label:'contents'};
+var _PL_STEP_ALIAS={dil:'dose',cpd:'dose',label:'contents',data:'plate'};
 function _plStepId(m){ return _PL_STEP_ALIAS[m]||m; }
 function _plHasStep(m){ m=_plStepId(m); return _plSteps().some(function(x){ return x[0]===m; }); }
 // Only ever the step you chose — or the first one when the one you were on is gone (concentrations
@@ -8258,7 +8260,7 @@ function plRenderSide(){ var p=plCur(), host=el('pl-side'); if(!p||!host) return
     +(_lbTouch()?('<button class="pl-btn'+(PL.touchAdd?' on':'')+'" onclick="plToggleTouchAdd()" title="Keep adding to the selection (like holding ctrl)">'+(PL.touchAdd?'✓ Add mode':'Add mode')+'</button>'):'')+'</div>';
   // The tabs are the steps, in the order you do them, and they are always there so what the panel
   // can do is visible before anything is selected. Back and Next at the foot walk them; nothing
-  // else moves you (see _plSteps). 'plate' and 'data' need no wells.
+  // else moves you (see _plSteps). 'plate' needs no wells.
   var tab=mode;
   var plas=_plPlasmids();
   var tabs=_plSteps();
@@ -8267,8 +8269,6 @@ function plRenderSide(){ var p=plCur(), host=el('pl-side'); if(!p||!host) return
   var body='';
   if(tab==='plate'){
     body=_plPlateTab(p,dosing);
-  } else if(tab==='data'){
-    body=_plDataTab(p);
   } else if(!n){
     body=(tab==='plasmids'?_plContextHtml(p):'')+bar+_plIdleHtml(p,tab)
       +((tab==='plasmids'||(tab==='contents'&&!plas))?'<div class="pl-sec pl-sec-sel"><div class="pl-sec-t">'+(_nos?'Conditions on this plate':(plas?'Conditions':'Well types'))+'</div><div class="pl-types'+(_nos?' pl-conds':'')+'">'+pal+'</div></div>':'')
@@ -8344,6 +8344,8 @@ function _plNavHtml(steps,tab){ var i=0; steps.forEach(function(m,k){ if(m[0]===
 function _plPlateTab(p,dosing){
   var ex=_plExp(), parts=String(PL.key||'').split(':'), inExp=ex&&parts[0]==='exp'&&!(_plateOwner(PL.key)||{}).ds;
   var many=inExp&&expPlateList(ex).length>1;
+  return '<div class="pl-cols2 pl-cols-cards">'+_plPlateCard(p,dosing,ex,inExp,many)+_plDataTab(p)+'</div>'; }
+function _plPlateCard(p,dosing,ex,inExp,many){
   return '<div class="pl-sec pl-sec-plate"><div class="pl-sec-t">'+(many?esc(plateLabel(PL.key,p)):'Plate')+'</div>'
     +'<div class="cc-inputs"><label class="ci-f"><span>Format</span><select onchange="plSetFormat(this.value)">'
       +Object.keys(PLATE_FORMATS).sort(function(a,b){return a-b;}).map(function(k){ return '<option value="'+k+'"'+(String(p.format)===k?' selected':'')+'>'+k+'-well</option>'; }).join('')
@@ -8360,7 +8362,7 @@ function _plPlateTab(p,dosing){
     +(inExp?('<div class="pl-row2"><button class="pl-btn" onclick="addMorePlate(\''+ex.id+'\',true)" title="Another plate for this experiment — more compounds, a repeat of the layout">+ Add another plate</button>'
       +(many||ex.plate?'<button class="pl-btn danger" onclick="removePlateFrom(PL.key,true)">Remove this plate</button>':'')+'</div>'):'')
     +'</div>'; }
-// The last step: what comes in from the reader and what goes out to a file.
+// Beside the plate's settings: what comes in from the reader and what goes out to a file.
 function _plDataTab(p){
   var ex=_plExp(), echo=ex&&expUsesEcho(ex), vals=p.values&&p.values.data;
   function act(fn,t,sub){ return '<button class="pl-act" onclick="'+fn+'"><b>'+t+'</b><span>'+sub+'</span></button>'; }

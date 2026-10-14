@@ -7972,3 +7972,7 @@ Jon: "merge the menus that answer the same topic — when a concentration gradie
 - **Blueprint:** `applyDilution` colours the wells as it numbers them (`shadeColor`, replicates alike); the Gradient →/↓ and Reset buttons and `applyGradient`/`clearGradient` are gone, Merge label/Split stay as *Block tools*. A label typed by hand does not recolour: the colours are written when the series is.
 - Feeds panel: a step that still says an old count (not typed over) is offered the map's number ("says 192 · map says 84 · update") instead of claiming to follow it before the first paint.
 - **B40** (Labbook) and **B13** (Blueprint, `design_invariants`) each fail with the old behaviour put back (B40: six findings; B13: no colours, the tool still there). The sweep found the staggered header row 2 px short for its text (`.pl-cl` min-height 16, line-height 1.25).
+
+## Data joins the Plate step (2026-10-14)
+
+Jon: "integra". The Data step (reader values in, Import Echo, CSV, PNG) was three buttons on a step of its own; it is now the right-hand card of the **Plate** step, beside format/title/layout/concentrations (`_plPlateTab` = `_plPlateCard` + `_plDataTab` in `.pl-cols-cards`). Steps are Plate · Plasmids · Contents · Compounds; `plSetMode('data')` lands on Plate (`_PL_STEP_ALIAS`). B25/B26/B36/B37 follow (B37 also holds that the Plate step has the plate settings and paste/CSV/PNG together; it fails with the Data tab put back). Sweep 0 findings.

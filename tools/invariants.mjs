@@ -157,7 +157,7 @@
 //                            says what is missing when no plasmid is named; one that is not (a Western) shows none of it.
 //   B37 the tabs get the    The plate editor's plate is the smaller column (five parts of twelve) and the steps the larger; both columns are
 //       room, the plate none the same height on every step, with or without a selection, so the dialog does not move; the steps are Plate ·
-//                            Plasmids · Contents · Compounds · Data (Dilution and Label are not tabs of their own: 'dil' and 'cpd' are Compounds,
+//                            Plasmids · Contents · Compounds (Dilution, Label and Data are not tabs of their own: 'dil' and 'cpd' are Compounds,
 //                            'label' is Contents); the compound names are all visible, not in a short scrolling list.
 //   B38 plates on a page    The plate cards of one experiment are one size: a plate with doses and one without are drawn at the same well
 //                            pitch, and each fills its card up to the cap (it was 41 px and 21 px, left-aligned in a card three times as wide).
@@ -1843,7 +1843,7 @@ async function suite(opts) {
       const sq = () => document.querySelector('.echo-drop[data-exp="' + e.id + '"]');   // this experiment's, not one left on screen by an earlier check
       if (!e.plate || !plateCompoundSlots(e.plate).length) { bad('B25', 'setup', 'the experiment has no named conditions to test with'); return; }
       if (sq()) bad('B25', 'square', 'a plate with named conditions and no Echo step got the Echo picklist square');
-      openPlateEditor('exp:' + e.id); plSetMode('data'); await sleep(60);
+      openPlateEditor('exp:' + e.id); plSetMode('plate'); await sleep(60);
       if (document.getElementById('pl-side').querySelector('[onclick*="plImportEcho"]')) bad('B25', 'import', 'the plate editor offers Import Echo picklist to an experiment without an Echo');
       closePlateEditor();
       // added on purpose, put away again, and the button to bring it back is there
@@ -1851,7 +1851,7 @@ async function suite(opts) {
       echoSetUse(e.id, true); await sleep(60);
       if (!sq()) { bad('B25', 'added', 'adding the Echo picklist showed no square'); return; }
       if (!sq().querySelector('.ed-x')) bad('B25', 'dismiss', 'the empty square has no way to put it away');
-      openPlateEditor('exp:' + e.id); plSetMode('data'); await sleep(60);
+      openPlateEditor('exp:' + e.id); plSetMode('plate'); await sleep(60);
       if (!document.getElementById('pl-side').querySelector('[onclick*="plImportEcho"]')) bad('B25', 'import', 'an experiment with the Echo added is not offered Import Echo picklist');
       closePlateEditor();
       sq().querySelector('.ed-x').click(); await sleep(60);
@@ -1872,7 +1872,7 @@ async function suite(opts) {
       const on = () => (document.querySelector('#pl-side .pl-tabs button.on') || {}).textContent;
       if (on() !== 'Plasmids') bad('B26', 'opens on', 'a drawn NanoBRET map opened on ' + on() + ', not Plasmids');
       if (!tabs().includes('Compounds')) bad('B26', 'compounds', 'a SPARK screen (doses compounds) has no Compounds tab');
-      if (tabs().length < 3 || tabs()[0] !== 'Plate' || tabs()[tabs().length - 1] !== 'Data') bad('B26', 'tabs', 'the steps are not Plate first and Data last: ' + tabs().join(','));
+      if (tabs().length < 3 || tabs()[0] !== 'Plate' || tabs().includes('Data')) bad('B26', 'tabs', 'the steps are not Plate first, with the data on it: ' + tabs().join(','));
       const w = document.querySelector('#pl-grid .pl-w').getBoundingClientRect().width, left = document.querySelector('.pl-left').getBoundingClientRect(), g = document.getElementById('pl-grid').getBoundingClientRect();
       if (w < 28) bad('B26', 'fills', 'a 96-well plate is drawn at ' + Math.round(w) + ' px a well in a ' + Math.round(left.width) + ' px column');
       if (g.right > left.right + 1) bad('B26', 'inside', 'the plate runs ' + Math.round(g.right - left.right) + ' px past its column');
@@ -2012,7 +2012,9 @@ async function suite(opts) {
       openPlateEditor('exp:' + e.id); await sleep(80);
       const tabs = () => [...document.querySelectorAll('#pl-side .pl-tabs button')].map(b => b.textContent);
       const on = () => (document.querySelector('#pl-side .pl-tabs button.on') || {}).textContent;
-      if (tabs().join(',') !== 'Plate,Plasmids,Contents,Compounds,Data') bad('B37', 'steps', 'the steps are ' + tabs().join(',') + ', not Plate,Plasmids,Contents,Compounds,Data');
+      if (tabs().join(',') !== 'Plate,Plasmids,Contents,Compounds') bad('B37', 'steps', 'the steps are ' + tabs().join(',') + ', not Plate,Plasmids,Contents,Compounds');
+      plSetMode('data'); if (on() !== 'Plate') bad('B37', 'alias data', "plSetMode('data') is " + on());
+      if (!document.querySelector('#pl-side [onclick*="plPasteValues"]') || !document.querySelector('#pl-side [onclick*="exportPlateCSV"]') || !document.querySelector('#pl-side [onclick*="exportPlatePNG"]') || !document.querySelector('#pl-side select[onchange*="plSetFormat"]')) bad('B37', 'plate step', 'the Plate step does not hold both the plate settings and the reader values / CSV / PNG');
       plSetMode('dil'); if (on() !== 'Compounds') bad('B37', 'alias dil', "plSetMode('dil') is " + on());
       plSetMode('cpd'); if (on() !== 'Compounds') bad('B37', 'alias cpd', "plSetMode('cpd') is " + on());
       plSetMode('label'); if (on() !== 'Contents') bad('B37', 'alias label', "plSetMode('label') is " + on());
@@ -2021,7 +2023,7 @@ async function suite(opts) {
       if (side[2] < left[2] * 1.15) bad('B37', 'proportion', 'the steps panel is ' + side[2] + ' px beside a ' + left[2] + ' px plate column');
       // the dialog and the plate stand still across every step, with and without a selection
       const first = {}; let moved = null;
-      for (const st of ['plate', 'plasmids', 'contents', 'dose', 'data']) for (const sel of [{}, { C1: 1, C2: 1, D1: 1, D2: 1 }]) {
+      for (const st of ['plate', 'plasmids', 'contents', 'dose']) for (const sel of [{}, { C1: 1, C2: 1, D1: 1, D2: 1 }]) {
         PL.sel = sel; plSetMode(st); await sleep(25);
         const sig = [rect('.modal.plate-modal'), rect('#pl-grid'), rect('#pl-side')].flat();
         if (first.sig === undefined) first.sig = sig; else if (sig.some((v, i) => Math.abs(v - first.sig[i]) > 2) && !moved) moved = st + (Object.keys(sel).length ? ' with a selection' : '') + ': ' + sig.join(',') + ' vs ' + first.sig.join(',');
