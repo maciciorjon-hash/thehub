@@ -22,6 +22,9 @@
 //   T14 drawn marks         an outcome's mark (chip, list, band, picker) is an svg, never a typed ✓ × ~ ?
 //   T15 step text = menu    a step's title, its text and its calculator's amounts are the size of the side menu beside it (13px), and the step's
 //                           (T1 holds the tick at the list's 20px): 15px text and a 28px tick read as a louder document than the menus (Jon, 2026-10-14)
+//   T16 setup rows align    in the setup editor the plate note ("96 compounds · 20 per 384-well plate → 10 plates") is its own line, not inside a
+//                           field's cell: inside, that one cell was taller than its row-mates and their inputs floated away from their captions
+//                           (Jon, SP_D2B20261014)
 //
 //   node tools/labbook_style_invariants.mjs [--url=URL] [--only=T1,T5]
 import { chromium } from 'playwright';
@@ -85,6 +88,9 @@ const SCENES = {
   setup_editor: `openSetupEditor(window.__SW.spark)`,
   pdf_export: `openPdfExport({kind:'exp',id:window.__SW.spark})`,
   outcome_picker: `askOutcome(window.__SW.spark)`,
+  /* a D2B-style screen, the one whose setup carries the "Total compounds" field and the plate note under it; last, because it stays in the notebook */
+  setup_editor_plates: `(function(){ LB.data.experiments.x_plates={id:'x_plates',type:'D2B',name:'Plates fixture',blocks:[],
+    setup:{format:'384',cellLine:'hela',cellsPerWell:4000,nPlates:10,nCompounds:20,nTotal:96,nConc:7,nReps:2,dmsoMax:0.25,treatH:6}}; openSetupEditor('x_plates'); })()`,
 };
 
 // Each check: which scenes, and a function (run in the page) returning a list of findings.
@@ -152,6 +158,11 @@ const CHECKS = [
     [['.bench-row .dfx-blk-t','a step title'],['.bench-row .rt.dfx-blk','a step text'],['.bench-row .cc-amt','a calculator amount']].forEach(function(x){
       S.all(x[0]).slice(0,6).forEach(function(e){ n++; var fs=getComputedStyle(e).fontSize; if(fs!==want) bad.push(x[1]+' is '+fs+' where the side menu is '+want); }); });
     if(!n) bad.push('no step on this screen to measure'); return bad.slice(0,5); })()`],
+  ['T16', ['setup_editor_plates'], `(function(){ var S=__st, bad=[], rows={}, host=document.getElementById('es-fields'); if(!host) return ['no setup editor'];
+    if(!S.all('.sf-derived',host).length) bad.push('the plate note is not on screen, so there is nothing to measure');
+    S.all('label .sf-derived',host).forEach(function(n){ if(!n.closest('.sf-list')) bad.push('the plate note sits inside a field cell and makes it taller than its row'); });
+    S.all('label.ci-f',host).forEach(function(l){ var i=l.querySelector('input,select'); if(!i) return; var k=Math.round(l.getBoundingClientRect().top/4); (rows[k]=rows[k]||[]).push(Math.round(i.getBoundingClientRect().bottom)); });
+    Object.keys(rows).forEach(function(k){ var b=rows[k]; if(b.length>1&&Math.max.apply(null,b)-Math.min.apply(null,b)>1) bad.push('one row of the setup has its inputs at '+b.join(' / ')); }); return bad; })()`],
   ['T14', ['exp_done', 'outcome_picker'], `(function(){ var S=__st, bad=[], n=0;
     S.all('.oc-chip i,.xv-oc,.oc-band .oc-v i,.dlg-item .ic').forEach(function(e){ n++; var t=(e.textContent||'').trim();
       if(e.closest('.dlg-item')&&!e.closest('.dlg-item').querySelector('.ic-svg')&&/^[✓×~?–]$/.test(t)&&!/Not yet/.test(e.closest('.dlg-item').textContent)) bad.push('the outcome picker draws "'+t+'" as text');

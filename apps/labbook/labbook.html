@@ -628,6 +628,10 @@ input[type=checkbox]:focus-visible{outline:2px solid var(--accent-soft);outline-
 .sf-derived{margin-top:5px;font-size:var(--fs-1);color:var(--text2);display:flex;flex-wrap:wrap;
   align-items:center;gap:6px;}
 .sf-derived b{color:var(--text);}
+.sf-derived.sf-row{grid-column:1/-1;margin-top:0;}
+.sf-derived:empty{display:none;}
+/* The note takes a row of its own; without this the fields after it stay behind the gap it leaves. */
+.cc-inputs:has(>.sf-derived.sf-row){grid-auto-flow:row dense;}
 .sf-apply{border:1px solid var(--border2);background:var(--surface2);color:var(--text);
   border-radius:var(--r-1);padding:1px 7px;font-size:var(--fs-1);cursor:pointer;
   transition:background var(--dur-1) var(--ease),border-color var(--dur-1) var(--ease);}
@@ -3818,7 +3822,7 @@ var SETUP_SCHEMA={
     // arithmetic on how many compounds it has and how many one plate holds, and it is the
     // number people plan the week around. Empty on the presets that predate it: no total, no
     // suggestion, nothing changes for them.
-    {f:'nTotal',t:'num',lbl:'Total compounds to test',d:'',plates:true,
+    {f:'nTotal',t:'num',lbl:'Total compounds',d:'',plates:true,
      hint:'Every compound in the screen, over all its plates. With the compounds per plate above, this is what says how many assay plates it takes (per cell line).'},
     {f:'nConc',t:'num',lbl:'# concentrations',d:7},
     {f:'nReps',t:'num',lbl:'Technical replicates',d:2},
@@ -12497,7 +12501,11 @@ function nmSetupField(f,lead,src,upd){
     +(f.hint?' <span class="ci-hint">?</span>':'')+'</span><input data-sf="'+f.f+'" value="'+esc(v==null?'':v)+'"'
     +(f.ph?(' placeholder="'+esc(f.ph)+'"'):'')+' oninput="'+upd+'()"></label>'; }
   return '<label class="'+cls+'"'+(f.hint?(' title="'+esc(f.hint)+'"'):'')+'><span>'+esc(f.lbl)+(f.hint?' <span class="ci-hint">?</span>':'')+'</span><input type="number" min="0" data-sf="'+f.f+'"'+(f.step?' step="'+f.step+'"':'')+(f.plates?' data-plates-num="1"':'')+' value="'+esc(v==null?'':v)+'" oninput="'+upd+'()">'
-    +(f.plates?_setupPlatesNote(src,upd):'')+'</label>';
+    +'</label>'
+    // The line under a number field is a sentence, not a field: inside the label it made this one
+    // cell taller than its row-mates, so their inputs (bottom-aligned) floated away from their
+    // captions, and it wrapped to four lines in a column. Beside the label, across the row.
+    +(f.plates?(_setupPlatesNote(src,upd)||'<div class="sf-derived"></div>').replace('class="sf-derived"','class="sf-derived sf-row"'):'');
 }
 // The plate line under a number field has to follow what is typed anywhere in the form — the
 // total, the per-plate figure and the format all move it — without re-rendering the panel, which
@@ -12505,9 +12513,9 @@ function nmSetupField(f,lead,src,upd){
 function _platesNoteRefresh(host,su,upd){
   var n=host&&host.querySelector('[data-plates-num]'); if(!n||!su) return;
   var lab=n.closest('label'); if(!lab) return;
-  var html=_setupPlatesNote(su,upd), note=lab.querySelector('.sf-derived');
-  if(note) note.outerHTML=html||'<div class="sf-derived"></div>';
-  else if(html) lab.insertAdjacentHTML('beforeend',html);
+  var html=(_setupPlatesNote(su,upd)||'<div class="sf-derived"></div>').replace('class="sf-derived"','class="sf-derived sf-row"'), note=lab.nextElementSibling;
+  if(note&&note.classList.contains('sf-row')) note.outerHTML=html;
+  else lab.insertAdjacentHTML('afterend',html);
 }
 function nmSetup(){ var host=el('nm-setup'); if(!host) return;
   var key=el('nm-type').value, type=presetBase(key); var S=setupSchema(type);
