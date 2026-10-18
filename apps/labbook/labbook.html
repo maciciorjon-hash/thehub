@@ -3317,8 +3317,14 @@ function _nbReadCalc(diluent,donorNm,acceptorNm){ return {kind:'reagent',inputs:
 var PRESET_SEED={
   WB:{title:'Western blot',blocks:[
     {d:0,title:'Seeding',calc:{kind:'seed',inputs:{cellLine:'HEK293',cellsPerWell:20000,volPerWell:90,format:'96',nPlates:4,excess:1.1}},pub:'{{cellLine}} cells were seeded in {{format}}-well plates and grown to ~80% confluence over 24\u201348 h.',html:'<ol><li>Count the cells and dilute the suspension to {{c.density}} &mdash; {{c.totalVol}} for {{c.wells}}.</li><li>Add {{c.volPerWell}} of the suspension to each well ({{c.cellsPerWell}}) into clear {{format}}-well plates, 2 compounds per plate.</li><li>Incubate 24&ndash;48 h until ~80% confluent.</li></ol>'},
-    {d:2,title:'Compound addition',pub:'Compounds were serially diluted from 1000&times; DMSO stocks into medium and added to the cells at 10&times; (1/10 volume) for {{treatH}} h.',html:'<ol><li>Serially dilute the compounds as 1000&times; stocks in DMSO.</li><li>Add 1 &micro;L of stock to 99 &micro;L DMEM (10&times;), then 10 &micro;L of the 10&times; to the cells.</li><li>Incubate {{treatH}} h &mdash; note the start time.</li></ol>'},
-    {d:2,title:'Lysis',pub:'Cells were lysed in 20 &micro;L/well of 2% SDS, 50 mM Tris&middot;HCl with protease inhibitors and benzonase, and stored at &minus;20 &deg;C.',html:'<ol><li>Lyse in 20 &micro;L/well: 2% SDS, 50 mM Tris&middot;HCl, 100&times; protease inhibitors, 1000&times; benzonase.</li><li>Store at &minus;20 &deg;C.</li></ol>'},
+    {d:2,title:'Compound addition',
+     calc:{kind:'spike',inputs:{name:'compounds',wellVolUL:90,foldX:10,series:true,finalUM:0,stockUM:0,nWells:384,excess:1.1,diluent:'medium',stockFold:1000}},
+     pub:'Compounds were serially diluted from {{c.stockFold}} DMSO stocks into medium and added to the cells at {{c.fold}} ({{c.addUL}} into {{c.wellVol}}) for {{treatH}} h.',
+     html:'<ol><li>Serially dilute the compounds as {{c.stockFold}} stocks in DMSO.</li><li>Dilute each stock {{c.preDil}} in {{c.diluent}} to make the {{c.fold}}.</li><li>Add {{c.addUL}} of the {{c.fold}} to each well ({{c.wellVol}} already in the well &rarr; {{c.newVol}}); do not aspirate.</li><li>Incubate {{treatH}} h &mdash; note the start time.</li></ol>'},
+    {d:2,title:'Lysis',
+     calc:{kind:'mixparts',inputs:{name:'lysis buffer',parts:'protease inhibitors 10, benzonase 1',diluent:'2% SDS, 50 mM Tris\u00b7HCl',volPerWell:20,format:'96',nPlates:4,excess:1.1,replace:true}},
+     pub:'Cells were lysed in {{c.perWell}} per well of {{c.diluent}} with protease inhibitors and benzonase, and stored at &minus;20 &deg;C.',
+     html:'<ol><li>Aspirate; lyse in {{c.perWell}} per well: {{c.total}} of {{c.name}} for {{c.wells}} &mdash; {{c.partsText}} in {{c.diluent}}.</li><li>Store at &minus;20 &deg;C.</li></ol>'},
     {d:3,title:'Sample prep',pub:'Lysates were denatured in LDS sample buffer with DTT.',html:'<ol><li>Sample prep (96 samples, +10%): 4&times; LDS 3250 &micro;L + 10&times; DTT 1300 &micro;L &rarr; 43.1 &micro;L per sample; denature.</li></ol>'},
     {d:3,title:'Gel and transfer',w:180,pub:'Samples were resolved on MOPS gels at 145 V for 90 min and wet-transferred at 90 V for 90 min.',html:'<ol><li>Gel: MOPS, 145 V, 90 min.</li><li>Transfer: wet, 90 V, 90 min; image the Ponceau.</li></ol><p class="lb-fn">Variations: 170 V running &middot; iBlot dry transfer.</p>'},
     {d:3,title:'Block and primary antibody',pub:'Membranes were blocked for 1 h at room temperature and probed overnight at 4 &deg;C for {{targets}}.',html:'<ol><li>Block 1 h at room temperature.</li><li>Primary antibodies overnight at 4 &deg;C &mdash; targets: <b>{{targets}}</b>.</li></ol><p class="lb-fn">Typical dilutions: &alpha;-BRD4 Rb 1:1000 (CST) &middot; &alpha;-BRD3 Ms 1:500 (Abcam) &middot; &alpha;-BRD2 Rb 1:1000 &middot; &alpha;-CRBN Rb 1:1000 &middot; &alpha;-VHL Rb 1:1000. Variation: primary 1 h at RT.</p>'},
@@ -3358,10 +3364,27 @@ var PRESET_SEED={
      pub:NB_COMMON.read.pub, html:NB_COMMON.read.html}]},
   KD:{title:'Kinetic degradation (live-cell HiBiT)',blocks:[
     {d:0,title:'Seeding',calc:{kind:'seed',inputs:{cellLine:'HEK293-HiBiT',cellsPerWell:20000,volPerWell:75,format:'96',nPlates:2,excess:1.5}},pub:'{{cellLine}} cells were seeded in white {{format}}-well plates.',html:'<ol><li>Count the cells and dilute the suspension to {{c.density}} &mdash; {{c.totalVol}} for {{c.wells}}.</li><li>Add {{c.volPerWell}} of the suspension to each well ({{c.cellsPerWell}}) into a <b>white</b> {{format}}-well plate.</li></ol>'},
-    {d:1,title:'LgBiT transfection (ViaScript mRNA)',pub:'Cells were transfected with LgBiT mRNA using ViaScript, the medium replaced with 100 &micro;L per well of the transfection medium, and incubated overnight at 37 &deg;C.',html:'<ol><li>Per 2 &times; 96-well: 20 &micro;L LgBiT mRNA + 20 &micro;L ViaScript into 160 &micro;L buffer.</li><li>Incubate 15&ndash;30 min at room temperature.</li><li>Dilute with 1800 &micro;L buffer and add to 18 mL of medium.</li><li>Aspirate the wells; add 100 &micro;L per well.</li><li>Incubate overnight at 37 &deg;C.</li></ol>'},
-    {d:2,title:'Endurazine + kinetic read',calc:{kind:'reagent',inputs:{name:'Endurazine',diluent:'assay medium',totalVol:9500,dilution:100}},pub:'Medium was replaced with 90 &micro;L per well of CO&#8322;-independent medium containing 10% FBS and Endurazine, and equilibrated for 2.5 h at 37 &deg;C. A pre-read was taken for normalisation, compounds were added at 10&times; (10 &micro;L per well), and luminescence recorded at 37 &deg;C for {{runMin}} min at {{intervalMin}} min intervals. Traces were normalised to the pre-read and to the vehicle control.',html:'<ol><li>Assay medium: CO&#8322;-independent + 10% FBS.</li><li>Dilute the Endurazine: {{c.reagentUL}} {{c.name}} ({{c.dilution}}) + {{c.diluentUL}} {{c.diluent}} = {{c.total}}.</li><li>Aspirate; add 90 &micro;L of Endurazine medium per well; equilibrate 2.5 h at 37 &deg;C.</li><li>Prepare 10&times; compounds in assay medium.</li><li>Pre-read the plate (normalisation).</li><li>Add 10 &micro;L of the 10&times; per well.</li><li>Kinetic read on the GloMax at 37 &deg;C &mdash; {{runMin}} min at {{intervalMin}} min intervals.</li></ol>'}]},
+    // The medium on the cells is replaced twice (the transfection medium, then the Endurazine medium), and each puts
+    // back what the well is left holding: the chain starts from that, so the compounds are a 10x spike into 90 uL.
+    {d:1,title:'LgBiT transfection (ViaScript mRNA)',
+     calc:{kind:'mixparts',inputs:{name:'transfection medium',parts:'LgBiT mRNA 1, ViaScript 1',diluent:'medium',volPerWell:100,format:'96',nPlates:2,excess:1.04,replace:true}},
+     pub:'Cells were transfected with LgBiT mRNA using ViaScript: {{c.partsText}} in {{c.total}} of medium, {{c.perWell}} per well, and incubated overnight at 37 &deg;C.',
+     html:'<ol><li>Make {{c.total}} of {{c.name}} for {{c.wells}}: {{c.partsText}} in {{c.diluent}}. Mix the mRNA and the ViaScript first in four times their volume of buffer and incubate 15&ndash;30 min at room temperature, then dilute into the medium.</li><li>Aspirate the wells; add {{c.perWell}} per well.</li><li>Incubate overnight at 37 &deg;C.</li></ol>'},
+    {d:2,title:'Endurazine medium',w:150,
+     calc:{kind:'reagent',inputs:{name:'Endurazine',diluent:'assay medium',perWellUL:90,nWells:192,excess:1.1,dilution:100,replace:true}},
+     pub:'Medium was replaced with {{c.perWell}} per well of CO&#8322;-independent medium containing 10% FBS and Endurazine ({{c.dilution}}), and equilibrated for 2.5 h at 37 &deg;C.',
+     html:'<ol><li>Assay medium: CO&#8322;-independent + 10% FBS.</li><li>Dilute the Endurazine: {{c.reagentUL}} {{c.name}} ({{c.dilution}}) + {{c.diluentUL}} {{c.diluent}} = {{c.total}} ({{c.perWell}} per well for {{c.nWells}}).</li><li>Aspirate; add {{c.perWell}} of Endurazine medium per well; equilibrate 2.5 h at 37 &deg;C.</li></ol>'},
+    {d:2,title:'Pre-read + compound addition',
+     calc:{kind:'spike',inputs:{name:'compounds',wellVolUL:90,foldX:10,series:true,finalUM:0,stockUM:0,nWells:192,excess:1.1,diluent:'assay medium'}},
+     pub:'A pre-read was taken for normalisation and compounds were added at {{c.fold}} ({{c.addUL}} per well).',
+     html:'<ol><li>Prepare each concentration at {{c.fold}} in {{c.diluent}}, as on the plate map. {{c.seriesText}}</li><li>Pre-read the plate (normalisation).</li><li>Add {{c.addUL}} of the {{c.fold}} to each well ({{c.wellVol}} already in the well &rarr; {{c.newVol}}); do not aspirate.</li></ol>'},
+    {d:2,title:'Kinetic read',
+     pub:'Luminescence was recorded at 37 &deg;C for {{runMin}} min at {{intervalMin}} min intervals. Traces were normalised to the pre-read and to the vehicle control.',
+     html:'<ol><li>Kinetic read on the GloMax at 37 &deg;C &mdash; {{runMin}} min at {{intervalMin}} min intervals.</li></ol>'}]},
   RTX:{title:'Reverse transfection (FuGENE)',blocks:[
-    {d:0,title:'Transfection master mix',w:15,pub:'{{dnaNg}} ng of DNA per well was complexed with FuGENE HD at a {{fugeneRatio}}:1 ratio (&micro;L:&micro;g DNA) in 100 &micro;L Opti-MEM, left 5&ndash;15 min at room temperature and dispensed into the wells of {{format}}-well plates.',html:'<ol><li>Master mix (per {{format}}-well): 100 &micro;L Opti-MEM + {{dnaNg}} ng DNA + FuGENE at {{fugeneRatio}}:1 (&micro;L : &micro;g DNA).</li><li>Incubate the complexes 5&ndash;15 min at RT; dispense 100 &micro;L/well.</li></ol>'},
+    {d:0,title:'Transfection master mix',w:15,
+     calc:{kind:'rtxmix',inputs:{plasmid:'plasmid',ngPerWell:800,stockNgUl:1000,fugeneRatio:3,dispenseUL:100,nWells:12,excess:1.1,diluent:'Opti-MEM'}},
+     html:'<ol><li>Make the master mix for {{c.nWells}} ({{c.total}} in all), each well getting {{c.dispense}}: {{c.diluentUL}} of {{c.diluent}} first, then {{c.dnaUL}} of {{c.plasmid}} ({{c.dnaUg}} at {{c.stock}}; {{c.ngPerWell}} of DNA per well).</li><li>Add the FuGENE HD straight into the liquid &mdash; {{c.ratio}} on the DNA, {{c.fugeneUL}} in all. Mix gently; do not vortex.</li><li>Incubate 5&ndash;15 min at room temperature; dispense {{c.dispense}} per well into the {{format}}-well plate.</li></ol>'},
     {d:0,title:'Seed on the complexes',pub:'{{cellLine}} cells were overlaid at 1.5&ndash;2.0&times;10&#8309; freshly trypsinized cells per well and incubated at 37 &deg;C, 5% CO&#8322; for {{endpointD}} day(s).',html:'<ol><li>Overlay medium + 1.5&ndash;2.0&times;10&#8309; freshly trypsinized {{cellLine}} cells per well.</li><li>Incubate at 37 &deg;C, 5% CO&#8322; for {{endpointD}} day(s) to endpoint.</li></ol>'},
     {d:2,title:'Readout',html:'<ol><li class="pub-skip">Readout at endpoint.</li></ol><p></p>'}]},
   D2B:{title:'Direct-to-biology',blocks:[
@@ -3838,6 +3861,7 @@ var SETUP_SCHEMA={
     // setupPlasmids reads `plasmid`, so the record's plasmids, the header, Cmd+K and the prep
     // sheet's freezer lookup all get it — and nothing had asked for it.
     {f:'plasmid',t:'txt',lbl:'Plasmid',d:'',ph:'the construct you transfect'},
+    {f:'nWells',t:'num',lbl:'# wells transfected',d:12},
     {f:'dnaNg',t:'num',lbl:'DNA / well (ng)',d:800},
     {f:'fugeneRatio',t:'num',lbl:'FuGENE : DNA',d:3},
     {f:'endpointD',t:'num',lbl:'Endpoint (days)',d:2}]},
@@ -4113,14 +4137,20 @@ function _applySetupGates(type,setup,blocks,prevSetup,presetKey,anchor){
     o.tpl={title:t.title, html:t.html, pub:t.pub||''};
     if(t.pub) o.pub=fillSetup(t.pub,setup); if(t.calc) o.calc=JSON.parse(JSON.stringify(t.calc));
     var wm=(t.waitMin!=null?t.waitMin:t.w); if(wm){ o.waitMin=wm; }
-    // After the step that came before it in the preset, when that one is still here; else by day.
-    var prevT=at>0?tpl.blocks[at-1]:null, pi=-1;
-    if(prevT) blocks.forEach(function(b,i){ if(pi<0&&((b.tpl&&b.tpl.title)||b.title)===prevT.title) pi=i; });
+    // After the step that came before it in the preset, when that one is still here; else before the step that came
+    // after it (a run made from an older preset has no "Seed onto the transfection mix", but it has the compounds);
+    // else by day. Last of all it used to be the end of the plan, after the read.
+    var prevT=at>0?tpl.blocks[at-1]:null, nextT=at+1<tpl.blocks.length?tpl.blocks[at+1]:null, pi=-1, ni=-1;
+    var titleOf=function(b){ return (b.tpl&&b.tpl.title)||b.title; };
+    if(prevT) blocks.forEach(function(b,i){ if(pi<0&&titleOf(b)===prevT.title) pi=i; });
+    if(nextT) blocks.forEach(function(b,i){ if(ni<0&&titleOf(b)===nextT.title) ni=i; });
     if(pi>=0) blocks.splice(pi+1,0,o);
+    else if(ni>=0) blocks.splice(ni,0,o);
     else { var k=blocks.findIndex(function(b){ return (+b.dayOffset||0)>off0; }); if(k<0) blocks.push(o); else blocks.splice(k,0,o); }
     var nx=blocks[blocks.indexOf(o)+1]; o.waitSameDay=!!(o.waitMin&&nx&&(+nx.dayOffset||0)===off0);
     sync();
   }); }
+var SETUP_CALC_MAP={rtxmix:{ngPerWell:'dnaNg',fugeneRatio:'fugeneRatio',nWells:'nWells'}};
 function applySetupToBlocks(type,setup,blocks,prevSetup,presetKey){
   var S=setupSchema(type); if(!S||!setup) return blocks;
   // A setup field marked `wait` is a duration, not just a word for the prose. "Treatment (h)"
@@ -4166,6 +4196,13 @@ function applySetupToBlocks(type,setup,blocks,prevSetup,presetKey){
         && String(b.calcSeed[k])!==String(I[k]); };
       if(setup.cellLine!=null&&I.cellLine!=null&&!_own('cellLine')) I.cellLine=setup.cellLine;
       if(setup.cellsPerWell!=null&&I.cellsPerWell!=null&&!_own('cellsPerWell')) I.cellsPerWell=+setup.cellsPerWell;
+      // The answers a calculator takes by another name: DNA per well is the master mix's ng per well.
+      var _own2=function(k){ return _own(k)||!!(b.calc.own&&b.calc.own[k]); };
+      var _mp=SETUP_CALC_MAP[b.calc.kind];
+      if(_mp) Object.keys(_mp).forEach(function(ik){ var sv=setup[_mp[ik]];
+        if(sv!=null&&sv!==''&&isFinite(+sv)&&I[ik]!==undefined&&!_own2(ik)) I[ik]=+sv; });
+      // A run said to be N plates of a format has N × that many wells, until a plate map says otherwise.
+      if(setup.nPlates!=null&&fmt&&PLATE_FED[b.calc.kind]&&I.nWells!=null&&!_own2('nWells')&&(b.calc.kind!=='reagent'||+I.perWellUL>0)) I.nWells=wellsOf(fmt)*(+setup.nPlates||1);
       if(setup.nPlates!=null&&I.nPlates!=null&&!_own('nPlates')){
         I.nPlates = base ? Math.max(1,Math.round((+I.nPlates/base)*(+setup.nPlates||1))) : (+setup.nPlates||1);
       }
@@ -4338,7 +4375,8 @@ var CALC_KINDS={
     {k:'finalUM',t:'num',lbl:'Final in well (µM)',step:'any'},
     {k:'stockUM',t:'num',lbl:'Source stock (µM)'},
     {k:'nWells',t:'num',lbl:'# wells'},{k:'excess',t:'num',lbl:'Excess ×',step:'0.05'},
-    {k:'diluent',t:'txt',lbl:'Diluent'}],
+    {k:'diluent',t:'txt',lbl:'Diluent'},
+    {k:'stockFold',t:'num',lbl:'Stock strength (×)',show:function(I){ return I.stockFold!=null; }}],
     defaults:{name:'MG132',wellVolUL:100,foldX:10,finalUM:10,stockUM:10000,nWells:84,excess:1.1,diluent:'Opti-MEM'},
     compute:function(v){ return spikeRecipe(v); } },
   // ── A dose series, with the two concentrations it is easy to confuse kept apart ──────────
@@ -4381,7 +4419,8 @@ var CALC_KINDS={
     {k:'perWellUL',t:'num',lbl:'Added per well (µL)',step:'any',show:function(I){ return +I.perWellUL>0; }},
     {k:'nWells',t:'num',lbl:'# wells',show:function(I){ return +I.perWellUL>0; }},
     {k:'excess',t:'num',lbl:'Excess ×',step:'0.05',show:function(I){ return +I.perWellUL>0; }},
-    {k:'wellVolUL',t:'num',lbl:'Already in the well (µL)',step:'any',show:function(I){ return +I.perWellUL>0; }},
+    {k:'wellVolUL',t:'num',lbl:'Already in the well (µL)',step:'any',show:function(I){ return +I.perWellUL>0&&!I.replace; }},
+    {k:'replace',t:'check',lbl:'Replaces the medium — the well is left holding just this',show:function(I){ return +I.perWellUL>0&&I.replace!==undefined; }},
     {k:'totalVol',t:'num',lbl:'Total (µL)',show:function(I){ return !(+I.perWellUL>0); }},
     {k:'dilution',t:'num',lbl:'Dilution 1:X'},
     {k:'donorNm',t:'num',lbl:'Donor read (nm)',show:function(I){ return I.donorNm!=null; }},
@@ -4412,7 +4451,8 @@ var CALC_KINDS={
     {k:'diluent',t:'txt',lbl:'Diluent'},
     {k:'volPerWell',t:'num',lbl:'Goes in per well (µL)',step:'any'},
     {k:'format',t:'format',lbl:'Plate'},{k:'nPlates',t:'num',lbl:'# plates'},
-    {k:'excess',t:'num',lbl:'Excess ×',step:'0.05'}],
+    {k:'excess',t:'num',lbl:'Excess ×',step:'0.05'},
+    {k:'replace',t:'check',lbl:'Goes into the wells in place of the medium',show:function(I){ return I.replace!==undefined; }}],
     defaults:{name:'5× OA',parts:'Oligomycin 0.8, Antimycin A 1.0',diluent:'diluent',volPerWell:5,format:'384',nPlates:1,excess:1.1},
     compute:function(v){ return mixpartsRecipe(v); } }
 };
@@ -4458,6 +4498,7 @@ var CALC_VALUES={
     var _S=null; if(ctx&&ctx.exp&&v.series) expPlates(ctx.exp).some(function(pl){ _S=plateDoseSeries(pl); return !!_S; });
     var add=(X>1)?V/(X-1):0, newV=V+add, inter=fin*X, need=add*n*ex, df=(inter>0&&stock>0)?(stock/inter):0, vs=df>0?(need/df):0, _ph=(df>=2)?_pipHint(vs,v.minVolUL):null, vd=need-(_ph?_ph.ul:vs);
     return {name:String(v.name||'reagent'), addUL:nfmt(add)+' µL', wellVol:nfmt(V)+' µL', newVol:nfmt(newV)+' µL', fold:nfmt(X)+'×', interConc:inter>0?_fmtConc(inter*1000):'—', finalConc:fin>0?_fmtConc(fin*1000):'—', totalUL:nfmt(need)+' µL', stockUL:nfmt(vs)+' µL', stockConc:stock>0?_fmtConc(stock*1000):'—', diluentUL:nfmt(vd)+' µL', diluent:String(v.diluent||'medium'), nWells:nfmt(n)+' wells', dilution:df>0?('1:'+nfmt(df)):'—',
+      stockFold:+v.stockFold>0?(nfmt(v.stockFold)+'×'):null, preDil:(+v.stockFold>X&&X>1)?('1:'+nfmt(v.stockFold/X)):null,
       seriesText:_S?('The series is '+nfmt(_S.nPoints)+' concentrations, '+nfmt(_S.df)+'-fold from '+_fmtConc(_S.topConc)+' in the well; the '+nfmt(X)+'× tubes start at '+_fmtConc(_S.topConc*X)+'.'):''}; },
   serial:function(v){ var topF=+v.topFinalNM||0, X=+v.foldX||1, df=+v.df||0,
     // Bounded: these come from number fields with no max, and an extra zero in "# points"
@@ -9599,7 +9640,14 @@ function _chainStart(b,v){ var k=b.calc&&b.calc.kind, I=b.calc&&b.calc.inputs;
 // step — a free text step, a reagent dilution, a module with no calculator — says so in
 // `addUL`, "adds to each well (µL)". Without that a step that plainly adds liquid was invisible
 // to the chain: a digitonin spike after the compounds left the read starting from 111 µL.
+// A step that aspirates the medium and puts its own in (Endurazine medium, the lysis buffer) does not add to
+// the well, it sets it: the volume that comes after is what it put in, whatever was there before.
+function _blkSets(b){ var k=b.calc&&b.calc.kind, I=b.calc&&b.calc.inputs; if(!I||!I.replace||_calcOwnPlate(b.calc)) return 0;
+  if(k==='reagent'&&+I.perWellUL>0) return +I.perWellUL;
+  if(k==='mixparts'&&+I.volPerWell>0) return +I.volPerWell;
+  return 0; }
 function _blkAdds(b,v){ var k=b.calc&&b.calc.kind;
+  var _st=_blkSets(b); if(_st>0) return _st-(v||0);
   // A step on its own plate (the 6-well a NanoBRET is transfected in) puts nothing in the plate the rest of the run is on.
   if(b.calc&&_calcOwnPlate(b.calc)) return 0;
   if(k&&VOL_ADD[k]){ var a=0; try{ a=VOL_ADD[k](b.calc.inputs||{},v)||0; }catch(e){ a=0; }
@@ -20398,6 +20446,8 @@ function dsOwned(kind,su,ownPlate){
   // into the setup's the moment it was read back. Answered once, in the parameters.
   if(su.nPlates!=null&&su.nPlates!=='') o.nPlates='# plates';
   if(kind==='rtxmix'&&_dsPlasmidText(su)) o.plasmid='the plasmids';
+  // What a calculator takes from the setup under another name (DNA per well, the FuGENE ratio).
+  var _cm=SETUP_CALC_MAP[kind]; if(_cm) Object.keys(_cm).forEach(function(ik){ var sv=su[_cm[ik]]; if(sv!=null&&sv!==''&&isFinite(+sv)) o[ik]='the parameters'; });
   if(kind==='nbtx'){
     if(su.donors) o.donorNames='the donor plasmids';
     if(su.acceptors) o.acceptorNames='the acceptor plasmids';

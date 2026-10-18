@@ -549,6 +549,7 @@ async function suite(opts) {
     const m = DS.mods[i], C = CALC_KINDS[m.calc.kind], typed = {};
     C.fields.forEach(f => {
       if (owned[f.k] || f.t === 'cellline' || f.t === 'format') return;   // owned: I8; these two rescale on purpose
+      if (f.show && !f.show(m.calc.inputs)) return;                        // a box that is not drawn cannot be typed into
       const cur = m.calc.inputs[f.k];
       let val;
       if (f.t === 'check') val = !cur;
@@ -2262,6 +2263,11 @@ async function suite(opts) {
       const order = titles(yes);
       if (!mg(yes) || !/Seed onto the transfection mix > MG132 pre-treatment > Test compounds/.test(order)) bad('B42', 'answer yes', 'answering yes did not put the step back where it was: ' + order);
       else if (!mg(yes).calc || mg(yes).calc.inputs.name !== 'MG132' || !mg(yes).tpl) bad('B42', 'back whole', 'the step that came back has no calculator or template');
+      // a run made from an older preset (suspension and seed in one step, no "Seed onto the transfection mix") has no step to
+      // come after: the step went to the end of the plan, after the read, when Jon answered yes again (NB20261014)
+      const old = mk('INV_B42F', { mg132: true });
+      old.blocks = old.blocks.filter(b => !/^Seed onto the transfection mix/.test(b.title)); edit(old, false); edit(old, true);
+      if (!/MG132 pre-treatment > Test compounds > NanoBRET substrate/.test(titles(old))) bad('B42', 'old structure', 'MG132 came back out of order in a run without the seed step: ' + titles(old));
       mg(yes).done = true; edit(yes, false);
       if (!mg(yes)) bad('B42', 'ticked', 'a ticked MG132 step was taken out of the record');
       const typed = mk('INV_B42C', { mg132: true }); mg(typed).calc.inputs.finalUM = 25; edit(typed, false);
@@ -2325,7 +2331,7 @@ async function suite(opts) {
     // B45 — every number of a NanoBRET step follows the place it comes from.
     if (run('B45')) await guard('B45', 'numbers follow inputs', async () => {
       const P = (LB.data.projects || []).find(p => (p.sections || []).length);
-      const KEYS = ['NB', 'NB_SPARK_RTX96', 'NB_SPARK_SCREEN96', 'NB_BIO_RTX96'];
+      const KEYS = ['NB', 'NB_SPARK_RTX96', 'NB_SPARK_SCREEN96', 'NB_BIO_RTX96', 'KD', 'RTX', 'WB'];
       const strip = h => String(h || '').replace(/<[^>]+>/g, ' ');
       for (const key of KEYS) {
         const tpl = LB.data.presets[key]; if (!tpl) { bad('B45', key, 'preset missing'); continue; }
@@ -2370,13 +2376,30 @@ async function suite(opts) {
           }
         };
         check('as made');
+        if (key === 'KD') {
+          // the medium is replaced twice: what the compounds go into is what the Endurazine medium left, not what was there before it
+          const cmp = e.blocks.find(b => b.calc && b.calc.kind === 'spike');
+          if (cmp.calc.inputs.wellVolUL !== 90) bad('B45', 'KD replace', 'the compounds go onto ' + cmp.calc.inputs.wellVolUL + ' µL; the Endurazine medium leaves 90');
+          const tx = e.blocks.find(b => b.calc && b.calc.kind === 'mixparts'); tx.calc.inputs.replace = false; syncChainedInputs(e);
+          if (e.blocks.find(b => b.calc && b.calc.kind === 'spike').calc.inputs.wellVolUL !== 90) bad('B45', 'KD replace', 'a step that replaces the medium adds to what was there instead of setting it');
+          tx.calc.inputs.replace = true; syncChainedInputs(e);
+        }
+        if (key === 'WB') {
+          const sp = e.blocks.find(b => b.calc && b.calc.kind === 'spike'), seed = e.blocks.find(b => b.calc && b.calc.kind === 'seed');
+          if (sp.calc.inputs.wellVolUL !== seed.calc.inputs.volPerWell) bad('B45', 'WB', 'the compounds go into ' + sp.calc.inputs.wellVolUL + ' µL; the cells were seeded in ' + seed.calc.inputs.volPerWell);
+          if (sp.calc.inputs.nWells !== wellsOf(e.setup.format) * (+e.setup.nPlates || 1)) bad('B45', 'WB', 'the compounds are made for ' + sp.calc.inputs.nWells + ' wells; the setup says ' + e.setup.nPlates + ' plates of ' + e.setup.format);
+        }
+        if (key === 'RTX') {
+          const mx = e.blocks.find(b => b.calc && b.calc.kind === 'rtxmix');
+          if (mx.calc.inputs.ngPerWell !== +e.setup.dnaNg || mx.calc.inputs.fugeneRatio !== +e.setup.fugeneRatio || mx.calc.inputs.nWells !== +e.setup.nWells) bad('B45', 'RTX', 'the master mix does not take the DNA per well, the FuGENE ratio and the wells the setup gives');
+        }
         if (e.plate) {
           // repaint: blank the last ten wells of the first plate, then add a second plate
           const ids = Object.keys(e.plate.wells || {}).slice(-10); ids.forEach(id => { delete e.plate.wells[id]; });
           platePersist('exp:' + e.id); check('ten wells blanked');
           e.morePlates = [JSON.parse(JSON.stringify(e.plate))]; platePersist('exp:' + e.id); check('second plate');
           const rg = e.blocks.find(b => b.calc && b.calc.kind === 'reagent'), one = plateReagentWells({ plate: e.plate, blocks: [] });
-          if (rg && +rg.calc.inputs.nWells !== 2 * one) bad('B45', key + ' two plates', 'the substrate is made for ' + rg.calc.inputs.nWells + ' wells; two plates of ' + one + ' hold ' + 2 * one);
+          if (rg && one > 0 && +rg.calc.inputs.nWells !== 2 * one) bad('B45', key + ' two plates', 'the substrate is made for ' + rg.calc.inputs.nWells + ' wells; two plates of ' + one + ' hold ' + 2 * one);
           // a finished step is what was done: a plate edited afterwards does not rewrite it
           const spike = e.blocks.find(b => b.calc && PLATE_FED[b.calc.kind] && b.calc.kind !== 'reagent') || rg;
           if (spike) { const n0 = spike.calc.inputs.nWells; spike.done = true; delete e.morePlates; platePersist('exp:' + e.id);
@@ -2396,6 +2419,9 @@ async function suite(opts) {
       Object.keys(EXTRA_PRESET_SEED).forEach(k => { if (/^NB_/.test(k)) EXTRA_PRESET_SEED[k].blocks.forEach(b => nbBlocks.push(['curated ' + k + ' / ' + b.title, b])); });
       // the generic type's own 6-well seed and its FuGENE recipe are per-6-well amounts of that plate, with no calculator to take them from
       const OWN = /^(Seed|Transfection \(FuGENE HD\))$/;
+      // the other presets that have calculators: what a calculator can say is not typed again in the prose
+      const EXEMPT = { 'WB / Sample prep': 'the number of samples is not a question the setup asks yet' };
+      ['KD', 'RTX', 'WB'].forEach(k => ((LB.data.presets[k] || {}).blocks || []).forEach(b => { if (!EXEMPT[k + ' / ' + b.title]) nbBlocks.push(['preset ' + k + ' / ' + b.title, b]); }));
       nbBlocks.forEach(([w, b]) => { if (/ NB \/ /.test(w) && OWN.test(b.title)) return; scan(w, b.html); scan(w + ' (Methods)', b.pub); });
       ['lib:nbsusp', 'lib:nbseed', 'lib:nbsub', 'lib:compound-manual'].forEach(id => { const l = (STEP_LIBRARY || []).find(x => x.id === id); if (!l) bad('B46', id, 'library step missing'); else { scan('library ' + id, l.html); scan('library ' + id + ' (Methods)', l.pub); } });
       tick('B46');
