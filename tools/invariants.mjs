@@ -183,6 +183,18 @@
 //   B44 no footnotes in    A shipped step is its instructions and its numbers, not a paragraph that explains why (.lb-fn). Jon (NB20261013): "mas comentarios de estos
 //       the steps             que encima estan mal ... no aportan nada". No built-in or curated preset, no library step and no step of a notebook preset
 //                            carries a .lb-fn; the only ones left are the two Western blot lines that list typical dilutions and variations (data).
+//   B45 every number        In every NanoBRET preset (the generic one, the two SPARK and the biosensor) each step's numbers come from where they
+//       follows its input    live: the wells of every step that goes into wells are the plate's (a plate repainted, a second plate added: the substrate, the
+//                            suspensions, the mix and the spikes follow), the volume each step starts from is what the steps above left, a seeding step says
+//                            what the well holds after it, and no step quotes a number its calculator cannot answer. Jon (NB20261013): the substrate was made
+//                            for 2,520 µL on a plate of 164 wells and said "148 µL" when the well held 136.
+//   B46 no typed amounts    The steps the NanoBRET presets, the library and the Designer share carry no amount in their prose — µL, mL, ng, µM, nM, cells, wells
+//       in the prose         — outside a token: the number is the calculator's, so it moves when the plate or the setup does.
+//   B47 an unstarted run    A run whose steps have not been started takes the preset's steps as they are now: the biosensor's suspension-and-seed step becomes
+//       takes the preset      the two steps the SPARK runs have, a substrate made for a typed total becomes one made per well, a compound series made before
+//                            the calculator knew dose series becomes one — and a step with a tick, a note or a typed number, and a finished run, are never touched.
+//   B48 the header's        The plasmid named in an experiment's header is the plasmid the reverse-transfection master mix is made of; one typed over in the
+//       plasmid is the mix's  calculator stays the run's, and a finished run is not renamed.
 //   B36 plates, plasmids,   An experiment can have more than one plate (+ Add plate: same conditions, its own title, counted with the
 //       steps                first by the mix table, shown, exported); the plate editor's tabs are numbered steps (Plate · Plasmids ·
 //                            Contents · Dilution · Compounds · Label · Data) that only Back / Next or a click move — not a selection,
@@ -2248,7 +2260,7 @@ async function suite(opts) {
       if (wellVol(yes) !== 100) bad('B42', 'volume after no', 'after answering no the compounds go onto ' + wellVol(yes) + ' µL, not 100');
       edit(yes, true);
       const order = titles(yes);
-      if (!mg(yes) || !/Seed onto the complexes > MG132 pre-treatment > Test compounds/.test(order)) bad('B42', 'answer yes', 'answering yes did not put the step back where it was: ' + order);
+      if (!mg(yes) || !/Seed onto the transfection mix > MG132 pre-treatment > Test compounds/.test(order)) bad('B42', 'answer yes', 'answering yes did not put the step back where it was: ' + order);
       else if (!mg(yes).calc || mg(yes).calc.inputs.name !== 'MG132' || !mg(yes).tpl) bad('B42', 'back whole', 'the step that came back has no calculator or template');
       mg(yes).done = true; edit(yes, false);
       if (!mg(yes)) bad('B42', 'ticked', 'a ticked MG132 step was taken out of the record');
@@ -2307,6 +2319,161 @@ async function suite(opts) {
       Object.keys(EXTRA_PRESET_SEED).forEach(k => (EXTRA_PRESET_SEED[k].blocks || []).forEach(b => scan('curated ' + k + ' / ' + b.title, b.html)));
       (STEP_LIBRARY || []).forEach(l => scan('library ' + l.id, l.html)); tick('B44');
       if (found.length) bad('B44', 'footnote', found.length + ' explanatory footnote(s) in shipped steps: ' + found.slice(0, 3).join(' | '));
+    });
+
+
+    // B45 — every number of a NanoBRET step follows the place it comes from.
+    if (run('B45')) await guard('B45', 'numbers follow inputs', async () => {
+      const P = (LB.data.projects || []).find(p => (p.sections || []).length);
+      const KEYS = ['NB', 'NB_SPARK_RTX96', 'NB_SPARK_SCREEN96', 'NB_BIO_RTX96'];
+      const strip = h => String(h || '').replace(/<[^>]+>/g, ' ');
+      for (const key of KEYS) {
+        const tpl = LB.data.presets[key]; if (!tpl) { bad('B45', key, 'preset missing'); continue; }
+        const su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup || {})));
+        const before = new Set(Object.keys(LB.data.experiments));
+        buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-10-01', type: 'NB', title: 'INV nums', code: 'INV_B45_' + key, setup: su, plate: true });
+        const e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); clean.push(e);
+        if (!e.plate) { if (key !== 'NB') bad('B45', key, 'no plate was made'); }
+        const check = (when) => {
+          tick('B45');
+          const run = blocksInRunOrder(e);
+          run.forEach((b, i) => {
+            const k = b.calc && b.calc.kind, I = b.calc && b.calc.inputs;
+            // 1. the wells are the plate's
+            if (e.plate && PLATE_FED[k] && !b.done) {
+              const n = plateWellsFor(e, b);
+              if (n != null && +I.nWells !== n) bad('B45', key + ' ' + when, '"' + b.title + '" is made for ' + I.nWells + ' wells; the plate has ' + n);
+            }
+            // 2. no number the step cannot answer
+            const un = _unansweredTokens((b.tpl && b.tpl.html) || b.html, b, e);
+            if (un.length) bad('B45', key + ' ' + when, '"' + b.title + '" quotes ' + un.join(', ') + ' and nothing answers it');
+            if (b.pub && b.tpl && b.tpl.pub) { const up = _unansweredTokens(b.tpl.pub, b, e); if (up.length) bad('B45', key + ' ' + when, 'the Methods sentence of "' + b.title + '" quotes ' + up.join(', ') + ' and nothing answers it'); }
+            // 3. the volume a step starts from is what the steps above left
+            if (CHAINED_INPUTS[k] && CHAINED_INPUTS[k].includes('wellVolUL') && I && !(b.calc.own && b.calc.own.wellVolUL) && (k !== 'reagent' || +I.perWellUL > 0)) {
+              let v = 0; for (let j = 0; j < i; j++) { const x = run[j], kk = x.calc && x.calc.kind; if (!kk) { v += _blkAdds(x, v); continue; } v = _chainStart(x, v); if (!VOL_TERMINAL[kk]) v += _blkAdds(x, v); }
+              if (v > 0 && Math.abs(+I.wellVolUL - _wellVolRound(v)) > 0.051) bad('B45', key + ' ' + when, '"' + b.title + '" starts from ' + I.wellVolUL + ' µL; the steps above leave ' + _wellVolRound(v));
+            }
+          });
+          // 4. the seeding step says what the well holds after it
+          const seed = e.blocks.find(b => /^Seed (onto|into)/.test(b.title));
+          if (seed) {
+            const txt = fillCalcText(seed.html, seed, e), cv = _chainVols(e, blocksInRunOrder(e), blocksInRunOrder(e).indexOf(seed));
+            if (!cv || !(cv.after > 0)) bad('B45', key + ' ' + when, 'the seeding step has no well volume after it');
+            else if (txt.indexOf(nfmt(_wellVolRound(cv.after)) + ' µL per well') < 0) bad('B45', key + ' ' + when, 'the seeding step does not say the well holds ' + nfmt(_wellVolRound(cv.after)) + ' µL: ' + strip(txt).slice(0, 160));
+          }
+          // 5. a reagent made per well is for the wells that get it
+          const rg = e.blocks.find(b => b.calc && b.calc.kind === 'reagent');
+          if (rg && !(+rg.calc.inputs.perWellUL > 0)) bad('B45', key + ' ' + when, 'the substrate is a typed total (' + rg.calc.inputs.totalVol + ' µL), not a volume per well');
+          else if (rg) {
+            const want = (+rg.calc.inputs.perWellUL) * (+rg.calc.inputs.nWells) * (+rg.calc.inputs.excess || 1), got = _reagentTotal(rg.calc.inputs).tot;
+            if (Math.abs(want - got) > 0.01) bad('B45', key + ' ' + when, 'the substrate total ' + got + ' is not wells × per well × overage ' + want);
+          }
+        };
+        check('as made');
+        if (e.plate) {
+          // repaint: blank the last ten wells of the first plate, then add a second plate
+          const ids = Object.keys(e.plate.wells || {}).slice(-10); ids.forEach(id => { delete e.plate.wells[id]; });
+          platePersist('exp:' + e.id); check('ten wells blanked');
+          e.morePlates = [JSON.parse(JSON.stringify(e.plate))]; platePersist('exp:' + e.id); check('second plate');
+          const rg = e.blocks.find(b => b.calc && b.calc.kind === 'reagent'), one = plateReagentWells({ plate: e.plate, blocks: [] });
+          if (rg && +rg.calc.inputs.nWells !== 2 * one) bad('B45', key + ' two plates', 'the substrate is made for ' + rg.calc.inputs.nWells + ' wells; two plates of ' + one + ' hold ' + 2 * one);
+          // a finished step is what was done: a plate edited afterwards does not rewrite it
+          const spike = e.blocks.find(b => b.calc && PLATE_FED[b.calc.kind] && b.calc.kind !== 'reagent') || rg;
+          if (spike) { const n0 = spike.calc.inputs.nWells; spike.done = true; delete e.morePlates; platePersist('exp:' + e.id);
+            if (spike.calc.inputs.nWells !== n0) bad('B45', key + ' done', 'a finished step ("' + spike.title + '") was re-counted from the plate: ' + n0 + ' → ' + spike.calc.inputs.nWells); }
+        }
+      }
+    });
+
+    // B46 — the shared NanoBRET steps carry no typed amount.
+    if (run('B46')) await guard('B46', 'no typed amounts', async () => {
+      const AMT = /\d[\d.,]*\s*(µL|mL|ng|µg|µM|nM|mM|cells?\b|wells?\b)/;
+      const found = [];
+      const scan = (where, html) => { const t = String(html || '').replace(/\{\{[^}]*\}\}/g, '§').replace(/<[^>]+>/g, ' ').replace(/&micro;/g, 'µ').replace(/&times;/g, '×').replace(/&[a-z#0-9]+;/g, ' ');
+        const m = AMT.exec(t); if (m) found.push(where + ': "' + t.slice(Math.max(0, m.index - 24), m.index + 22).replace(/\s+/g, ' ').trim() + '"'); };
+      const nbBlocks = [];
+      Object.keys(LB.data.presets).forEach(k => { const p = LB.data.presets[k]; if (p && (p.baseType === 'NB' || k === 'NB') && /^NB/.test(k)) (p.blocks || []).forEach(b => nbBlocks.push(['preset ' + k + ' / ' + b.title, b])); });
+      Object.keys(EXTRA_PRESET_SEED).forEach(k => { if (/^NB_/.test(k)) EXTRA_PRESET_SEED[k].blocks.forEach(b => nbBlocks.push(['curated ' + k + ' / ' + b.title, b])); });
+      // the generic type's own 6-well seed and its FuGENE recipe are per-6-well amounts of that plate, with no calculator to take them from
+      const OWN = /^(Seed|Transfection \(FuGENE HD\))$/;
+      nbBlocks.forEach(([w, b]) => { if (/ NB \/ /.test(w) && OWN.test(b.title)) return; scan(w, b.html); scan(w + ' (Methods)', b.pub); });
+      ['lib:nbsusp', 'lib:nbseed', 'lib:nbsub', 'lib:compound-manual'].forEach(id => { const l = (STEP_LIBRARY || []).find(x => x.id === id); if (!l) bad('B46', id, 'library step missing'); else { scan('library ' + id, l.html); scan('library ' + id + ' (Methods)', l.pub); } });
+      tick('B46');
+      if (found.length) bad('B46', 'amount', found.length + ' typed amount(s) in shared NanoBRET steps: ' + found.slice(0, 4).join(' | '));
+      // and they are the same words everywhere
+      const same = (a, b, what) => { if (a !== b) bad('B46', what, 'the ' + what + ' step is worded differently in two places'); };
+      ['NB_SPARK_RTX96', 'NB_SPARK_SCREEN96', 'NB_BIO_RTX96'].forEach(k => {
+        const bs = EXTRA_PRESET_SEED[k].blocks, find = t => bs.find(b => b.title === t);
+        same(find(NB_COMMON.susp.title).html, NB_COMMON.susp.html, k + ' suspension'); same(find(NB_COMMON.seed.title).html, NB_COMMON.seed.html, k + ' seeding'); same(find(NB_COMMON.read.title).html, NB_COMMON.read.html, k + ' read'); });
+      const nbp = LB.data.presets.NB; if (nbp) same((nbp.blocks.find(b => b.title === NB_COMMON.susp.title) || {}).html, NB_COMMON.susp.html, 'NanoBRET suspension');
+    });
+
+    // B47 — a run that has not started takes the preset's steps as they are now.
+    if (run('B47')) await guard('B47', 'unstarted run follows the preset', async () => {
+      const P = (LB.data.projects || []).find(p => (p.sections || []).length);
+      const key = 'NB_BIO_RTX96', tpl = LB.data.presets[key];
+      const mk = (code, status) => {
+        const su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup || {})));
+        const before = new Set(Object.keys(LB.data.experiments));
+        buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-10-01', type: 'NB', title: 'INV stale', code, setup: su, plate: true });
+        const e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); clean.push(e);
+        // the shape the preset had in August: suspension and seed in one step, a substrate typed as a total, a compound step with no dose series
+        const i = e.blocks.findIndex(b => b.title === 'Cell suspension ± HaloTag ligand'), sus = e.blocks[i], old = 'Cell suspension ± HaloTag ligand + seed';
+        const html = '<p>Trypsinize and resuspend. Two suspensions, one without ligand for the four no-ligand control wells. Seed <b>90 µL per well</b> onto the complexes → 100 µL/well.</p>';
+        sus.title = old; sus.html = html; sus.tpl = { title: old, html: html, pub: '' }; delete sus.pub; e.blocks.splice(i + 1, 1);
+        const rg = e.blocks.find(b => b.calc && b.calc.kind === 'reagent'); rg.calc.inputs = { name: 'NanoBRET Nano-Glo substrate', diluent: 'Opti-MEM', totalVol: 2520, dilution: 100 }; rg.calcSeed = JSON.parse(JSON.stringify(rg.calc.inputs));
+        rg.tpl.html = rg.html = '<ol><li>Prepare the substrate: {{c.reagentUL}} + {{c.diluentUL}} = {{c.total}}.</li><li>Add 25 µL per well (final volume 148 µL).</li><li>Read at 460 nm (donor) and 610 nm (acceptor).</li></ol>';
+        const sp = e.blocks.find(b => /^Test compounds/.test(b.title)); delete sp.calc.inputs.series; delete sp.calcSeed.series;
+        e.status = status || 'planned'; return e; };
+      const split = e => e.blocks.filter(b => /^(Cell suspension ± HaloTag ligand|Seed onto the transfection mix)/.test(b.title)).map(b => b.title);
+      const fresh = mk('INV_B47A'); tick('B47');
+      if (split(fresh).length !== 1) bad('B47', 'fixture', 'the stale fixture is not stale: ' + split(fresh).join(' | '));
+      seedPresets();   // the load pass, as a notebook meets it when it opens
+      if (split(fresh).length === 1) bad('B47', 'ran', 'the load pass did not touch an unstarted run');
+      if (split(fresh).length !== 2) bad('B47', 'split', 'the suspension-and-seed step was not split into two: ' + split(fresh).join(' | '));
+      const rg = fresh.blocks.find(b => b.calc && b.calc.kind === 'reagent'), sp = fresh.blocks.find(b => /^Test compounds/.test(b.title));
+      if (!(+rg.calc.inputs.perWellUL > 0) || !(+rg.calc.inputs.nWells > 0)) bad('B47', 'substrate', 'the substrate was not made per well: ' + JSON.stringify(rg.calc.inputs));
+      if (!sp.calc.inputs.series) bad('B47', 'series', 'the compound step is still not a dose series');
+      if (fresh.blocks.findIndex(b => /^Seed onto/.test(b.title)) !== fresh.blocks.findIndex(b => /^Cell suspension/.test(b.title)) + 1) bad('B47', 'order', 'the seeding step does not follow the suspension');
+      // the numbers of the run stay the run's
+      const keep = mk('INV_B47B'); const k0 = keep.blocks.find(b => /^Cell suspension/.test(b.title)); k0.calc.inputs.cellsPerWell = 33333; k0.calcSeed.cellsPerWell = 20000;
+      _stepSplits(); const k1 = keep.blocks.find(b => /^Cell suspension/.test(b.title));
+      if (!k1 || k1.calc.inputs.cellsPerWell !== 33333) bad('B47', 'typed', 'the cells per well typed on the step did not survive the split');
+      // records are never touched
+      const ticked = mk('INV_B47C'); ticked.blocks.find(b => /^Cell suspension/.test(b.title)).stepDone = { 0: true }; _stepSplits();
+      if (split(ticked).length !== 1) bad('B47', 'ticked', 'a step with a tick on it was restructured');
+      const noted = mk('INV_B47D'); noted.blocks.find(b => /^Cell suspension/.test(b.title)).note = 'seeded 5 min late'; _stepSplits();
+      if (split(noted).length !== 1) bad('B47', 'noted', 'a step with a note on it was restructured');
+      const typed = mk('INV_B47E'); typed.blocks.find(b => /^Cell suspension/.test(b.title)).html += '<p>I used 10 cm dishes.</p>'; _stepSplits();
+      if (split(typed).length !== 1) bad('B47', 'words', 'a step with the lab\'s own words was restructured');
+      const done = mk('INV_B47F', 'done'); done.blocks.forEach(b => { b.done = true; }); const j0 = JSON.stringify(canon(done.blocks)); _stepSplits(); _calcKeysFromPresets();
+      if (JSON.stringify(canon(done.blocks)) !== j0) bad('B47', 'finished', 'the load pass edited a finished run');
+      const part = mk('INV_B47G'); part.blocks.find(b => b.calc && b.calc.kind === 'reagent').done = true; _calcKeysFromPresets();
+      if (+part.blocks.find(b => b.calc && b.calc.kind === 'reagent').calc.inputs.perWellUL > 0) bad('B47', 'done step', 'a finished substrate step was rewritten');
+    });
+
+    // B48 — the plasmid named in the header is the master mix's plasmid.
+    if (run('B48')) await guard('B48', 'header plasmid', async () => {
+      const P = (LB.data.projects || []).find(p => (p.sections || []).length);
+      const key = 'NB_BIO_RTX96', tpl = LB.data.presets[key];
+      const mk = code => { const su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup || {})));
+        const before = new Set(Object.keys(LB.data.experiments));
+        buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-10-01', type: 'NB', title: 'INV plasmid', code, setup: su, plate: true });
+        const e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); clean.push(e); return e; };
+      const mix = e => e.blocks.find(b => b.calc && b.calc.kind === 'rtxmix');
+      const e = mk('INV_B48A'); tick('B48'); openExp(e.id);
+      setField('plasmids', 'NL-TEST-HT'); await sleep(40);
+      if (mix(e).calc.inputs.plasmid !== 'NL-TEST-HT') bad('B48', 'header', 'the master mix is made of "' + mix(e).calc.inputs.plasmid + '", the header says NL-TEST-HT');
+      if (!/NL-TEST-HT/.test(fillCalcText(mix(e).html, mix(e), e))) bad('B48', 'text', 'the step does not name the plasmid in the header');
+      setField('plasmids', 'NL-OTHER-HT, HT-PARTNER'); await sleep(40);
+      if (mix(e).calc.inputs.plasmid !== 'NL-OTHER-HT + HT-PARTNER') bad('B48', 'two', 'two plasmids in the header: the mix says "' + mix(e).calc.inputs.plasmid + '"');
+      // a header edited anywhere but the field (an import, another device) reaches the mix when the run is drawn
+      const late = mk('INV_B48D'); late.plasmids = 'NL-DRAWN-HT'; openExp(late.id); await sleep(60);
+      if (mix(late).calc.inputs.plasmid !== 'NL-DRAWN-HT') bad('B48', 'drawn', 'a run opened with a different plasmid in its header still makes the mix of "' + mix(late).calc.inputs.plasmid + '"');
+      const typed = mk('INV_B48B'); openExp(typed.id); mix(typed).calc.inputs.plasmid = 'my own prep'; setField('plasmids', 'NL-TEST-HT'); await sleep(40);
+      if (mix(typed).calc.inputs.plasmid !== 'my own prep') bad('B48', 'typed', 'the plasmid typed on the step was overwritten by the header');
+      const fin = mk('INV_B48C'); const was = mix(fin).calc.inputs.plasmid; fin.status = 'done'; fin.plasmids = 'NL-LATE'; syncExpDerived(fin);
+      if (mix(fin).calc.inputs.plasmid !== was) bad('B48', 'finished', 'a finished run was renamed from its header: ' + was + ' → ' + mix(fin).calc.inputs.plasmid);
     });
 
     // B28 — a date typed into Repeat is a real day or it is refused.

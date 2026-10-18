@@ -455,6 +455,7 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 /* A number quoted from the step's calculator: marked so it reads as computed, not typed. */
 .cv{font-variant-numeric:tabular-nums;font-weight:600;color:var(--text);background:var(--accent-dim);border-radius:3px;padding:0 3px;white-space:nowrap;}
 .cv.cv-none{color:var(--text3);background:none;}
+.cv.cv-e{display:none;}
 .rt li{margin:2px 0;}
 .rt h1{font-size:var(--fs-7);font-weight:700;margin:10px 0 6px;}
 .rt h2{font-size:var(--fs-6);font-weight:700;margin:9px 0 5px;}
@@ -3287,6 +3288,32 @@ function migrateSemanticExperimentTitles(){
   LB.data._semanticTitlesV1=true;
   return changed;
 }
+// The steps every NanoBRET run has in common — the cells onto the transfection mix, the substrate and the
+// read — are written once, here, and every preset that has them uses these words and no others. They had
+// been copied into each preset and drifted: the biosensor kept a suspension-and-seed step the SPARK runs
+// had long since split, a read step still said "148 µL" for a plate that held 136. Every number in them
+// is a token: the wells come from the plate, the volumes from the chain of steps above, the rest from the
+// step's own calculator.
+var NB_COMMON={
+  susp:{title:'Cell suspension ± HaloTag ligand', aka:['Cell suspension + HaloTag ligand','Cell suspension ± ligand 618'],
+    pub:'A suspension of {{c.cellLine}} cells was prepared in phenol red-free Opti-MEM with 4% FBS, and {{c.ligand}} added to all of it but the &minus;ligand controls.',
+    html:'<ol><li>Trypsinize {{c.cellLine}} and prepare {{c.volTotal}} of cell suspension at {{c.density}} in phenol-red-free Opti-MEM + 4% FBS ({{c.cellsTotal}}; {{c.cellsPerWell}} in {{c.volPerWell}} per well).</li><li>Set {{c.volMinus}} aside for the {{c.nMinus}} without ligand (&minus;ligand controls).</li><li>Add {{c.ligUL}} of {{c.ligand}} ({{c.ligStock}} stock &rarr; {{c.ligFinal}}) to the remaining {{c.volPlus}}; mix gently.</li></ol>'},
+  seed:{title:'Seed onto the transfection mix', aka:['Seed onto the complexes'],
+    pub:'Cells were seeded straight onto the transfection mix ({{c.volAfter}} per well) and incubated overnight at 37 &deg;C, 5% CO&#8322;.',
+    html:'<ol><li>Add {{c.volPerWell}} of the suspension to each well, straight onto the {{c.dispense}} of transfection mix already there ({{c.volAfter}} per well), following the plate map: the + ligand suspension into every well but the &minus;ligand controls, the suspension without ligand into those.</li><li>Rock gently to distribute.</li><li>Incubate overnight at 37 &deg;C, 5% CO&#8322;.</li></ol>'},
+  // MG132 and the compounds go onto the cells as 10x spikes, the volume V/(X-1) of the well they join. The
+  // hour and the three hours are waits (w), not numbers in the sentence.
+  mg132:{title:'MG132 pre-treatment',
+    html:'<ol><li>Make the {{c.fold}} {{c.name}} fresh: {{c.stockUL}} of the {{c.stockConc}} stock + {{c.diluentUL}} {{c.diluent}} = {{c.totalUL}} at {{c.interConc}} ({{c.dilution}}).</li><li>Spike {{c.addUL}} into all {{c.nWells}} ({{c.wellVol}} already there &rarr; {{c.newVol}}, {{c.finalConc}} in the well) &mdash; do not aspirate.</li><li>Incubate 1 h at 37 &deg;C before the compounds.</li></ol>'},
+  cmpd:{title:'Test compounds',
+    html:'<ol><li>Prepare each concentration at {{c.fold}} in {{c.diluent}}, one tube per concentration, as on the plate map. {{c.seriesText}}</li><li>Add {{c.addUL}} of the {{c.fold}} to each treated well ({{c.wellVol}} already in the well &rarr; {{c.newVol}}); do not aspirate.</li><li>Add {{c.addUL}} of vehicle ({{c.diluent}} with matched DMSO) to the vehicle and control wells.</li><li>Incubate 3 h at 37 &deg;C.</li></ol>'},
+  read:{title:'NanoBRET substrate + read', aka:['NanoBRET read'],
+    pub:'NanoBRET substrate was added ({{c.perWell}} per well) and the plate read at {{c.donorNm}} (donor) and {{c.acceptorNm}} (acceptor). The corrected BRET ratio is the acceptor/donor ratio of the + ligand wells minus the same ratio in the matched &minus;ligand wells.',
+    html:'<ol><li>Prepare the substrate immediately before use: {{c.reagentUL}} {{c.name}} ({{c.dilution}}) + {{c.diluentUL}} {{c.diluent}} = {{c.total}} ({{c.perWell}} per well for {{c.nWells}}). Keep it dark.</li><li>Add {{c.perWell}} per well directly onto the cells, without aspirating ({{c.wellVol}} already in the well &rarr; {{c.finalVol}}).</li><li>Shake ~10 s on the orbital shaker; equilibrate 2&ndash;3 min at room temperature.</li><li>Read the donor ({{c.donorNm}}) and acceptor ({{c.acceptorNm}}) channels; save the data.</li></ol><p><b>Results</b></p><p></p>'}
+};
+// The substrate calculator every NanoBRET step starts from; the read channels are the reader's and differ.
+function _nbReadCalc(diluent,donorNm,acceptorNm){ return {kind:'reagent',inputs:{name:'NanoBRET Nano-Glo substrate',diluent:diluent,
+  perWellUL:25,nWells:84,excess:1.2,wellVolUL:100,dilution:100,donorNm:donorNm,acceptorNm:acceptorNm}}; }
 var PRESET_SEED={
   WB:{title:'Western blot',blocks:[
     {d:0,title:'Seeding',calc:{kind:'seed',inputs:{cellLine:'HEK293',cellsPerWell:20000,volPerWell:90,format:'96',nPlates:4,excess:1.1}},pub:'{{cellLine}} cells were seeded in {{format}}-well plates and grown to ~80% confluence over 24\u201348 h.',html:'<ol><li>Count the cells and dilute the suspension to {{c.density}} &mdash; {{c.totalVol}} for {{c.wells}}.</li><li>Add {{c.volPerWell}} of the suspension to each well ({{c.cellsPerWell}}) into clear {{format}}-well plates, 2 compounds per plate.</li><li>Incubate 24&ndash;48 h until ~80% confluent.</li></ol>'},
@@ -3310,11 +3337,25 @@ var PRESET_SEED={
   NB:{title:'NanoBRET',blocks:[
     {d:0,title:'Seed',calc:{kind:'seed',fmtOwn:true,inputs:{cellLine:'HEK293',cellsPerWell:800000,volPerWell:2000,format:'6',nPlates:1,excess:1.1}},pub:'{{cellLine}} cells were seeded in 6-well plates at 0.8&times;10&#8310; cells per well, with one well left untransfected.',html:'<ol><li>Count the cells and dilute the suspension to {{c.density}} &mdash; {{c.totalVol}} for {{c.wells}}.</li><li>Add {{c.volPerWell}} of the suspension to each well ({{c.cellsPerWell}}) of {{cellLine}} in a 6-well plate: {{nTransfect}} transfected + 1 untransfected.</li><li>Incubate overnight at 37 &deg;C.</li></ol>'},
     {d:1,title:'Transfection (FuGENE HD)',pub:'Cells were transfected with 0.02 &micro;g of plasmid and 2 &micro;g of carrier DNA per well, complexed with 6 &micro;L FuGENE HD in 100 &micro;L Opti-MEM for 10 min at room temperature, and left ~20 h at 37 &deg;C, 5% CO&#8322;.',html:'<ol><li>Per 6-well: 0.02 &micro;g plasmid + 2 &micro;g carrier DNA into 100 &micro;L Opti-MEM.</li><li>Add 6 &micro;L FuGENE HD, mix gently (do not vortex), 10 min at RT.</li><li>Add dropwise to the cells.</li><li>Incubate ~20 h at 37 &deg;C, 5% CO&#8322;.</li></ol>'},
-    {d:2,title:'Harvest',pub:'Cells were trypsinized and resuspended in phenol red-free Opti-MEM with 4% FBS at 2.2&times;10&#8309; cells/mL.',html:'<ol><li>Trypsinize; resuspend in phenol-red-free Opti-MEM + 4% FBS.</li><li>Adjust to 2.2&times;10&#8309; cells/mL.</li></ol>'},
-    {d:2,title:'Replate',pub:'Cells were seeded at 90 &micro;L per well in white {{format}}-well plates, with or without {{ligand}}.',html:'<ol><li>&minus; ligand wells: 90 &micro;L of suspension per well into a white {{format}}-well plate.</li><li>+ ligand wells: {{ligand}} at 1 &micro;L per mL of suspension, then 90 &micro;L per well.</li></ol>'},
-    {d:3,title:'MG132 pre-treatment',w:60,pub:'Cells were pre-treated with MG132 at 10 &micro;M for 1 h.',html:'<ol><li>MG132 pre-treatment ({{mg132}}): 10 &micro;M final from a 10&times; in Opti-MEM; 1 h at 37 &deg;C.</li></ol>'},
-    {d:3,title:'Test compounds',w:180,pub:'Cells were incubated with test compounds serially diluted 3-fold from 1 &micro;M for 3 h.',html:'<ol><li>Test compounds: 10&times; serial dilution (1 &micro;M top, DF 3) in Opti-MEM; add 11 &micro;L per well (&rarr; 110 &micro;L); 3 h at 37 &deg;C.</li></ol>'},
-    {d:3,title:'NanoBRET substrate + read',calc:{kind:'reagent',inputs:{name:'NanoBRET substrate',diluent:'OptiMEM',totalVol:2520,dilution:100}},pub:'NanoBRET substrate was added at 25 &micro;L per well, the plate shaken for ~10 s and read at 460 nm (donor) and 618 nm (acceptor). Wells lacking HaloTag ligand were subtracted from the matching wells containing it, and the corrected ratio expressed relative to the DMSO control.',html:'<ol><li>Prepare the substrate immediately before use: {{c.reagentUL}} {{c.name}} ({{c.dilution}}) + {{c.diluentUL}} {{c.diluent}} = {{c.total}}. Keep it dark.</li><li>Add 25 &micro;L of substrate per well; shake ~10 s.</li><li>Read at 460 nm (donor) and 610 nm (acceptor); save the data.</li></ol>'}]},
+    // From here the run is on the white assay plate, and the steps are the ones every NanoBRET shares.
+    {d:2,title:NB_COMMON.susp.title,aka:NB_COMMON.susp.aka.concat(['Harvest','Replate']),
+     calc:{kind:'nbsusp',inputs:{cellLine:'HEK293',cellsPerWell:20000,volPerWell:90,nPlus:80,nMinus:4,
+       ligName:'HaloTag ligand',stockUM:100,finalNM:100,excess:1.1}},
+     pub:NB_COMMON.susp.pub, html:NB_COMMON.susp.html},
+    {d:2,title:'Seed into the white plate',
+     pub:'Cells were seeded at {{c.volPerWell}} per well in white {{format}}-well plates, with or without {{c.ligand}}.',
+     html:'<ol><li>Add {{c.volPerWell}} of the suspension to each well of the white {{format}}-well plate ({{c.volAfter}} per well), following the plate map: the + ligand suspension into every well but the &minus;ligand controls, the suspension without ligand into those.</li><li>Rock gently; incubate overnight at 37 &deg;C, 5% CO&#8322;.</li></ol>'},
+    {d:3,title:NB_COMMON.mg132.title,w:60,
+     calc:{kind:'spike',inputs:{name:'MG132',wellVolUL:90,foldX:10,finalUM:10,stockUM:10000,
+       nWells:84,excess:1.1,diluent:'Opti-MEM'}},
+     html:NB_COMMON.mg132.html},
+    {d:3,title:NB_COMMON.cmpd.title,w:180,
+     calc:{kind:'spike',inputs:{name:'test compounds',wellVolUL:100,foldX:10,series:true,finalUM:0,stockUM:0,
+       nWells:84,excess:1.1,diluent:'Opti-MEM'}},
+     html:NB_COMMON.cmpd.html},
+    {d:3,title:NB_COMMON.read.title,aka:NB_COMMON.read.aka,w:5,
+     calc:_nbReadCalc('Opti-MEM',460,610),
+     pub:NB_COMMON.read.pub, html:NB_COMMON.read.html}]},
   KD:{title:'Kinetic degradation (live-cell HiBiT)',blocks:[
     {d:0,title:'Seeding',calc:{kind:'seed',inputs:{cellLine:'HEK293-HiBiT',cellsPerWell:20000,volPerWell:75,format:'96',nPlates:2,excess:1.5}},pub:'{{cellLine}} cells were seeded in white {{format}}-well plates.',html:'<ol><li>Count the cells and dilute the suspension to {{c.density}} &mdash; {{c.totalVol}} for {{c.wells}}.</li><li>Add {{c.volPerWell}} of the suspension to each well ({{c.cellsPerWell}}) into a <b>white</b> {{format}}-well plate.</li></ol>'},
     {d:1,title:'LgBiT transfection (ViaScript mRNA)',pub:'Cells were transfected with LgBiT mRNA using ViaScript, the medium replaced with 100 &micro;L per well of the transfection medium, and incubated overnight at 37 &deg;C.',html:'<ol><li>Per 2 &times; 96-well: 20 &micro;L LgBiT mRNA + 20 &micro;L ViaScript into 160 &micro;L buffer.</li><li>Incubate 15&ndash;30 min at room temperature.</li><li>Dilute with 1800 &micro;L buffer and add to 18 mL of medium.</li><li>Aspirate the wells; add 100 &micro;L per well.</li><li>Incubate overnight at 37 &deg;C.</li></ol>'},
@@ -3378,19 +3419,16 @@ var EXTRA_PRESET_SEED={
      // here is how a block came to name one of two ratios and keep naming it after the inputs
      // moved — the amounts have one home, and it is the calculator, which follows the setup.
      html:'<ol><li>Prepare {{c.nMixes}} as in the table below, one tube per DNA condition (each donor with the acceptor, each donor alone, the acceptor alone, the mock), each made to {{c.dispense}} per well: the Opti-MEM in the volume of its row first, then the plasmids and the carrier DNA in theirs ({{c.ngPerWell}} of DNA per well).</li><li>Add the FuGENE HD straight into the liquid, not down the tube wall &mdash; {{c.ratio}} on the DNA, {{c.fugeneUL}} per well. Mix gently; do not vortex.</li><li>Incubate 10&ndash;15 min at room temperature.</li><li>Dispense {{c.dispense}} of the mix into every well of the white {{format}}-well plate, following the plate map. The cells go on top.</li></ol>'},
-    {d:0,title:'Cell suspension ± ligand 618',
+    {d:0,title:NB_COMMON.susp.title,aka:NB_COMMON.susp.aka,
      // 64 of the 96 wells are used; the 8 no-ligand control wells take the − suspension and
      // every other used well, the no-substrate controls included, takes the + one.
      calc:{kind:'nbsusp',inputs:{cellLine:'HeLa',cellsPerWell:20000,volPerWell:90,nPlus:56,nMinus:8,
        ligName:'HaloTag ligand 618',stockUM:100,finalNM:100,excess:1.2}},
-     pub:'A suspension of {{c.cellLine}} cells was prepared in phenol red-free Opti-MEM with 4% FBS, and {{c.ligand}} added to all of it but the &minus;ligand controls.',
-     html:'<ol><li>Trypsinize {{c.cellLine}} and prepare {{c.volTotal}} of cell suspension at {{c.density}} in phenol-red-free Opti-MEM + 4% FBS ({{c.cellsTotal}}; {{c.cellsPerWell}} in {{c.volPerWell}} per well).</li><li>Set {{c.volMinus}} aside for the {{c.nMinus}} without ligand (&minus;ligand controls).</li><li>Add {{c.ligUL}} of {{c.ligand}} ({{c.ligStock}} stock &rarr; {{c.ligFinal}}) to the remaining {{c.volPlus}}; mix gently.</li></ol>'},
-    {d:0,title:'Seed onto the transfection mix',
-     pub:'Cells were seeded straight onto the transfection mix and incubated overnight at 37 &deg;C.',
-     html:'<ol><li>Add {{c.volPerWell}} of the suspension to each well, straight onto the transfection mix, following the plate map: the + ligand suspension into every well but the &minus;ligand controls, the suspension without ligand into those.</li><li>Incubate overnight at 37 &deg;C.</li></ol>'},
-    {d:1,title:'NanoBRET read',
-     calc:{kind:'reagent',inputs:{name:'NanoBRET Nano-Glo substrate',diluent:'assay medium',totalVol:2520,dilution:100}},
-     pub:'NanoBRET substrate was added and the plate read at ~460 nm (donor) and ~618 nm (acceptor). The corrected BRET ratio is the acceptor/donor ratio of the + ligand wells minus the same ratio in the matched &minus; ligand wells.',html:'<ol><li>Prepare the substrate immediately before use: {{c.reagentUL}} {{c.name}} ({{c.dilution}}) + {{c.diluentUL}} {{c.diluent}} = {{c.total}}. Keep it dark.</li><li>Add 25 &micro;L of substrate per well onto the medium; do not aspirate.</li><li>Shake ~10 s; equilibrate 2&ndash;3 min at room temperature.</li><li>Read the donor (~460 nm) and acceptor (~618 nm) channels; save the data.</li></ol><p><b>Results</b></p><p></p>'}]},
+     pub:NB_COMMON.susp.pub, html:NB_COMMON.susp.html},
+    {d:0,title:NB_COMMON.seed.title,aka:NB_COMMON.seed.aka,pub:NB_COMMON.seed.pub,html:NB_COMMON.seed.html},
+    {d:1,title:NB_COMMON.read.title,aka:NB_COMMON.read.aka,w:5,
+     calc:_nbReadCalc('assay medium',460,618),
+     pub:NB_COMMON.read.pub, html:NB_COMMON.read.html}]},
   // The SPARK plate as a compound screen. One pair (NL-DELE1(CTD) + HT-HRI at 1:10), every
   // well transfected with it and carrying the HaloTag ligand, and the plate filled with as many
   // compounds as it holds — each a block of technical replicates × a short dilution series —
@@ -3419,24 +3457,21 @@ var EXTRA_PRESET_SEED={
        nPair:76,nDonor:4,nAcceptor:4,nMock:4,nUntr:0,nPairCtrl:8,ctrlRatio:10,
        ctrlMode:'same amount as in the pair',excess:1.1}},
      html:'<ol><li>Prepare {{c.nMixes}} as in the table below, one tube per condition, each made to {{c.dispense}} per well: the Opti-MEM in the volume of its row first, then the plasmids and the carrier DNA in theirs ({{c.ngPerWell}} of DNA per well).</li><li>Add the FuGENE HD straight into the liquid, not down the tube wall &mdash; {{c.ratio}} on the DNA, {{c.fugeneUL}} per well. Mix gently; do not vortex.</li><li>Incubate 10&ndash;15 min at room temperature.</li><li>Dispense {{c.dispense}} of the mix into every well of the white {{format}}-well plate, following the plate map. The cells go on top.</li></ol>'},
-    {d:0,title:'Cell suspension + HaloTag ligand',
+    {d:0,title:NB_COMMON.susp.title,aka:NB_COMMON.susp.aka,
      // Only the −ligand controls take the − suspension; every other well, mock included, is +.
      calc:{kind:'nbsusp',inputs:{cellLine:'HeLa',cellsPerWell:20000,volPerWell:90,nPlus:92,nMinus:4,
        ligName:'HaloTag ligand 618',stockUM:100,finalNM:100,excess:1.1}},
-     pub:'A suspension of {{c.cellLine}} cells was prepared in phenol red-free Opti-MEM with 4% FBS, and {{c.ligand}} added to all of it but the &minus;ligand controls.',
-     html:'<ol><li>Trypsinize {{c.cellLine}} and prepare {{c.volTotal}} of cell suspension at {{c.density}} in phenol-red-free Opti-MEM + 4% FBS ({{c.cellsTotal}}; {{c.cellsPerWell}} in {{c.volPerWell}} per well).</li><li>Set {{c.volMinus}} aside for the {{c.nMinus}} without ligand (&minus;ligand controls).</li><li>Add {{c.ligUL}} of {{c.ligand}} ({{c.ligStock}} stock &rarr; {{c.ligFinal}}) to the remaining {{c.volPlus}}; mix gently.</li></ol>'},
-    {d:0,title:'Seed onto the transfection mix',
-     pub:'Cells were seeded straight onto the transfection mix and incubated overnight at 37 &deg;C.',
-     html:'<ol><li>Add {{c.volPerWell}} of the suspension to each well, straight onto the transfection mix, following the plate map: the + ligand suspension into every well but the &minus;ligand controls, the suspension without ligand into those.</li><li>Incubate overnight at 37 &deg;C.</li></ol>'},
+     pub:NB_COMMON.susp.pub, html:NB_COMMON.susp.html},
+    {d:0,title:NB_COMMON.seed.title,aka:NB_COMMON.seed.aka,pub:NB_COMMON.seed.pub,html:NB_COMMON.seed.html},
     {d:1,title:'Compound addition',w:240,
      calc:{kind:'spike',inputs:{name:'test compounds',wellVolUL:100,foldX:10,series:true,finalUM:0,stockUM:0,
        nWells:72,excess:1.1,diluent:'Opti-MEM'}},
      pub:'Compounds were added directly onto the cells as 10&times; solutions in Opti-MEM at {{nConc}} concentrations, {{df}}-fold from {{topUM}} &micro;M, each in {{nReps}} technical replicates, with matched DMSO in the vehicle and control wells, and the plates incubated for {{c.wait}} at 37 &deg;C.',
      html:'<ol><li>Prepare each concentration at {{c.fold}} in {{c.diluent}}: {{nConc}} concentrations, {{df}}-fold from {{topUM}} &micro;M, one tube per compound and concentration, as on the plate map.</li><li>Add {{c.addUL}} of the {{c.fold}} to each compound well ({{c.wellVol}} already in the well &rarr; {{c.newVol}}); do not aspirate.</li><li>Add {{c.addUL}} of vehicle ({{c.diluent}} with matched DMSO) to the DMSO wells and to the &minus;ligand, &minus;substrate, mock and single-plasmid controls.</li><li>Incubate {{c.wait}} at 37 &deg;C.</li></ol>'},
-    {d:1,title:'NanoBRET substrate + read',w:5,
-     calc:{kind:'reagent',inputs:{name:'NanoBRET Nano-Glo substrate',diluent:'assay medium',totalVol:2520,dilution:100}},
-     pub:'NanoBRET substrate was added and the plate read at ~460 nm (donor) and ~618 nm (acceptor). The corrected BRET ratio is the acceptor/donor ratio of the + ligand wells minus the same ratio in the &minus; ligand wells, expressed relative to the DMSO control.',
-     html:'<ol><li>Prepare the substrate immediately before use: {{c.reagentUL}} {{c.name}} ({{c.dilution}}) + {{c.diluentUL}} {{c.diluent}} = {{c.total}}. Keep it dark.</li><li>Add 25 &micro;L of substrate per well onto the medium; do not aspirate.</li><li>Shake ~10 s; equilibrate 2&ndash;3 min at room temperature.</li><li>Read the donor (~460 nm) and acceptor (~618 nm) channels; save the data.</li></ol><p><b>Results</b></p><p></p>'}]},
+    {d:1,title:NB_COMMON.read.title,aka:NB_COMMON.read.aka,w:5,
+     calc:_nbReadCalc('assay medium',460,618),
+     pub:NB_COMMON.read.pub.replace(/\.$/,'')+', expressed relative to the DMSO control.',
+     html:NB_COMMON.read.html}]},
   // ── Curated by Jon, run on the bench ────────────────────────────────────────────────────
   // A NanoBRET BET biosensor read in 96-well, reverse-transfected: no 6-well transfection and
   // no replating, so the cells are seeded straight onto the complexes and never move again.
@@ -3451,26 +3486,23 @@ var EXTRA_PRESET_SEED={
     {d:0,title:'Reverse transfection — master mix',
      calc:{kind:'rtxmix',inputs:{plasmid:'NanoBRET BET biosensor',ngPerWell:80,stockNgUl:1000,
        fugeneRatio:3,dispenseUL:10,nWells:80,excess:1.1,diluent:'Opti-MEM'}},
-     html:'<ol><li>Master mix for {{c.nWells}} &mdash; {{c.total}} in all.</li><li>Add {{c.dnaUL}} of {{c.plasmid}} ({{c.dnaUg}} at {{c.stock}}) to {{c.diluentUL}} of {{c.diluent}}.</li><li>Add {{c.fugeneUL}} FuGENE HD ({{c.ratio}}) straight into the liquid, not down the tube wall.</li><li>Mix briefly; 5&ndash;15 min at room temperature.</li><li>Dispense {{c.dispense}} per well into the white 96-well plate before the cells &mdash; {{c.ngPerWell}} of DNA per well.</li><li>Give the four untransfected wells {{c.dispense}} of plain {{c.diluent}}.</li></ol>'},
-    {d:0,title:'Cell suspension ± HaloTag ligand',
+     html:'<ol><li>Make the master mix for {{c.nWells}} ({{c.total}} in all), each well getting {{c.dispense}}: {{c.diluentUL}} of {{c.diluent}} first, then {{c.dnaUL}} of {{c.plasmid}} ({{c.dnaUg}} at {{c.stock}}; {{c.ngPerWell}} of DNA per well).</li><li>Add the FuGENE HD straight into the liquid, not down the tube wall &mdash; {{c.ratio}} on the DNA, {{c.fugeneUL}} in all. Mix gently; do not vortex.</li><li>Incubate 5&ndash;15 min at room temperature.</li><li>Dispense {{c.dispense}} of the mix into every transfected well of the white {{format}}-well plate, following the plate map. {{c.untrNote}} The cells go on top.</li></ol>'},
+    {d:0,title:NB_COMMON.susp.title,aka:NB_COMMON.susp.aka,
      calc:{kind:'nbsusp',inputs:{cellLine:'HEK293',cellsPerWell:20000,volPerWell:90,nPlus:80,nMinus:4,
        ligName:'HaloTag 618 ligand',stockUM:100,finalNM:100,excess:1.1}},
-     pub:'A suspension of {{c.cellLine}} cells was prepared in phenol red-free Opti-MEM with 4% FBS, and {{c.ligand}} added to all of it but the &minus;ligand controls.',
-     html:'<ol><li>Trypsinize {{c.cellLine}} and prepare {{c.volTotal}} of cell suspension at {{c.density}} in phenol-red-free Opti-MEM + 4% FBS ({{c.cellsTotal}}; {{c.cellsPerWell}} in {{c.volPerWell}} per well).</li><li>Set {{c.volMinus}} aside for the {{c.nMinus}} without ligand (&minus;ligand controls).</li><li>Add {{c.ligUL}} of {{c.ligand}} ({{c.ligStock}} stock &rarr; {{c.ligFinal}}) to the remaining {{c.volPlus}}; mix gently.</li></ol>'},
-    {d:0,title:'Seed onto the complexes',
-     pub:'Cells were seeded straight onto the complexes to 100 &micro;L per well and incubated overnight at 37 &deg;C, 5% CO&#8322;.',
-     html:'<ol><li>Add {{c.volPerWell}} of the suspension to each well, straight onto the complexes &rarr; 100 &micro;L per well, following the plate map.</li><li>Rock gently to distribute; 37 &deg;C, 5% CO&#8322; overnight (~20&ndash;24 h).</li></ol>'},
-    {d:1,title:'MG132 pre-treatment',w:60,
+     pub:NB_COMMON.susp.pub, html:NB_COMMON.susp.html},
+    {d:0,title:NB_COMMON.seed.title,aka:NB_COMMON.seed.aka,pub:NB_COMMON.seed.pub,html:NB_COMMON.seed.html},
+    {d:1,title:NB_COMMON.mg132.title,w:60,
      calc:{kind:'spike',inputs:{name:'MG132',wellVolUL:100,foldX:10,finalUM:10,stockUM:10000,
        nWells:84,excess:1.1,diluent:'Opti-MEM'}},
-     html:'<ol><li>Make the {{c.fold}} {{c.name}} fresh: {{c.stockUL}} of the {{c.stockConc}} stock + {{c.diluentUL}} {{c.diluent}} = {{c.totalUL}} at {{c.interConc}} ({{c.dilution}}).</li><li>Spike {{c.addUL}} into all {{c.nWells}} ({{c.wellVol}} already there &rarr; {{c.newVol}}, {{c.finalConc}} in the well) &mdash; do not aspirate.</li><li>Incubate 1 h at 37 &deg;C before the compounds.</li></ol>'},
-    {d:1,title:'Test compounds',w:180,
+     html:NB_COMMON.mg132.html},
+    {d:1,title:NB_COMMON.cmpd.title,w:180,
      calc:{kind:'spike',inputs:{name:'test compounds',wellVolUL:111.1,foldX:10,series:true,finalUM:0,stockUM:0,
        nWells:84,excess:1.1,diluent:'Opti-MEM'}},
-     html:'<ol><li>Prepare each concentration at {{c.fold}} in {{c.diluent}}, one tube per concentration, as on the plate map.</li><li>Add {{c.addUL}} of the {{c.fold}} to each treated well ({{c.wellVol}} already in the well &rarr; {{c.newVol}}); do not aspirate.</li><li>Add {{c.addUL}} of vehicle ({{c.diluent}} with matched DMSO) to the vehicle and control wells.</li><li>Incubate 3 h at 37 &deg;C.</li></ol>'},
-    {d:1,title:'NanoBRET substrate + read',w:5,
-     calc:{kind:'reagent',inputs:{name:'NanoBRET Nano-Glo substrate',diluent:'Opti-MEM',totalVol:2520,dilution:100}},
-     html:'<ol><li>Prepare the substrate immediately before use: {{c.reagentUL}} {{c.name}} ({{c.dilution}}) + {{c.diluentUL}} {{c.diluent}} = {{c.total}}. Keep it dark.</li><li>Add 25 &micro;L per well directly onto the cells without aspirating (final volume 148 &micro;L).</li><li>Shake ~10 s on the orbital shaker; equilibrate 2&ndash;3 min at room temperature.</li><li>Read at 460 nm (donor) and 610 nm (acceptor); save the data.</li></ol><p><b>Results</b></p><p></p>'}]},
+     html:NB_COMMON.cmpd.html},
+    {d:1,title:NB_COMMON.read.title,aka:NB_COMMON.read.aka,w:5,
+     calc:_nbReadCalc('Opti-MEM',460,610),
+     pub:NB_COMMON.read.pub, html:NB_COMMON.read.html}]},
   // A CellTiter-Glo viability dose response of TCIP compounds in a suspension line, read at two
   // timepoints. Four compounds per plate, each owning a pair of rows, so every point of the
   // series is a duplicate; three plates per readout, seeded and dosed on the same day.
@@ -4215,6 +4247,11 @@ function _subNote(v,labels){
     +' &mdash; '+(sub.length===1?'that box is':'those boxes are')+' empty or zero, and the numbers above were worked out with '
     +(sub.length===1?'it':'them')+'. Type the value you actually used.</div>';
 }
+// What a reagent step has to make. With a per-well volume it is that volume for every well that
+// receives it, plus the overage; without one it is the total the step was recorded with.
+function _reagentTotal(v){ var pw=+v.perWellUL||0, n=+v.nWells||0, ex=+v.excess||1;
+  if(pw>0) return {tot:pw*n*ex, perWell:pw, n:n, ex:ex};
+  return {tot:+v.totalVol||0, perWell:0, n:0, ex:1}; }
 var CALC_KINDS={
   seed:{ label:'Cell seeding', fields:[
     {k:'cellLine',t:'cellline',lbl:'Cell line'},{k:'cellsPerWell',t:'num',lbl:'Cells / well'},
@@ -4333,17 +4370,33 @@ var CALC_KINDS={
     defaults:{format:'96',nPlates:2,volPerWell:50,excess:1.1},
     compute:function(v){ v=_calcEff(v,{nPlates:1,excess:1}); var wells=wellsOf(v.format)*v.nPlates; var tot=(+v.volPerWell)*wells*v.excess;
       return '<b>CellTiter-Glo</b> &mdash; add '+nfmt(v.volPerWell)+' µL/well &middot; '+mlfmt(tot)+' reagent needed'+_ovxL(v.excess)+' &middot; equilibrate 10–20 min &middot; read luminescence.'+_subNote(v,{nPlates:'# plates',excess:'Excess ×'}); } },
+  // A reagent made up for the wells that receive it. The volume is what each well takes times the
+  // wells the plate says there are, times the overage — so it follows the map and the per-well
+  // volume instead of being a total somebody typed for one plate (2,520 µL went on being made
+  // for 164 wells). `totalVol` is the older way of saying it, still read for a step that was
+  // recorded that way: with no `perWellUL` the block computes from it exactly as it always did.
+  // The two nm are the plate reader's channels, asked only of a step that names them.
   reagent:{ label:'Reagent dilution', fields:[
     {k:'name',t:'txt',lbl:'Reagent'},{k:'diluent',t:'txt',lbl:'Diluent'},
-    {k:'totalVol',t:'num',lbl:'Total (µL)'},{k:'dilution',t:'num',lbl:'Dilution 1:X'}],
+    {k:'perWellUL',t:'num',lbl:'Added per well (µL)',step:'any',show:function(I){ return +I.perWellUL>0; }},
+    {k:'nWells',t:'num',lbl:'# wells',show:function(I){ return +I.perWellUL>0; }},
+    {k:'excess',t:'num',lbl:'Excess ×',step:'0.05',show:function(I){ return +I.perWellUL>0; }},
+    {k:'wellVolUL',t:'num',lbl:'Already in the well (µL)',step:'any',show:function(I){ return +I.perWellUL>0; }},
+    {k:'totalVol',t:'num',lbl:'Total (µL)',show:function(I){ return !(+I.perWellUL>0); }},
+    {k:'dilution',t:'num',lbl:'Dilution 1:X'},
+    {k:'donorNm',t:'num',lbl:'Donor read (nm)',show:function(I){ return I.donorNm!=null; }},
+    {k:'acceptorNm',t:'num',lbl:'Acceptor read (nm)',show:function(I){ return I.acceptorNm!=null; }}],
     defaults:{name:'Substrate',diluent:'OptiMEM',totalVol:2520,dilution:100},
-    compute:function(v){ v=_calcEff(v,{dilution:1}); var tot=+v.totalVol||0, dil=v.dilution; var r=tot/dil, d=tot-r;
-      if(!(tot>0)) return '<b>Prepare '+esc(v.name||'reagent')+'</b> &mdash; set a total volume.';
+    compute:function(v){ v=_calcEff(v,{dilution:1}); var T=_reagentTotal(v), tot=T.tot, dil=v.dilution; var r=tot/dil, d=tot-r;
+      if(!(tot>0)) return '<b>Prepare '+esc(v.name||'reagent')+'</b> &mdash; set '+(T.perWell?'the wells it goes into':'a total volume')+'.';
       // 1:0.5 is not a dilution, and the row used to print a NEGATIVE diluent volume beside a
       // total that read as if the recipe were fine.
       if(dil<1) return '<b>Prepare '+esc(v.name||'reagent')+'</b> &mdash; a 1:'+nfmt(dil)+' &ldquo;dilution&rdquo; is more concentrated '
         +'than the stock, so it cannot be made by adding '+esc(v.diluent||'diluent')+'. A dilution factor is 1 or more.';
+      var vw=+v.wellVolUL||0;
       return '<b>Prepare '+esc(v.name||'reagent')+'</b> &mdash; '+nfmt(r)+' µL '+esc(v.name||'reagent')+' (1:'+nfmt(dil)+') + '+nfmt(d)+' µL '+esc(v.diluent||'diluent')+' = '+nfmt(tot)+' µL total.'
+        +(T.perWell?('<div class="cc-note">'+nfmt(T.perWell)+' µL per well × '+nfmt(T.n)+' well'+(T.n===1?'':'s')+_ovxL(T.ex)
+          +(vw>0?(' — onto the '+nfmt(vw)+' µL already there, '+nfmt(vw+T.perWell)+' µL per well.'):'.')+'</div>'):'')
         +_subNote(v,{dilution:'Dilution 1:X'}); } },
   // ── A working solution made of several stocks, given as µL of each per mL ─────────────────
   // "Oligomycin 0.8 µL/mL, antimycin A 1.0 µL/mL" is how an OA mix is written down, and it is
@@ -4385,18 +4438,27 @@ var CALC_KINDS={
 var CALC_VALUES={
   seed:function(v){ v=_calcEff(v,{nPlates:1,excess:1}); var wells=wellsOf(v.format)*v.nPlates; var dens=(+v.cellsPerWell)/(+v.volPerWell)/1000; var totUL=(+v.volPerWell)*wells*v.excess;
     return {density:nfmt(dens)+' M cells/mL', totalVol:mlfmt(totUL), cells:nfmt(dens*totUL/1000)+' M cells', volPerWell:nfmt(v.volPerWell)+' µL', cellsPerWell:nfmt(v.cellsPerWell)+' cells', nPlates:nfmt(v.nPlates), format:String(v.format||'')+'-well', wells:nfmt(wells)+' wells', cellLine:((cellLineDef(v.cellLine)||{}).label||String(v.cellLine||'cells')).replace(/\s*\(.*\)$/,'')}; },
-  rtxmix:function(v){ var n=+v.nWells||0, ex=+v.excess||1, W=n*ex, disp=+v.dispenseUL||0, tot=disp*W, ngw=+v.ngPerWell||0, dnaNg=ngw*W, stock=+v.stockNgUl||0;
+  rtxmix:function(v,ctx){ var n=+v.nWells||0, ex=+v.excess||1, W=n*ex, disp=+v.dispenseUL||0, tot=disp*W, ngw=+v.ngPerWell||0, dnaNg=ngw*W, stock=+v.stockNgUl||0;
+    // The untransfected wells are the plate's to count, and they still have to start at the same
+    // volume as every other well — said only when the plate has some.
+    var _uc=(ctx&&ctx.exp)?plateConditionCounts(ctx.exp):null, _nu=_uc?_uc.untr:0;
     var dnaUL=stock>0?(dnaNg/stock):0, fug=(+v.fugeneRatio||0)*(dnaNg/1000), _ph=_pipHint(dnaUL,v.minVolUL), dil=tot-(_ph?_ph.ul:dnaUL)-fug;
-    return {nWells:nfmt(n)+' wells', dispense:nfmt(disp)+' µL', total:nfmt(tot)+' µL', dnaUL:nfmt(dnaUL)+' µL', dnaUg:nfmt(dnaNg/1000)+' µg', ngPerWell:nfmt(ngw)+' ng', stock:nfmt(stock)+' ng/µL', fugeneUL:nfmt(fug)+' µL', ratio:nfmt(v.fugeneRatio)+':1', diluentUL:nfmt(dil)+' µL', diluent:String(v.diluent||'Opti-MEM'), plasmid:String(v.plasmid||'plasmid')}; },
+    return {nWells:nfmt(n)+' wells', dispense:nfmt(disp)+' µL', total:nfmt(tot)+' µL', dnaUL:nfmt(dnaUL)+' µL', dnaUg:nfmt(dnaNg/1000)+' µg', ngPerWell:nfmt(ngw)+' ng', stock:nfmt(stock)+' ng/µL', fugeneUL:nfmt(fug)+' µL', ratio:nfmt(v.fugeneRatio)+':1', diluentUL:nfmt(dil)+' µL', diluent:String(v.diluent||'Opti-MEM'), plasmid:String(v.plasmid||'plasmid'),
+      untrWells:_nu>0?(nfmt(_nu)+' untransfected well'+(_nu===1?'':'s')):'',
+      untrNote:_nu>0?('Give the '+nfmt(_nu)+' untransfected well'+(_nu===1?'':'s')+' '+nfmt(disp)+' µL of plain '+esc(String(v.diluent||'Opti-MEM'))+', so every well starts at the same volume.'):''}; },
   nbtx:function(v,ctx){ var cs=_nbtxConditions(v, ctx&&ctx.tidCounts); var ex=+v.excess||1; var ng=_nbtxDnaNg(v), fu=_nbtxFugeneUL(v), om=+v.optimemPerWell||0;
     var mixes=cs.filter(function(c){ return !c.noMix; }); var wells=mixes.reduce(function(a,c){ return a+c.n; },0);
     return {nMixes:nfmt(mixes.length)+' mixes', wells:nfmt(wells)+' wells', ngPerWell:nfmt(ng)+' ng', fugeneUL:nfmt(fu)+' µL', ratio:nfmt(v.fugeneRatio)+':1', optimemUL:nfmt(om)+' µL', dispense:_nbtxDispenseTxt(v), excess:nfmt(ex)+'×'}; },
   nbsusp:function(v){ var ex=+v.excess||1, vw=+v.volPerWell||0, cpw=+v.cellsPerWell||0, nP=+v.nPlus||0, nM=+v.nMinus||0, vP=nP*vw*ex, vM=nM*vw*ex, stockUM=+v.stockUM||0, finalNM=+v.finalNM||0;
     var ligUL=(stockUM>0)?(vP*(finalNM/1000)/stockUM):0, dens=vw?(cpw/vw*1000):0;
     return {cellLine:((cellLineDef(v.cellLine)||{}).label||'cells').replace(/\s*\(.*\)$/,''), density:nfmt(dens/1e6)+' M cells/mL', volPlus:mlfmt(vP), volMinus:mlfmt(vM), volTotal:mlfmt(vP+vM), cellsTotal:nfmt(cpw*(nP+nM)*ex/1e6)+' M cells', cellsPlus:nfmt(cpw*nP*ex/1e6)+' M cells', cellsMinus:nfmt(cpw*nM*ex/1e6)+' M cells', ligUL:nfmt(ligUL)+' µL', ligStock:nfmt(stockUM)+' µM', ligFinal:nfmt(finalNM)+' nM', ligand:String(v.ligName||'ligand'), volPerWell:nfmt(vw)+' µL', cellsPerWell:nfmt(cpw)+' cells', nPlus:nfmt(nP)+' wells', nMinus:nfmt(nM)+' wells'}; },
-  spike:function(v){ var V=+v.wellVolUL||0, X=+v.foldX||0, fin=+v.finalUM||0, stock=+v.stockUM||0, n=+v.nWells||0, ex=+v.excess||1;
+  spike:function(v,ctx){ var V=+v.wellVolUL||0, X=+v.foldX||0, fin=+v.finalUM||0, stock=+v.stockUM||0, n=+v.nWells||0, ex=+v.excess||1;
+    // The series a dose-response plate carries, read off the wells: how many concentrations, how
+    // far apart, from where. The top tube is that, made X-fold stronger.
+    var _S=null; if(ctx&&ctx.exp&&v.series) expPlates(ctx.exp).some(function(pl){ _S=plateDoseSeries(pl); return !!_S; });
     var add=(X>1)?V/(X-1):0, newV=V+add, inter=fin*X, need=add*n*ex, df=(inter>0&&stock>0)?(stock/inter):0, vs=df>0?(need/df):0, _ph=(df>=2)?_pipHint(vs,v.minVolUL):null, vd=need-(_ph?_ph.ul:vs);
-    return {name:String(v.name||'reagent'), addUL:nfmt(add)+' µL', wellVol:nfmt(V)+' µL', newVol:nfmt(newV)+' µL', fold:nfmt(X)+'×', interConc:inter>0?_fmtConc(inter*1000):'—', finalConc:fin>0?_fmtConc(fin*1000):'—', totalUL:nfmt(need)+' µL', stockUL:nfmt(vs)+' µL', stockConc:stock>0?_fmtConc(stock*1000):'—', diluentUL:nfmt(vd)+' µL', diluent:String(v.diluent||'medium'), nWells:nfmt(n)+' wells', dilution:df>0?('1:'+nfmt(df)):'—'}; },
+    return {name:String(v.name||'reagent'), addUL:nfmt(add)+' µL', wellVol:nfmt(V)+' µL', newVol:nfmt(newV)+' µL', fold:nfmt(X)+'×', interConc:inter>0?_fmtConc(inter*1000):'—', finalConc:fin>0?_fmtConc(fin*1000):'—', totalUL:nfmt(need)+' µL', stockUL:nfmt(vs)+' µL', stockConc:stock>0?_fmtConc(stock*1000):'—', diluentUL:nfmt(vd)+' µL', diluent:String(v.diluent||'medium'), nWells:nfmt(n)+' wells', dilution:df>0?('1:'+nfmt(df)):'—',
+      seriesText:_S?('The series is '+nfmt(_S.nPoints)+' concentrations, '+nfmt(_S.df)+'-fold from '+_fmtConc(_S.topConc)+' in the well; the '+nfmt(X)+'× tubes start at '+_fmtConc(_S.topConc*X)+'.'):''}; },
   serial:function(v){ var topF=+v.topFinalNM||0, X=+v.foldX||1, df=+v.df||0,
     // Bounded: these come from number fields with no max, and an extra zero in "# points"
     // built a row per point until the browser gave up.
@@ -4409,8 +4471,14 @@ var CALC_VALUES={
     return {bufferUL:nfmt(tot)+' µL', lgbitUL:nfmt(lg)+' µL', lgbitDil:'1:'+nfmt(v.lgbitDil), substrateUL:nfmt(su)+' µL', substrateDil:'1:'+nfmt(v.subDil), addPerWell:nfmt(rvol)+' µL', ratio:'1:'+nfmt(v.ratio), wells:nfmt(wells)+' wells', nPlates:nfmt(v.nPlates), format:String(v.format||'')+'-well'}; },
   ctg:function(v){ v=_calcEff(v,{nPlates:1,excess:1}); var wells=wellsOf(v.format)*v.nPlates; var tot=(+v.volPerWell)*wells*v.excess;
     return {addPerWell:nfmt(v.volPerWell)+' µL', total:mlfmt(tot), wells:nfmt(wells)+' wells', nPlates:nfmt(v.nPlates), format:String(v.format||'')+'-well'}; },
-  reagent:function(v){ var tot=+v.totalVol||0, dil=+v.dilution||1; var r=tot/dil, d=tot-r;
-    return {name:String(v.name||'reagent'), reagentUL:nfmt(r)+' µL', diluentUL:nfmt(d)+' µL', diluent:String(v.diluent||'diluent'), total:nfmt(tot)+' µL', dilution:'1:'+nfmt(dil)}; },
+  reagent:function(v){ var T=_reagentTotal(v), tot=T.tot, dil=+v.dilution||1; var r=tot/dil, d=tot-r, vw=+v.wellVolUL||0;
+    var o={name:String(v.name||'reagent'), reagentUL:nfmt(r)+' µL', diluentUL:nfmt(d)+' µL', diluent:String(v.diluent||'diluent'), total:nfmt(tot)+' µL', dilution:'1:'+nfmt(dil)};
+    // Only a step that says what each well takes can answer these; a total typed for one plate cannot.
+    if(T.perWell>0){ o.perWell=nfmt(T.perWell)+' µL'; o.nWells=nfmt(T.n)+' wells'; o.excess=nfmt(T.ex)+'×';
+      if(vw>0){ o.wellVol=nfmt(vw)+' µL'; o.finalVol=nfmt(_wellVolRound(vw+T.perWell))+' µL'; } }
+    if(+v.donorNm>0) o.donorNm=nfmt(v.donorNm)+' nm';
+    if(+v.acceptorNm>0) o.acceptorNm=nfmt(v.acceptorNm)+' nm';
+    return o; },
   mixparts:function(v){ var M=_mixParts(v);
     return {name:esc(String(v.name||'working solution')), total:mlfmt(M.totUL), perWell:nfmt(v.volPerWell)+' µL', wells:nfmt(M.wells)+' wells', nPlates:nfmt(M.nPlates), format:String(M.format||'')+'-well',
       diluent:esc(String(v.diluent||'diluent')), diluentUL:nfmt(M.dilUL)+' µL',
@@ -4431,7 +4499,6 @@ function calcValuesChained(b,e){
   if(!e||!e.blocks) return own;
   var run=blocksInRunOrder(e), i=-1;
   for(var n=0;n<run.length;n++){ if(run[n]===b||(b.id&&run[n].id===b.id)){ i=n; break; } }
-  if(i<=0) return own;
   var out=own, copied=false;
   for(var j=i-1;j>=0;j--){
     var pb=run[j]; if(!pb.calc) continue;
@@ -4440,12 +4507,29 @@ function calcValuesChained(b,e){
       if(!copied){ out=Object.assign({},own); copied=true; }
       out[k]=pv[k]; } }
   }
+  // What the well holds before and after this step, from the chain — so a step that only says
+  // "seed the suspension" can say what the well is left holding without anybody typing 100 µL.
+  if(i>=0){ var cv=_chainVols(e,run,i);
+    if(cv&&cv.after>0){ if(!copied){ out=Object.assign({},own); copied=true; }
+      if(out.volAfter==null) out.volAfter=nfmt(_wellVolRound(cv.after))+' µL';
+      if(out.volBefore==null&&cv.before>0) out.volBefore=nfmt(_wellVolRound(cv.before))+' µL'; } }
   return out;
 }
+// The volume per well just before and just after the i-th step of a run — the walk
+// syncChainedInputs does, stopped at one step.
+function _chainVols(e,run,idx){
+  var v=0, before=0;
+  for(var n=0;n<run.length;n++){ var x=run[n], k=x.calc&&x.calc.kind; before=v;
+    if(!k){ v+=_blkAdds(x,v); }
+    else { v=_chainStart(x,v); if(!VOL_TERMINAL[k]) v+=_blkAdds(x,v); }
+    if(n===idx){ var a=VOL_TERMINAL[k]?(before+_blkAdds(x,before)):v; return {before:before,after:a}; } }
+  return null; }
 function fillCalc(html,b,e){ if(!html||html.indexOf('{{c.')<0) return html||'';
   var vals=calcValuesChained(b,e)||{}; if(html.indexOf('{{c.wait}}')>=0) vals.wait=_waitVal(b,e);
+  // A value that has nothing to say ('' — "the untransfected wells…" on a plate that has none) is
+  // drawn as nothing; the token stays in the text, so editing the step cannot write it away.
   return String(html).replace(/\{\{c\.(\w+)\}\}/g,function(m,k){ var v=vals[k];
-    return '<span class="cv'+(v==null?' cv-none':'')+'" contenteditable="false" data-c="'+k+'">'+(v==null?'—':v)+'</span>'; }); }
+    return '<span class="cv'+(v==null?' cv-none':(v===''?' cv-e':''))+'" contenteditable="false" data-c="'+k+'">'+(v==null?'—':v)+'</span>'; }); }
 // Plain text of the same, for the Methods paragraph, the index and any text export.
 function fillCalcText(html,b,e){ if(!html||html.indexOf('{{c.')<0) return html||'';
   var vals=calcValuesChained(b,e)||{}; if(html.indexOf('{{c.wait}}')>=0) vals.wait=_waitVal(b,e); return String(html).replace(/\{\{c\.(\w+)\}\}/g,function(m,k){ var v=vals[k]; return v==null?'—':v; }); }
@@ -4464,7 +4548,7 @@ function _unfillSetup(html){ if(!html||html.indexOf('data-s=')<0) return html||'
   return String(html).replace(/<span class="cv cv-s(?: cv-none)?"[^>]*data-s="(\w+)"[^>]*>[\s\S]*?<\/span>/g,'{{$1}}'); }
 // The span goes back to being the token before anything is stored.
 function _unfillCalc(html){ if(!html||html.indexOf('data-c=')<0) return html||'';
-  return String(html).replace(/<span class="cv(?: cv-none)?"[^>]*data-c="(\w+)"[^>]*>[\s\S]*?<\/span>/g,'{{c.$1}}'); }
+  return String(html).replace(/<span class="cv(?: cv-none| cv-e)?"[^>]*data-c="(\w+)"[^>]*>[\s\S]*?<\/span>/g,'{{c.$1}}'); }
 function _csvList(v){ return String(v==null?'':v).split(',').map(function(x){ return x.trim(); }).filter(Boolean); }
 function _csvNum(v,i,dflt){ var L=_csvList(v).map(Number).filter(function(x){ return isFinite(x); });
   if(!L.length) return dflt; return (L[i]!=null?L[i]:L[0]); }
@@ -4936,7 +5020,7 @@ function refreshCalcRecipes(e){ if(!e) return;
 function refreshCalcSpans(b,e){ var row=el('blk-'+b.id); if(!row) return;
   var sp=row.querySelectorAll('.cv[data-c]'); if(!sp.length) return;
   var vals=calcValuesOf(b,e)||{};
-  sp.forEach(function(x){ var v=vals[x.getAttribute('data-c')]; x.textContent=(v==null?'—':v); x.classList.toggle('cv-none',v==null); }); }
+  sp.forEach(function(x){ var v=vals[x.getAttribute('data-c')]; x.textContent=(v==null?'—':v); x.classList.toggle('cv-none',v==null); x.classList.toggle('cv-e',v===''); }); }
 // A select is only as honest as its widest option: the grid hands every field the same narrow
 // track, so a field whose choices are prose — a cell line with its modification, a control
 // scheme written as a sentence — is clipped to something nobody can read, and a select is the
@@ -4994,6 +5078,9 @@ function calcInputsHtml(b){ if(b.calc.kind==='archive') return archiveCalcHtml(b
   _nbtxMigrate(b);
   var C=CALC_KINDS[b.calc.kind]; if(!C) return ''; var inp=b.calc.inputs||{};
   var fields=C.fields.map(function(f){ var v=inp[f.k];
+    // A box that only means something for some versions of a step (a total for the old way of
+    // writing it, a per-well volume for the new) is not drawn for the others.
+    if(f.show&&!f.show(inp)) return '';
     if(f.t==='cellline'){ var opts=CELL_LINES.map(function(cl){ return '<option value="'+esc(cl.id)+'"'+(cl.id===v?' selected':'')+'>'+esc(cl.label)+'</option>'; }).join('');
       return '<label class="'+ciWide(CELL_LINES.map(function(cl){return cl.label;}))+'"><span>'+f.lbl+'</span><select onchange="calcCellLine(\''+b.id+'\',this.value)">'+opts+'</select></label>'; }
     if(f.t==='format'){ var fo=['6','12','24','48','96','384'].map(function(x){ return '<option value="'+x+'"'+(String(v)===x?' selected':'')+'>'+x+'-well</option>'; }).join('');
@@ -5160,7 +5247,7 @@ var STEP_LIBRARY=[
    // one actually put in the well, the moment the block lands in an experiment.
    inputs:{name:'test compounds',wellVolUL:100,foldX:10,series:true,finalUM:0,stockUM:0,nWells:84,excess:1.1,diluent:'Opti-MEM'},
    w:180,
-   html:'<ol><li>Prepare each concentration at {{c.fold}} in {{c.diluent}}, one tube per concentration, as on the plate map.</li><li>Add {{c.addUL}} of the {{c.fold}} to each treated well ({{c.wellVol}} already in the well &rarr; {{c.newVol}}); do not aspirate.</li><li>Add {{c.addUL}} of vehicle ({{c.diluent}} with matched DMSO) to the vehicle and control wells.</li><li>Incubate 3 h at 37 &deg;C.</li></ol>'},
+   html:NB_COMMON.cmpd.html},
   // And the series itself, when the dilutions are the thing you are working out rather than a
   // step everybody knows. It asks for the top concentration *in the well* and the strength the
   // series is made at separately, because "10× serial dilutions at 1 µM" is ambiguous by a
@@ -5204,11 +5291,16 @@ var STEP_LIBRARY=[
    html:'<ol><li>Make the complex as in the table below; the diluent is the remainder, so each well receives exactly {{c.dispenseUL}}.</li><li>Mix gently &mdash; do not vortex; 5&ndash;15 min at room temperature.</li><li>Dispense {{c.dispenseUL}} into every well.</li></ol>'},
   {id:'lib:nbtx',label:'NanoBRET transfection mixes (calc)',sub:'live prep calculator',calc:'nbtx',gap:0,
    html:'<ol><li>Make one mix per condition as in the table below &mdash; every well receives the same total DNA.</li><li>FuGENE HD straight into the liquid; mix gently; 10&ndash;15 min at room temperature.</li><li>Dispense the volume in the table into the wells of each condition.</li></ol>'},
+  // The NanoBRET steps are the presets' steps, word for word (NB_COMMON): one text for the suspension, the seeding and
+  // the read wherever they are used, so a correction made once reaches the library, the Designer and every preset.
   {id:'lib:nbsusp',label:'Cell suspension &plusmn; HaloTag ligand (calc)',sub:'live prep calculator',calc:'nbsusp',gap:0,
-   html:'<ol><li>Prepare the suspension as in the table below.</li><li>Set the &minus;ligand portion aside <b>before</b> adding the ligand.</li><li>Add the ligand to the remainder; seed both.</li></ol>'},
-  {id:'lib:nbsub',label:'NanoBRET substrate + read (calc)',sub:'live prep calculator',calc:'reagent',gap:0,
-   pub:'NanoBRET substrate was added and the plate read at 460 nm (donor) and 618 nm (acceptor); the corrected ratio was expressed relative to the vehicle control.',
-   html:'<ol><li>Prepare the substrate immediately before use: {{c.reagentUL}} {{c.name}} ({{c.dilution}}) + {{c.diluentUL}} {{c.diluent}} = {{c.total}}. Keep it dark.</li><li>Add it to every well; shake ~10 s.</li><li>Read at 460 nm and 618 nm; save the data.</li></ol>'},
+   pub:NB_COMMON.susp.pub, html:NB_COMMON.susp.html},
+  {id:'lib:nbseed',label:'Seed onto the transfection mix',sub:'text step',gap:0,
+   pub:NB_COMMON.seed.pub, html:NB_COMMON.seed.html},
+  {id:'lib:nbsub',label:'NanoBRET substrate + read (calc)',sub:'live prep calculator',calc:'reagent',gap:0,w:5,
+   // The wells are the plate's and the well volume is the chain's, as in every NanoBRET preset.
+   inputs:{name:'NanoBRET Nano-Glo substrate',diluent:'Opti-MEM',perWellUL:25,nWells:84,excess:1.2,wellVolUL:100,dilution:100,donorNm:460,acceptorNm:618},
+   pub:NB_COMMON.read.pub, html:NB_COMMON.read.html},
   {id:'lib:read',label:'Plate read',sub:'text step',gap:0,
    pub:'The plate was read and the data saved.',
    html:'<ol><li>Read the plate; name the file after the experiment code.</li><li>Attach the reader file to this experiment on the Files tab.</li></ol>'},
@@ -6761,17 +6853,24 @@ function plateConditionCounts(e){
 // 84 wells" follows the map as you paint it, until you type over the number (b.calc.own) or the step
 // is ticked (what was pipetted is what the step says). The plan moves with it, so following the map
 // is not a deviation from the plan — the map IS the plan.
-var PLATE_FED={spike:['nWells'], rtxmix:['nWells']};
+var PLATE_FED={spike:['nWells'], rtxmix:['nWells'], reagent:['nWells']};
 function plateDosedWells(e,any){ var n=0;
   expPlates(e).forEach(function(p){ Object.keys(p.wells||{}).forEach(function(k){ var w=p.wells[k]; if(w&&w.typeId&&w.typeId!=='blank'&&(any||w.conc)) n++; }); });
   return n; }
 // How many wells this block's addition goes into, counted over every plate of the experiment: all of
 // them for a spike, the dosed ones for a compound series, the transfected ones for a transfection
 // mix. null when the plate cannot say (no wells, or nothing of the kind on it).
+function plateReagentWells(e){ var n=0;
+  expPlates(e).forEach(function(p){ Object.keys(p.wells||{}).forEach(function(k){ var w=p.wells[k];
+    if(w&&w.typeId&&w.typeId!=='blank'&&w.typeId!=='nosub'&&!w.noSub) n++; }); });
+  return n; }
 function plateWellsFor(e,b){ var k=b&&b.calc&&b.calc.kind; if(!PLATE_FED[k]||!e) return null;
   var c=plateConditionCounts(e); if(!c||!c.total) return null; var n=null;
   if(k==='rtxmix') n=c.transfected;
   else if(k==='spike') n=plateDosedWells(e,!(b.calc.inputs&&b.calc.inputs.series));   // a blank well holds no cells and takes nothing
+  // A reagent made per well goes into every well with cells in it — but not the wells that are the
+  // no-reagent control: a read of "no substrate" is a well that never got it.
+  else if(k==='reagent'){ if(!(+(b.calc.inputs&&b.calc.inputs.perWellUL)>0)) return null; n=plateReagentWells(e); }
   return n>0?n:null; }
 // A number typed over the plan is the number that run used: either the box said so (own) or it no
 // longer equals what the plan last planted (the same test the setup's own values pass).
@@ -6799,12 +6898,17 @@ function syncPlateToCalcs(e){
       // came to report six deviations against itself, every count struck through and replaced by 0,
       // for a plate that plainly had 64 wells on it.
       if(!c.transfected) return;
+      // A suspension that has been made is what was made.
+      if(b.done) return;
       // A well with no ligand is still a transfected well: it belongs to the − ligand
       // suspension, not to a different DNA condition.
       // An untransfected well holds cells like any other — it is the control for what the
       // transfection itself does — so it takes a suspension too. Counting only the transfected
       // wells left it out of both.
       var plus=Math.max(0,(c.transfected+c.untr)-c.noLig), minus=c.noLig;
+      // A count typed in the Designer stays the run's.
+      if(b.calc.own&&b.calc.own.nPlus) plus=+I.nPlus;
+      if(b.calc.own&&b.calc.own.nMinus) minus=+I.nMinus;
       if(I.nPlus!==plus||I.nMinus!==minus){
         if(b.calcSeed){ if(b.calcSeed.nPlus!==undefined&&String(b.calcSeed.nPlus)===String(I.nPlus)) b.calcSeed.nPlus=plus;
                         if(b.calcSeed.nMinus!==undefined&&String(b.calcSeed.nMinus)===String(I.nMinus)) b.calcSeed.nMinus=minus; }
@@ -6819,6 +6923,28 @@ function syncPlateToCalcs(e){
   });
   return hit.length?hit:null;
 }
+// The numbers a step takes from somewhere else on the experiment, brought up to date: the wells the
+// plate says each step has, and the plasmid the header names for the master mix. One function, called
+// where an experiment is made and where it is drawn, so a record is never one edit behind the plate
+// it carries. A finished experiment is a record and is left as it was.
+function syncExpPlasmids(e){
+  var names=setupPlasmids(e.setup||{});
+  if(!names.length) String(e.plasmids||'').split(/[,;]+/).forEach(function(n){ n=n.trim(); if(n&&names.indexOf(n)<0) names.push(n); });
+  if(!names.length) return false;
+  var txt=names.join(' + '), ch=false;
+  (e.blocks||[]).forEach(function(b){
+    if(!b.calc||b.calc.kind!=='rtxmix'||!b.calc.inputs||b.done) return;
+    var I=b.calc.inputs; if(I.plasmid===txt) return;
+    // A name typed over the plan is the run's own: the plan last planted something else.
+    if(b.calcSeed&&b.calcSeed.plasmid!==undefined&&String(b.calcSeed.plasmid)!==String(I.plasmid)) return;
+    I.plasmid=txt; if(b.calcSeed) b.calcSeed.plasmid=txt; ch=true; });
+  return ch; }
+function syncExpDerived(e){
+  if(!e||!e.blocks||e.status==='done'||e.status==='archived') return false;
+  var a=null, b=false;
+  try{ a=syncPlateToCalcs(e); }catch(_e){}
+  try{ b=syncExpPlasmids(e); }catch(_e){}
+  return !!(a||b); }
 // ── The plate is the truth about what went into the wells ───────────────────────────────────
 // The dosing sentence is built from e.setup.topConc/df/nPoints, and nothing ever moved them
 // when the map was redrawn: a plate relaid at 10 µM went on publishing "dosed from 1,000 nM"
@@ -8711,11 +8837,13 @@ function _plFeedsHtml(){ var e=_plExp(); if(!e) return '';
   var L=expPlateList(e), wells=0; L.forEach(function(x){ wells+=plateCount(x.p); });
   var rows=[];
   (e.blocks||[]).forEach(function(b){ if(!b.calc||!b.calc.inputs) return; var k=b.calc.kind;
-    if(['nbtx','nbsusp','rtxmix','spike'].indexOf(k)<0) return;
+    if(['nbtx','nbsusp','rtxmix','spike','reagent'].indexOf(k)<0) return;
+    if(k==='reagent'&&!(+b.calc.inputs.perWellUL>0)) return;   // a total typed for one plate does not follow the map
     var v=calcValuesOf(b,e); if(!v) return;
     var line=(k==='nbtx')?(v.wells+' · '+v.nMixes)
       :(k==='nbsusp')?(v.cellsTotal+' · '+v.volTotal)
       :(k==='rtxmix')?(v.nWells+' · '+v.total+' of mix')
+      :(k==='reagent')?(v.nWells+' · '+v.total+' to make')
       :(v.nWells+' · '+v.totalUL+' to make');
     var st='<span class="pl-fd-s ok">follows the map</span>';
     if(PLATE_FED[k]){ var n=plateWellsFor(e,b);
@@ -9107,12 +9235,82 @@ function _legacyHasUnchecked(html){
   return false;
 }
 // preset instantiation from a seed (carries live calculators)
-function presetFromSeed(seed,name,baseType){ return {name:name,baseType:baseType,title:seed.title,blocks:(seed.blocks||[]).map(function(b){ var o={dayOffset:b.d,title:b.title,html:b.html}; if(b.pub) o.pub=b.pub; if(b.w) o.waitMin=b.w; if(b.calc) o.calc=JSON.parse(JSON.stringify(b.calc)); return o; })}; }
+function presetFromSeed(seed,name,baseType){ return {name:name,baseType:baseType,title:seed.title,blocks:(seed.blocks||[]).map(function(b){ var o={dayOffset:b.d,title:b.title,html:b.html}; if(b.aka) o.aka=b.aka.slice(); if(b.pub) o.pub=b.pub; if(b.w) o.waitMin=b.w; if(b.calc) o.calc=JSON.parse(JSON.stringify(b.calc)); return o; })}; }
+// ── A run that has not started takes the preset's steps as they are now ─────────────────────
+// A preset changes shape — one step becomes two — and an experiment made before that keeps the old
+// shape for ever: the wording pass only rewrites words, and a step it cannot find by title is skipped
+// without a word. For a run in which that step has not been touched (no tick, no note, no typed
+// number, its words still the preset's own) there is nothing to protect, and the cost of leaving it
+// is exactly what Jon found: the biosensor still carrying the suspension-and-seed step the SPARK
+// runs had split a month before. A step that has records is never touched, and a finished run is a
+// record: both are left as they were.
+var STEP_SPLITS=[
+  {preset:'NB_BIO_RTX96', old:'Cell suspension \u00b1 HaloTag ligand + seed', to:['Cell suspension \u00b1 HaloTag ligand','Seed onto the transfection mix']}
+];
+var _STEP_PLAIN_KEYS={id:1,date:1,dayOffset:1,done:1,completedAt:1,html:1,title:1,tpl:1,calc:1,calcSeed:1,floatImgs:1,stepDone:1,pub:1,waitMin:1,waitSameDay:1};
+function _stepHasRecords(b){
+  if(b.done||b.completedAt) return true;
+  if((b.floatImgs||[]).length) return true;
+  if(b.stepDone&&Object.keys(b.stepDone).some(function(k){ return b.stepDone[k]; })) return true;
+  return Object.keys(b).some(function(k){ if(_STEP_PLAIN_KEYS[k]) return false; var v=b[k];
+    return !(v==null||v===''||v===false||(Array.isArray(v)&&!v.length)||(typeof v==='object'&&!Object.keys(v).length)); }); }
+function _blockFromTpl(t,su,at,calc){
+  var o={id:uid(), date:at.date, dayOffset:at.dayOffset, title:fillSetup(t.title,su), html:fillSetup(t.html,su), done:false, completedAt:null};
+  o.tpl={title:t.title, html:t.html, pub:t.pub||''};
+  if(t.pub) o.pub=fillSetup(t.pub,su);
+  if(calc) o.calc=calc; else if(t.calc) o.calc=JSON.parse(JSON.stringify(t.calc));
+  var wm=(t.waitMin!=null?t.waitMin:t.w); if(wm) o.waitMin=wm;
+  return o; }
+function _stepSplits(){
+  var ex=(LB.data&&LB.data.experiments)||{}, made=[];
+  Object.keys(ex).forEach(function(id){ var e=ex[id];
+    if(!e||!e.blocks||!e.presetKey||e.status==='done'||e.status==='archived') return;
+    var tpl=LB.data.presets[e.presetKey]; if(!tpl||!tpl.blocks) return;
+    STEP_SPLITS.forEach(function(sp){ if(sp.preset!==e.presetKey) return;
+      var i=-1; e.blocks.forEach(function(b,n){ if(i<0&&!b.proto&&String((b.tpl&&b.tpl.title)||b.title||'')===sp.old) i=n; });
+      if(i<0) return;
+      var b=e.blocks[i];
+      if(_stepHasRecords(b)||!_expBlockUntouched(e,b)) return;
+      var t1=(tpl.blocks||[]).filter(function(x){ return _tplTitleIs(x,sp.to[0]); })[0], t2=(tpl.blocks||[]).filter(function(x){ return _tplTitleIs(x,sp.to[1]); })[0];
+      if(!t1||!t2) return;
+      var su=e.setup||{}, at={date:b.date, dayOffset:b.dayOffset};
+      // The numbers stay the run's: the first half is the old step's calculator, with its plan and its typed values.
+      var n1=_blockFromTpl(t1,su,at,b.calc?JSON.parse(JSON.stringify(b.calc)):null); n1.id=b.id;
+      if(b.calcSeed) n1.calcSeed=JSON.parse(JSON.stringify(b.calcSeed));
+      var n2=_blockFromTpl(t2,su,at,null);
+      e.blocks.splice(i,1,n1,n2);
+      try{ syncChainedInputs(e); }catch(_e){}
+      e.updated=Date.now(); made.push(e.code||e.title||'an experiment'); }); });
+  return made; }
+// A calculator input the preset gained after a run was made. A step that is still to be done takes the
+// inputs its preset's step now asks for and the run has no answer for yet — never one it already
+// holds. The substrate made for "2,520 µL" (a number about one plate) gains the volume each well
+// takes and the overage it was worked out from, and a compound series that was made before the
+// calculator knew about dose series becomes one. A value a person typed is the run's: nothing that
+// is already there is rewritten, and a finished step is a record.
+function _calcKeysFromPresets(){
+  var ex=(LB.data&&LB.data.experiments)||{}, made=[];
+  Object.keys(ex).forEach(function(id){ var e=ex[id];
+    if(!e||!e.blocks||!e.presetKey||e.status==='done'||e.status==='archived') return;
+    var tpl=LB.data.presets[e.presetKey]; if(!tpl||!tpl.blocks) return;
+    var ch=false;
+    e.blocks.forEach(function(b){
+      if(!b.calc||!b.calc.inputs||b.done||b.proto) return;
+      var t=(tpl.blocks||[]).filter(function(x){ return x.calc&&x.calc.kind===b.calc.kind&&((b.tpl&&_tplTitleIs(x,b.tpl.title))||_tplTitleIs(x,b.title)); })[0];
+      if(!t) return;
+      Object.keys(t.calc.inputs||{}).forEach(function(k){
+        if(b.calc.inputs[k]!==undefined) return;
+        var v=t.calc.inputs[k]; b.calc.inputs[k]=v; if(b.calcSeed) b.calcSeed[k]=v; ch=true; }); });
+    if(ch){ try{ syncChainedInputs(e); }catch(_e){} e.updated=Date.now(); made.push(e.code||e.title||'an experiment'); } });
+  return made; }
 function seedPresets(){
   // What the presets said before this refresh: the wording pass below needs it to prove that
   // an older block (one with no b.tpl) still carries the preset's own words.
   var _before={}; try{ _before=JSON.parse(JSON.stringify(LB.data.presets||{})); }catch(e){}
   _seedPresetsInner();
+  var _sp=[]; try{ _sp=_stepSplits().concat(_calcKeysFromPresets()); }catch(_e){}
+  if(_sp.length){ setTimeout(function(){ try{ save(); }catch(e){} },0);
+    setTimeout(function(){ try{ toast('Brought the steps of '+_sp.filter(function(x,i,a){ return a.indexOf(x)===i; }).join(', ')+' up to the preset — nothing in it had been started. The numbers are the run\u2019s own.'); }catch(e){} },1800); }
   _rewordFromPresets(_before);
   _nbRename();
   _gatesFromSetup();
@@ -9164,6 +9362,17 @@ function _nbRename(){
 // Not flag-gated (the _nbMigrate lesson): adoption carries this device's flags over a cloud
 // tree that has not had the pass, so the only honest test is the block itself — and a block
 // already reworded compares equal and costs a string compare per load.
+// A step belongs to a preset's step by its title — or by one it used to be called: a step that was
+// renamed so the runs that share it say the same thing (`aka`) is still the same step.
+function _tplTitleIs(x,title){ title=title||''; return (x.title||'')===title || (x.aka||[]).indexOf(title)>=0; }
+// The {{c.*}} tokens a template quotes that the step's calculator (or the ones above it) cannot answer.
+function _unansweredTokens(html,b,e){
+  var out=[], seen={}, vals=null;
+  String(html||'').replace(/\{\{c\.(\w+)\}\}/g,function(m,k){ if(seen[k]) return m; seen[k]=1;
+    if(k==='wait') return m;
+    if(!vals) vals=calcValuesChained(b,e)||{};
+    if(vals[k]==null) out.push(k); return m; });
+  return out; }
 function _rewordFromPresets(before){
   if(!LB.data) return;
   var nBlk=0, nExp=0, nLeft=0;
@@ -9174,7 +9383,7 @@ function _rewordFromPresets(before){
     var changed=0, su=e.setup||{};
     (e.blocks||[]).forEach(function(b){
       if(b.proto) return;
-      var t=(tpl.blocks||[]).filter(function(x){ return (b.tpl&&(x.title||'')===(b.tpl.title||'')) || (x.title||'')===(b.title||''); })[0];
+      var t=(tpl.blocks||[]).filter(function(x){ return (b.tpl&&_tplTitleIs(x,b.tpl.title)) || _tplTitleIs(x,b.title); })[0];
       if(!t) return;
       var want=fillSetup(t.html, su);
       if(_proseOnly(want)===_proseOnly(b.html)) return;
@@ -9184,6 +9393,11 @@ function _rewordFromPresets(before){
         try{ if(ot && (_proseOnly(fillSetup(ot.html, su))===_proseOnly(b.html) || _tplMatches(ot.html, b.html))) safe=true; }catch(_e){}
       }
       if(!safe){ nLeft++; return; }
+      // New wording quotes numbers the step's calculator has to be able to answer; a step recorded
+      // in an older shape (a substrate total typed for one plate) cannot, and printing dashes into
+      // a record is worse than leaving it as it was.
+      if(_unansweredTokens(t.html,b,e).length) return;
+      if(b.tpl&&b.title===(b.tpl.title||'')&&t.title) b.title=fillSetup(t.title,su);
       b.tpl={title:t.title, html:t.html, pub:t.pub||''};
       b.html=want;
       if(t.pub) b.pub=fillSetup(t.pub, su); else delete b.pub;
@@ -9209,7 +9423,7 @@ function _seedPresetsInner(){
   // you have changed is left alone. (This upgrade itself is still a blunt refresh — no built-in
   // can have been edited through the new field before the field existed — and it is what stamps
   // the signatures that make every later bump safe.)
-  var upgrade=!LB.data._presetV19;
+  var upgrade=!LB.data._presetV20;
   EXP_TYPES.forEach(function(t){
     var cur=LB.data.presets[t.id];
     var edited = cur && cur._seedSig && !_sigSame(cur._seedSig,_presetSig(cur));
@@ -9223,7 +9437,7 @@ function _seedPresetsInner(){
       if(!cur._seedSig) cur._seedSig=_presetSig(cur);   // stamp what is there, whatever it is
     }
   });
-  if(upgrade) LB.data._presetV19=true;
+  if(upgrade) LB.data._presetV20=true;
   // The one-time flag meant a preset added later could never reach an existing notebook. The
   // inner check is what makes this safe to run every load: it only fills in what is missing and
   // never touches a preset you have edited.
@@ -9256,6 +9470,7 @@ function _presetFromExtra(k){
   var s=EXTRA_PRESET_SEED[k]; if(!s) return null;
   var np={name:s.name,baseType:s.baseType,title:s.title,
     blocks:s.blocks.map(function(b){ var o={dayOffset:b.d,title:b.title,html:b.html};
+      if(b.aka) o.aka=b.aka.slice();
       if(b.pub) o.pub=b.pub;
       if(b.w) o.waitMin=b.w;
       if(b.addUL>0) o.addUL=+b.addUL;
@@ -9333,6 +9548,9 @@ var VOL_ADD={
   seed:   function(I){ return +I.volPerWell||0; },
   ctg:    function(I){ return +I.volPerWell||0; },
   lytic:  function(I){ return (+I.cellVolPerWell||0)/(+I.ratio||1); },
+  // A reagent that says what each well takes puts that into the well; one recorded only as a total
+  // says nothing here, and `addUL` (the step's own "adds to each well") still speaks for it.
+  reagent:function(I){ return +I.perWellUL>0?+I.perWellUL:0; },
   // A spike joins the volume it went into: V/(X−1), the same arithmetic the recipe prints.
   spike:  function(I,v){ var X=+I.foldX||0; return (X>1&&v>0)?(v/(X-1)):0; },
   serial: function(I,v){ var X=+I.foldX||0; return (X>1&&v>0)?(v/(X-1)):0; }
@@ -9343,7 +9561,7 @@ var VOL_ADD={
 // 72 h readout started from 140 µL and ended at 190.
 var VOL_TERMINAL={ctg:1, lytic:1};
 // The inputs that are answers to "what is already in the well", and therefore derived.
-var CHAINED_INPUTS={spike:['wellVolUL'], serial:['wellVolUL']};
+var CHAINED_INPUTS={spike:['wellVolUL'], serial:['wellVolUL'], reagent:['wellVolUL']};
 // False precision is its own kind of wrong. The NanoBRET mix is 10 µL of Opti-MEM with 0.24 µL
 // of FuGENE and eight nanolitres of DNA added into it, so the arithmetic says 100.24 µL — and
 // nobody has ever written that on a plate. Below 0.25 µL, the smallest volume this app will
@@ -9382,7 +9600,10 @@ function _chainStart(b,v){ var k=b.calc&&b.calc.kind, I=b.calc&&b.calc.inputs;
 // `addUL`, "adds to each well (µL)". Without that a step that plainly adds liquid was invisible
 // to the chain: a digitonin spike after the compounds left the read starting from 111 µL.
 function _blkAdds(b,v){ var k=b.calc&&b.calc.kind;
-  if(k&&VOL_ADD[k]){ try{ return VOL_ADD[k](b.calc.inputs||{},v)||0; }catch(e){ return 0; } }
+  // A step on its own plate (the 6-well a NanoBRET is transfected in) puts nothing in the plate the rest of the run is on.
+  if(b.calc&&_calcOwnPlate(b.calc)) return 0;
+  if(k&&VOL_ADD[k]){ var a=0; try{ a=VOL_ADD[k](b.calc.inputs||{},v)||0; }catch(e){ a=0; }
+    return (a>0||k!=='reagent')?a:(+b.addUL>0?+b.addUL:0); }
   return +b.addUL>0?+b.addUL:0; }
 function _blkAddsKnown(b){ var k=b&&b.calc&&b.calc.kind; return !!(k&&VOL_ADD[k]); }
 function setBlockAdds(expId,blkId){ var e=LB.data.experiments[expId]; if(!e) return; var b=(e.blocks||[]).filter(function(x){ return x.id===blkId; })[0]; if(!b) return;
@@ -12860,6 +13081,9 @@ function buildExperimentFrom(sp){
       e.plate = _plateMap ? JSON.parse(JSON.stringify(_plateMap))
                             : experimentPlateFor(key,type,setup,e,null,null,_layout);
     }
+    // The plate, the header and the steps agree from the first draw, not from the first time
+    // somebody touches the map.
+    try{ syncExpDerived(e); syncChainedInputs(e); }catch(_e){}
     e.pubReady=buildPubReadyFromExp(e); e.pubEdited=false;   // live from the start
     LB.data.experiments[e.id]=e;
     if(_echo&&_echo.file&&e.echoRun&&e.echoRun.plates) addFileTo('exp:'+e.id,_echo.file,'Echo picklist').then(function(ok){
@@ -14415,7 +14639,7 @@ function expPresetStale(e){
     if(!_expBlockUntouched(e,b)) return;
     // Matched on the template's own title, not on position: a snoozed, inserted or deleted step
     // moves the indices and would re-point a block at somebody else's text.
-    var t=(tpl.blocks||[]).filter(function(x){ return (x.title||'')===(b.tpl.title||''); })[0];
+    var t=(tpl.blocks||[]).filter(function(x){ return _tplTitleIs(x,b.tpl.title); })[0];
     if(!t) return;
     if((b.tpl.html||'')===(t.html||'') && (b.tpl.pub||'')===(t.pub||'')) return;
     out.push({b:b,t:t});
@@ -14438,10 +14662,11 @@ function updateExpTextFromPreset(id){
   (e.blocks||[]).forEach(function(b){
     if(b.proto) return;                       // a protocol stage has its own update path
     var t=(tpl.blocks||[]).filter(function(x){
-      return (b.tpl&&(x.title||'')===(b.tpl.title||'')) || (x.title||'')===(b.title||''); })[0];
+      return (b.tpl&&_tplTitleIs(x,b.tpl.title)) || _tplTitleIs(x,b.title); })[0];
     if(!t) return;
     var want=fillSetup(t.html, e.setup||{});
     if(_proseOnly(want)===_proseOnly(b.html)) return;
+    if(_unansweredTokens(t.html,b,e).length) return;   // the step's numbers cannot fill the new wording
     rows.push({b:b,t:t,want:want,safe:_expBlockUntouched(e,b)});
   });
   if(!rows.length){ lbAlert('Every step already carries the current wording.',{title:'Nothing to update'}); return; }
@@ -14764,7 +14989,7 @@ var CALC_NEEDS={
             {k:'plastic', name:v.format+'-well plate', qty:v.nPlates, unit:''}];
   },
   reagent:function(v){
-    var tot=+v.totalVol||0, dil=+v.dilution||1;
+    var tot=_reagentTotal(v).tot, dil=+v.dilution||1;
     return [{k:'reagent', name:v.name, qty:tot/dil, unit:'µL', note:'1:'+nfmt(dil)},
             {k:'reagent', name:v.diluent||'diluent', qty:tot-(tot/dil), unit:'µL'}];
   },
@@ -15194,6 +15419,7 @@ function renderExpEditor(host,e){
   // Same rule as the numbering above: the derived volumes are settled before the blocks are
   // drawn, so the recipe, the Methods paragraph and the PDF cannot disagree about what was in
   // the well.
+  if(syncExpDerived(e)) queueSave();
   if(syncChainedInputs(e)) queueSave();
   var fields='<div class="exh-fields">'
     +'<div class="exh-fld"><label>Type</label><select onchange="setField(\'type\',this.value)">'+EXP_TYPES.map(function(t){return '<option value="'+t.id+'"'+(t.id===e.type?' selected':'')+'>'+esc(t.name)+'</option>';}).join('')+'</select></div>'
@@ -16779,7 +17005,9 @@ function setField(f,v){ var e=_curExp(); if(!e) return;
     var u=_uniqueCode(v,e.id); if(u!==v) toast(v+' is already another experiment’s code — saved as '+u);
     undoMark('Change the code',['experiments.'+e.id]); v=u; }
   if(f==='startDate'){ var old=e.startDate; undoMark('Change the start date',['experiments.'+e.id]); e.startDate=v; if(old&&v){ var delta=daysBetween(old,v); if(delta) (e.blocks||[]).forEach(function(b){ if(b.date) b.date=addDays(b.date,delta); }); } recomputeDayOffsets(e); e.updated=Date.now(); save(); renderPages(); renderEditor(); return; }
-  e[f]=(f==='html'||f==='pubReady')?_persistImgHtml(v):v; e.updated=Date.now(); if(f==='html'||f==='pubReady'){ queueSave(); return; } save(); if(f==='code'||f==='status'){ renderPages(); if(f==='code') renderEditor(); } }
+  e[f]=(f==='html'||f==='pubReady')?_persistImgHtml(v):v; e.updated=Date.now(); if(f==='html'||f==='pubReady'){ queueSave(); return; }
+  if(f==='plasmids'&&syncExpPlasmids(e)){ save(); renderEditor(); return; }
+  save(); if(f==='code'||f==='status'){ renderPages(); if(f==='code') renderEditor(); } }
 function setNoteField(f,v){ var e=_curExp(); if(!e) return; e[f]=(f==='html')?_persistImgHtml(v):v; e.updated=Date.now(); if(f==='html') queueSave(); else { save(); renderPages(); } }
 function setBlock(id,f,v){ var e=_curExp(); if(!e) return; var b=(e.blocks||[]).filter(function(x){return x.id===id;})[0]; if(!b) return; b[f]=(f==='html')?_persistImgHtml(v):v; e.updated=Date.now();
   if(f==='html'){ queueSave(); return; }
@@ -19100,7 +19328,7 @@ function spotHi(){ var nodes=el('spot-res').querySelectorAll('.spot-item'); node
 // module you can add but cannot find is not a module.
 var MOD_CATS=[
   {id:'cells', label:'Cells',         ids:['lib:seed','lib:replate','lib:media','lib:wash','lib:harvest']},
-  {id:'tx',    label:'Transfection',  ids:['lib:transfection','lib:rtxmix','lib:nbtx','lib:nbsusp']},
+  {id:'tx',    label:'Transfection',  ids:['lib:transfection','lib:rtxmix','lib:nbtx','lib:nbsusp','lib:nbseed']},
   {id:'cmpd',  label:'Compounds',     ids:['lib:compound','lib:compound-manual','lib:serial']},
   {id:'read',  label:'Readouts',      ids:['lib:ctg','lib:lytic','lib:nbsub','lib:read']},
   {id:'prot',  label:'Protein',       ids:['lib:lysis','lib:sampleprep','lib:gel','lib:antibody','lib:image']},
@@ -19248,6 +19476,7 @@ function dsModsFromPreset(key){
       var d=+b.dayOffset||0;
       var m=dsMod({title:b.title,html:b.html,pub:b.pub,noPub:b.noPub,gap:(i===0?d:d-prev),w:b.waitMin,addUL:b.addUL,
                    calcObj:b.calc,src:'preset',orig:{title:b.title,html:b.html,pub:b.pub}});
+      if(b.aka&&b.aka.length) m.aka=b.aka.slice();
       if(b.waitOwn) m.waitOwn=true;
       prev=d; return m; });
 }
@@ -19289,6 +19518,7 @@ function dsTemplate(D,forRun){
            setupAdd:(D.setupAdd&&D.setupAdd.length)?JSON.parse(JSON.stringify(D.setupAdd)):undefined,
            blocks:(D.mods||[]).map(function(m,i){
              var b={dayOffset:days[i], title:m.label||'', html:(m.html!=null?m.html:'<p></p>')};
+             if(m.aka&&m.aka.length) b.aka=m.aka.slice();
              if(m.pub&&String(m.pub).trim()) b.pub=m.pub;
              if(m.noPub) b.noPub=true;
              if(m.w>0) b.waitMin=m.w;
@@ -19340,6 +19570,10 @@ function dsPseudo(D){
   });
   if(D.skipWe) try{ _skipWeekends(blocks); }catch(e){}
   var pseudo={id:'__design__', blocks:blocks, startDate:start, setup:setup, type:D.type, code:''};
+  // The record takes the wells of every step from its plate the moment it is made, so the plan
+  // that previews it has to: the same plate (dsPlateFor is the one the record is drawn from),
+  // the same counts.
+  if(D.plate||D.echo){ try{ var _pp=dsPlateFor(D,pseudo); if(_pp){ pseudo.plate=_pp; syncExpDerived(pseudo); } }catch(e){} }
   try{ syncChainedInputs(pseudo); }catch(e){}
   return pseudo;
 }
@@ -20301,6 +20535,7 @@ function dsCalcHtml(m,i){
   (ps.blocks||[]).forEach(function(b){ if(b.dsIdx===i) live=b; });
   var I=(live&&live.calc&&live.calc.inputs)||m.calc.inputs||{};
   var fields=C.fields.map(function(f){
+    if(f.show&&!f.show(I)) return '';
     var v=I[f.k], own=owned[f.k];
     if(own){
       var shown=v; if(f.t==='cellline'){ var cd=cellLineDef(v); shown=(cd&&cd.label)||v; }
@@ -20370,6 +20605,8 @@ function dsCalcSet(i,k,val){
   else if(k==='format'&&m.calc.inputs.format!=null){ rescaleSeedInputs(m.calc.inputs,val); dsDraw(); return; }
   else {
     m.calc.inputs[k]=(f&&f.t==='num')?(val===''?'':parseFloat(val)):val;
+    // A number typed over what the plate would count is the run's own: the plate does not take it back.
+    if((PLATE_FED[m.calc.kind]||[]).concat(m.calc.kind==='nbsusp'?['nPlus','nMinus']:[]).indexOf(k)>=0){ m.calc.own=m.calc.own||{}; m.calc.own[k]=true; }
     if((CHAINED_INPUTS[m.calc.kind]||[]).indexOf(k)>=0){ m.calc.own=m.calc.own||{};
       if(!m.calc.own[k]){ m.calc.own[k]=true;
         // Say at once that the number is now yours — the tag kept reading "from the steps
@@ -20395,7 +20632,7 @@ function dsLiveRefresh(i){
   if(rt&&live){ var vals=calcValuesChained(live,ps)||{};
     if(rt.querySelector('[data-c="wait"]')) vals.wait=_waitVal(live,ps);
     Array.prototype.forEach.call(rt.querySelectorAll('span.cv[data-c]'),function(sp){
-      var v=vals[sp.getAttribute('data-c')]; sp.innerHTML=(v==null?'—':v); sp.classList.toggle('cv-none',v==null); }); }
+      var v=vals[sp.getAttribute('data-c')]; sp.innerHTML=(v==null?'—':v); sp.classList.toggle('cv-none',v==null); sp.classList.toggle('cv-e',v===''); }); }
   var ad=el('ds-adds'), here=null;
   if(ad){ dsChain(ps).forEach(function(x){ if(x.b.dsIdx===i) here=x; });
     ad.hidden=!(here&&here.add>0);
