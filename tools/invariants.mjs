@@ -2336,6 +2336,7 @@ async function suite(opts) {
       for (const key of KEYS) {
         const tpl = LB.data.presets[key]; if (!tpl) { bad('B45', key, 'preset missing'); continue; }
         const su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup || {})));
+        if (key === 'RTX') Object.assign(su, { dnaNg: 1234, fugeneRatio: 2, nWells: 24 });   // not the preset's own numbers
         const before = new Set(Object.keys(LB.data.experiments));
         buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-10-01', type: 'NB', title: 'INV nums', code: 'INV_B45_' + key, setup: su, plate: true });
         const e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); clean.push(e);
