@@ -2389,8 +2389,29 @@ async function suite(opts) {
         }
         if (key === 'WB') {
           const sp = e.blocks.find(b => b.calc && b.calc.kind === 'spike'), seed = e.blocks.find(b => b.calc && b.calc.kind === 'seed');
+          const mp = e.blocks.filter(b => b.calc && b.calc.kind === 'mixparts');
           if (sp.calc.inputs.wellVolUL !== seed.calc.inputs.volPerWell) bad('B45', 'WB', 'the compounds go into ' + sp.calc.inputs.wellVolUL + ' µL; the cells were seeded in ' + seed.calc.inputs.volPerWell);
-          if (sp.calc.inputs.nWells !== wellsOf(e.setup.format) * (+e.setup.nPlates || 1)) bad('B45', 'WB', 'the compounds are made for ' + sp.calc.inputs.nWells + ' wells; the setup says ' + e.setup.nPlates + ' plates of ' + e.setup.format);
+          if (mp.length !== 2) bad('B45', 'WB', 'the lysis buffer and the sample buffer are not both calculators (' + mp.length + ')');
+          // the setup asks how many samples; the compounds, the lysis buffer and the sample buffer are made for them
+          if ([sp, ...mp].some(b => b.calc.inputs.nWells !== +e.setup.nSamples)) bad('B45', 'WB', 'the steps are made for ' + [sp, ...mp].map(b => b.calc.inputs.nWells).join('/') + ' wells; the setup says ' + e.setup.nSamples + ' samples');
+          if (!/^\d+/.test(String(e.setup.nSamples))) bad('B45', 'WB', 'the setup does not ask how many samples');
+          // 96 samples is the 3,250 + 1,300 uL of the bench protocol; 60 is proportionally less
+          const sb = mp.find(b => /sample buffer/.test(b.calc.inputs.name)), tot = n => 43.1 * n * 1.1;
+          const vals = calcValuesOf(sb, e); if (!vals || vals.total.indexOf(nfmt(tot(+e.setup.nSamples))) !== 0) bad('B45', 'WB', 'the sample buffer total is ' + (vals && vals.total) + ', not ' + nfmt(tot(+e.setup.nSamples)) + ' µL for ' + e.setup.nSamples + ' samples');
+          // Setup > Edit with another sample count reaches the steps
+          { const prev = e.setup, next = JSON.parse(JSON.stringify(prev)); next.nSamples = 50; e.blocks = applySetupToBlocks(e.type, next, e.blocks, prev, e.presetKey); e.setup = next;
+            const nn = e.blocks.filter(b => b.calc && (b.calc.kind === 'spike' || b.calc.kind === 'mixparts')).map(b => b.calc.inputs.nWells);
+            if (nn.some(n => n !== 50)) bad('B45', 'WB edit', 'Setup > Edit to 50 samples left the steps at ' + nn.join('/'));
+            const back = JSON.parse(JSON.stringify(e.setup)); back.nSamples = 96; e.blocks = applySetupToBlocks(e.type, back, e.blocks, e.setup, e.presetKey); e.setup = back; }
+          // the plate map decides which wells: paint 40 wells and everything follows; a number typed over stays
+          if (e.plate) { e.plate.wells = {}; ['A', 'B', 'C', 'D'].forEach(r => { for (let c = 1; c <= 10; c++) e.plate.wells[r + c] = { typeId: 'dose', conc: '1 µM' }; });
+            if (!(e.plate.types || []).some(t => t.id === 'dose')) (e.plate.types = e.plate.types || []).push({ id: 'dose', name: 'Dose', color: '#cfe2f3' });
+            platePersist('exp:' + e.id);
+            if ([sp, ...mp].some(b => b.calc.inputs.nWells !== 40)) bad('B45', 'WB plate', 'with 40 wells painted the steps are made for ' + [sp, ...mp].map(b => b.calc.inputs.nWells).join('/'));
+            mp[0].calc.inputs.nWells = 33; delete e.plate.wells.D10; platePersist('exp:' + e.id);
+            if (mp[0].calc.inputs.nWells !== 33) bad('B45', 'WB typed', 'a sample count typed on the lysis step was taken back by the plate (' + mp[0].calc.inputs.nWells + ')');
+            if (mp[1].calc.inputs.nWells !== 39) bad('B45', 'WB plate', 'the sample buffer did not follow the plate to 39 wells (' + mp[1].calc.inputs.nWells + ')');
+            e.plate.wells.D10 = { typeId: 'dose', conc: '1 µM' }; mp[0].calc.inputs.nWells = 40; mp[0].calcSeed.nWells = 40; platePersist('exp:' + e.id); }
         }
         if (key === 'RTX') {
           const mx = e.blocks.find(b => b.calc && b.calc.kind === 'rtxmix');
@@ -2423,7 +2444,7 @@ async function suite(opts) {
       // the generic type's own 6-well seed and its FuGENE recipe are per-6-well amounts of that plate, with no calculator to take them from
       const OWN = /^(Seed|Transfection \(FuGENE HD\))$/;
       // the other presets that have calculators: what a calculator can say is not typed again in the prose
-      const EXEMPT = { 'WB / Sample prep': 'the number of samples is not a question the setup asks yet' };
+      const EXEMPT = {};
       ['KD', 'RTX', 'WB'].forEach(k => ((LB.data.presets[k] || {}).blocks || []).forEach(b => { if (!EXEMPT[k + ' / ' + b.title]) nbBlocks.push(['preset ' + k + ' / ' + b.title, b]); }));
       nbBlocks.forEach(([w, b]) => { if (/ NB \/ /.test(w) && OWN.test(b.title)) return; scan(w, b.html); scan(w + ' (Methods)', b.pub); });
       ['lib:nbsusp', 'lib:nbseed', 'lib:nbsub', 'lib:compound-manual'].forEach(id => { const l = (STEP_LIBRARY || []).find(x => x.id === id); if (!l) bad('B46', id, 'library step missing'); else { scan('library ' + id, l.html); scan('library ' + id + ' (Methods)', l.pub); } });

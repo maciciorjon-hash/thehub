@@ -3318,14 +3318,19 @@ var PRESET_SEED={
   WB:{title:'Western blot',blocks:[
     {d:0,title:'Seeding',calc:{kind:'seed',inputs:{cellLine:'HEK293',cellsPerWell:20000,volPerWell:90,format:'96',nPlates:4,excess:1.1}},pub:'{{cellLine}} cells were seeded in {{format}}-well plates and grown to ~80% confluence over 24\u201348 h.',html:'<ol><li>Count the cells and dilute the suspension to {{c.density}} &mdash; {{c.totalVol}} for {{c.wells}}.</li><li>Add {{c.volPerWell}} of the suspension to each well ({{c.cellsPerWell}}) into clear {{format}}-well plates, 2 compounds per plate.</li><li>Incubate 24&ndash;48 h until ~80% confluent.</li></ol>'},
     {d:2,title:'Compound addition',
-     calc:{kind:'spike',inputs:{name:'compounds',wellVolUL:90,foldX:10,series:true,finalUM:0,stockUM:0,nWells:384,excess:1.1,diluent:'medium',stockFold:1000}},
+     calc:{kind:'spike',inputs:{name:'compounds',wellVolUL:90,foldX:10,series:true,finalUM:0,stockUM:0,nWells:96,excess:1.1,diluent:'medium',stockFold:1000}},
      pub:'Compounds were serially diluted from {{c.stockFold}} DMSO stocks into medium and added to the cells at {{c.fold}} ({{c.addUL}} into {{c.wellVol}}) for {{treatH}} h.',
-     html:'<ol><li>Serially dilute the compounds as {{c.stockFold}} stocks in DMSO.</li><li>Dilute each stock {{c.preDil}} in {{c.diluent}} to make the {{c.fold}}.</li><li>Add {{c.addUL}} of the {{c.fold}} to each well ({{c.wellVol}} already in the well &rarr; {{c.newVol}}); do not aspirate.</li><li>Incubate {{treatH}} h &mdash; note the start time.</li></ol>'},
+     html:'<ol><li>Serially dilute the compounds as {{c.stockFold}} stocks in DMSO.</li><li>Dilute each stock {{c.preDil}} in {{c.diluent}} to make the {{c.fold}}.</li><li>Add {{c.addUL}} of the {{c.fold}} to each of the {{c.nWells}} ({{c.wellVol}} already in the well &rarr; {{c.newVol}}); do not aspirate.</li><li>Incubate {{treatH}} h &mdash; note the start time.</li></ol>'},
     {d:2,title:'Lysis',
-     calc:{kind:'mixparts',inputs:{name:'lysis buffer',parts:'protease inhibitors 10, benzonase 1',diluent:'2% SDS, 50 mM Tris\u00b7HCl',volPerWell:20,format:'96',nPlates:4,excess:1.1,replace:true}},
+     calc:{kind:'mixparts',inputs:{name:'lysis buffer',parts:'protease inhibitors 10, benzonase 1',diluent:'2% SDS, 50 mM Tris\u00b7HCl',volPerWell:20,nWells:96,excess:1.1,replace:true}},
      pub:'Cells were lysed in {{c.perWell}} per well of {{c.diluent}} with protease inhibitors and benzonase, and stored at &minus;20 &deg;C.',
      html:'<ol><li>Aspirate; lyse in {{c.perWell}} per well: {{c.total}} of {{c.name}} for {{c.wells}} &mdash; {{c.partsText}} in {{c.diluent}}.</li><li>Store at &minus;20 &deg;C.</li></ol>'},
-    {d:3,title:'Sample prep',pub:'Lysates were denatured in LDS sample buffer with DTT.',html:'<ol><li>Sample prep (96 samples, +10%): 4&times; LDS 3250 &micro;L + 10&times; DTT 1300 &micro;L &rarr; 43.1 &micro;L per sample; denature.</li></ol>'},
+    {d:3,title:'Sample prep',
+     // 4x LDS and 10x DTT in the proportions that give 43.1 uL of mix per sample with the 10% overage
+     // (3,250 + 1,300 uL for 96): the amounts are per mL of the finished mix, so they follow the sample count.
+     calc:{kind:'mixparts',inputs:{name:'sample buffer',parts:'4\u00d7 LDS 714.3, 10\u00d7 DTT 285.7',diluent:'water',volPerWell:43.1,nWells:96,excess:1.1}},
+     pub:'Lysates were denatured in LDS sample buffer with DTT.',
+     html:'<ol><li>Make {{c.total}} of {{c.name}} for {{c.wells}} (one per lysate): {{c.partsText}}.</li><li>Add {{c.perWell}} to each sample; denature.</li></ol>'},
     {d:3,title:'Gel and transfer',w:180,pub:'Samples were resolved on MOPS gels at 145 V for 90 min and wet-transferred at 90 V for 90 min.',html:'<ol><li>Gel: MOPS, 145 V, 90 min.</li><li>Transfer: wet, 90 V, 90 min; image the Ponceau.</li></ol><p class="lb-fn">Variations: 170 V running &middot; iBlot dry transfer.</p>'},
     {d:3,title:'Block and primary antibody',pub:'Membranes were blocked for 1 h at room temperature and probed overnight at 4 &deg;C for {{targets}}.',html:'<ol><li>Block 1 h at room temperature.</li><li>Primary antibodies overnight at 4 &deg;C &mdash; targets: <b>{{targets}}</b>.</li></ol><p class="lb-fn">Typical dilutions: &alpha;-BRD4 Rb 1:1000 (CST) &middot; &alpha;-BRD3 Ms 1:500 (Abcam) &middot; &alpha;-BRD2 Rb 1:1000 &middot; &alpha;-CRBN Rb 1:1000 &middot; &alpha;-VHL Rb 1:1000. Variation: primary 1 h at RT.</p>'},
     {d:4,title:'Secondary antibody',w:60,pub:'Membranes were incubated with fluorescent secondary antibodies for 1 h at room temperature (1:5000).',html:'<ol><li>Wash.</li><li>Secondary antibodies 1 h at room temperature: {{loadCtrl}} Rho 1:5000 &middot; &alpha;-Rb/Ms 800 1:5000.</li></ol>'},
@@ -3736,11 +3741,13 @@ var EXTRA_PRESET_SEED={
 function _whenCtgDose(su){ return su.doseResp!==false; }
 function _whenManual(su){ return su.dosing==='Manual (serial dilution)'; }
 var SETUP_SCHEMA={
-  WB:{plate:true,plateOn:false,fields:[
+  WB:{plate:true,plateOn:true,fields:[
     {f:'format',t:'format',lbl:'Format',d:'96',opts:['96','12','6']},
     {f:'cellLine',t:'cellline',lbl:'Cell line',d:'HEK293'},
     {f:'cellsPerWell',t:'num',lbl:'Cells / well',d:20000},
     {f:'nPlates',t:'num',lbl:'# plates',d:4},
+    {f:'nSamples',t:'num',lbl:'# samples (wells lysed)',d:96,
+     hint:'How many wells are treated, lysed and run. The plate map decides which — once wells are painted on it, the compounds, the lysis buffer and the sample buffer are made for the wells it has; this is the number they start from.'},
     {f:'treatH',t:'num',lbl:'Treatment (h)',d:6,wait:1},
     {f:'compounds',t:'list',lbl:'Compounds',d:'',ph:'One per line \u2014 paste a column straight from Excel'},
     {f:'concs',t:'txt',lbl:'Concentrations (nM)',d:'',ph:'e.g. 1, 10, 100'},
@@ -4150,7 +4157,7 @@ function _applySetupGates(type,setup,blocks,prevSetup,presetKey,anchor){
     var nx=blocks[blocks.indexOf(o)+1]; o.waitSameDay=!!(o.waitMin&&nx&&(+nx.dayOffset||0)===off0);
     sync();
   }); }
-var SETUP_CALC_MAP={rtxmix:{ngPerWell:'dnaNg',fugeneRatio:'fugeneRatio',nWells:'nWells'}};
+var SETUP_CALC_MAP={rtxmix:{ngPerWell:'dnaNg',fugeneRatio:'fugeneRatio',nWells:'nWells'}, spike:{nWells:'nSamples'}, mixparts:{nWells:'nSamples'}};
 function applySetupToBlocks(type,setup,blocks,prevSetup,presetKey){
   var S=setupSchema(type); if(!S||!setup) return blocks;
   // A setup field marked `wait` is a duration, not just a word for the prose. "Treatment (h)"
@@ -4202,7 +4209,7 @@ function applySetupToBlocks(type,setup,blocks,prevSetup,presetKey){
       if(_mp) Object.keys(_mp).forEach(function(ik){ var sv=setup[_mp[ik]];
         if(sv!=null&&sv!==''&&isFinite(+sv)&&I[ik]!==undefined&&!_own2(ik)) I[ik]=+sv; });
       // A run said to be N plates of a format has N × that many wells, until a plate map says otherwise.
-      if(setup.nPlates!=null&&fmt&&PLATE_FED[b.calc.kind]&&I.nWells!=null&&!_own2('nWells')&&(b.calc.kind!=='reagent'||+I.perWellUL>0)) I.nWells=wellsOf(fmt)*(+setup.nPlates||1);
+      if(setup.nPlates!=null&&setup.nSamples==null&&fmt&&PLATE_FED[b.calc.kind]&&I.nWells!=null&&!_own2('nWells')&&(b.calc.kind!=='reagent'||+I.perWellUL>0)) I.nWells=wellsOf(fmt)*(+setup.nPlates||1);
       if(setup.nPlates!=null&&I.nPlates!=null&&!_own('nPlates')){
         I.nPlates = base ? Math.max(1,Math.round((+I.nPlates/base)*(+setup.nPlates||1))) : (+setup.nPlates||1);
       }
@@ -4450,7 +4457,8 @@ var CALC_KINDS={
      hint:'Each component as a name and an amount, separated by commas: "Oligomycin 0.8, Antimycin A 1.0". The amount is µL of that stock in every mL of the finished solution; the diluent makes up the rest.'},
     {k:'diluent',t:'txt',lbl:'Diluent'},
     {k:'volPerWell',t:'num',lbl:'Goes in per well (µL)',step:'any'},
-    {k:'format',t:'format',lbl:'Plate'},{k:'nPlates',t:'num',lbl:'# plates'},
+    {k:'format',t:'format',lbl:'Plate',show:function(I){ return !(+I.nWells>0); }},{k:'nPlates',t:'num',lbl:'# plates',show:function(I){ return !(+I.nWells>0); }},
+    {k:'nWells',t:'num',lbl:'# wells / samples',show:function(I){ return I.nWells!=null; }},
     {k:'excess',t:'num',lbl:'Excess ×',step:'0.05'},
     {k:'replace',t:'check',lbl:'Goes into the wells in place of the medium',show:function(I){ return I.replace!==undefined; }}],
     defaults:{name:'5× OA',parts:'Oligomycin 0.8, Antimycin A 1.0',diluent:'diluent',volPerWell:5,format:'384',nPlates:1,excess:1.1},
@@ -4876,7 +4884,8 @@ function rtxMixRecipe(v){
 // room for the diluted volume — the same rule spikeRecipe and rtxMixRecipe follow.
 function _mixParts(v){
   var e=_calcEff(v,{nPlates:1,excess:1});
-  var wells=wellsOf(e.format)*e.nPlates, totUL=(+e.volPerWell||0)*wells*e.excess, parts=[], sum=0;
+  // A solution made for a counted number of wells or samples (the plate map's, or the setup's) rather than for N plates.
+  var wells=(+v.nWells>0)?+v.nWells:wellsOf(e.format)*e.nPlates, totUL=(+e.volPerWell||0)*wells*e.excess, parts=[], sum=0;
   String(v.parts||'').split(',').forEach(function(s){
     var m=/^\s*(.*?)[\s:=]*([0-9]*\.?[0-9]+)\s*$/.exec(s); if(!m||!m[1].trim()) return;
     var perMl=parseFloat(m[2]); if(!(perMl>0)) return;
@@ -6932,7 +6941,7 @@ function plateConditionCounts(e){
 // 84 wells" follows the map as you paint it, until you type over the number (b.calc.own) or the step
 // is ticked (what was pipetted is what the step says). The plan moves with it, so following the map
 // is not a deviation from the plan — the map IS the plan.
-var PLATE_FED={spike:['nWells'], rtxmix:['nWells'], reagent:['nWells']};
+var PLATE_FED={spike:['nWells'], rtxmix:['nWells'], reagent:['nWells'], mixparts:['nWells']};
 function plateDosedWells(e,any){ var n=0;
   expPlates(e).forEach(function(p){ Object.keys(p.wells||{}).forEach(function(k){ var w=p.wells[k]; if(w&&w.typeId&&w.typeId!=='blank'&&(any||w.conc)) n++; }); });
   return n; }
@@ -6950,6 +6959,8 @@ function plateWellsFor(e,b){ var k=b&&b.calc&&b.calc.kind; if(!PLATE_FED[k]||!e)
   // A reagent made per well goes into every well with cells in it — but not the wells that are the
   // no-reagent control: a read of "no substrate" is a well that never got it.
   else if(k==='reagent'){ if(!(+(b.calc.inputs&&b.calc.inputs.perWellUL)>0)) return null; n=plateReagentWells(e); }
+  // A solution counted per well or sample is made for every well that holds something.
+  else if(k==='mixparts'){ if(!(+(b.calc.inputs&&b.calc.inputs.nWells)>0)) return null; n=plateDosedWells(e,true); }
   return n>0?n:null; }
 // A number typed over the plan is the number that run used: either the box said so (own) or it no
 // longer equals what the plan last planted (the same test the setup's own values pass).
@@ -8917,13 +8928,15 @@ function _plFeedsHtml(){ var e=_plExp(); if(!e) return '';
   var L=expPlateList(e), wells=0; L.forEach(function(x){ wells+=plateCount(x.p); });
   var rows=[];
   (e.blocks||[]).forEach(function(b){ if(!b.calc||!b.calc.inputs) return; var k=b.calc.kind;
-    if(['nbtx','nbsusp','rtxmix','spike','reagent'].indexOf(k)<0) return;
+    if(['nbtx','nbsusp','rtxmix','spike','reagent','mixparts'].indexOf(k)<0) return;
+    if(k==='mixparts'&&!(+b.calc.inputs.nWells>0)) return;
     if(k==='reagent'&&!(+b.calc.inputs.perWellUL>0)) return;   // a total typed for one plate does not follow the map
     var v=calcValuesOf(b,e); if(!v) return;
     var line=(k==='nbtx')?(v.wells+' · '+v.nMixes)
       :(k==='nbsusp')?(v.cellsTotal+' · '+v.volTotal)
       :(k==='rtxmix')?(v.nWells+' · '+v.total+' of mix')
       :(k==='reagent')?(v.nWells+' · '+v.total+' to make')
+      :(k==='mixparts')?(v.wells+' · '+v.total+' to make')
       :(v.nWells+' · '+v.totalUL+' to make');
     var st='<span class="pl-fd-s ok">follows the map</span>';
     if(PLATE_FED[k]){ var n=plateWellsFor(e,b);
