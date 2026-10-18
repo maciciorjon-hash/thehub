@@ -195,6 +195,8 @@
 //                            the calculator knew dose series becomes one — and a step with a tick, a note or a typed number, and a finished run, are never touched.
 //   B48 the header's        The plasmid named in an experiment's header is the plasmid the reverse-transfection master mix is made of; one typed over in the
 //       plasmid is the mix's  calculator stays the run's, and a finished run is not renamed.
+//   B49 an Archive          An Archive calculator added to a step opens on the plate format, plates, cells per well and cell line the experiment says (not
+//       calculator is fed    Archive's own 3,000 cells / 384-well / one plate), follows the setup until a number is typed over, and a finished step is left.
 //   B36 plates, plasmids,   An experiment can have more than one plate (+ Add plate: same conditions, its own title, counted with the
 //       steps                first by the mix table, shown, exported); the plate editor's tabs are numbered steps (Plate · Plasmids ·
 //                            Contents · Dilution · Compounds · Label · Data) that only Back / Next or a click move — not a selection,
@@ -2501,6 +2503,26 @@ async function suite(opts) {
       if (mix(typed).calc.inputs.plasmid !== 'my own prep') bad('B48', 'typed', 'the plasmid typed on the step was overwritten by the header');
       const fin = mk('INV_B48C'); const was = mix(fin).calc.inputs.plasmid; fin.status = 'done'; fin.plasmids = 'NL-LATE'; syncExpDerived(fin);
       if (mix(fin).calc.inputs.plasmid !== was) bad('B48', 'finished', 'a finished run was renamed from its header: ' + was + ' → ' + mix(fin).calc.inputs.plasmid);
+    });
+
+    // B49 — an Archive calculator added to a step opens on what the experiment says, and follows it.
+    if (run('B49') && archive) await guard('B49', 'archive calculator fed', async () => {
+      const P = (LB.data.projects || []).find(p => (p.sections || []).length);
+      const key = 'HB', tpl = LB.data.presets[key];
+      const su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup || {})), { format: '96', cellLine: 'U2OS', cellsPerWell: 12345, nPlates: 3 });
+      const before = new Set(Object.keys(LB.data.experiments));
+      buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-10-01', type: 'HB', title: 'INV archive', code: 'INV_B49', setup: su, plate: true });
+      const e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); clean.push(e);
+      const host = e.blocks[0]; addArchiveCalcToBlock(host.id, 'seeding'); openExp(e.id); SEL.page = e.id; renderEditor(); await sleep(400); tick('B49');
+      const I = () => host.calc.inputs, want = { 'sd-format': '96', 'sd-plates': '3', 'sd-cpw': '12345', 'sd-line': 'U2OS' };
+      Object.keys(want).forEach(k => { if (String(I()[k]) !== want[k]) bad('B49', 'opens', 'the seeding calculator opened with ' + k + ' = ' + I()[k] + '; the experiment says ' + want[k]); });
+      if (!/288/.test(_plain(expCalcRecipe(host)))) bad('B49', 'recipe', 'the recipe does not count 3 plates of 96 wells: ' + _plain(expCalcRecipe(host)).slice(0, 140));
+      e.setup.nPlates = 5; e.setup.cellsPerWell = 20000; syncExpDerived(e);
+      if (String(I()['sd-plates']) !== '5' || String(I()['sd-cpw']) !== '20000') bad('B49', 'follows', 'the calculator did not follow the setup: plates ' + I()['sd-plates'] + ', cells ' + I()['sd-cpw']);
+      I()['sd-cpw'] = '999'; e.setup.cellsPerWell = 30000; syncExpDerived(e);
+      if (String(I()['sd-cpw']) !== '999') bad('B49', 'typed', 'a number typed on the calculator was taken back by the setup (' + I()['sd-cpw'] + ')');
+      host.done = true; e.setup.nPlates = 9; syncExpDerived(e);
+      if (String(I()['sd-plates']) !== '5') bad('B49', 'finished', 'a finished step was changed by the setup');
     });
 
     // B28 — a date typed into Repeat is a real day or it is refused.

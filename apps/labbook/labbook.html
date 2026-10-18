@@ -5253,7 +5253,45 @@ function calcRemove(id){ var b=_blkById(id); if(!b) return; lbConfirm('Remove th
 function addCalcToBlock(id,kind){ var b=_blkById(id); if(!b) return; b.calc={kind:kind,inputs:calcDefaults(kind)}; save(); renderEditor(); }
 function addArchiveCalcToBlock(id,pid){ var b=_blkById(id); if(!b) return; b.calc={kind:'archive',pid:pid,inputs:{},recipe:''}; save(); renderEditor(); }
 // Render an Archive calculator inline (generic form from ARCHIVE_CALC_SCHEMA + live recipe).
+// ── An Archive calculator takes what the experiment already knows ──────────────────────────
+// Added to a step it opened on Archive's own defaults — 3,000 cells a well, 384-well plates, one
+// plate — whatever the run it sat in was about. The boxes that ask what the setup answers (the
+// plate format, how many plates, the cells per well, the cell line, the wells) are filled from
+// it, and follow it when it changes, until you type over one: the plan last wrote a value, so a
+// different value is yours (the rule every native calculator follows with `calcSeed`).
+var ARCHIVE_FEED={
+  seeding:{'sd-format':'format','sd-plates':'nPlates','sd-cpw':'cellsPerWell','sd-line':'cellLine'},
+  hibitlytic:{'hbl-format':'format','hbl-plates':'nPlates'},
+  ctg2:{'ctg-format':'format','ctg-plates':'nPlates'},
+  revtx:{'rtx-format':'format','rtx-nwells':'nWells'},
+  transfection:{'tf-format':'format','tf-nwells':'nWells'}
+};
+var _ARC_LINE={'SUDHL5':'SU-DHL-5','HEK293-HiBiT':'HEK293'};
+function _archiveFeedVal(pid,id,e,sch){
+  var m=ARCHIVE_FEED[pid]; if(!m||!m[id]||!e||!e.setup) return null;
+  var v=e.setup[m[id]]; if(v==null||v==='') return null; v=String(v);
+  if(id==='sd-line') v=_ARC_LINE[v]||v;
+  if(id==='ctg-format') v={'96':'100','384':'25','1536':'4'}[v]||null;
+  if(v==null) return null;
+  // A select only takes one of its own options: a format Archive does not offer is left as it was.
+  var f=null; (sch||[]).forEach(function(bx){ (bx.groups||[]).forEach(function(g){ g.fields.forEach(function(x){ if(x.id===id) f=x; }); }); });
+  if(f&&f.options&&!f.options.some(function(o){ return String(o.value)===v; })) return null;
+  return v; }
+function syncArchiveFeed(e){
+  if(!e||!e.blocks||e.status==='done'||e.status==='archived') return false;
+  var ch=false;
+  e.blocks.forEach(function(b){
+    if(!b.calc||b.calc.kind!=='archive'||b.done||!ARCHIVE_FEED[b.calc.pid]) return;
+    var sch=archiveSchema(b.calc.pid); if(!sch) return;
+    var I=b.calc.inputs||(b.calc.inputs={}), S=b.calcSeed||(b.calcSeed={});
+    Object.keys(ARCHIVE_FEED[b.calc.pid]).forEach(function(id){
+      var want=_archiveFeedVal(b.calc.pid,id,e,sch); if(want==null) return;
+      // Never typed (no value yet) or still what the plan last wrote: it follows the setup.
+      if(I[id]==null||(S[id]!==undefined&&String(I[id])===String(S[id]))){
+        if(String(I[id])!==want||String(S[id])!==want){ I[id]=want; S[id]=want; ch=true; } } }); });
+  return ch; }
 function archiveCalcHtml(b){ var name=archiveName(b.calc.pid); var sch=archiveSchema(b.calc.pid);
+  try{ var _fe=_curExp(); if(sch&&_fe&&(_fe.blocks||[]).indexOf(b)>=0&&syncArchiveFeed({blocks:[b],setup:_fe.setup,status:_fe.status})) queueSave(); }catch(_e){}
   var head='<div class="cc-hd"><span class="cc-tag">'+tbIco(P_SIGMA,12)+' '+esc(name)+'</span><span class="cc-src">Archive</span><span class="grow"></span><button class="cc-x" title="Remove calculator" onclick="calcRemove(\''+b.id+'\')">&times;</button></div>';
   if(!sch){ return '<div class="blk-calc archive" data-calc="'+b.id+'">'+head+'<div class="cc-recipe" id="ccr-'+b.id+'">'+(b.calc.recipe||'<span class="cc-load">'+(archiveEmbedded()?'Loading the calculator…':'The Archive protocol library isn\'t available in this build, so this calculator can\'t be loaded.')+'</span>')+'</div></div>'; }
   var inp=b.calc.inputs||(b.calc.inputs={});
@@ -6985,7 +7023,8 @@ function syncExpDerived(e){
   var a=null, b=false;
   try{ a=syncPlateToCalcs(e); }catch(_e){}
   try{ b=syncExpPlasmids(e); }catch(_e){}
-  return !!(a||b); }
+  var c=false; try{ c=syncArchiveFeed(e); }catch(_e){}
+  return !!(a||b||c); }
 // ── The plate is the truth about what went into the wells ───────────────────────────────────
 // The dosing sentence is built from e.setup.topConc/df/nPoints, and nothing ever moved them
 // when the map was redrawn: a plate relaid at 10 µM went on publishing "dosed from 1,000 nM"
