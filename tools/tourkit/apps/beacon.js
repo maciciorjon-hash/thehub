@@ -31,14 +31,24 @@
           ['Corrected mBRET', 'Each well minus the mean of the no-ligand wells **on its own plate**. With none marked it shows raw and says so.'],
           ['mBRET (mBU)', '(acceptor ÷ donor) × 1000. A well whose donor or acceptor is missing, zero or negative has no ratio — it is blank, never 0.']],
         steps: [
-          { sel: '#lm-card .lm-head', t: 'The assay and the plates', place: 'bottom',
-            b: '**Protein–protein** (signal rises with the interaction) or **tracer displacement** (a compound pushes a tracer off and the signal falls). Several plates are tabs here.' },
+          { sel: '.bn-top', t: 'The analysis', place: 'bottom',
+            b: 'Its **name** — History keeps it under that name — and the **assay**: **protein–protein** (signal rises with the interaction) or **tracer displacement** (a compound pushes a tracer off and the signal falls). **Clear all** starts again.' },
+          { sel: '#lm-card .lm-head', t: 'The plates', place: 'bottom',
+            b: 'Several plates are tabs here; a plate added after another starts with its layout.' },
           { sel: '#plate-format', t: 'Plate size', place: 'bottom',
             b: '**96 or 384 wells**, right above the plate. A grid you paste or a file you drop sets it for you; choosing by hand clears this plate’s readings and layout (`⌘Z` brings them back).' },
           { sel: '#lm-steps', t: 'Three steps, in any order', place: 'bottom',
             b: 'Readings · Controls · Compounds (and Tracer for displacement). Each says what is done; **click one** to select that part of the layout.' },
           { deep: true, sel: '#well-grid', t: 'Drag to say what wells are', place: 'right', miss: MISS,
             b: '**Drag** a rectangle; **Shift** extends it, `⌘` / `Ctrl` adds, a row or column label takes the line. The panel on the right asks what the selection is.' }] },
+
+      { id: 'setup', label: 'Setup', sel: '#bs-open', go: function(){ switchTab('plate'); },
+        lead: 'The way in, five steps with Back and Next: **Assay · Readings · Controls · Compounds · Review**. It opens by itself the first time, and any time from the **Setup** button.',
+        do: ['**Assay** — the analysis name, protein–protein or displacement, the plate format and optional notes (target, cell line, time point).',
+          '**Readings** — drop the Excel files, paste from Excel, or type the values into a grid.',
+          '**Controls** — say where each control is (`A1:D1`); the plate beside it shows what you typed.',
+          '**Compounds** — paste the names, give the top concentration, dilution, points and replicates, and place them; **Review** lists what is still missing.'],
+        steps: [{ sel: '#bs-open', t: 'Setup', place: 'bottom', b: 'Everything in Setup writes into the same plate you see on the Plate tab, so you can mix: type some in Setup, drag the rest on the plate.' }] },
 
       { id: 'readings', label: 'Plate › 1 Readings', tag: 'Plate', sel: stepBtn(1), go: step(1), head: false,
         lead: 'Where the numbers come from: a PHERAstar export, several, or values pasted from Excel.',
@@ -84,7 +94,8 @@
         do: ['**Dose–response** — one row per compound: potency, Hill, bottom → top, R², points × wells, plates. Click a row to draw its curve over the others in grey. A midpoint outside the doses tested is shown as a bound (> or <), not a number.',
           '**Plate quality** — one row per plate: baseline, vehicle, window, S/B and Z′.',
           '**Controls** — donor and acceptor counts for each control you marked, with a plate switch when there are several.',
-          '**Export** — an Excel workbook (results, every well of every plate, Prism tables, protocol), the plate mBRET alone, a CSV, a copy-paste table, or the plot as an image.'],
+          '**Export** — an Excel workbook (results, every well of every plate, Prism tables, protocol), **Copy for Prism** (concentration in nM down one column, every compound’s replicates beside it), the plate mBRET alone, a CSV, a copy-paste table, or the plot as an image.',
+          'Press **↑ ↓** (or **j k**, **Home**, **End**) to move between compounds and **← →** to switch the plate shown under Controls.'],
         ref: [['Pooled · Per plate', 'The same compound name on several plates is one compound: its replicates pool. **Per plate** gives one row per compound per plate.'],
           ['EC50 · IC50 · Ki', 'EC50 in protein–protein, IC50 in displacement; Ki = IC50 ÷ (1 + [T]/Kd) once the tracer titration has a Kd.'],
           ['R² under 0.7', 'Red: the fit is unreliable — a missing well, a plate without its baseline, or too few points across the inflection.']],
@@ -101,6 +112,10 @@
           ['Saved style', 'The palette, sizes and options are remembered. What you did to one set of data — omitted replicates, colours, moved titles — is not carried to the next.']],
         steps: [{ deep: true, sel: '#bg-root', t: 'The figure', place: 'top', miss: MISS,
           b: 'Click a bar, a curve, a title or the legend to edit it. The panel on the right has the details. **PNG** and **PDF** export what you see.' }] },
+      { id: 'history', label: 'History', sel: '.tab[data-tab="history"]', go: function(){ switchTab('history'); },
+        lead: 'Every analysis you read is kept by itself, under its name, on this device. Open one later exactly as you left it.',
+        do: ['**Open** puts an analysis back — its plates, layout, compounds and notes. **Pin** keeps it on top, the pencil renames it, the bin removes it.', 'Search finds an analysis by its name, a compound or a file.'],
+        steps: [{ sel: '#bh-root', t: 'Your analyses', place: 'top', b: 'One row per analysis, the last one touched first. It is saved a moment after any change.' }] },
     ],
     words: [
       ['mBRET (mBU)', 'milliBRET units: (acceptor ÷ donor) × 1000 — the raw ratio on a more convenient scale.'],
@@ -117,6 +132,6 @@
       ['R² is red', 'The fit is unreliable. Check for a missing well, a plate without its baseline, or too few points around the inflection.'],
       ['A well is blank', 'Its donor or acceptor reading is missing, zero or negative, so there is no ratio — it is never shown as 0.'],
       ['Which reader files work?', 'PHERAstar `.xlsx` exports are read directly. For anything else, copy the donor grid and the acceptor grid in Excel and press ⌘V, or drop them as `.csv`.']],
-    keys: [['Drag', 'Select wells'], ['Shift · ⌘/Ctrl', 'Extend · add to the selection'], ['Enter', 'Apply what the panel shows'], ['Delete', 'Clear the selected wells'], ['⌘V', 'Paste values copied from Excel'], ['⌘Z · ⇧⌘Z', 'Undo · redo']]
+    keys: [['↑ ↓ · j k', 'Results: move between compounds'], ['← →', 'Results: switch the plate under Controls'], ['Drag', 'Select wells'], ['Shift · ⌘/Ctrl', 'Extend · add to the selection'], ['Enter', 'Apply what the panel shows'], ['Delete', 'Clear the selected wells'], ['⌘V', 'Paste values copied from Excel'], ['⌘Z · ⇧⌘Z', 'Undo · redo']]
   });
 })();

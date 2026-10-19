@@ -18,6 +18,13 @@
 //   B7  exports are text         A name that would be a formula leaves the workbook and the CSV as text; the rest of a header ("--- ASSAY ---", "-0.5") is left alone.
 //   D1  a bound is a bound       Dora keeps "> 10000" and "< 1" as bounds (shown with their sign, drawn hollow, never "good" when the bound is in the wrong direction), a DC50 of 0
 //                                or less and "n/a" are no potency, and a missing Dmax is a dash, not a 0 with an empty bar.
+//   B12 a plate keeps its size  The wells are the size their column allows: the same at 900 and at 600 px of window height, with the steps' text longer or shorter, with data or without.
+//   B13 keys on Results         ↑ ↓ Home End move between compounds (the row, the curve and its title follow, the table keeps its scroll); ← → switch the plate under Controls.
+//   B14 Prism copy              Concentration (nM) down one column, descending; every compound's replicates side by side (2 replicates on 2 plates = 4 columns), relative to the vehicle; the workbook's Prism Copy sheet says the same.
+//   B15 clear all               Starts again from one empty 96-well plate, no compounds, no name, protein–protein; ⌘Z brings everything back.
+//   B16 history                 An analysis with readings is kept under its name, comes back exactly (plates, compounds, name) after Clear all, and a rename renames the entry.
+//   B17 setup                   Typed control ranges mark exactly those wells (and clear when emptied); placing compounds makes the names, points and replicates asked, never on a control well; Review names what is missing.
+//   B18 the shell               Beacon inside dHUB hides its whole header like every other app (an empty white band was left under the shell's bar).
 //
 // Usage (repo root):  node tools/analysis_invariants.mjs [--only=C1,C3] [--file-bca=path] [--verbose]
 import { chromium } from 'playwright';
@@ -436,6 +443,127 @@ if (run('D1')) await guard('D1', async () => {
   check('D1', 'in the scatter a bound is a hollow triangle and an exact value a filled circle; a compound with no potency is not drawn', r.scatter && r.scatter.boundStyle === 'triangle' && r.scatter.exactStyle === 'circle' && r.scatter.boundFill === 'transparent' && !r.scatter.hasZero, r.scatter);
   check('D1', 'HTML in a name is text; a name that is a formula leaves the CSV with a quote in front', r.xss.ran === 0 && r.xss.imgs === 0 && /(^|\n)"?'=HYPERLINK/.test(r.csvText), { xss: r.xss, csv: r.csvText.split('\n').slice(0, 4) });
   await ctx.close();
+});
+
+
+if (run('B12')) await guard('B12', async () => {
+  const { ctx, pg } = await open('/apps/beacon/beacon.html');
+  const cell = () => pg.evaluate(() => Math.round(document.querySelector('.well[data-pos="A3"]') ? document.querySelector('.well[data-pos="A3"]').getBoundingClientRect().width : -1));
+  const empty = await cell();
+  await pg.setViewportSize({ width: 1280, height: 600 }); await pg.waitForTimeout(250); const short = await cell();
+  await pg.setViewportSize({ width: 1280, height: 1100 }); await pg.waitForTimeout(250); const tall = await cell();
+  await pg.evaluate(() => loadTestData('gain')); await pg.waitForTimeout(400); const loaded = await cell();
+  await pg.evaluate(() => { bPl().name = 'A very long plate name that makes the steps and the strip above the plate wrap onto more lines than before'; bPl().nameSrc = 'user'; bAfterChange(); }); await pg.waitForTimeout(250); const wrapped = await cell();
+  check('B12', 'the wells are the same size at 600 and 1100 px of window height', short === tall && short > 0, { short, tall });
+  check('B12', 'the wells do not change size when data arrives or a long name makes the strip above wrap', empty === loaded && loaded === wrapped, { empty, loaded, wrapped });
+  const cap = await pg.evaluate(() => { const w = document.querySelector('.well[data-pos="A3"]').getBoundingClientRect().width; return w; });
+  check('B12', 'a 96-well plate is never drawn with wells above 60 px', cap <= 60.5, cap);
+  await ctx.close();
+});
+
+if (run('B13')) await guard('B13', async () => {
+  const { ctx, pg } = await open('/apps/beacon/beacon.html');
+  await pg.evaluate(() => { loadTestData('gain'); switchTab('results'); }); await pg.waitForTimeout(500);
+  const st = () => pg.evaluate(() => ({ sel: RS_SEL, on: [...document.querySelectorAll('#rs-root .rs-tbl tbody tr.on')].map(r => r.dataset.k), title: (document.getElementById('rs-curve-t') || {}).textContent, names: bFits().map(f => f.key), cp: RS_PLATE }));
+  const a = await st();
+  await pg.keyboard.press('ArrowDown'); await pg.waitForTimeout(80); const b = await st();
+  await pg.keyboard.press('End'); await pg.waitForTimeout(80); const c = await st();
+  await pg.keyboard.press('Home'); await pg.waitForTimeout(80); const d = await st();
+  await pg.keyboard.press('k'); await pg.waitForTimeout(80); const e = await st();
+  check('B13', 'ArrowDown moves to the next compound: the row, the selection and the curve title follow', a.sel === a.names[0] && b.sel === a.names[1] && b.on.length === 1 && b.on[0] === b.sel && /Compound B/.test(b.title), { a: a.sel, b: b.sel, t: b.title });
+  check('B13', 'End goes to the last compound, Home to the first, and k at the first stays there', c.sel === a.names[a.names.length - 1] && d.sel === a.names[0] && e.sel === a.names[0], { c: c.sel, d: d.sel, e: e.sel });
+  const keep = await pg.evaluate(async () => { const t = document.querySelector('#rs-root .rs-tbl'); t.scrollTop = 7; rsPick(bFits()[1].key, false); return t.scrollTop; });
+  check('B13', 'choosing a compound does not rebuild the table (its scroll position is kept)', keep === 7 || keep === 0 && (await pg.evaluate(() => document.querySelector('#rs-root .rs-tbl').scrollHeight <= document.querySelector('#rs-root .rs-tbl').clientHeight)), keep);
+  await pg.keyboard.press('ArrowRight'); await pg.waitForTimeout(100); const f = await st();
+  check('B13', 'ArrowRight switches the plate shown under Controls', f.cp === 1, f.cp);
+  await pg.evaluate(() => { document.getElementById('rs-exp-btn').click(); }); await pg.waitForTimeout(80);
+  await pg.keyboard.press('ArrowDown'); const g = await st();
+  check('B13', 'with the export menu open the arrow keys leave the compounds alone', g.sel === (await pg.evaluate(() => RS_SEL)), g.sel);
+  await ctx.close();
+});
+
+if (run('B14')) await guard('B14', async () => {
+  const { ctx, pg } = await open('/apps/beacon/beacon.html');
+  const r = await pg.evaluate(() => {
+    loadTestData('gain');
+    const b = _bPrismBlock(true), rows = b.aoa, D = bDoseData(true), g0 = D.groups[0];
+    const top = rows[0], sub = rows[1], first = rows[2];
+    const veh = (() => { const v = []; state.plates.forEach(pl => Object.keys(pl.map).forEach(p => { if (pl.map[p].k === 'veh') { const x = bVal(pl, p, true); if (x !== null) v.push(x); } })); return v.reduce((a, c) => a + c, 0) / v.length; })();
+    const raw = _bPrismBlock(false);
+    return { names: top.filter(x => x), n: rows.length - 2, head: sub[0], reps: sub.slice(1, 5), xs: rows.slice(2).map(x => x[0]), cols: first.length, merges: b.merges.length, firstRel: first[1], expectRel: g0.pts[0].reps[0].v, rawFirst: raw.aoa[2][1], veh };
+  });
+  check('B14', 'one X column: concentration in nM, highest first, one row per concentration (10 µM is 10000)', r.head === 'Concentration (nM)' && r.xs[0] === 10000 && r.xs.length === 10 && r.xs.every((v, i) => i === 0 || v < r.xs[i - 1]), { head: r.head, xs: r.xs });
+  check('B14', 'every compound is a name over its replicate columns: 4 compounds × (2 replicates × 2 plates) = 4 columns each, 16 + the X column', JSON.stringify(r.names) === JSON.stringify(['Compound A', 'Compound B', 'Compound C', 'Compound D']) && r.cols === 17 && r.reps.join() === 'Rep 1,Rep 2,Rep 3,Rep 4' && r.merges === 4, r);
+  check('B14', 'the values are relative to the vehicle (1 = vehicle), not mBU', r.firstRel === +r.expectRel.toPrecision(6) && r.firstRel > 1 && r.firstRel < 4 && r.rawFirst > 100, { rel: r.firstRel, raw: r.rawFirst });
+  const cp = await pg.evaluate(async () => { let got = ''; Object.defineProperty(navigator, 'clipboard', { value: { writeText: t => { got = t; return Promise.resolve(); } }, configurable: true }); copyPrism(); await new Promise(r => setTimeout(r, 50)); return got; });
+  const lines = cp.split('\n');
+  check('B14', 'Copy for Prism puts the same table on the clipboard, tab separated', lines.length === 12 && lines[1].split('\t')[0] === 'Concentration (nM)' && lines[0].split('\t')[1] === 'Compound A' && lines[2].split('\t').length === 17, { n: lines.length, l1: lines[1] });
+  await ctx.close();
+});
+
+if (run('B15')) await guard('B15', async () => {
+  const { ctx, pg } = await open('/apps/beacon/beacon.html');
+  const r = await pg.evaluate(async () => {
+    loadTestData('displacement'); bRename('Typed name'); const had = { plates: state.plates.length, ser: state.series.length, name: state.name, mode: state.assayMode };
+    bClearAll(); document.getElementById('bea-ask-ok').click(); await new Promise(r => setTimeout(r, 50));
+    const cleared = { plates: state.plates.length, rows: bPl().rows, cols: bPl().cols, reads: bHasReads(bPl()), ser: state.series.length, name: state.name, mode: state.assayMode, hid: state.hid, btn: document.getElementById('bn-clear').hidden };
+    bUndo(); const back = { plates: state.plates.length, ser: state.series.length, name: state.name, mode: state.assayMode };
+    return { had, cleared, back };
+  });
+  check('B15', 'Clear all leaves one empty 96-well plate, no compounds, no name, protein–protein, and hides itself', r.cleared.plates === 1 && r.cleared.rows === 8 && r.cleared.cols === 12 && !r.cleared.reads && r.cleared.ser === 0 && r.cleared.name === '' && r.cleared.mode === 'gain' && r.cleared.btn, r);
+  check('B15', '⌘Z brings the whole analysis back (plates, compounds, name, assay)', r.back.plates === r.had.plates && r.back.ser === r.had.ser && r.back.name === r.had.name && r.back.mode === 'displacement', r);
+  await ctx.close();
+});
+
+if (run('B16')) await guard('B16', async () => {
+  const { ctx, pg } = await open('/apps/beacon/beacon.html');
+  await pg.evaluate(() => { loadTestData('gain'); bRename('My NanoBRET run'); }); await pg.waitForTimeout(1500);
+  const a = await pg.evaluate(() => ({ n: BH.list.length, name: BH.list[0] && BH.list[0].name, comp: BH.list[0] && BH.list[0].compounds.length, hid: state.hid, tab: document.getElementById('bh-n').textContent }));
+  const b = await pg.evaluate(async () => { bClearAll(); document.getElementById('bea-ask-ok').click(); await new Promise(r => setTimeout(r, 900)); const id = BH.list[0].id; bhOpen(id); await new Promise(r => setTimeout(r, 100)); return { n: BH.list.length, plates: state.plates.length, ser: state.series.map(s => s.name), name: state.name, ready: bReadyPlates().length, tab: activeTab, hid: state.hid === id, fits: bFits().length }; });
+  check('B16', 'an analysis with readings is saved by itself under its name', a.n === 1 && a.name === 'My NanoBRET run' && a.comp === 4 && a.tab === '1', a);
+  check('B16', 'opening it after Clear all brings back the plates, compounds, name and fits, and lands on Results', b.plates === 2 && b.ser.length === 4 && b.name === 'My NanoBRET run' && b.ready === 2 && b.fits === 4 && b.tab === 'results' && b.hid, b);
+  const c = await pg.evaluate(async () => { const id = BH.list[0].id; bRename('Renamed run'); await new Promise(r => setTimeout(r, 1200)); return { n: BH.list.length, name: BH.list[0].name }; });
+  check('B16', 'renaming the analysis renames its History entry (it does not add a second one)', c.n === 1 && c.name === 'Renamed run', c);
+  const d = await pg.evaluate(async () => { bClearAll(); document.getElementById('bea-ask-ok').click(); await new Promise(r => setTimeout(r, 1000)); return { n: BH.list.length }; });
+  check('B16', 'an empty analysis is not kept, and Clear all does not delete what History holds', d.n === 1, d);
+  await ctx.close();
+});
+
+if (run('B17')) await guard('B17', async () => {
+  const { ctx, pg } = await open('/apps/beacon/beacon.html');
+  const r = await pg.evaluate(async () => {
+    const o = {}; bsOpen(2); await new Promise(r => setTimeout(r, 100));
+    const inp = k => document.querySelector('#bs-ctls input[data-role="' + k + '"]');
+    const type = (k, v) => { const i = inp(k); i.value = v; i.dispatchEvent(new Event('change', { bubbles: true })); };
+    type('noLigand', 'A1:D1'); type('veh', 'A2:H2, E1:H1');
+    const wells = k => Object.keys(bPl().map).filter(p => bPl().map[p].k === k).sort();
+    o.nl = wells('noLigand'); o.veh = wells('veh'); o.nlShown = inp('noLigand').value; o.vehShown = inp('veh').value;
+    type('veh', ''); o.vehCleared = wells('veh').length;
+    type('mock', 'Z99'); o.bad = wells('mock').length; o.badClass = inp('mock').parentNode.classList.contains('bad');
+    type('veh', 'A2:H2'); type('mock', 'E5');
+    bsGo(3); document.getElementById('bs-names').value = 'Alpha\nBeta\nGamma'; document.getElementById('bs-names').dispatchEvent(new Event('input', { bubbles: true }));
+    o.plan = document.getElementById('bs-plan').textContent;
+    document.getElementById('bs-place').click(); await new Promise(r => setTimeout(r, 50));
+    o.ser = state.series.map(s => s.name); const m = bPl().map;
+    const ofS = id => Object.keys(m).filter(p => m[p].s === id);
+    o.shape = state.series.map(s => bShapeOf(bPl(), ofS(s.id)));
+    o.onControl = Object.keys(m).filter(p => bIsFlat(m[p].k)).some(p => m[p].s) || !m.E5 || m.E5.k !== 'mock'; o.cells = Object.keys(m).filter(p => m[p].k === 'cpd').length;
+    o.minCol = Math.min.apply(null, Object.keys(m).filter(p => m[p].k === 'cpd').map(p => PlateEngine.rc(p).c));
+    o.top = Math.max.apply(null, Object.keys(m).filter(p => m[p].k === 'cpd').map(p => m[p].c));
+    bsGo(4); o.review = document.getElementById('bs-p-review').textContent;
+    bsClose(); bUndo(); o.afterUndo = state.series.length;
+    return o;
+  });
+  check('B17', 'typed ranges mark exactly those wells, are shown back normalised, and emptying a box clears the control', JSON.stringify(r.nl) === JSON.stringify(['A1', 'B1', 'C1', 'D1']) && r.veh.length === 12 && r.vehShown === 'A2:D2, E1:H2' && r.vehCleared === 0, { nl: r.nl, veh: r.veh.length, shown: [r.nlShown, r.vehShown] });
+  check('B17', 'a range that names no well changes nothing and marks the box', r.bad === 0 && r.badClass, { bad: r.bad, cls: r.badClass });
+  check('B17', 'placing 3 names makes 3 compounds of 10 points × 2 replicates, 10 µM at the top, starting after the control columns, and a block that would land on a control well (E5) slides past it instead of overwriting it', JSON.stringify(r.ser) === JSON.stringify(['Alpha', 'Beta', 'Gamma']) && r.shape.every(x => x.pts === 10 && x.reps === 2) && r.cells === 60 && r.top === 10000 && r.minCol === 2 && !r.onControl, r);
+  check('B17', 'Review says what is missing (no-ligand wells are marked but a vehicle on one column only is not a problem; compounds are placed) and ⌘Z undoes the placement', /Before you read the results/.test(r.review) && r.afterUndo === 0, { rv: r.review.slice(0, 160), u: r.afterUndo });
+  await ctx.close();
+});
+
+if (run('B18')) await guard('B18', async () => {
+  const src = fs.readFileSync(path.join(ROOT, 'shell/hub-shell.html'), 'utf8');
+  check('B18', 'the shell hides Beacon\'s whole header like every other app (it hid only the logo and name and left a 48 px white band)', /var embedStyle = common \+ 'header:not\(\[class\]\)\{display:none!important;\}';/.test(src) && !/id === 'beacon'\s*\?\s*common/.test(src), '');
 });
 
 await browser.close(); server.close();
