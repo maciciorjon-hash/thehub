@@ -16302,7 +16302,7 @@ function wkPrev(){ WK_ANCHOR=addDays(wkMonday(WK_ANCHOR||todayStr()),-7); render
 function wkNext(){ WK_ANCHOR=addDays(wkMonday(WK_ANCHOR||todayStr()),7); renderEditor(); }
 function wkToday(){ WK_ANCHOR=null; renderEditor(); }
 function addPlannerTask(D,text){ text=(text||'').trim(); if(!text) return; var id=uid(); plannerTasks()[id]={id:id,date:D,text:text,done:false,expId:null,blockId:null,created:Date.now(),updated:Date.now()}; save(); renderEditor(); }
-function togglePlannerTask(id){ var t=plannerTasks()[id]; if(!t) return; t.done=!t.done; if(t.done) t.doneAt=Date.now(); else delete t.doneAt; t.updated=Date.now();
+function togglePlannerTask(id){ var t=plannerTasks()[id]; if(!t) return; t.done=!t.done; if(t.done) t.doneAt=Date.now(); else{ delete t.doneAt; t.reopened=Date.now(); } t.updated=Date.now();   // reopened: Incubator's log from before it cannot tick the task again
   if(t.done) try{ cellApplyTask(t); }catch(e){}
   save(); renderEditor(); }
 // A ticked cell task is the thing it says, so Incubator is told: a split gives the culture its next
@@ -16768,7 +16768,9 @@ function ccResolve(cid){
   H.JournalStore.updateCell(cid,{issue:null,history:hist}); toast('Issue cleared on '+(c.line||'the culture')+'.');
 }
 // The task is done when the split is: Incubator's "Log split" moves `seeded`, and a split
-// logged on or after the day the task was set for is that split. Runs on every store change.
+// logged after the task existed (and after the day it was set for) is that split. A log from before
+// the task was made, or before you un-ticked it, is not: it ticked tasks nobody had done and put
+// back the tick you had just taken off. Runs on every store change.
 function cellSyncTasks(){
   var list=lbCultures(); if(!list) return false;
   var T=plannerTasks(), ch=false, by={}; list.forEach(function(x){ by[x.id]=x; });
@@ -16776,7 +16778,7 @@ function cellSyncTasks(){
     var x=by[t.cellId], k=t.cellKind||'split', at=0; if(!x||k==='seed') return;   // a seed that leaves the flask alone has nothing to wait for in Incubator
     at=k==='media'?(x.c.mediaLast||0):(x.c.seeded||0);   // a split gives fresh medium, so it also does the media task
     if(k==='media'&&x.c.seeded>at) at=x.c.seeded;
-    if(at&&at>=_dayStartMs(t.date)){ t.done=true; t.doneAt=at; t.applied=at; t.updated=Date.now(); ch=true; } });
+    if(at&&at>=Math.max(_dayStartMs(t.date),t.created||0,t.reopened||0)){ t.done=true; t.doneAt=at; t.applied=at; t.updated=Date.now(); ch=true; } });
   if(ch) save(); return ch;
 }
 // What the row says next to the answer: the line for an issue, the assay for a seed.

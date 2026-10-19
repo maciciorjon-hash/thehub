@@ -26,6 +26,7 @@
 //   C13 healthy       a culture that was split on time and has no myco test logged is Healthy, not Needs attention
 //   C14 one logic     the shell's alerts and actions and the copy Incubator carries for standalone use agree on a battery of
 //                     cultures and on every action (node-side, no browser)
+//   C15 sync          the tick that Incubator's log gives a task needs a log made after the task existed, and never undoes an un-tick
 //   C7  stable        the rows keep their order while they are answered; no console errors
 //
 //   node tools/cellcheck_invariants.mjs [--base=http://127.0.0.1:PORT]      exit 1 on any finding
@@ -252,6 +253,19 @@ try {
     eq('C12', W + 'the history says so', await p.evaluate(() => JournalStore.get().incubator.c3.history.slice(-1)[0].action), 'split postponed');
     eq('C12', W + 'a postponed split is not due on the day it was due', await p.evaluate(() => computeCellAlerts({ seeded: Date.now() - 3.2 * 86400000, intervalDays: 3, postponedUntil: Date.now() + 86400000 * 0.8 }).map(a => a.level)), ['soft']);
 
+    // C15 — the sync only ticks a task for a log made after the task existed, and never puts back a tick you took off
+    await fresh('a1'); await p.evaluate(() => JournalStore.updateCell('a1', { seeded: Date.now() - 3600000, mediaLast: Date.now() - 3600000, passage: 12, needsSplit: null, needsMedia: null }));
+    await f.evaluate(() => setCellCheck('a1', 'media')); await p.waitForTimeout(250);
+    await p.evaluate(() => JournalStore.updateCell('a1', { note: 'any change' })); await p.waitForTimeout(300);
+    eq('C15', W + 'a media task made after a split logged earlier today stays open', await f.evaluate(() => Object.values(LB.data.planner.tasks).filter(t => t.cellId === 'a1').map(t => !!t.done)), [false]);
+    const rid = await f.evaluate(() => Object.values(LB.data.planner.tasks).filter(t => t.cellId === 'a1')[0].id);
+    await f.evaluate(i => togglePlannerTask(i), rid); await p.waitForTimeout(300);
+    eq('C15', W + 'ticking it logs the media change', await f.evaluate(i => !!LB.data.planner.tasks[i].done, rid), true);
+    await f.evaluate(i => togglePlannerTask(i), rid); await p.waitForTimeout(300);
+    await p.evaluate(() => JournalStore.updateCell('a1', { note: 'another change' })); await p.waitForTimeout(300);
+    eq('C15', W + 'un-ticking it stays un-ticked when the store changes', await f.evaluate(i => !!LB.data.planner.tasks[i].done, rid), false);
+    await p.evaluate(() => JournalStore.updateCell('a1', { mediaLast: Date.now() })); await p.waitForTimeout(300);
+    eq('C15', W + 'a media change logged after un-ticking ticks it again', await f.evaluate(i => !!LB.data.planner.tasks[i].done, rid), true);
 
     eq('C7', W + 'no console errors', errs, []);
     await ctx.close();
