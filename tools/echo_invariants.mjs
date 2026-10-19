@@ -158,6 +158,12 @@
 //                             has a visible caption, the boxes and numbers of a card line up on one column, and a Review "Fix" button lands on the
 //                             step that holds the setting.
 //
+//   E62 one run, one answer   Run Analysis pressed twice in one tick (or while a run is fitting) runs ONCE: every output file and every normalisation audit
+//                             once, not twice. Two Echo files whose columns differ stop the run on screen — "The analysis stopped" with the reason — instead of
+//                             closing Setup and rejecting in silence.
+//   E63 the budget is exact   The Gradient Planner's max transfer is vol × DMSO %, free of floating-point dust: 7.5 µL at 4.1 % is 307.5 nL (123 drops), not
+//                             307.49999999999994 (122), for every volume and DMSO % that makes a whole number of drops; a point that needs the last drop gets it.
+//
 // Usage (repo root):  node tools/echo_invariants.mjs [--only=E1,E7] [--file=path/to/echo.html] [--verbose]
 import { chromium } from 'playwright';
 import path from 'node:path';
@@ -2397,6 +2403,47 @@ if (run('E61')) await guard('E61', async () => {
     check('E61', tag + 'a Fix button goes to the step that has the control', fix[0] === 'analysis' && fix[1] === 'assay', fix);
     await c.close();
   }
+});
+
+if (run('E62')) await guard('E62', async () => {
+  const c = await browser.newContext({ viewport: { width: 1440, height: 900 } }); const q = await c.newPage();
+  await q.goto('file://' + FILE); await q.waitForTimeout(1200);
+  await q.evaluate(() => { loadTestData(); }); await q.waitForTimeout(900);
+  const r = await q.evaluate(async () => { const a = runPipeline(), b = runPipeline(); await Promise.all([a, b]); await new Promise(r => setTimeout(r, 600));
+    const names = downloadBlobs.map(x => x.name); return { names, dup: names.length - new Set(names).size, audits: (window._normAudits || []).length, n: _lastResultsData.length }; });
+  check('E62', 'Run pressed twice runs once: no output file twice', r.dup === 0 && r.n > 0, r);
+  check('E62', 'Run pressed twice runs once: one normalisation audit', r.audits === 1, r);
+  const again = await q.evaluate(async () => { await runPipeline(); return (window._normAudits || []).length; });
+  check('E62', 'a run after a finished run is not blocked', again === 1, again);
+  // two transfer files with different columns
+  await q.evaluate(async () => { const t = await echoFiles[0].text(); const L = t.split(/\r?\n/); const i = L.findIndex(l => /^Source Plate Name/.test(l)); const cols = L[i].split(','); [cols[3], cols[4]] = [cols[4], cols[3]]; L[i] = cols.join(','); echoFiles = [echoFiles[0], new File([L.join('\n')], 'second.csv')]; });
+  const m = await q.evaluate(async () => { let rej = false; try { await runPipeline(); } catch (e) { rej = true; } return { rej, panel: document.getElementById('results-panel').innerText }; });
+  check('E62', 'different columns: the run stops on screen with the reason', !m.rej && /analysis stopped/i.test(m.panel) && /different columns/.test(m.panel), m);
+  await c.close();
+});
+
+if (run('E63')) await guard('E63', async () => {
+  const c = await browser.newContext({ viewport: { width: 1440, height: 900 } }); const q = await c.newPage();
+  await q.goto('file://' + FILE); await q.waitForTimeout(1200);
+  await q.evaluate(() => { [...document.querySelectorAll('.outer-tab')].find(b => /Gradient/.test(b.textContent)).click(); }); await q.waitForTimeout(400);
+  const r = await q.evaluate(async () => {
+    const set = (id, v) => { const e = document.getElementById(id); e.value = v; e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); };
+    const wait = ms => new Promise(r => setTimeout(r, ms)); const bad = []; let n = 0;
+    // every (volume, DMSO %) whose budget is a whole number of drops: the help line must count exactly that many
+    for (const [vol, dmso] of [[7.5, 4.1], [12.5, 2.3], [7.5, 4.1], [20, 0.25], [25, 0.3], [12.5, 4.1], [37.5, 3.3]]) {
+      set('eg-vol', vol); set('eg-dmso', dmso); await wait(300);
+      const exact = Math.round(vol * 1000 * dmso) / 100 / 2.5; if (Math.abs(exact - Math.round(exact)) > 1e-9) continue;
+      n++;
+      const t = document.getElementById('eg-h-assay').innerText; const m = /\((\d+) drops?\)/.exec(t);
+      // the top point asks for the whole budget: it must be dispensed, as the whole budget
+      set('eg-top-unit', '1e-6'); set('eg-top-val', (vol * 1000 * dmso / 100) * 10 / vol); await wait(500);
+      const row = document.querySelector('#eg-tbody tr'); const tin = row && row.querySelector('.eg-tin');
+      if (!m || +m[1] !== Math.round(exact) || !tin || Math.abs(+tin.value - vol * 1000 * dmso / 100) > 1e-6) bad.push({ vol, dmso, drops: m && m[1], want: Math.round(exact), top: tin && tin.value });
+    }
+    return { bad, n };
+  });
+  check('E63', 'a budget of a whole number of drops is all usable', r.n >= 4 && r.bad.length === 0, r);
+  await c.close();
 });
 
 await browser.close();
