@@ -798,6 +798,8 @@ function tpRole(w) {
   if (w.role) return w.role;
   return (w.conc === 0 || (w.conc == null && !w.compound)) ? 'veh' : 'dose';
 }
+// A time axis must increase strictly, whatever file it came from: a ProNect export is not exempt (a re-sorted or shuffled axis fits garbage silently).
+function tpTimeProblem(ts) { for (var q = 1; q < ts.length; q++) if (!(ts[q] > ts[q - 1])) return 'The time axis does not increase strictly (read ' + (q + 1) + ' is not later than read ' + q + ').'; return null; }
 function tpNewPlate(name, source) { return { schema: TP_SCHEMA, id: 'p' + Math.random().toString(36).slice(2, 8), name: name || 'Plate', source: source || '', fmt: { rows: 8, cols: 12, n: 96 }, times: [], tZero: 0, preNorm: false, wells: {}, notes: [] }; }
 function tpCleanName(s) { return String(s == null ? '' : s).replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 80); }
 
@@ -807,6 +809,7 @@ function tpParseProNectJSON(obj) {
   var p = tpNewPlate(tpCleanName(obj.Name) || 'ProNect run', 'ProNect JSON');
   p.times = obj.TimeValues.map(tpNum);
   if (!p.times.length || p.times.some(function (t) { return t == null; })) return null;
+  var tpr = tpTimeProblem(p.times); if (tpr) return { error: tpr };
   p.tZero = p.times[0]; p.meta = { protocol: obj.Protocol || null, analysis: obj.AnalysisType || null, proNectId: obj.id || null, created: obj.CreationDateTime || null };
   var nMiss = 0, nBad = 0;
   obj.Wells.forEach(function (w) {
@@ -850,7 +853,7 @@ function tpParseProNectCSV(rows, name) {
   for (var k = iT + 1; k < rows.length; k++) { var t = tpNum(rows[k][0]); if (t == null || String(rows[k][0]).trim() === '') break; data.push(rows[k]); }
   if (data.length < 3) return null;
   var p = tpNewPlate(tpCleanName(name) || 'ProNect run', normFile ? 'ProNect norm_kinetic.csv' : 'ProNect raw_kinetic.csv');
-  p.times = data.map(function (r) { return tpNum(r[0]); }); p.tZero = p.times[0]; p.preNorm = normFile;
+  p.times = data.map(function (r) { return tpNum(r[0]); }); var tpr2 = tpTimeProblem(p.times); if (tpr2) return { error: tpr2 }; p.tZero = p.times[0]; p.preNorm = normFile;
   var nMiss = 0;
   cols.forEach(function (o) {
     var tgt = tpCleanName(meta.target[o.c]), cpd = tpCleanName(meta.compound[o.c]);
@@ -951,6 +954,7 @@ function tpReadTables(tables) {
   (tables || []).forEach(function (t) {
     var pn = null;
     try { pn = tpParseProNectCSV(t.rows, t.name); } catch (e) { pn = null; }
+    if (pn && pn.error) { out.notes.push(t.name + ': ' + pn.error); return; }
     if (pn) { out.plates.push(pn); out.how.push(pn.source); return; }
     var g = tpParseGrid(t.rows, t.name);
     if (g && g.plate) { out.plates.push(g.plate); out.how.push(g.plate.source); g.plate.notes.forEach(function (n) { out.notes.push(n); }); }
@@ -1666,6 +1670,7 @@ async function tpAddFiles(files, opt) {
       if (r.json) {
         if (r.json.schema === 'tempo/project/1') { await tpLoadProject(r.json); opened = true; msgs.push(f.name + ': project opened'); continue; }
         const p = tpParseProNectJSON(r.json);
+        if (p && p.error) { msgs.push(f.name + ': ' + p.error); continue; }
         if (p) { p.name = tpUniqueName(p.name || r.name); TP.plates.push(p); added++; msgs.push(f.name + ': ' + Object.keys(p.wells).length + ' wells, ' + p.times.length + ' reads'); if (p.notes.length) p.notes.forEach(n => msgs.push(n)); continue; }
         msgs.push(f.name + ': this JSON is not a ProNect kinetic export (no Wells and TimeValues)'); continue;
       }

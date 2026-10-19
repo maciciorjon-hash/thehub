@@ -97,6 +97,18 @@ try {
   check('K2 a time axis that does not increase is refused, not re-sorted', typeof K1.nonMono === 'string' && /strictly/.test(K1.nonMono), String(K1.nonMono));
   check('K2 the unit of time comes from the header; a bare column is read from its spacing', K1.uSec === '0,5,10,15,20,25' && K1.uHr === '0,30,60,90,120,150' && K1.uMin === '0,5,10,15,20,25' && K1.uNone === '0,5,10,15,20,25', JSON.stringify([K1.uSec, K1.uHr, K1.uMin, K1.uNone]));
 
+  // ProNect's own files are not exempt from a strictly increasing time axis (a shuffled axis fitted garbage without a word)
+  const K2b = await ev(() => {
+    const times = [0, 10, 5, 20, 30, 40, 50, 60, 70, 80], w = (c, type, cmp, conc) => ({ Position: { Row: 'A', Column: c }, Type: type, Compound: cmp, Target: 'T', Concentration: conc, Unit: 'nM', RawKinetic: times.map((t, i) => 1000 - i) });
+    const j = tpParseProNectJSON({ Name: 'x', TimeValues: times, Wells: [w(12, 'BKGRND', '', null), w(1, 'SAMPLE', 'X', 1)] });
+    const rows = [['Wells', 'A12', 'A1'], ['Cell Type', '', ''], ['Target', 'Background', 'T'], ['Compound', '', 'X'], ['Concentration', '', '1'], ['Unit', '', 'nM'], ['Time (min)', '', '']];
+    times.forEach((t, i) => rows.push([String(t), '10', String(1000 - i)]));
+    const c = tpReadTables([{ name: 'c', rows }]);
+    const ok = tpParseProNectJSON({ Name: 'x', TimeValues: times.slice().sort((a, b) => a - b), Wells: [w(12, 'BKGRND', '', null), w(1, 'SAMPLE', 'X', 1)] });
+    return { json: j && j.error, csvPlates: c.plates.length, csvNote: c.notes.join(' '), okPlate: !!(ok && ok.wells) };
+  });
+  check('K2 a ProNect JSON or CSV whose time axis does not increase is refused too', /strictly/.test(K2b.json || '') && K2b.csvPlates === 0 && /strictly/.test(K2b.csvNote) && K2b.okPlate, JSON.stringify(K2b));
+
   /* ───── K3 normalisation against an independent calculation ───── */
   const K3 = await ev(() => {
     const plate = tpSynthPlate({ seed: 5, compounds: tpSynthDemoSpecs().slice(0, 3), reads: 100 }), nm = tpNormalise(plate, {}, {}), ids = Object.keys(plate.wells), N = plate.times.length, o = {};
