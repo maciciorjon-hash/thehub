@@ -8519,7 +8519,10 @@ function _plNamesHtml(p){ var list=_plCpdList(p); if(!list.length) return '';
 function _cpdSetupField(e){ return !!e&&expSetupFields(e).some(function(f){ return f.f==='compounds'; }); }
 function expCpdText(e){ if(!e) return ''; return _cpdSetupField(e)?String((e.setup||{}).compounds||''):String(e.cpdList||''); }
 function _expCpdWrite(e,text){ if(_cpdSetupField(e)){ e.setup=e.setup||{}; e.setup.compounds=text; } else if(text) e.cpdList=text; else delete e.cpdList; }
-function _cpdNames(text){ return PlateEngine.pasteList(text).filter(Boolean); }
+// One name per line, or several on a line separated by commas or semicolons ("A, B, C" from an email or a paper); a comma
+// inside a name ("1,2-propanediol") has no space after it and stays.
+function _cpdNames(text){ var out=[]; PlateEngine.pasteList(text).forEach(function(l){ String(l).split(/\s*;\s*|,\s+/).forEach(function(n){ n=n.trim(); if(n) out.push(n); }); }); return out; }
+function _cpdTidy(text,names){ return PlateEngine.pasteList(text).filter(Boolean).length!==names.length?names.join('\n'):text; }
 // The compounds one plate holds, in reading order: its compound blocks, or — on a layout that carries the compound on the
 // wells and has no blocks — the distinct compounds. A name still "Compound n" is not a name.
 function _plSlots(p){ var L=_plCpdList(p);
@@ -8562,6 +8565,7 @@ function _plCpdAddPlates(e,n){ var ref=null; expPlateList(e).forEach(function(x)
 function plCpdList(ta,commit){
   var o=_plateOwner(PL.key); if(!o||o.ds||!o.exp) return; var e=o.exp, text=ta.value;
   var names=_cpdNames(text), setupBacked=_cpdSetupField(e), refocus=commit&&document.activeElement===ta;
+  if(commit){ var tidy=_cpdTidy(text,names); if(tidy!==text){ text=tidy; ta.value=tidy; } }
   if(commit&&setupBacked&&text!==String((e.setup||{}).compounds||'')) _plSetupPatch(e,{compounds:text},'Compound list');
   else plMark('Compound list',true);
   var R=_plCpdPlanAll(e,names), added=0;
@@ -8623,7 +8627,7 @@ function _plCpdListHtml(p){ var o=_plateOwner(PL.key), parts=String(PL.key||'').
   if(!o||o.ds||parts[0]!=='exp'||!o.exp) return '';
   var e=o.exp, text=_plCpdText(e), many=expPlateList(e).length>1, same=e.cpdMode==='same';
   var rows=Math.max(4,Math.min(10,_cpdNames(text).length+1));
-  return '<div class="pl-sec pl-sec-names pl-sec-list"><div class="pl-sec-t">Compounds to test <span class="pl-sec-sub">one per line &mdash; paste a column from Excel; they fill the plates in order</span></div>'
+  return '<div class="pl-sec pl-sec-names pl-sec-list"><div class="pl-sec-t">Compounds to test <span class="pl-sec-sub">one per line (or separated by commas) &mdash; paste a column from Excel; they fill the plates in order</span></div>'
     +(many?('<div class="pl-dirs pl-cpd-seg"><button class="pl-btn'+(same?'':' on')+'" onclick="plCpdMode(\'order\')" title="The first plate takes as many compounds as its layout holds, the next plate the rest">Different on each plate</button>'
       +'<button class="pl-btn'+(same?' on':'')+'" onclick="plCpdMode(\'same\')" title="Replicate plates: every plate gets the same compounds">The same on every plate</button></div>'):'')
     +'<textarea id="pl-cpd-ta" class="pl-cpd-ta" rows="'+rows+'" spellcheck="false" aria-label="Compounds to test, one per line" placeholder="Compound A&#10;Compound B&#10;&hellip;"'
@@ -8836,7 +8840,7 @@ function _plNavHtml(steps,tab){ var i=0; steps.forEach(function(m,k){ if(m[0]===
     +(prev?('<button class="pl-btn" onclick="plStep(-1)" title="Back to '+esc(prev[1])+'">&larr; '+esc(prev[1])+'</button>'):'<span></span>')
     +'<span class="pl-nav-n">Step '+(i+1)+' of '+steps.length+'</span>'
     +(next?('<button class="pl-btn primary" onclick="plStep(1)" title="On to '+esc(next[1])+'">'+esc(next[1])+' &rarr;</button>')
-          :'<button class="pl-btn primary" onclick="closePlateEditor()">Done</button>')+'</div>'; }
+          :'<span></span>')+'</div>'; }
 // The first step: what the plate is (format, title, where it started), and — with more than one
 // plate in the experiment — which of them this is.
 function _plPlateTab(p,dosing){

@@ -2698,6 +2698,15 @@ async function suite(opts) {
       if (names(e.morePlates[0]).join() !== names(e.plate).join()) bad('B52', 'same', '"the same on every plate" left plate 2 with other compounds');
       plCpdMode('order'); await sleep(40);
       if (names(e.morePlates[0]).join() !== list.slice(cap, cap * 2).join()) bad('B52', 'order again', 'going back to a different slice per plate did not refill plate 2');
+      // several names on a line (commas, semicolons) are several compounds, and the box is tidied to a line each; 1,2-x stays whole
+      await type('Cmp1, Cmp2; Cmp3,  Cmp4\n1,2-propanediol', true);
+      if (_cpdNames(expCpdText(e)).join('|') !== 'Cmp1|Cmp2|Cmp3|Cmp4|1,2-propanediol') bad('B52', 'commas', 'a line of comma-separated names was not read as separate compounds: ' + _cpdNames(expCpdText(e)).join('|'));
+      if (document.getElementById('pl-cpd-ta').value !== 'Cmp1\nCmp2\nCmp3\nCmp4\n1,2-propanediol') bad('B52', 'tidy', 'the box was not tidied to one compound per line: ' + JSON.stringify(document.getElementById('pl-cpd-ta').value));
+      if (!/5 compounds/.test(document.getElementById('pl-cpd-plan').textContent)) bad('B52', 'count', 'the plan does not count 5 compounds: ' + document.getElementById('pl-cpd-plan').textContent.slice(0, 80));
+      // one Done: the last step has no second one beside the dialog's own
+      const dones = Array.from(document.querySelectorAll('#plate-modal button')).filter(b => b.textContent.trim() === 'Done' && b.offsetParent);
+      if (dones.length !== 1) bad('B52', 'done', 'the plate window shows ' + dones.length + ' Done buttons, expected 1');
+      await type(list.join('\n'), true);
       // undo takes the added plates away again
       lbUndo(); await sleep(60);
       closePlateEditor();
