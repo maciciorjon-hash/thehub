@@ -228,10 +228,21 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
 #tp-drawer.open{transform:none;visibility:visible;transition:transform var(--dur-3) var(--ease-out),visibility 0s;}
 .dr-hd{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--border);}
 .dr-hd h3{margin:0;font-size:var(--fs-6);font-weight:600;letter-spacing:-.2px;flex:1;min-width:0;}
-.dr-bd{flex:1;overflow:auto;padding:14px 16px 24px;}
-.dr-sec{margin-top:18px;} .dr-sec:first-child{margin-top:0;}
-.dr-sec h4{margin:0 0 10px;font-size:var(--fs-3);font-weight:700;color:var(--text2);}
-.dr-grid{display:grid;grid-template-columns:1fr;gap:12px;}
+.dr-tabs{display:flex;gap:2px;padding:0 10px;border-bottom:1px solid var(--border);}
+.dr-tab{height:38px;padding:0 12px;border:0;border-bottom:2px solid transparent;background:none;color:var(--text2);font:inherit;font-size:var(--fs-3);font-weight:600;cursor:pointer;white-space:nowrap;margin-bottom:-1px;}
+.dr-tab:hover{color:var(--text);} .dr-tab[aria-selected="true"]{color:var(--accent);border-bottom-color:var(--accent);}
+.dr-bd{flex:1;overflow:auto;padding:14px 16px 18px;background:var(--bg);}
+.dr-pane{display:flex;flex-direction:column;gap:12px;}
+.dr-sec{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-3);padding:12px 14px 4px;}
+.dr-sec h4{margin:0 0 4px;font-size:var(--fs-3);font-weight:700;color:var(--text);} .dr-sec h4 .muted{font-weight:400;}
+.dr-note{margin:0 0 4px;}
+.dr-row{display:grid;grid-template-columns:minmax(0,1fr) 170px;gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--border);}
+.dr-sec h4 + .dr-row,.dr-sec .dr-note + .dr-row{border-top:0;}
+.dr-row > .inp{width:100%;}
+.dr-l{display:flex;flex-direction:column;gap:2px;font-size:var(--fs-3);font-weight:600;color:var(--text);min-width:0;}
+.dr-l .hint{font-weight:400;color:var(--text2);font-size:var(--fs-2);}
+.dr-row-wide{grid-template-columns:minmax(0,1fr) auto;}
+.dr-ft{display:flex;flex-wrap:wrap;gap:8px;padding:10px 16px;border-top:1px solid var(--border);background:var(--surface);}
 .dlg-back{position:fixed;inset:0;z-index:250;background:rgba(10,12,18,.42);display:flex;align-items:center;justify-content:center;padding:16px;opacity:0;pointer-events:none;transition:opacity var(--dur-2) var(--ease);}
 .dlg-back.open{opacity:1;pointer-events:auto;}
 .dlg{background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-4);box-shadow:var(--shadow-lg);width:min(560px,100%);max-height:calc(100dvh - 32px);display:flex;flex-direction:column;overflow:hidden;transform:translateY(8px);transition:transform var(--dur-2) var(--ease-out);}
@@ -264,7 +275,8 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
   .res-card .tbl td{border:0;padding:3px 0;display:flex;justify-content:space-between;gap:12px;text-align:right;}
   .res-card .tbl td::before{content:attr(data-h);color:var(--text2);font-size:var(--fs-2);font-weight:600;text-align:left;flex:1 1 0;min-width:0;overflow-wrap:anywhere;}
 }
-@media (max-width:640px){ .dr-grid{grid-template-columns:1fr;} .pgrid{--wpx:24px;} .pgrid.p384{--wpx:12px;} .pgrid .w .t{display:none;} }
+@media (max-width:640px){ .dr-row{grid-template-columns:minmax(0,1fr) 140px;} .pgrid{--wpx:24px;} .pgrid.p384{--wpx:12px;} .pgrid .w .t{display:none;} }
+@media (max-width:380px){ .dr-row{grid-template-columns:minmax(0,1fr);gap:6px;} }
 /* a 384-well plate cannot be drawn honestly in portrait on a phone: say so, never show a plate nobody can use */
 @media (max-width:640px) and (orientation:portrait){ body.tp-384 .pgrid.p384{display:none;} body.tp-384 .rotate-note.for-plate{display:block;} }
 
@@ -2485,37 +2497,56 @@ function tpOpenProjectDlg() { $('#tp-proj').click(); }
 /* ───── analysis settings ───── */
 function tpOpenSettings() { const d = $('#tp-drawer'); if (d.classList.contains('open')) { tpCloseSettings(); return; } d.innerHTML = tpSettingsHTML(); d.classList.add('open'); d.setAttribute('aria-hidden', 'false'); }
 function tpCloseSettings() { const d = $('#tp-drawer'); d.classList.remove('open'); d.setAttribute('aria-hidden', 'true'); }
+/* The drawer is four tabs of aligned rows (caption and hint left, control right) with Apply always in view; every control keeps its st-* id, and the panes
+   stay in the DOM when hidden, so tpApplySettings reads all of them whichever tab is open. */
+const TP_SET_TABS = [['norm', 'Normalise'], ['fit', 'Fit'], ['models', 'Models'], ['report', 'Report']];
+function tpSetTab(name) {
+  if (!TP_SET_TABS.some(t => t[0] === name)) name = 'norm'; TP.ui.setTab = name;
+  document.querySelectorAll('#tp-drawer .dr-tab').forEach(b => { const on = b.dataset.tab === name; b.setAttribute('aria-selected', on); b.tabIndex = on ? 0 : -1; });
+  document.querySelectorAll('#tp-drawer .dr-pane').forEach(p => { p.hidden = p.dataset.pane !== name; });
+  const bd = document.querySelector('#tp-drawer .dr-bd'); if (bd) bd.scrollTop = 0;
+}
 function tpSettingsHTML() {
   const S = TP.S, N = S.norm, F = S.fit, D = S.dr, M = S.mm, sel = (id, cur, opts) => '<select class="inp" id="' + id + '">' + opts.map(o => '<option value="' + o[0] + '"' + (String(o[0]) === String(cur) ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select>';
   const num = (id, v, st) => '<input class="inp mono" id="' + id + '" type="number" step="' + (st || 'any') + '" value="' + v + '">';
-  const fld = (l, c, hint) => '<label class="fld">' + l + c + (hint ? '<span class="hint" style="font-weight:400">' + hint + '</span>' : '') + '</label>';
+  const row = (id, l, c, hint) => '<div class="dr-row"><label class="dr-l" for="' + id + '">' + l + (hint ? '<span class="hint">' + hint + '</span>' : '') + '</label>' + c + '</div>';
+  const sec = (h, rows, note) => '<section class="dr-sec"><h4>' + h + '</h4>' + (note ? '<p class="hint dr-note">' + note + '</p>' : '') + rows + '</section>';
   const ex = tpEx(); const masks = ex && ex.masks.length ? ex.masks.map(m => tpF(m[0], 3) + '–' + tpF(m[1], 3) + ' h').join(', ') : '';
-  return '<div class="dr-hd"><h3>Analysis settings</h3><button class="ico-btn" onclick="tpCloseSettings()" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div><div class="dr-bd">' +
-    '<div class="dr-sec"><h4>Normalisation <span class="muted" style="font-weight:400">· ' + esc(tpNormName()) + '</span></h4><div class="dr-grid">' +
-    fld('Vehicle reference', sel('st-veh', N.veh, [['ratioOfMeans', 'Ratio of means'], ['meanOfRatios', 'Mean of ratios'], ['perTime', 'Vehicle at each time']]), 'Ratio of means is what ProNect does; “vehicle at each time” is the Promega AN331 recipe.') +
-    fld('Smooth the reference', sel('st-sm', N.smooth, [['none', 'No'], ['med3', 'Running median of 3']]), 'Helps when only a few vehicle wells carry the noise.') +
-    fld('Subtract background', sel('st-bk', N.bkg ? '1' : '0', [['1', 'Yes'], ['0', 'No']]), 'The mean of the background wells at every read.') +
-    fld('Leave out discordant vehicle wells', sel('st-vo', N.vehOutlier ? '1' : '0', [['0', 'No'], ['1', 'Yes']]), 'ProNect keeps them; “Yes” drops a vehicle well whose trace sits far from the rest.') + '</div></div>' +
-    '<div class="dr-sec"><h4>One-phase decay, per concentration</h4><div class="dr-grid">' +
-    fld('Skip the first reads', sel('st-skip', F.skip, [['auto', 'Auto'], ['0', '0'], ['1', '1'], ['2', '2'], ['3', '3'], ['4', '4'], ['5', '5'], ['8', '8'], ['10', '10']]), 'Auto skips an early dip that comes back up; Promega recommends skipping such reads.') +
-    fld('Starting level y0', sel('st-y0', F.y0, [['fixed', 'Fixed at 1'], ['free', 'Free']]), 'Fixed at 1 because every curve is normalised to its own T0.' + ('')) +
-    fld('Plateau not reached', sel('st-pl', F.plateau, [['auto', 'Fix to the last reads'], ['free', 'Leave free']]), 'Your rule: a curve that has not flattened gets the mean of its last reads as its plateau.') +
-    fld('… last N reads', num('st-ln', F.lastN, '1'), 'Default 25.') +
-    fld('Smallest degradation counted (fraction)', num('st-me', F.minEffect, '0.01'), 'A curve that moves less than this is “no degradation”.') +
-    fld('Allow a delay before the decline', sel('st-lag', F.lag ? '1' : '0', [['1', 'Yes'], ['0', 'No']])) + '</div></div>' +
-    '<div class="dr-sec"><h4>Michaelis–Menten on K</h4><div class="dr-grid">' +
-    fld('Flat curve: plateau at or above', num('st-fp', M.flatP, '0.01'), 'Default 0.85 (under 15 % degradation).') +
-    fld('Hook: K falls by more than', num('st-hk', M.hookK, '0.05'), 'Fraction of the peak K.') +
-    fld('Hooked concentrations', sel('st-hm', M.hookMode, [['exclude', 'Leave them out'], ['si', 'Substrate inhibition']])) +
-    fld('K must be well determined', sel('st-ci', M.ciRule ? '1' : '0', [['1', 'Yes'], ['0', 'No']]), 'The 95 % interval of K must exclude 0 and be no wider than 10 × K.' + ('')) +
-    fld('K with a fixed plateau', sel('st-fx', M.fixedPlateau, [['include', 'Use it'], ['exclude', 'Leave it out']]), 'A fixed plateau biases K upward; excluding is stricter.') + '</div></div>' +
-    '<div class="dr-sec"><h4>Dmax and DC50 (Promega)</h4><div class="dr-grid">' +
-    fld('Hook rule: points above', num('st-dh', D.hookThr, '1'), 'Echo’s rule, default 15.') + fld('Look for a hook', sel('st-do', D.hookOn ? '1' : '0', [['1', 'Yes'], ['0', 'No']])) +
-    fld('“No effect” below a span of (%)', num('st-ns', D.noEffectSpan, '1')) + fld('Top of the curve', sel('st-tf', D.topFree ? '1' : '0', [['0', 'Fixed at 100 %'], ['1', 'Free']])) + '</div></div>' +
-    '<div class="dr-sec"><h4>Reporting times &amp; units</h4><div class="dr-grid">' + fld('DC50 over time at (h)', '<input class="inp mono" id="st-rt" value="' + esc((S.report.times || []).join(', ')) + '">', 'Comma separated.') +
-    fld('Time shown in', sel('st-tu', TP.ui.units.time, [['h', 'Hours'], ['min', 'Minutes']])) + fld('Concentration shown in', sel('st-cu', TP.ui.units.conc, [['auto', 'Whichever fits'], ['nM', 'Always nM']]), 'pM, nM or µM.') + '</div></div>' +
-    (masks ? '<div class="dr-sec"><h4>Time ranges left out</h4><p class="hint" style="margin:0 0 8px">' + esc(masks) + '</p><button class="btn sm" onclick="tpClearMasks()">Put them all back</button></div>' : '') +
-    '<div class="dr-sec" style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" onclick="tpApplySettings()">Apply and refit</button><button class="btn" onclick="tpResetSettings()">Back to the lab defaults</button></div></div>';
+  const panes = {
+    norm: sec('Normalisation <span class="muted">· ' + esc(tpNormName()) + '</span>',
+      row('st-veh', 'Vehicle reference', sel('st-veh', N.veh, [['ratioOfMeans', 'Ratio of means'], ['meanOfRatios', 'Mean of ratios'], ['perTime', 'Vehicle at each time']]), 'Ratio of means is what ProNect does; “vehicle at each time” is the Promega AN331 recipe.') +
+      row('st-sm', 'Smooth the reference', sel('st-sm', N.smooth, [['none', 'No'], ['med3', 'Running median of 3']]), 'Helps when only a few vehicle wells carry the noise.') +
+      row('st-bk', 'Subtract background', sel('st-bk', N.bkg ? '1' : '0', [['1', 'Yes'], ['0', 'No']]), 'The mean of the background wells at every read.') +
+      row('st-vo', 'Leave out discordant vehicle wells', sel('st-vo', N.vehOutlier ? '1' : '0', [['0', 'No'], ['1', 'Yes']]), 'ProNect keeps them; “Yes” drops a vehicle well whose trace sits far from the rest.')),
+    fit: sec('One-phase decay, per concentration',
+      row('st-skip', 'Skip the first reads', sel('st-skip', F.skip, [['auto', 'Auto'], ['0', '0'], ['1', '1'], ['2', '2'], ['3', '3'], ['4', '4'], ['5', '5'], ['8', '8'], ['10', '10']]), 'Auto skips an early dip that comes back up; Promega recommends skipping such reads.') +
+      row('st-y0', 'Starting level y0', sel('st-y0', F.y0, [['fixed', 'Fixed at 1'], ['free', 'Free']]), 'Fixed at 1 because every curve is normalised to its own T0.') +
+      row('st-pl', 'Plateau not reached', sel('st-pl', F.plateau, [['auto', 'Fix to the last reads'], ['free', 'Leave free']]), 'Your rule: a curve that has not flattened gets the mean of its last reads as its plateau.') +
+      row('st-ln', '… last N reads', num('st-ln', F.lastN, '1'), 'Default 25.') +
+      row('st-me', 'Smallest degradation counted (fraction)', num('st-me', F.minEffect, '0.01'), 'A curve that moves less than this is “no degradation”.') +
+      row('st-lag', 'Allow a delay before the decline', sel('st-lag', F.lag ? '1' : '0', [['1', 'Yes'], ['0', 'No']]))),
+    models: sec('Michaelis–Menten on K',
+      row('st-fp', 'Flat curve: plateau at or above', num('st-fp', M.flatP, '0.01'), 'Default 0.85 (under 15 % degradation).') +
+      row('st-hk', 'Hook: K falls by more than', num('st-hk', M.hookK, '0.05'), 'Fraction of the peak K.') +
+      row('st-hm', 'Hooked concentrations', sel('st-hm', M.hookMode, [['exclude', 'Leave them out'], ['si', 'Substrate inhibition']])) +
+      row('st-ci', 'K must be well determined', sel('st-ci', M.ciRule ? '1' : '0', [['1', 'Yes'], ['0', 'No']]), 'The 95 % interval of K must exclude 0 and be no wider than 10 × K.') +
+      row('st-fx', 'K with a fixed plateau', sel('st-fx', M.fixedPlateau, [['include', 'Use it'], ['exclude', 'Leave it out']]), 'A fixed plateau biases K upward; excluding is stricter.')) +
+      sec('Dmax and DC50 (Promega)',
+      row('st-do', 'Look for a hook', sel('st-do', D.hookOn ? '1' : '0', [['1', 'Yes'], ['0', 'No']])) +
+      row('st-dh', 'Hook rule: points above', num('st-dh', D.hookThr, '1'), 'Echo’s rule, default 15.') +
+      row('st-ns', '“No effect” below a span of (%)', num('st-ns', D.noEffectSpan, '1')) +
+      row('st-tf', 'Top of the curve', sel('st-tf', D.topFree ? '1' : '0', [['0', 'Fixed at 100 %'], ['1', 'Free']]))),
+    report: sec('Reporting times &amp; units',
+      row('st-rt', 'DC50 over time at (h)', '<input class="inp mono" id="st-rt" value="' + esc((S.report.times || []).join(', ')) + '">', 'Comma separated.') +
+      row('st-tu', 'Time shown in', sel('st-tu', TP.ui.units.time, [['h', 'Hours'], ['min', 'Minutes']])) +
+      row('st-cu', 'Concentration shown in', sel('st-cu', TP.ui.units.conc, [['auto', 'Whichever fits'], ['nM', 'Always nM']]), 'pM, nM or µM.')) +
+      (masks ? sec('Time ranges left out', '<div class="dr-row dr-row-wide"><span class="hint">' + esc(masks) + '</span><button class="btn sm" onclick="tpClearMasks()">Put them all back</button></div>') : '')
+  };
+  const cur = TP_SET_TABS.some(t => t[0] === TP.ui.setTab) ? TP.ui.setTab : 'norm';
+  return '<div class="dr-hd"><h3>Analysis settings</h3><button class="ico-btn" onclick="tpCloseSettings()" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>' +
+    '<div class="dr-tabs" role="tablist" aria-label="Settings">' + TP_SET_TABS.map(t => '<button class="dr-tab" role="tab" data-tab="' + t[0] + '" aria-selected="' + (t[0] === cur) + '" tabindex="' + (t[0] === cur ? 0 : -1) + '" onclick="tpSetTab(\'' + t[0] + '\')">' + t[1] + '</button>').join('') + '</div>' +
+    '<div class="dr-bd">' + TP_SET_TABS.map(t => '<div class="dr-pane" data-pane="' + t[0] + '" role="tabpanel"' + (t[0] === cur ? '' : ' hidden') + '>' + panes[t[0]] + '</div>').join('') + '</div>' +
+    '<div class="dr-ft"><button class="btn primary" onclick="tpApplySettings()">Apply and refit</button><button class="btn" onclick="tpResetSettings()">Back to the lab defaults</button></div>';
 }
 function tpApplySettings() {
   const v = id => $('#' + id).value, S = TP.S, N = S.norm, F = S.fit, D = S.dr, M = S.mm, n = (id, d, lo, hi) => { const x = tpNum(v(id)); return x == null ? d : Math.max(lo, Math.min(hi, x)); };

@@ -17,6 +17,7 @@
 // K12 hostile input: nothing throws, nothing is rendered as markup, every tab draws
 // K14 everything stays in its box: the empty state and the example plate, every tab, 1440 → 320 px, both themes — no icon or text leaves the box drawn around it,
 //     no two runs of text land on each other, nothing is cut with no way to scroll to it, no dead handler, no misaligned row (the empty-state icon that was 44px inside a button)
+// K15 Analysis settings is four tabs of aligned rows: every control has a caption, sits in one column on its tab, Apply stays in view whichever tab is open, and Apply reads the tabs that are hidden
 import { chromium } from 'playwright';
 import fs from 'fs';
 import path from 'path';
@@ -364,6 +365,47 @@ try {
       await c2.close();
     }
     check('K14 nothing leaves its box, lands on its neighbour, is cut with no scroll, or sits off the line — empty and example, every tab, 1440 to 320 px, both themes', bad.length === 0, bad.slice(0, 6).join(' | ') + (bad.length > 6 ? ' … +' + (bad.length - 6) : ''));
+  }
+
+  /* ───── K15 Analysis settings: tabs, one column, a caption per control, Apply always in view and reading every tab ───── */
+  {
+    const bad = [];
+    for (const [w, theme] of [[1440, 'light'], [1440, 'dark'], [390, 'light'], [320, 'light']]) {
+      const c3 = await browser.newContext({ viewport: { width: w, height: w < 500 ? 844 : 900 }, hasTouch: w < 500, isMobile: w < 500 }), pg = await c3.newPage();
+      await pg.route(/^https?:/, r => r.abort());
+      await pg.addInitScript(t => { try { localStorage.clear(); localStorage.setItem('hub_theme', t); } catch (e) {} }, theme);
+      await pg.goto('file://' + FILE); await pg.waitForFunction(() => typeof tpTab === 'function');
+      await pg.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
+      await pg.evaluate(() => tpLoadExample()); await pg.waitForTimeout(1200);
+      await pg.evaluate(() => tpOpenSettings()); await pg.waitForTimeout(500);
+      const tabs = await pg.evaluate(() => [...document.querySelectorAll('#tp-drawer .dr-tab')].map(b => b.dataset.tab));
+      if (tabs.join() !== 'norm,fit,models,report') bad.push(w + ': tabs are ' + tabs.join());
+      for (const t of tabs) {
+        await pg.evaluate(t => tpSetTab(t), t); await pg.waitForTimeout(120);
+        const r = await pg.evaluate(() => {
+          const dr = document.querySelector('#tp-drawer'), D = dr.getBoundingClientRect(), out = [], pane = [...dr.querySelectorAll('.dr-pane')].find(p => !p.hidden);
+          const shown = [...dr.querySelectorAll('.dr-pane')].filter(p => !p.hidden).length; if (shown !== 1) out.push(shown + ' panes shown');
+          const ctl = [...pane.querySelectorAll('.dr-row > .inp')];
+          if (!ctl.length) out.push('no controls on the tab');
+          const xs = new Set(ctl.map(c => Math.round(c.getBoundingClientRect().left))); if (xs.size > 1) out.push('controls on ' + xs.size + ' columns');
+          const ls = new Set([...pane.querySelectorAll('.dr-row > .dr-l')].map(c => Math.round(c.getBoundingClientRect().left))); if (ls.size > 1) out.push('captions on ' + ls.size + ' columns');
+          ctl.forEach(c => { const b = c.getBoundingClientRect(); if (b.right > D.right + 0.5 || b.left < D.left - 0.5) out.push(c.id + ' leaves the drawer'); const l = dr.querySelector('label[for="' + c.id + '"]'); if (!l || !l.textContent.trim()) out.push(c.id + ' has no caption'); });
+          const ap = [...dr.querySelectorAll('.dr-ft .btn')].map(b => b.getBoundingClientRect()); if (ap.length !== 2 || ap.some(b => b.bottom > innerHeight + 0.5 || b.top < 0 || b.right > D.right + 0.5)) out.push('Apply / Reset are not in view');
+          const bd = dr.querySelector('.dr-bd'); if (bd.scrollHeight > bd.clientHeight + 1 && getComputedStyle(bd).overflowY === 'visible') out.push('the body is cut with no scroll');
+          return out;
+        });
+        r.forEach(x => bad.push(theme + ' ' + w + 'px ' + t + ': ' + x));
+      }
+      if (w === 1440 && theme === 'light') {
+        const n = await pg.evaluate(() => { const all = [...document.querySelectorAll('#tp-drawer [id^="st-"]')]; return { n: all.length, homes: all.map(c => c.closest('.dr-pane') && c.closest('.dr-pane').dataset.pane).filter(Boolean).length, ids: new Set(all.map(c => c.id)).size }; });
+        check('K15 all 22 settings are in a tab, once each', n.n === 22 && n.homes === 22 && n.ids === 22, JSON.stringify(n));
+        // set a value on a tab that is not showing, then Apply from another: the hidden tab is still read
+        const got = await pg.evaluate(async () => { tpSetTab('fit'); document.getElementById('st-ln').value = '40'; tpSetTab('report'); tpApplySettings(); await new Promise(r => setTimeout(r, 400)); return TP.S.fit.lastN; });
+        check('K15 Apply reads the tabs that are hidden', got === 40, String(got));
+      }
+      await c3.close();
+    }
+    check('K15 every tab of Analysis settings: one column, a caption each, inside the drawer, Apply in view — 1440 / 390 / 320, light and dark', bad.length === 0, bad.slice(0, 6).join(' | '));
   }
 
   /* ───── K14 an x tick that sits on the y axis does not land on the lowest y label ───── */
