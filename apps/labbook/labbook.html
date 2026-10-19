@@ -1542,6 +1542,18 @@ details.pl-sec>*:not(summary):last-child{padding-bottom:11px;}
 .pl-nm{flex:1;min-width:0;height:28px;padding:0 8px;border:1px solid var(--border2);border-radius:var(--r-1);background:var(--surface);color:var(--text);font:inherit;font-size:var(--fs-3);}
 .pl-nm:focus{outline:none;border-color:var(--accent);}
 .pl-nwh{flex:none;font-family:var(--mono);font-size:var(--fs-1);color:var(--text3);min-width:56px;text-align:right;}
+.pl-cpd-ta{width:100%;box-sizing:border-box;resize:vertical;min-height:84px;font:var(--fs-2)/1.5 var(--mono);background:var(--surface);color:var(--text);border:1px solid var(--border2);border-radius:var(--r-1);padding:6px 8px;}
+.pl-cpd-ta:focus{outline:none;border-color:var(--accent);}
+.pl-cpd-seg{margin-bottom:8px;}
+.pl-cpd-plan{margin-top:8px;font-size:var(--fs-2);color:var(--text2);line-height:1.45;}
+.pl-cpd-plan b{color:var(--text);}
+.pl-cpd-rows{display:grid;grid-template-columns:auto auto minmax(0,1fr);gap:4px 12px;align-items:baseline;margin-top:6px;}
+.pl-cpd-pl{justify-self:start;max-width:22ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0;border:0;background:none;font:inherit;font-weight:600;color:var(--accent);cursor:pointer;}
+.pl-cpd-pl.on{color:var(--text);}
+.pl-cpd-pl.new{color:var(--text3);cursor:default;}
+.pl-cpd-n{font-family:var(--mono);font-size:var(--fs-1);color:var(--text3);}
+.pl-cpd-v{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.pl-cpd-v em{font-style:normal;color:var(--text3);}
 /* A number has to be legible in a 96-well cell at editing size, which the truncated names never
    were. Bigger than the well's own font size and not clipped by it. */
 .pl-wn{font-family:var(--sans);font-weight:700;font-size:1.55em;font-variant-numeric:tabular-nums;color:#1a1d2e;line-height:1.4;}
@@ -8180,7 +8192,7 @@ function openPlateEditor(key){
   if(/^ds:/.test(String(key||''))&&DS){ DS_PLEXP=null;
     if(!DS.plateMap){ var _dp=dsPlateFor(DS,dsPseudo(DS)); if(_dp) DS.plateMap=JSON.parse(JSON.stringify(_dp)); } }
   var p=plateOf(key); if(!p){ toast('No plate map here yet'); return; }
-  PL.key=key; PL.sel={}; PL.anchor=null; PL.band=null; PL.type=(plateTypes(p)[1]||plateTypes(p)[0]).id;
+  PL.key=key; PL.sel={}; PL.anchor=null; PL.band=null; PL.cpdDraft=null; PL.type=(plateTypes(p)[1]||plateTypes(p)[0]).id;
   // The tabs are the steps, in the order you do them. A map with nothing on it starts at the first
   // (the format and the starting layout are what you want on a blank plate); a drawn one opens where
   // you last were on that plate, or on the first step that paints.
@@ -8209,6 +8221,19 @@ function _plCopyLayout(src,tgt){ var c=JSON.parse(JSON.stringify(src));
   Object.keys(tgt.groups).forEach(function(g){ var G=tgt.groups[g]; if(G&&G.cpd){ delete G.named; G.label=''; } });
   Object.keys(tgt.wells).forEach(function(id){ var w=tgt.wells[id]; if(w&&w.compound) delete w.compound; });
   _plRenumberCpds(tgt); }
+// A new last plate of the experiment with this plate's layout. A layout that carries its compounds on the wells and has no
+// block groups (the viability layout) loses them in the copy (names are not carried), so the copy would have no compound
+// to number: the source's compounds become compound blocks on the new plate, "Compound n" until they are named.
+function _plAppendPlateFrom(e,src){
+  var slots=_plSlots(src), tgt=newPlate(src.format);
+  if(!e.morePlates) e.morePlates=[]; e.morePlates.push(tgt);
+  var no=e.morePlates.length+1; tgt.title='Plate '+no;
+  _plCopyLayout(src,tgt);
+  if(!_plCpdList(tgt).length&&slots.length){ if(!tgt.groups) tgt.groups={};
+    slots.forEach(function(sl,i){ var gid='c'+Date.now().toString(36)+'x'+no+'_'+i; tgt.groups[gid]={label:'',cpd:true};
+      sl.ids.forEach(function(id){ if(tgt.wells[id]) tgt.wells[id].groupId=gid; }); });
+    _plRenumberCpds(tgt); }
+  return {p:tgt,key:'exp:'+e.id+':'+no}; }
 // Duplicate this plate's layout onto the next plate of the experiment — or onto a new one when this is
 // the last. A next plate that already has wells is only overwritten after you say so; ⌘Z puts it back.
 function plDuplicateToNext(){ var key=PL.key, o=_plateOwner(key); if(!o||o.ds||!o.exp) return;
@@ -8217,10 +8242,8 @@ function plDuplicateToNext(){ var key=PL.key, o=_plateOwner(key); if(!o||o.ds||!
   function go(){
     undoMark('Duplicate layout',['experiments.'+e.id]);
     var tgt, tkey;
-    if(nx){ tgt=nx.p; tkey=nx.key; }
-    else { tgt=newPlate(src.format); if(!e.morePlates) e.morePlates=[]; e.morePlates.push(tgt);
-      var no=e.morePlates.length+1; tgt.title='Plate '+no; tkey='exp:'+e.id+':'+no; }
-    _plCopyLayout(src,tgt);
+    if(nx){ tgt=nx.p; tkey=nx.key; _plCopyLayout(src,tgt); }
+    else { var a=_plAppendPlateFrom(e,src); tgt=a.p; tkey=a.key; }
     platePersist(tkey); e.updated=Date.now(); save();
     var lab=plateLabel(tkey,tgt);
     PL.mode=_plMode(); plSwitchPlate(tkey);
@@ -8463,7 +8486,7 @@ function plNameSet(gid,v){ var p=plCur(); if(!p||!p.groups||!p.groups[gid]) retu
   if(_plNameEditing!==gid){ plMark('Name compound'); _plNameEditing=gid; }
   var g=p.groups[gid]; v=String(v||'').trim();
   if(v){ g.label=v; g.named=true; } else { delete g.named; }
-  _plRenumberCpds(p); platePersist(PL.key); plRenderGrid(); plRenderSum(); }
+  _plRenumberCpds(p); _plCpdAdopt(_plExp()); platePersist(PL.key); plRenderGrid(); plRenderSum(); }
 function plNameKey(ev,inp){ if(ev.key!=='Enter'&&ev.key!=='ArrowDown'&&ev.key!=='ArrowUp') return; ev.preventDefault();
   var all=Array.prototype.slice.call(document.querySelectorAll('#pl-side .pl-nm')), i=all.indexOf(inp);
   var nx=all[i+(ev.key==='ArrowUp'?-1:1)]; if(nx){ nx.focus(); nx.select(); } }
@@ -8475,7 +8498,7 @@ function plNamesPaste(ev,inp){ var txt=(ev.clipboardData||window.clipboardData).
   plMark('Paste names'); _plNameEditing=null;
   lines.forEach(function(l,i){ var c=list[from+i]; if(!c) return; var g=p.groups[c.gid];
     if(l){ g.label=l; g.named=true; } else delete g.named; n++; });
-  _plRenumberCpds(p); platePersist(PL.key); plRender();
+  _plRenumberCpds(p); _plCpdAdopt(_plExp()); platePersist(PL.key); plRender();
   toast(n+' name'+(n===1?'':'s')+' filled from #'+(from+1)+(lines.length>n?(' · '+(lines.length-n)+' had no compound block'):'')); }
 function _plNamesHtml(p){ var list=_plCpdList(p); if(!list.length) return '';
   return '<div class="pl-sec pl-sec-names"><div class="pl-sec-t">'+list.length+' compound'+(list.length===1?'':'s')
@@ -8485,6 +8508,127 @@ function _plNamesHtml(p){ var list=_plCpdList(p); if(!list.length) return '';
       +' oninput="plNameSet(\''+c.gid+'\',this.value)" onchange="_plNameEditing=null" onkeydown="plNameKey(event,this)" onpaste="plNamesPaste(event,this)">'
       +'<span class="pl-nwh">'+esc(PlateEngine.rangeText(c.wells))+'</span></div>'; }).join('')
     +'</div></div>'; }
+// ── One list of compounds, spread over the plates ─────────────────────────────────────────────────────────────────
+// A screen is a list of compounds, and the layout (drawn on the Plate step, or a starting layout) says how many one plate
+// takes. So the compounds are typed once, as lines, and the plates are filled in order — the way Lumina names them and
+// Beacon places them — instead of naming block after block on plate after plate. Names flow onto the plates there are as
+// you type; when the list is committed (a paste, leaving the box) the plates it needs are added with the same layout.
+// Where the list lives: the setup's own Compounds question when the experiment has one, so Methods, the plate count and
+// Rebuild read the same list; `e.cpdList` otherwise. Never both. `e.cpdMode==='same'` is replicate plates (every plate
+// takes the same compounds); the default is a different slice of the list on each plate.
+function _cpdSetupField(e){ return !!e&&expSetupFields(e).some(function(f){ return f.f==='compounds'; }); }
+function expCpdText(e){ if(!e) return ''; return _cpdSetupField(e)?String((e.setup||{}).compounds||''):String(e.cpdList||''); }
+function _expCpdWrite(e,text){ if(_cpdSetupField(e)){ e.setup=e.setup||{}; e.setup.compounds=text; } else if(text) e.cpdList=text; else delete e.cpdList; }
+function _cpdNames(text){ return PlateEngine.pasteList(text).filter(Boolean); }
+// The compounds one plate holds, in reading order: its compound blocks, or — on a layout that carries the compound on the
+// wells and has no blocks — the distinct compounds. A name still "Compound n" is not a name.
+function _plSlots(p){ var L=_plCpdList(p);
+  if(L.length) return L.map(function(c){ return {gid:c.gid, ids:c.wells, name:c.named?c.name:''}; });
+  return plateCompoundSlots(p).map(function(s){ return {gid:s.gid, ids:s.ids, name:/^Compound \d+$/i.test(s.name)?'':s.name}; }); }
+function _plSlotName(p,s,name,idx){
+  var g=s.gid&&p.groups&&p.groups[s.gid];
+  if(g&&g.cpd){ if(name){ if(g.label===name&&g.named) return false; g.label=name; g.named=true; } else { if(!g.named) return false; delete g.named; } return true; }
+  var nm=name||('Compound '+(idx+1)), ch=false;
+  s.ids.forEach(function(id){ var w=p.wells[id]; if(w&&w.compound!==nm){ w.compound=nm; ch=true; } });
+  return ch; }
+// What the plates already say, in order, up to the first block with no name: the list a person would have typed.
+function _plCpdFromPlates(e){ var out=[], stop=false;
+  expPlateList(e).forEach(function(x){ _plSlots(x.p).forEach(function(s){ if(stop) return; if(s.name) out.push(s.name); else stop=true; }); });
+  return out; }
+function _plCpdText(e){ var d=PL.cpdDraft; if(d&&d.id===e.id) return d.text; var t=expCpdText(e); return t||_plCpdFromPlates(e).join('\n'); }
+// Which names go on which plate. In order: each plate takes what its layout holds and the next plate the rest; `extra` is
+// how many more plates of the last layout the rest needs. The same: every plate takes the same compounds.
+function _plCpdPlanAll(e,names){
+  var L=expPlateList(e), same=(e.cpdMode==='same'&&L.length>1);
+  var slots=L.map(function(x){ return _plSlots(x.p); }), caps=slots.map(function(s){ return s.length; });
+  var ref=-1; caps.forEach(function(c,i){ if(c) ref=i; });
+  var R={L:L,slots:slots,caps:caps,ref:ref,per:ref>=0?caps[ref]:0,same:same,assign:[],left:[],extra:0};
+  if(!R.per){ L.forEach(function(){ R.assign.push([]); }); return R; }
+  if(same){ L.forEach(function(x,i){ R.assign.push(names.slice(0,caps[i])); }); R.left=names.slice(Math.max.apply(null,caps)); }
+  else { var k=0; L.forEach(function(x,i){ var t=names.slice(k,k+caps[i]); k+=t.length; R.assign.push(t); });
+    R.left=names.slice(k); R.extra=R.left.length?Math.ceil(R.left.length/R.per):0; }
+  return R; }
+// Put the names on the blocks. A block past the end of the list loses its name (the list is the record); returns the keys
+// of the plates that changed.
+function _plCpdPlace(e,R){ var changed=[];
+  R.L.forEach(function(x,i){ var a=R.assign[i], ch=false;
+    R.slots[i].forEach(function(s,j){ if(j<a.length){ if(_plSlotName(x.p,s,a[j],j)) ch=true; } else if(s.name){ if(_plSlotName(x.p,s,'',j)) ch=true; } });
+    _plRenumberCpds(x.p); if(ch) changed.push(x.key); });
+  return changed; }
+function _plCpdAddPlates(e,n){ var ref=null; expPlateList(e).forEach(function(x){ if(_plSlots(x.p).length) ref=x; });
+  if(!ref) return 0; for(var i=0;i<n;i++) _plAppendPlateFrom(e,ref.p); return n; }
+// The list changed. While typing (commit false) the names flow onto the plates there are; on a paste or when you leave the
+// box (commit true) the plates the list needs are added too, and the setup hears about it through its own path.
+function plCpdList(ta,commit){
+  var o=_plateOwner(PL.key); if(!o||o.ds||!o.exp) return; var e=o.exp, text=ta.value;
+  var names=_cpdNames(text), setupBacked=_cpdSetupField(e), refocus=commit&&document.activeElement===ta;
+  if(commit&&setupBacked&&text!==String((e.setup||{}).compounds||'')) _plSetupPatch(e,{compounds:text},'Compound list');
+  else plMark('Compound list',true);
+  var R=_plCpdPlanAll(e,names), added=0;
+  if(commit){ PL.cpdDraft=null; _expCpdWrite(e,text);
+    if(R.extra&&!R.same){ added=_plCpdAddPlates(e,R.extra); R=_plCpdPlanAll(e,names); } }
+  else if(setupBacked) PL.cpdDraft={id:e.id,text:text};
+  else _expCpdWrite(e,text);
+  var changed=_plCpdPlace(e,R);
+  e.updated=Date.now();
+  changed.forEach(function(k){ platePersist(k); });
+  if(added) toast(added+' plate'+(added===1?'':'s')+' added with this layout, '+names.length+' compounds placed · ⌘Z undoes it');
+  if(commit){ plRender(); if(refocus){ var t2=el('pl-cpd-ta'); if(t2){ t2.focus(); t2.setSelectionRange(t2.value.length,t2.value.length); } } }
+  else { plRenderGrid(); plRenderSum(); var pn=el('pl-cpd-plan'); if(pn) pn.innerHTML=_plCpdPlanInner(e);
+    var nm=document.querySelector('#pl-side .pl-sec-names:not(.pl-sec-list)'); if(nm) nm.outerHTML=_plNamesHtml(plCur()); } }
+// A name typed or pasted onto a block goes back into the list, so the list stays what the plates say. Only the names the
+// plates hold in a row from the first block (a block left unnamed in the middle is not guessed at), and the compounds
+// waiting beyond them are kept.
+function _plCpdAdopt(e){ var o=_plateOwner(PL.key); if(!e||!o||o.ds||String(PL.key).split(':')[0]!=='exp'||e.cpdMode==='same') return;
+  var cur=_cpdNames(_plCpdText(e)), fp=_plCpdFromPlates(e); if(!fp.length) return;
+  var merged=fp.concat(cur.slice(fp.length)), text=merged.join('\n');
+  PL.cpdDraft=null; _expCpdWrite(e,text);
+  var ta=el('pl-cpd-ta'); if(ta&&document.activeElement!==ta) ta.value=text;
+  var pn=el('pl-cpd-plan'); if(pn) pn.innerHTML=_plCpdPlanInner(e); }
+function plCpdMode(m){ var o=_plateOwner(PL.key); if(!o||o.ds||!o.exp) return; var e=o.exp;
+  if((m==='same')===(e.cpdMode==='same')) return;
+  plMark('Compound list');
+  if(m==='same') e.cpdMode='same'; else delete e.cpdMode;
+  var names=_cpdNames(_plCpdText(e)), R=_plCpdPlanAll(e,names);
+  if(R.extra&&!R.same) _plCpdAddPlates(e,R.extra), R=_plCpdPlanAll(e,names);
+  _plCpdPlace(e,R).forEach(function(k){ platePersist(k); });
+  e.updated=Date.now(); save(); plRender(); }
+function plCpdAddPlates(){ var o=_plateOwner(PL.key); if(!o||o.ds||!o.exp) return; var e=o.exp;
+  var names=_cpdNames(_plCpdText(e)), R=_plCpdPlanAll(e,names); if(!R.extra||R.same) return;
+  plMark('Add plates'); var n=_plCpdAddPlates(e,R.extra); R=_plCpdPlanAll(e,names);
+  _plCpdPlace(e,R).forEach(function(k){ platePersist(k); });
+  e.updated=Date.now(); save(); plRender();
+  toast(n+' plate'+(n===1?'':'s')+' added with this layout, '+names.length+' compounds placed · ⌘Z undoes it'); }
+function _plCpdPlanInner(e){
+  var names=_cpdNames(_plCpdText(e)), R=_plCpdPlanAll(e,names), n=names.length;
+  if(!R.per) return '<span class="warn">No compound blocks on any plate yet.</span> The list says which compounds there are, the layout says where they go: choose a layout on the <button class="pl-cpd-pl" onclick="plSetMode(\'plate\')">Plate step</button>, or select an area above and make compounds.';
+  function s(k){ return k===1?'':'s'; }
+  var lc={}, dup=0; names.forEach(function(x){ var k=x.toLowerCase(); if(lc[k]) dup++; lc[k]=1; });
+  if(!n) return 'This layout holds <b>'+R.per+' compound'+s(R.per)+'</b> on a plate. Type or paste the names above and they go onto the blocks in order.';
+  var used=0; R.assign.forEach(function(a){ if(a.length) used++; });
+  var plates=R.same?R.L.length:used+R.extra;
+  var h='<b>'+n+' compound'+s(n)+'</b> &middot; '+R.per+' per plate'+(R.same?'':(' &rarr; <b>'+plates+' plate'+s(plates)+'</b>'+(plates!==R.L.length?(' (you have '+R.L.length+')'):'')));
+  h+='<div class="pl-cpd-rows">';
+  function show(a){ return a.length?(a.length<=3?esc(a.join(', ')):esc(a[0])+' &hellip; '+esc(a[a.length-1])):'&mdash;'; }
+  R.L.forEach(function(x,i){ var a=R.assign[i];
+    h+='<button class="pl-cpd-pl'+(x.key===PL.key?' on':'')+'" onclick="plSwitchPlate(\''+x.key+'\')">'+esc(plateLabel(x.key,x.p))+'</button><span class="pl-cpd-n">'+a.length+' of '+R.caps[i]+'</span><span class="pl-cpd-v">'+show(a)+'</span>'; });
+  for(var k=0;k<(R.same?0:R.extra);k++){ var from=R.left.slice(k*R.per,(k+1)*R.per);
+    h+='<span class="pl-cpd-pl new">Plate '+(R.L.length+k+1)+'</span><span class="pl-cpd-n">'+from.length+' of '+R.per+'</span><span class="pl-cpd-v">'+show(from)+' <em>new</em></span>'; }
+  h+='</div>';
+  if(R.extra&&!R.same) h+='<div class="pl-row2"><button class="pl-btn primary" onclick="plCpdAddPlates()">Add '+R.extra+' plate'+s(R.extra)+' with this layout</button></div>';
+  if(R.same&&R.left.length) h+='<div class="warn">'+R.left.length+' name'+s(R.left.length)+' do not fit on a plate &mdash; choose different compounds on each plate.</div>';
+  if(dup) h+='<div class="warn">'+dup+' name'+s(dup)+(dup===1?' is':' are')+' repeated in the list.</div>';
+  return h; }
+function _plCpdListHtml(p){ var o=_plateOwner(PL.key), parts=String(PL.key||'').split(':');
+  if(!o||o.ds||parts[0]!=='exp'||!o.exp) return '';
+  var e=o.exp, text=_plCpdText(e), many=expPlateList(e).length>1, same=e.cpdMode==='same';
+  var rows=Math.max(4,Math.min(10,_cpdNames(text).length+1));
+  return '<div class="pl-sec pl-sec-names pl-sec-list"><div class="pl-sec-t">Compounds to test <span class="pl-sec-sub">one per line &mdash; paste a column from Excel; they fill the plates in order</span></div>'
+    +(many?('<div class="pl-dirs pl-cpd-seg"><button class="pl-btn'+(same?'':' on')+'" onclick="plCpdMode(\'order\')" title="The first plate takes as many compounds as its layout holds, the next plate the rest">Different on each plate</button>'
+      +'<button class="pl-btn'+(same?' on':'')+'" onclick="plCpdMode(\'same\')" title="Replicate plates: every plate gets the same compounds">The same on every plate</button></div>'):'')
+    +'<textarea id="pl-cpd-ta" class="pl-cpd-ta" rows="'+rows+'" spellcheck="false" aria-label="Compounds to test, one per line" placeholder="Compound A&#10;Compound B&#10;&hellip;"'
+    +' oninput="plCpdList(this,false)" onchange="plCpdList(this,true)" onpaste="var t=this;setTimeout(function(){plCpdList(t,true);},0)">'+esc(text)+'</textarea>'
+    +'<div class="pl-cpd-plan" id="pl-cpd-plan">'+_plCpdPlanInner(e)+'</div></div>'; }
 // Enter on a selection: on Compounds, the series first and then the compounds made from it.
 function plApplyMode(){ var p=plCur(); if(!p) return; var m=_plMode();
   if(m==='dose'){ var hasSeries=plSelIds().some(function(id){ return ((p.wells||{})[id]||{}).conc; });
@@ -8625,7 +8769,7 @@ function plRenderSide(){ var p=plCur(), host=el('pl-side'); if(!p||!host) return
   } else if(!n){
     body=(tab==='plasmids'?_plContextHtml(p):'')+bar+_plIdleHtml(p,tab)
       +((tab==='plasmids'||(tab==='contents'&&!plas))?'<div class="pl-sec pl-sec-sel"><div class="pl-sec-t">'+(_nos?'Conditions on this plate':(plas?'Conditions':'Well types'))+'</div><div class="pl-types'+(_nos?' pl-conds':'')+'">'+pal+'</div></div>':'')
-      +(tab==='dose'?_plNamesHtml(p):'');
+      +(tab==='dose'?_plCpdListHtml(p)+_plNamesHtml(p):'');
   } else {
     var form='', prev='', prevInForm=false;
     if(mode==='plasmids'){
@@ -8674,7 +8818,7 @@ function plRenderSide(){ var p=plCur(), host=el('pl-side'); if(!p||!host) return
     body=(tab==='plasmids'?_plContextHtml(p):'')+bar+'<div class="pl-sec pl-sec-sel">'+form
       +(prevInForm?'':'<div class="pl-prev" id="pl-prev"'+(prev?'':' hidden')+'>'+prev+'</div>')
       +(clearable?'<div class="pl-row2"><button class="pl-btn danger" onclick="plEraseSel()">Clear these wells</button></div>':'')+'</div>'
-      +(mode==='dose'?_plNamesHtml(p):'');
+      +(mode==='dose'?_plCpdListHtml(p)+_plNamesHtml(p):'');
   }
   // A redraw on the same step keeps the panel where it was scrolled to: selecting a well used to
   // send it back to the top.

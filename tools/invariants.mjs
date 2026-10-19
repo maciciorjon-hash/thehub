@@ -182,6 +182,11 @@
 //                            made of plasmids has Plate · Plasmids (· Compounds): naming wells and blocks is a fold under the selection, not a step.
 //   B43 plates side by side  The plate cards of a run are ~34 px a well at most and sit in ONE row of equal cards (.xp-track), never wrapped: a fifth plate
 //                            used to take the whole free row and come out twice the size of the others; the step text (13 px) and the tick (20 px) are in T15.
+//   B52 one list of         The Compounds step has ONE box for every compound to test, a line each (a column from Excel). The names flow onto the compound
+//       compounds           blocks of the plates there are as you type, in reading order, plate by plate; a paste or leaving the box also adds the plates the
+//                            list needs with the same layout (a layout that carries the compound on its wells, with no blocks, gets blocks on the copy), names
+//                            are never carried by the layout copy, "the same on every plate" gives replicate plates, a name typed on a block goes back into
+//                            the list, a plate with no compound blocks says so, and ⌘Z puts it all back.
 //   B50 no tick lists in     A step is done or it is not; its actions are a numbered list. No shipped step carries a tick list or a struck item, and an
 //       a step                older preset or run that still does (a CTG readout with "Plate read + data saved" struck through under a step nobody had done)
 //                            is made a numbered list once, with its leftover ticks dropped and a CTG readout's text and Methods hours following its title.
@@ -2651,6 +2656,69 @@ async function suite(opts) {
         if (!document.querySelector('#plate-modal.open')) bad('B51', 'edit', 'clicking a plate did not open it for editing');
         closePlateEditor();
       }
+    });
+
+    // B52 — one list of compounds, spread over the plates.
+    if (run('B52')) await guard('B52', 'compound list', async () => {
+      const P = (LB.data.projects || []).find(p => (p.sections || []).length);
+      const mk = (key, code, over) => {
+        const tpl = LB.data.presets[key]; if (!tpl) return null;
+        const su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup || {})), over || {});
+        const before = new Set(Object.keys(LB.data.experiments));
+        buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-10-01', type: presetBase(key), title: 'INV list', code, setup: su, plate: true });
+        const e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); if (e) clean.push(e); return e; };
+      const names = (p) => _plSlots(p).map(s => s.name);
+      const type = async (txt, commit) => { const ta = document.getElementById('pl-cpd-ta'); ta.value = txt; plCpdList(ta, commit); await sleep(40); };
+      // 1 — compound blocks made by hand (the SPARK plate)
+      const e = mk('NB_SPARK_SCREEN96', 'INV_B52', { nConc: 3, nReps: 2, topUM: 100, df: 3 });
+      if (!e) { bad('B52', 'setup', 'the SPARK screen preset is not in the notebook'); return; }
+      openExp(e.id); tick('B52');
+      openPlateEditor('exp:' + e.id); await sleep(60);
+      const p1 = e.plate; PL.sel = {}; Object.keys(p1.wells).forEach(id => { if (p1.wells[id].conc) PL.sel[id] = 1; }); PL.reps = 2; plSetMode('dose'); plRender(); plMakeCompounds(); await sleep(40); PL.sel = {}; plRender();
+      const cap = _plSlots(p1).length; if (cap < 2) { bad('B52', 'blocks', 'the SPARK plate has ' + cap + ' compound blocks'); return; }
+      if (!document.getElementById('pl-cpd-ta')) { bad('B52', 'box', 'the Compounds step has no list of compounds'); return; }
+      const list = Array.from({ length: cap * 2 + 1 }, (_, i) => 'Cmp' + (i + 1));
+      await type(list.join('\n'), false);
+      if (names(e.plate).join() !== list.slice(0, cap).join()) bad('B52', 'typing', 'typing the list did not name plate 1\'s blocks in order: ' + names(e.plate).join());
+      if (e.morePlates && e.morePlates.length) bad('B52', 'typing adds', 'plates were added while typing, before the list was committed');
+      await type(list.join('\n'), true);
+      if (!e.morePlates || e.morePlates.length !== 2) { bad('B52', 'plates', 'the list of ' + list.length + ' compounds at ' + cap + ' a plate made ' + (1 + (e.morePlates || []).length) + ' plates, expected 3'); return; }
+      const [q2, q3] = e.morePlates;
+      if (names(q2).join() !== list.slice(cap, cap * 2).join()) bad('B52', 'plate 2', 'plate 2 holds ' + names(q2).join());
+      if (names(q3).filter(Boolean).join() !== list[cap * 2]) bad('B52', 'plate 3', 'plate 3 holds ' + names(q3).join() + ', expected only ' + list[cap * 2]);
+      if (q2.wells && Object.keys(q2.wells).length !== Object.keys(e.plate.wells).length) bad('B52', 'layout', 'the added plate does not have the first plate\'s layout');
+      if (expCpdText(e) !== list.join('\n')) bad('B52', 'stored', 'the list is not kept with the experiment');
+      if (!/3 plates/.test(document.getElementById('pl-cpd-plan').textContent)) bad('B52', 'plan', 'the plan does not say 3 plates: ' + document.getElementById('pl-cpd-plan').textContent.slice(0, 120));
+      // a name typed on a block goes back into the list
+      const g0 = _plSlots(e.plate)[0].gid; plNameSet(g0, 'Renamed'); await sleep(30);
+      if (_cpdNames(expCpdText(e))[0] !== 'Renamed') bad('B52', 'write back', 'a name typed on a block did not reach the list: ' + expCpdText(e).split('\n')[0]);
+      await type(list.join('\n'), true);
+      // replicate plates
+      plCpdMode('same'); await sleep(40);
+      if (names(e.morePlates[0]).join() !== names(e.plate).join()) bad('B52', 'same', '"the same on every plate" left plate 2 with other compounds');
+      plCpdMode('order'); await sleep(40);
+      if (names(e.morePlates[0]).join() !== list.slice(cap, cap * 2).join()) bad('B52', 'order again', 'going back to a different slice per plate did not refill plate 2');
+      // undo takes the added plates away again
+      lbUndo(); await sleep(60);
+      closePlateEditor();
+      // 2 — a layout that carries the compound on its wells and has no blocks (the viability layout)
+      const e2 = mk('CTG', 'INV_B52V', {}); if (!e2) { bad('B52', 'ctg', 'the viability preset is not in the notebook'); return; }
+      const lay = PLATE_LAYOUTS.find(L => /viab|dose resp|ctg/i.test(L.id + L.label)); if (!lay) { bad('B52', 'layout', 'no starting layout that carries its compounds on the wells'); return; }
+      e2.plate = lay.build({ format: '96', nPoints: 11, nReps: 2, topConc: 1000, df: 3, compounds: '' }); e2.morePlates = []; delete e2.cpdList; if (e2.setup) e2.setup.compounds = '';
+      openPlateEditor('exp:' + e2.id); await sleep(60); plSetMode('dose'); plRender();
+      const cap2 = _plSlots(e2.plate).length; if (!cap2) { bad('B52', 'viability slots', 'a layout with the compounds on its wells shows no compound to name'); closePlateEditor(); return; }
+      const l2 = Array.from({ length: cap2 + 2 }, (_, i) => 'Via' + (i + 1));
+      await type(l2.join('\n'), true);
+      if (!e2.morePlates || e2.morePlates.length !== 1) bad('B52', 'viability plates', 'the list of ' + l2.length + ' on a plate of ' + cap2 + ' did not add one plate');
+      else {
+        if (names(e2.plate).join() !== l2.slice(0, cap2).join()) bad('B52', 'viability 1', 'plate 1 holds ' + names(e2.plate).join());
+        if (names(e2.morePlates[0]).filter(Boolean).join() !== l2.slice(cap2).join()) bad('B52', 'viability 2', 'the added plate holds ' + names(e2.morePlates[0]).join() + ', expected ' + l2.slice(cap2).join()); }
+      closePlateEditor();
+      // 3 — a plate with no compound blocks says so and places nothing
+      const e3 = mk('NB_SPARK_SCREEN96', 'INV_B52N', { nConc: 3, nReps: 2, topUM: 100, df: 3 });
+      e3.plate.wells = {}; e3.plate.groups = {}; openPlateEditor('exp:' + e3.id); await sleep(60); plSetMode('dose'); plRender();
+      if (!/No compound blocks/.test((document.getElementById('pl-cpd-plan') || {}).textContent || '')) bad('B52', 'no blocks', 'a plate with no compound blocks does not say so');
+      closePlateEditor();
     });
 
     // B28 — a date typed into Repeat is a real day or it is refused.
