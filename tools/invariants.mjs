@@ -180,8 +180,13 @@
 //       and a plasmid plate   not in "what it feeds", and the next step starts from the volume it really has (100 µL, not 111). Answering yes puts the
 //       has no Contents tab   preset's step back in its place; a ticked step, one with its numbers typed over, and a finished run are never touched. A plate
 //                            made of plasmids has Plate · Plasmids (· Compounds): naming wells and blocks is a fold under the selection, not a step.
-//   B43 plates side by side  The plate cards of a run are ~34 px a well at most and sit in a row that fills the width (two at least), not one card per
-//                            line with the right of the page empty; the step text (13 px, the side menu's size) and the tick (20 px) are in T15.
+//   B43 plates side by side  The plate cards of a run are ~34 px a well at most and sit in ONE row of equal cards (.xp-track), never wrapped: a fifth plate
+//                            used to take the whole free row and come out twice the size of the others; the step text (13 px) and the tick (20 px) are in T15.
+//   B50 no tick lists in     A step is done or it is not; its actions are a numbered list. No shipped step carries a tick list or a struck item, and an
+//       a step                older preset or run that still does (a CTG readout with "Plate read + data saved" struck through under a step nobody had done)
+//                            is made a numbered list once, with its leftover ticks dropped and a CTG readout's text and Methods hours following its title.
+//   B51 the plate row        More plates than the width holds (4 · 3 · 2 · 1 by the run's own width) stay one equal row behind an arrow, a swipe and the dots;
+//                            an arrow pages to a card's left edge, a redraw keeps the place, and "View all plates" opens every plate with Done in view.
 //   B44 no footnotes in    A shipped step is its instructions and its numbers, not a paragraph that explains why (.lb-fn). Jon (NB20261013): "mas comentarios de estos
 //       the steps             que encima estan mal ... no aportan nada". No built-in or curated preset, no library step and no step of a notebook preset
 //                            carries a .lb-fn; the only ones left are the two Western blot lines that list typical dilutions and variations (data).
@@ -2315,22 +2320,22 @@ async function suite(opts) {
       buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-10-01', type: 'NB', title: 'INV cards', code: 'INV_B43', setup: su, plate: true });
       const e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); clean.push(e); tick('B43');
       addMorePlate(e.id); closePlateEditor(); addMorePlate(e.id); closePlateEditor(); openExp(e.id); await sleep(120);
-      const row = document.querySelector('.exp-plates'), cards = row ? [...row.querySelectorAll(':scope > .blk-plate')] : [];
-      if (cards.length !== 3) { bad('B43', 'row', 'the three plates are not in one .exp-plates row (' + cards.length + ')'); return; }
-      const W = row.getBoundingClientRect().width, r = cards.map(c => c.getBoundingClientRect());
-      const first = r.filter(x => Math.abs(x.top - r[0].top) < 2).length, fit = Math.max(2, Math.min(3, Math.floor((W + 18) / (260 + 18))));
-      if (W >= 560 && first < fit) bad('B43', 'fills', 'only ' + first + ' of 3 plates are on the first line of a ' + Math.round(W) + ' px row (room for ' + fit + ')');
-      if (r.some(x => x.right > row.getBoundingClientRect().right + 1)) bad('B43', 'inside', 'a plate card runs past the row');
+      const row = document.querySelector('.exp-plates'), cards = row ? [...row.querySelectorAll('.xp-track > .blk-plate')] : [];
+      if (cards.length !== 3) { bad('B43', 'row', 'the three plates are not in one .xp-track row (' + cards.length + ')'); return; }
+      const r = cards.map(c => c.getBoundingClientRect()), rowR = row.getBoundingClientRect();
+      if (r.some(x => Math.abs(x.top - r[0].top) > 2)) bad('B43', 'one line', 'the plates wrapped onto more than one line (the next card grows to fill the free row)');
+      if (r.some(x => Math.abs(x.width - r[0].width) > 1)) bad('B43', 'equal', 'plate cards of one run are not one size: ' + r.map(x => Math.round(x.width)).join(' / '));
       const w0 = cards[0].querySelector('.pp-w').getBoundingClientRect().width;
       if (w0 > 36) bad('B43', 'size', 'a well of the first plate is ' + Math.round(w0) + ' px; a plate is an overview, not a poster (36 at most)');
       if (r[0].width > 440) bad('B43', 'width', 'the first plate card is ' + Math.round(r[0].width) + ' px wide (440 at most)');
+      if (rowR.width >= 600 && r[0].width < 230) bad('B43', 'narrow', 'the plate card is ' + Math.round(r[0].width) + ' px in a ' + Math.round(rowR.width) + ' px row; the Edit button leaves the card below 230');
       // one plate alone is not stretched across the page either (it was 56 px a well, a 680 px card, with the right of the page empty)
       const b1 = new Set(Object.keys(LB.data.experiments));
       buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-10-01', type: 'NB', title: 'INV card one', code: 'INV_B43B', setup: su, plate: true });
       const e1 = Object.values(LB.data.experiments).find(x => !b1.has(x.id)); clean.push(e1); openExp(e1.id); await sleep(120);
-      const one = document.querySelector('.exp-plates > .blk-plate'), ow = one && one.querySelector('.pp-w');
+      const one = document.querySelector('.exp-plates .xp-track > .blk-plate'), ow = one && one.querySelector('.pp-w');
       if (!one || !ow) bad('B43', 'one', 'a single plate has no card');
-      else if (ow.getBoundingClientRect().width > 36 || one.getBoundingClientRect().width > 440) bad('B43', 'one plate', 'a single plate is a ' + Math.round(one.getBoundingClientRect().width) + ' px card with ' + Math.round(ow.getBoundingClientRect().width) + ' px wells');
+      else if (ow.getBoundingClientRect().width > 36 || one.getBoundingClientRect().width > 440) bad('B43', 'one plate', 'a single plate is a ' + Math.round(one.getBoundingClientRect().width) + ' px card with ' + Math.round(ow.getBoundingClientRect().width) + ' px wells; a plate is an overview, not a poster');
     });
 
     // B44 — no explanatory footnote in any shipped step.
@@ -2559,6 +2564,93 @@ async function suite(opts) {
       if (String(I()['sd-cpw']) !== '999') bad('B49', 'typed', 'a number typed on the calculator was taken back by the setup (' + I()['sd-cpw'] + ')');
       host.done = true; e.setup.nPlates = 9; syncExpDerived(e);
       if (String(I()['sd-plates']) !== '5') bad('B49', 'finished', 'a finished step was changed by the setup');
+    });
+
+    // B50 — no tick list inside a step: shipped, or left in older data.
+    if (run('B50')) await guard('B50', 'no tick lists', async () => {
+      const found = [], scan = (where, html) => { const d = document.createElement('div'); d.innerHTML = String(html || '');
+        if (d.querySelector('ul.lb-check, li.done, s, del, strike')) found.push(where); };
+      Object.keys(LB.data.presets).forEach(k => ((LB.data.presets[k] || {}).blocks || []).forEach(b => scan('preset ' + k + ' / ' + b.title, b.html)));
+      Object.keys(EXTRA_PRESET_SEED).forEach(k => (EXTRA_PRESET_SEED[k].blocks || []).forEach(b => scan('curated ' + k + ' / ' + b.title, b.html)));
+      (STEP_LIBRARY || []).forEach(l => scan('library ' + l.id, l.html)); tick('B50');
+      if (found.length) bad('B50', 'shipped', found.length + ' shipped step(s) with a tick list or a struck item: ' + found.slice(0, 3).join(' | '));
+      // Old data: the CTG readout exactly as the 2026-09 presets wrote it, under a title with other hours, undone but with its box ticked.
+      const P = (LB.data.projects || []).find(p => (p.sections || []).length), id = 'inv_b50', pid = 'INV_B50_PRESET';
+      const old = h => '<p>Equilibrate to RT, add CTG, shake, read luminescence. Data analysis (' + h + ' h).</p><ul class="lb-check"><li>Plate read + data saved</li></ul>';
+      const mkBlk = (title, h, n) => ({ id: 'b50_' + n, title, date: '2026-10-19', dayOffset: 4, done: false, html: old(h).replace('<li>', '<li class="done">'), autoTicked: { checks: [0] },
+        calc: { kind: 'ctg', inputs: { format: '96', nPlates: 2, volPerWell: 50, excess: 1.1 } }, pub: 'Viability was measured ' + h + ' h after compound addition.' });
+      const note = '<p>Mixes made:</p><ul class="lb-check"><li class="done">DNA</li></ul>';
+      LB.data.experiments[id] = { id, code: 'INV_B50', title: 'INV tick lists', type: 'CTG', status: 'ongoing', projectId: P.id, sectionId: P.sections[0].id, created: Date.now(), updated: 1,
+        blocks: [mkBlk('CTG — 72 h readout', 24, 1), mkBlk('CTG — 144 h readout', 72, 2),
+          { id: 'b50_3', title: 'Seed', date: '2026-10-19', dayOffset: 0, done: false, html: '<p>Seed.</p><ul class="lb-check"><li class="done">Cells counted</li><li>Seeded</li></ul>', autoTicked: { checks: [0] } }] };
+      LB.data.presets[pid] = { name: 'INV b50', baseType: 'CTG', title: 'INV b50', blocks: [{ dayOffset: 0, title: 'CTG — 24 h readout', html: old(24) }] };
+      LB.data.notebook['2031-01-03'] = { date: '2031-01-03', html: note };
+      try {
+        delete LB.data._tickListsV1; seedPresets(); tick('B50');   // the load path, not the function: a pass nobody calls fixes nothing
+        const e = LB.data.experiments[id], hs = e.blocks.map(b => b.html).join('');
+        if (/lb-check|class="done"/.test(hs)) bad('B50', 'run', 'a tick list or a ticked box is still in the run: ' + hs.match(/.{0,40}(lb-check|class="done").{0,20}/)[0]);
+        if (e.blocks.some(b => b.autoTicked && b.autoTicked.checks)) bad('B50', 'autoTicked', 'a step nobody did still remembers a ticked box');
+        const t = e.blocks.map(b => { const d = document.createElement('div'); d.innerHTML = b.html; return d.textContent; });
+        if (!/72 h/.test(t[0]) || /24 h/.test(t[0]) || /24 h/.test(e.blocks[0].pub)) bad('B50', 'hours', 'the 72 h readout still says 24 h: "' + t[0].slice(0, 90) + '" / "' + e.blocks[0].pub + '"');
+        if (!/144 h/.test(t[1]) || /\b72 h/.test(t[1])) bad('B50', 'hours 144', 'the 144 h readout does not follow its title: "' + t[1].slice(0, 90) + '"');
+        if (!e.blocks[0].html.startsWith('<ol>')) bad('B50', 'numbered', 'a CTG readout is not a numbered list after the pass');
+        if (!/<ol[^>]*>.*Cells counted.*Seeded/.test(e.blocks[2].html) || /done/.test(e.blocks[2].html)) bad('B50', 'other step', 'a hand-made tick list is not a plain numbered list after the pass: ' + e.blocks[2].html);
+        if (/lb-check|\bdone\b/.test(LB.data.presets[pid].blocks[0].html)) bad('B50', 'preset', 'a stored preset still has the tick list');
+        if (LB.data.notebook['2031-01-03'].html !== note) bad('B50', 'note', 'a checklist in a note was rewritten; only steps are');
+        const once = JSON.stringify(e.blocks); delete LB.data._tickListsV1; seedPresets();
+        if (JSON.stringify(e.blocks) !== once) bad('B50', 'again', 'running the pass twice changed the steps again');
+        // The Steps tab shows no strike on any of them.
+        openExp(id); await sleep(150);
+        const struck = [...document.querySelectorAll('.bench li')].filter(li => getComputedStyle(li).textDecorationLine.includes('line-through'));
+        if (struck.length) bad('B50', 'struck', struck.length + ' struck-through item(s) in the Steps tab of a run with undone steps: "' + struck[0].textContent.slice(0, 50) + '"');
+      } finally { delete LB.data.experiments[id]; delete LB.data.presets[pid]; delete LB.data.notebook['2031-01-03']; try { selectNode('journal'); } catch (x) {} }
+    });
+
+    // B51 — more plates than the row holds: one equal row, an arrow, the dots, View all plates.
+    if (run('B51')) await guard('B51', 'plate row', async () => {
+      const P = (LB.data.projects || []).find(p => (p.sections || []).length);
+      const key = 'NB_BIO_RTX96', tpl = LB.data.presets[key];
+      const su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup || {})));
+      const before = new Set(Object.keys(LB.data.experiments));
+      buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-10-01', type: 'NB', title: 'INV row', code: 'INV_B51', setup: su, plate: true });
+      const e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); clean.push(e); tick('B51');
+      for (let i = 0; i < 4; i++) { addMorePlate(e.id); closePlateEditor(); }
+      openExp(e.id); await sleep(150);
+      const root = () => document.querySelector('.exp-plates'), rail = () => root().querySelector('.xp-rail');
+      const cards = () => [...root().querySelectorAll('.xp-track > .blk-plate')], vis = () => cards().filter(c => { const a = c.getBoundingClientRect(), b = rail().getBoundingClientRect(); return a.left >= b.left - 2 && a.right <= b.right + 2; });
+      if (cards().length !== 5) { bad('B51', 'plates', 'expected 5 plates, found ' + cards().length); return; }
+      const W = rail().getBoundingClientRect().width, w = cards().map(c => Math.round(c.getBoundingClientRect().width));
+      if (new Set(w).size !== 1) bad('B51', 'equal', 'five plates, five widths: ' + w.join(' / '));
+      const per = vis().length;
+      if (per >= 5) { bad('B51', 'room', 'the whole row of five fits in ' + Math.round(W) + ' px; this window is too wide to test the arrow'); }
+      else {
+        const L = root().querySelector('.xp-arr.l'), R = root().querySelector('.xp-arr.r');
+        if (!root().classList.contains('over')) bad('B51', 'over', 'five plates do not fit and the row does not say so');
+        if (!R || R.classList.contains('off') || getComputedStyle(R).opacity === '0') bad('B51', 'next', 'no next arrow with plates hidden to the right');
+        if (L && !L.classList.contains('off')) bad('B51', 'prev', 'a previous arrow at the first plate');
+        if (getComputedStyle(root().querySelector('.xp-foot')).display === 'none') bad('B51', 'foot', 'the dots and View all plates are hidden although plates are');
+        R.click(); await sleep(900);
+        const first = vis()[0], rl = rail().getBoundingClientRect().left;
+        if (!first || Math.abs(first.getBoundingClientRect().left - rl) > 2) bad('B51', 'aligned', 'after Next the first card is not at the left edge (off by ' + Math.round(first ? first.getBoundingClientRect().left - rl : 0) + ' px)');
+        if (cards().indexOf(first) < 1) bad('B51', 'moved', 'Next did not move the row');
+        const x = rail().scrollLeft;
+        renderEditor(); await sleep(150);
+        if (Math.abs(rail().scrollLeft - x) > 2) bad('B51', 'keeps place', 'a redraw put the row back from ' + Math.round(x) + ' to ' + Math.round(rail().scrollLeft));
+        root().querySelectorAll('.xp-dot')[0].click(); await sleep(900);
+        if (rail().scrollLeft > 2) bad('B51', 'dot', 'the first dot did not bring the first plate back');
+      }
+      xpAll(e.id); await sleep(450);
+      const dlg = document.querySelector('#lb-dialog.open .modal.xpall');
+      if (!dlg) bad('B51', 'all', 'View all plates opened nothing');
+      else {
+        if (dlg.querySelectorAll('.xpa-c').length !== 5) bad('B51', 'all count', dlg.querySelectorAll('.xpa-c').length + ' of 5 plates in the window');
+        const done = [...dlg.querySelectorAll('.modal-act button')].find(b => /Done/.test(b.textContent)), br = done && done.getBoundingClientRect();
+        if (!br || br.bottom > innerHeight + 0.5) bad('B51', 'done', 'Done is not in view');
+        dlg.querySelector('.xpa-c').click(); await sleep(250);
+        if (document.querySelector('#lb-dialog.open')) bad('B51', 'open', 'clicking a plate left the window open on top of the editor');
+        if (!document.querySelector('#plate-modal.open')) bad('B51', 'edit', 'clicking a plate did not open it for editing');
+        closePlateEditor();
+      }
     });
 
     // B28 — a date typed into Repeat is a real day or it is refused.

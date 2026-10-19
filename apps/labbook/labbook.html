@@ -1202,10 +1202,46 @@ html.lb-loading body > *{visibility:hidden;}
 .pp-n{font-size:var(--fs-1);color:var(--text3);white-space:nowrap;flex:none;}
 .blk-plate .cc-hd .cc-src{white-space:nowrap;flex:none;color:var(--text2);background:var(--surface3);}   /* the chips beside a plate's title stay on one line ("96-/well"); the title is what gives way */
 .plate-act{font-size:var(--fs-1);font-weight:600;padding:2px 8px;border-radius:var(--r-1);}
-/* The plates of a run sit side by side and fill the row, two at least (a card is never wider than half the row minus its gap) — one plate per row left the right of the page empty. */
-.exp-plates{display:flex;flex-wrap:wrap;gap:0 18px;align-items:flex-start;}
-.exp-plates>.blk-plate{flex:1 1 min(var(--pw,260px),calc(50% - 9px));min-width:0;max-width:var(--pmax,100%);}
-@media (max-width:560px){ .exp-plates>.blk-plate{flex-basis:100%;} }   /* a phone: the column headers of a half-width plate print over each other, so one plate per row there */
+/* The plates of a run are one row of equal cards: as many as the width allows (4 · 3 · 2 · 1), the rest behind an arrow, a swipe or the dots, and "View all plates" opens them together.
+   Wrapping them gave the last plate the whole free row, so one of five came out twice the size of the others. The count that fits is a container query on the run's own width, not the window's. */
+.exp-plates{container-type:inline-size;margin:0 0 4px;}
+.xp-view{--pn:1;--xg:18px;position:relative;}
+@container (min-width:600px){ .xp-view{--pn:2;} }
+@container (min-width:900px){ .xp-view{--pn:3;} }
+@container (min-width:1200px){ .xp-view{--pn:4;} }
+.xp-rail{overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;scroll-behavior:smooth;overscroll-behavior-x:contain;scrollbar-width:none;outline:none;}
+.xp-rail::-webkit-scrollbar{display:none;}
+.xp-track{display:flex;gap:var(--xg);align-items:flex-start;position:relative;}
+.xp-track>.blk-plate{--vn:min(var(--pn),var(--n,1));flex:0 0 calc((100% - (var(--vn) - 1) * var(--xg)) / var(--vn));min-width:0;max-width:var(--pmax,100%);margin:0;scroll-snap-align:start;}
+.exp-plates.over .xp-track>.blk-plate{max-width:none;}
+.xp-track .blk-plate .cc-hd{min-width:0;}
+.xp-track .blk-plate .pp-n{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;}   /* the count gives way before the Edit button leaves the card (it widened the row's scroll by 35px) */
+.exp-plates.over .xp-view{padding:0 22px;}   /* the arrows live in the gutter, not over the wells */
+.xp-arr{position:absolute;top:calc(50% - 15px);z-index:2;width:30px;height:30px;display:flex;align-items:center;justify-content:center;border:1px solid var(--border2);border-radius:var(--r-pill,999px);background:var(--surface);color:var(--text2);box-shadow:0 2px 10px rgba(0,0,0,.14);cursor:pointer;padding:0;
+  transition:transform var(--dur-2) var(--ease-out),opacity var(--dur-2) var(--ease);}
+.xp-arr.l{left:-4px;} .xp-arr.r{right:-4px;}
+.xp-arr:hover{color:var(--text);background:var(--surface2);}
+.xp-arr:active{transform:scale(.92);}
+.xp-arr.off{opacity:0;pointer-events:none;transform:scale(.8);}
+.xp-foot{display:none;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 8px;}
+.exp-plates.over .xp-foot{display:flex;}
+.xp-dots{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
+.xp-dot{width:8px;height:8px;padding:0;border:0;border-radius:var(--r-pill,999px);background:var(--accent);opacity:.25;cursor:pointer;transition:opacity var(--dur-2) var(--ease);}
+.xp-dot:hover{opacity:.55;} .xp-dot.on{opacity:1;}
+@media (max-width:560px){ .xp-arr{display:none;} .exp-plates.over .xp-view{padding:0;} }   /* a phone swipes; the dots stay */
+@media (prefers-reduced-motion:reduce){ .xp-rail{scroll-behavior:auto;} }
+/* View all plates: every plate of the run in one dialog, side by side, each card coming in a beat after the one before (transform + opacity only). */
+.modal.xpall{max-width:min(1400px,96vw);width:100%;}
+.xpa-n{font-size:var(--fs-2);font-weight:500;color:var(--text3);}
+.xpa-body{overflow:auto;margin:6px -4px 4px;padding:4px;}
+.xpa-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,290px),1fr));gap:14px;}
+.xpa-c{border:1px solid var(--border);border-radius:var(--r-3);padding:6px 12px 2px;background:var(--surface);cursor:pointer;min-width:0;
+  animation:xpa-in var(--dur-3) var(--ease-out) both;animation-delay:calc(var(--i,0) * 35ms);transition:transform var(--dur-2) var(--ease-out),border-color var(--dur-1);}
+.xpa-c:hover{border-color:var(--accent);transform:translateY(-2px);}
+.xpa-c .blk-plate{margin:0;padding:4px 0 6px;}
+.xpa-hint{font-size:var(--fs-2);color:var(--text3);}
+@keyframes xpa-in{from{opacity:0;transform:translateY(10px) scale(.98);}to{opacity:1;transform:none;}}
+@media (prefers-reduced-motion:reduce){ .xpa-c{animation:none;} }
 .pp-two{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;}
 .pp-grid-wrap{overflow-x:auto;padding:2px 0;flex:0 1 auto;}
 @media (max-width:420px){ .pp-grid{grid-template-columns:repeat(var(--c),minmax(0,1fr)) !important;} }   /* a 384-well preview in a 290px card: the columns give way instead of the last two going behind a swipe */
@@ -9411,7 +9447,61 @@ function seedPresets(){
   _rewordFromPresets(_before);
   _nbRename();
   _gatesFromSetup();
+  try{ _flattenTickLists(); }catch(_e){}
 }
+// ── Old tick lists inside a step become the step's numbered actions ─────────────────────────────
+// A step is done or not done; the actions in it are a numbered list, never little boxes that can be
+// crossed out on their own (decided 2026-09-15, presets since carry no `ul.lb-check`). What is left
+// is old data: presets saved or copied before that, and every experiment made from one. Jon found
+// "1. Plate read + data saved" struck through in a CTG readout nobody had done, because ticking the
+// step ticked the box inside it and reopening it left that box behind. Once, per tree: each
+// `ul.lb-check` in a step (not in a note or a page) is an `<ol>`, a tick inside it is dropped,
+// and a CTG readout that still has the old two-line text gets the preset's current words with the
+// hours its own title says (its text and its Methods sentence said 24 h under a "72 h" title).
+// Methods keeps what it had: the old list was never read into it, so the new one is `pub-skip`
+// unless the step has its own sentence.
+var _CTG_OLD_TXT=/^<p>Equilibrate to RT, add CTG, shake, read luminescence\. Data analysis \([\d.]+ h\)\.<\/p><ul class="lb-check"><li(?: class="done")?>Plate read \+ data saved<\/li><\/ul>$/;
+function _flattenTickHtml(html,keepPub){
+  if(!html||String(html).indexOf('lb-check')<0) return null;
+  var d=document.createElement('div'); d.innerHTML=html;
+  var uls=d.querySelectorAll('ul.lb-check'); if(!uls.length) return null;
+  Array.prototype.forEach.call(uls,function(ul){
+    var top=!ul.parentNode.closest('ul.lb-check'), n=document.createElement(top?'ol':'ul');
+    if(top&&!keepPub) n.className='pub-skip';
+    while(ul.firstChild) n.appendChild(ul.firstChild);
+    ul.parentNode.replaceChild(n,ul); });
+  Array.prototype.forEach.call(d.querySelectorAll('li.done'),function(li){
+    li.classList.remove('done'); if(!li.getAttribute('class')) li.removeAttribute('class'); });
+  return d.innerHTML; }
+function _flattenBlock(b,inRun){
+  if(!b||b.proto) return false;
+  var ch=false, hrs=(/^CTG \u2014 ([\d.]+) h readout$/.exec(b.title||'')||[])[1];
+  [b,b.tpl].forEach(function(o,i){ if(!o||typeof o.html!=='string') return;
+    if(hrs&&_CTG_OLD_TXT.test(o.html)&&(i?true:(b.calc&&b.calc.kind==='ctg'))){
+      var r=_ctgReadout(+hrs,/fitted with a four-parameter/.test(o.pub||''));
+      o.html=r.html; if(/^Viability was measured [\d.]+ h after compound addition\./.test(o.pub||'')) o.pub=o.pub.replace(/measured [\d.]+ h/,'measured '+_hrTxt(+hrs)+' h');
+      ch=true; return; }
+    var h=_flattenTickHtml(o.html,!!(o.pub||(i?0:b.pub))); if(h!=null){ o.html=h; ch=true; } });
+  if(b.autoTicked&&b.autoTicked.checks){ delete b.autoTicked.checks; if(!Object.keys(b.autoTicked).length) delete b.autoTicked; ch=true; }
+  return ch; }
+function _flattenTickLists(){
+  if(!LB.data||LB.data._tickListsV1) return;
+  var n=0;
+  Object.keys(LB.data.presets||{}).forEach(function(k){ var p=LB.data.presets[k];
+    if(!p||!p.blocks) return;
+    var was=p._seedSig&&_sigSame(p._seedSig,_presetSig(p)), ch=false;
+    p.blocks.forEach(function(b){ var t=(b.title||'');
+      // A preset block is {dayOffset,title,html,pub}: same shape as a step for this purpose.
+      var hrs=(/^CTG \u2014 ([\d.]+) h readout$/.exec(t)||[])[1], c=false;
+      if(hrs&&_CTG_OLD_TXT.test(b.html||'')){ var r=_ctgReadout(+hrs,/fitted with a four-parameter/.test(b.pub||'')); b.html=r.html; c=true; }
+      else { var h=_flattenTickHtml(b.html,!!b.pub); if(h!=null){ b.html=h; c=true; } }
+      if(c) ch=true; });
+    if(ch){ n++; if(was) p._seedSig=_presetSig(p); } });
+  Object.keys(LB.data.experiments||{}).forEach(function(id){ var e=LB.data.experiments[id], c=false;
+    (e&&e.blocks||[]).forEach(function(b){ if(_flattenBlock(b)) c=true; });
+    if(c){ e.updated=Date.now(); n++; } });
+  LB.data._tickListsV1=true;
+  if(n) setTimeout(function(){ try{ save(); }catch(e){} },0); }
 // An experiment whose setup already says "no" to a step it still carries (MG132 pre-treatment: no, and the step in the plan)
 // loses the step, if nothing has been recorded on it and the run is not finished. Same rule as answering no in the setup
 // editor (_applySetupGates); idempotent, so a tree adopted from the cloud gets the pass too.
@@ -13832,6 +13922,7 @@ function renderEditor(){
     // not animationend: a backgrounded tab never fires the event and the class would stick.
     clearTimeout(_edAnimT); _edAnimT=setTimeout(function(){ host.classList.remove('screen-in'); }, 360);
   }
+  try{ xpInitAll(); }catch(_e){}
 }
 function _renderEditorBody(){
   renderTopbar();
@@ -15843,7 +15934,7 @@ function stepsBodyHtml(e){
     +(expUsesEcho(e)?'':('<button class="lean-tog" title="Store the Echo picklist this experiment was dosed from" onclick="echoSetUse(\''+e.id+'\',true)">+ Echo picklist</button>'))
     +(groups.length?('<button class="lean-tog" onclick="benchFoldAll(\''+e.id+'\')">Fold done days</button>'):'')+'</div></div>';
   // The experiment-level plate sits above everything — it is the layout for the whole run.
-  var lead=presetStaleHtml(e)+deviationsHtml(e)+echoDropHtml(e)+'<div class="exp-plates">'+expPlateList(e).map(function(x){ return platePreviewHtml(x.p,x.key); }).join('')+'</div>';
+  var lead=presetStaleHtml(e)+deviationsHtml(e)+echoDropHtml(e)+expPlatesHtml(e);
   var days=groups.map(function(g){
     var done=g.blocks.filter(function(b){ return b.done; }).length, isT=(g.key===T), folded=_benchFolded(e,g);
     var hd='<div class="bench-day'+(isT?' today':'')+(folded?' folded':'')+'" onclick="benchFold(\''+e.id+'\',\''+esc(g.key||'')+'\')">'
@@ -15862,6 +15953,57 @@ function stepsBodyHtml(e){
   var add='<div class="blk-addrow" ondragover="blkEndOver(event)" ondragleave="blkDragLeave(event)" ondrop="blkDropEnd(event)"><button class="add-blk" onclick="addBlock()">+ Add step</button><button class="add-blk add-step" onclick="stepPalette()">'+tbIco(P_SEARCHPLUS,13)+' Add step from library / Archive…</button></div>';
   return top+lead+'<div class="bench'+(expClosed(e)?' closed':'')+'">'+(days||'<div class="exp-dated-empty">No steps yet.</div>')+'</div>'+add;
 }
+// ── The plates of a run: one row of equal cards, an arrow for the rest, and all of them in a dialog ──
+var XP_POS={}, XP_RO=null;
+function expPlatesHtml(e){
+  var L=expPlateList(e), n=L.length;
+  if(!n) return '<div class="exp-plates"></div>';
+  var cards=L.map(function(x){ return platePreviewHtml(x.p,x.key); }).join('');
+  var dots=L.map(function(x,i){ var t=plateLabel(x.key,x.p);
+    return '<button class="xp-dot" title="'+esc(t)+'" aria-label="'+esc(t)+'" onclick="xpTo(this,'+i+')"></button>'; }).join('');
+  return '<div class="exp-plates" data-exp="'+esc(e.id)+'"><div class="xp-view" style="--n:'+n+'">'
+    +'<button class="xp-arr l off" title="Previous plates" aria-label="Previous plates" onclick="xpPage(this,-1)">'+tbIco(P_CHEV_L,16)+'</button>'
+    +'<div class="xp-rail" tabindex="0" role="region" aria-label="Plate maps" onscroll="xpSync(this)"><div class="xp-track">'+cards+'</div></div>'
+    +'<button class="xp-arr r off" title="Next plates" aria-label="Next plates" onclick="xpPage(this,1)">'+tbIco(P_CHEV_R,16)+'</button></div>'
+    +'<div class="xp-foot"><span class="xp-dots">'+dots+'</span>'
+    +'<button class="lean-tog" title="Every plate of this run in one window" onclick="xpAll(\''+esc(e.id)+'\')">'+tbIco(P_GRID,12)+' View all plates</button></div></div>'; }
+function xpSync(rail){ var root=rail&&rail.closest&&rail.closest('.exp-plates'); if(!root) return;
+  var max=rail.scrollWidth-rail.clientWidth, x=rail.scrollLeft, over=max>2;
+  root.classList.toggle('over',over);
+  var l=root.querySelector('.xp-arr.l'), r=root.querySelector('.xp-arr.r');
+  if(l) l.classList.toggle('off',!over||x<=1);
+  if(r) r.classList.toggle('off',!over||x>=max-1);
+  var rr=rail.getBoundingClientRect(), dots=root.querySelectorAll('.xp-dot');
+  Array.prototype.forEach.call(rail.querySelectorAll('.blk-plate'),function(c,i){ var b=c.getBoundingClientRect();
+    if(dots[i]) dots[i].classList.toggle('on',b.left>=rr.left-b.width*0.4&&b.right<=rr.right+b.width*0.4); });
+  if(root.dataset.exp) XP_POS[root.dataset.exp]=x; }
+function xpPage(btn,dir){ var rail=btn.closest('.exp-plates').querySelector('.xp-rail'); if(!rail) return;
+  // A page is as many cards as the row holds, and always lands on a card's left edge (the last page ends on the last card).
+  var cards=rail.querySelectorAll('.blk-plate'), n=cards.length; if(!n) return;
+  var step=cards[0].offsetWidth+18, per=Math.max(1,Math.round(rail.clientWidth/step)), x=rail.scrollLeft, cur=0;
+  Array.prototype.forEach.call(cards,function(c,i){ if(Math.abs(c.offsetLeft-x)<Math.abs(cards[cur].offsetLeft-x)) cur=i; });
+  var to=Math.max(0,Math.min(Math.max(0,n-per),cur+dir*per));
+  rail.scrollTo({left:cards[to].offsetLeft,behavior:'smooth'}); }
+function xpTo(btn,i){ var rail=btn.closest('.exp-plates').querySelector('.xp-rail'), c=rail&&rail.querySelectorAll('.blk-plate')[i]; if(!c) return;
+  rail.scrollTo({left:c.offsetLeft,behavior:'smooth'}); }
+// After every render of the editor: put each rail back where it was (a tick or a keystroke redraws the page, and a row
+// that jumped back to plate 1 each time would be unusable), then measure which arrows and dots are due.
+function xpInitAll(){
+  var rails=document.querySelectorAll('.exp-plates .xp-rail');
+  if(XP_RO){ try{ XP_RO.disconnect(); }catch(e){} XP_RO=null; }
+  if(!rails.length) return;
+  if(window.ResizeObserver) XP_RO=new ResizeObserver(function(es){ es.forEach(function(en){ xpSync(en.target); }); });
+  Array.prototype.forEach.call(rails,function(r){ var id=r.closest('.exp-plates').dataset.exp;
+    r.style.scrollBehavior='auto'; r.scrollLeft=XP_POS[id]||0; r.style.scrollBehavior='';
+    xpSync(r); if(XP_RO) XP_RO.observe(r); }); }
+function xpAll(eid){ var e=LB.data.experiments[eid]; if(!e) return; var L=expPlateList(e); if(!L.length) return;
+  var d=_lbDlg(); d.classList.add('open'); d._onCancel=_lbDlgClose;
+  var card=el('lb-dialog-card'); card.className='modal xpall';
+  card.innerHTML='<div class="modal-t">All plates<span class="grow"></span><span class="xpa-n">'+L.length+' plate'+(L.length===1?'':'s')+'</span></div>'
+    +'<div class="xpa-body"><div class="xpa-grid">'+L.map(function(x,i){ return '<div class="xpa-c" style="--i:'+Math.min(i,12)+'" tabindex="0" role="button" title="Edit '+esc(plateLabel(x.key,x.p))+'" onclick="xpOpen(\''+esc(x.key)+'\')" onkeydown="if(event.key===\'Enter\'){xpOpen(\''+esc(x.key)+'\');}">'+platePreviewHtml(x.p,x.key,true)+'</div>'; }).join('')+'</div></div>'
+    +'<div class="modal-act"><span class="xpa-hint">Click a plate to edit it.</span><span class="grow"></span><button class="btn" onclick="_lbDlgClose()">Done</button></div>';
+  var bd=card.querySelector('.xpa-body'); if(bd) bd.style.maxHeight=_dlgRoom(card,240)+'px'; }
+function xpOpen(key){ _lbDlgClose(); openPlateEditor(key); }
 function benchFold(eid,key){ var e=LB.data.experiments[eid]; if(!e) return;
   var g=dayGroups(e).filter(function(x){ return (x.key||'')===key; })[0]; if(!g) return;
   BENCH_FOLD[eid+':'+key]=!_benchFolded(e,g); renderEditor(); }
