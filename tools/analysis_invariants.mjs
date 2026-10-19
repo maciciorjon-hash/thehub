@@ -25,6 +25,10 @@
 //   B16 history                 An analysis with readings is kept under its name, comes back exactly (plates, compounds, name) after Clear all, and a rename renames the entry.
 //   B17 setup                   Typed control ranges mark exactly those wells (and clear when emptied); placing compounds makes the names, points and replicates asked, never on a control well; Review names what is missing.
 //   B18 the shell               Beacon inside dHUB hides its whole header like every other app (an empty white band was left under the shell's bar).
+//   B19 compounds spill        Two plates, one list of names: the first plate takes as many compounds as its layout holds, the rest go on the next plate in the same order and set-up
+//                               (each plate its own compounds); "the same on every plate" gives replicate plates; boxes edited by hand win, and what fits nowhere waits.
+//   B20 a drag reaches         A drag that runs past the edge of the plate (or crosses the gaps and labels) ends on the edge well, and one held at the window's edge scrolls the page by itself,
+//                               so the last rows of a plate taller than the window can be drawn.
 //
 // Usage (repo root):  node tools/analysis_invariants.mjs [--only=C1,C3] [--file-bca=path] [--verbose]
 import { chromium } from 'playwright';
@@ -558,6 +562,71 @@ if (run('B17')) await guard('B17', async () => {
   check('B17', 'a range that names no well changes nothing and marks the box', r.bad === 0 && r.badClass, { bad: r.bad, cls: r.badClass });
   check('B17', 'placing 3 names makes 3 compounds of 10 points × 2 replicates, 10 µM at the top, starting after the control columns, and a block that would land on a control well (E5) slides past it instead of overwriting it', JSON.stringify(r.ser) === JSON.stringify(['Alpha', 'Beta', 'Gamma']) && r.shape.every(x => x.pts === 10 && x.reps === 2) && r.cells === 60 && r.top === 10000 && r.minCol === 2 && !r.onControl, r);
   check('B17', 'Review says what is missing (no-ligand wells are marked but a vehicle on one column only is not a problem; compounds are placed) and ⌘Z undoes the placement', /Before you read the results/.test(r.review) && r.afterUndo === 0, { rv: r.review.slice(0, 160), u: r.afterUndo });
+  await ctx.close();
+});
+
+if (run('B19')) await guard('B19', async () => {
+  const { ctx, pg } = await open('/apps/beacon/beacon.html');
+  const r = await pg.evaluate(async () => {
+    const o = {}; loadTestData('gain'); await new Promise(r => setTimeout(r, 300));
+    state.plates.forEach(pl => { pl.map = {}; for (let i = 0; i < 8; i++) pl.map[bPos(i, 0)] = { k: i < 4 ? 'noLigand' : 'veh' }; }); state.series = []; state.queue = []; state.plate = 0; bAfterChange();
+    bsOpen(3); await new Promise(r => setTimeout(r, 100));
+    const names = id => Object.keys(state.plates[id].map).map(p => state.plates[id].map[p]).filter(m => m.k === 'cpd').map(m => bSeriesById(m.s).name).filter((v, i, a) => a.indexOf(v) === i);
+    const type = v => { const t = document.getElementById('bs-names'); t.value = v; t.dispatchEvent(new Event('input', { bubbles: true })); };
+    type(Array.from({ length: 10 }, (_, i) => 'ARV-' + (i + 1)).join('\n'));
+    o.caps = bsSplit().caps; o.boxes = [0, 1].map(i => document.getElementById('bs-pl-' + i).value.split('\n').length);
+    document.getElementById('bs-place').click(); await new Promise(r => setTimeout(r, 50));
+    o.p1 = names(0); o.p2 = names(1); o.queue = state.queue.slice();
+    o.sameSeries = state.series.length;
+    // by hand: move ARV-4 to plate 2
+    const b0 = document.getElementById('bs-pl-0'), b1 = document.getElementById('bs-pl-1');
+    b0.value = 'ARV-1\nARV-2\nARV-3'; b0.dispatchEvent(new Event('input', { bubbles: true })); b1.value = 'ARV-4\nARV-5'; b1.dispatchEvent(new Event('input', { bubbles: true }));
+    o.manual = bsSplit().per.map(a => a.length); o.foot = document.getElementById('bs-dfoot').textContent;
+    document.getElementById('bs-place').click(); await new Promise(r => setTimeout(r, 50));
+    o.m1 = names(0); o.m2 = names(1);
+    // the same on every plate: replicate plates
+    document.querySelector('#bs-dist-seg button[data-g="same"]').click(); await new Promise(r => setTimeout(r, 50));
+    type('Alpha\nBeta'); document.getElementById('bs-place').click(); await new Promise(r => setTimeout(r, 50));
+    o.s1 = names(0); o.s2 = names(1);
+    // one plate only: no choice offered, the names that do not fit wait
+    bDelPlate(1); bsGo(3); await new Promise(r => setTimeout(r, 50)); o.seg = !!document.getElementById('bs-dist-seg');
+    type(Array.from({ length: 6 }, (_, i) => 'Q' + i).join('\n')); document.getElementById('bs-place').click(); await new Promise(r => setTimeout(r, 50));
+    o.one = names(0); o.oneQueue = state.queue.slice();
+    return o;
+  });
+  check('B19', 'each plate holds 4 compounds of 2 replicates beside its control column, and the box for each plate says what goes on it', r.caps[0] === 4 && r.caps[1] === 4 && r.boxes[0] === 4 && r.boxes[1] === 4, { caps: r.caps, boxes: r.boxes });
+  check('B19', 'ten names on two plates: plate 1 takes ARV-1…4, plate 2 ARV-5…8 in the same order, and the two that fit nowhere wait', JSON.stringify(r.p1) === JSON.stringify(['ARV-1', 'ARV-2', 'ARV-3', 'ARV-4']) && JSON.stringify(r.p2) === JSON.stringify(['ARV-5', 'ARV-6', 'ARV-7', 'ARV-8']) && JSON.stringify(r.queue) === JSON.stringify(['ARV-9', 'ARV-10']) && r.sameSeries === 8, r);
+  check('B19', 'a name moved by hand to the other plate is placed there, the footer says it was placed by hand, and the placement follows the boxes', JSON.stringify(r.manual) === '[3,2]' && /by hand/.test(r.foot) && JSON.stringify(r.m1) === JSON.stringify(['ARV-1', 'ARV-2', 'ARV-3']) && JSON.stringify(r.m2) === JSON.stringify(['ARV-4', 'ARV-5']), { manual: r.manual, foot: r.foot, m1: r.m1, m2: r.m2 });
+  check('B19', '"the same on every plate" puts the same compounds on both plates (replicates)', JSON.stringify(r.s1) === JSON.stringify(['Alpha', 'Beta']) && JSON.stringify(r.s2) === JSON.stringify(['Alpha', 'Beta']), { s1: r.s1, s2: r.s2 });
+  check('B19', 'with one plate there is nothing to choose, and the names past what it holds wait', !r.seg && r.one.length === 4 && r.oneQueue.length === 2, { seg: r.seg, one: r.one, q: r.oneQueue });
+  await ctx.close();
+});
+
+if (run('B20')) await guard('B20', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 700 } });
+  await ctx.route(/^https?:/, r => { const u = r.request().url(); if (u.startsWith(BASE) || /cdnjs.*xlsx/.test(u)) return r.continue(); r.abort(); });
+  const pg = await ctx.newPage(); pg.on('pageerror', e => pageErrs.push('beacon: ' + String(e && e.message || e)));
+  await pg.addInitScript(() => { try { localStorage.setItem('assist_seen', '1'); } catch (e) {} });
+  await pg.goto(BASE + '/apps/beacon/beacon.html'); await pg.waitForTimeout(900);
+  await pg.evaluate(async () => { loadTestData('gain'); await new Promise(r => setTimeout(r, 300)); state.plates = state.plates.slice(0, 1); state.plate = 0; state.plates[0].map = {}; state.series = []; bAfterChange(); const d = document.getElementById('bs'); if (d) d.classList.add('hidden'); });
+  await pg.waitForTimeout(300);
+  const pos = p => pg.evaluate(p => { const r = document.querySelector('#well-grid .well[data-pos="' + p + '"]').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; }, p);
+  const box = () => pg.evaluate(() => { const b = _bBox(BM_SEL); return { n: BM_SEL.size, r0: b.r0, r1: b.r1, c0: b.c0, c1: b.c1 }; });
+  const tall = await pg.evaluate(() => document.getElementById('well-grid').getBoundingClientRect().bottom > window.innerHeight);
+  // a drag held at the bottom of a window shorter than the plate scrolls the page to the last rows, and past the right edge it ends on column 12
+  const A = await pos('A2'); await pg.mouse.move(A.x, A.y); await pg.mouse.down();
+  await pg.mouse.move(A.x + 200, A.y + 200, { steps: 6 }); await pg.mouse.move(900, 690, { steps: 6 }); await pg.waitForTimeout(900);
+  const mid = await pg.evaluate(() => ({ n: BM_SEL.size, top: _bScroller().scrollTop }));
+  await pg.mouse.move(1270, 690, { steps: 4 }); await pg.waitForTimeout(400); await pg.mouse.up(); await pg.waitForTimeout(150);
+  const a = await box();
+  await pg.evaluate(() => { _bScroller().scrollTop = 0; }); await pg.waitForTimeout(150);
+  // a drag out over the row labels and the gaps still ends where it was released
+  const B = await pos('B3'), C = await pos('C5'); await pg.mouse.move(B.x, B.y); await pg.mouse.down(); await pg.mouse.move(B.x - 300, B.y, { steps: 5 }); await pg.mouse.move(C.x, C.y, { steps: 8 }); await pg.mouse.up(); await pg.waitForTimeout(150);
+  const b = await box();
+  check('B20', 'the plate is taller than the window here (the case that needs scrolling)', tall, tall);
+  check('B20', 'a drag held at the bottom edge scrolls the page by itself', mid.top > 100, mid);
+  check('B20', 'and one carried past the plate ends on the edge: A2 to H12 is 88 wells, not the wells the pointer last crossed', a.n === 88 && a.r1 === 7 && a.c1 === 11 && a.r0 === 0 && a.c0 === 1, a);
+  check('B20', 'a drag that wanders out over the labels and comes back ends exactly where it was released (B3 to C5 = 6 wells)', b.n === 6 && b.r0 === 1 && b.r1 === 2 && b.c0 === 2 && b.c1 === 4, b);
   await ctx.close();
 });
 

@@ -682,6 +682,9 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
 .bs-plan{padding:10px 12px;border-radius:var(--r-2);background:var(--surface2);font-size:var(--fs-3);color:var(--text2);line-height:1.5;}
 .bs-plan b{color:var(--text);font-weight:600;}
 .bs-plan .warn{color:var(--poor);}
+.bs-dgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:12px;}
+#bs-dist .sx-hint{margin-top:2px;}
+#bs-dfoot{margin-top:8px;}
 .bs-cpds{display:flex;flex-direction:column;gap:2px;}
 .bs-cp{display:grid;grid-template-columns:12px minmax(0,1fr) auto;gap:8px;align-items:center;font-size:var(--fs-3);padding:3px 0;}
 .bs-cp i{width:12px;height:12px;border-radius:3px;border:1px solid var(--border2);}
@@ -2428,6 +2431,43 @@ function _bHit(x, y){
   }
   return null;
 }
+// The well nearest to a point, wherever it is: in the gap between two wells, over a label, or well outside the plate (a drag that runs past
+// the edge ends at the edge, not where the pointer last happened to be over a well).
+function _bNearest(x, y){
+  var dm = bDims(), g = document.getElementById('well-grid'); if (!g) return null;
+  var w0 = g.querySelector('.well[data-pos="' + bPos(0, 0) + '"]'), w1 = g.querySelector('.well[data-pos="' + bPos(dm.r - 1, dm.c - 1) + '"]'); if (!w0 || !w1) return null;
+  var a = w0.getBoundingClientRect(), b = w1.getBoundingClientRect();
+  var pw = dm.c > 1 ? (b.left - a.left) / (dm.c - 1) : a.width, ph = dm.r > 1 ? (b.top - a.top) / (dm.r - 1) : a.height;
+  if (!(pw > 0) || !(ph > 0)) return null;
+  return { kind: 'well', p: { r: Math.max(0, Math.min(dm.r - 1, Math.floor((y - a.top) / ph))), c: Math.max(0, Math.min(dm.c - 1, Math.floor((x - a.left) / pw))) } };
+}
+function _bMove(x, y){
+  if (!_bDrag) return;
+  var hit = _bHit(x, y);
+  if (!hit || (_bDrag.kind === 'well' && hit.kind !== 'well')) hit = _bNearest(x, y);
+  if (hit) _bDragTo(hit);
+}
+// A plate taller than the window (a laptop shows about six rows under the steps): a drag that reaches the edge scrolls the page by itself.
+var _bPt = null, _bScrollRaf = 0;
+function _bScroller(){
+  for (var el = document.getElementById('well-grid'); el && (el = el.parentElement); ) {
+    var cs = getComputedStyle(el);
+    if (/(auto|scroll)/.test(cs.overflowY) && el.scrollHeight > el.clientHeight + 1) return el;
+  }
+  return document.scrollingElement || document.documentElement;
+}
+function _bAutoScroll(){
+  _bScrollRaf = 0;
+  if (!_bDrag || !_bPt) return;
+  var sc = _bScroller(), page = sc === document.scrollingElement || sc === document.documentElement, r = page ? { top: 0, bottom: window.innerHeight } : sc.getBoundingClientRect(), edge = 56, dy = 0;
+  if (_bPt.y < r.top + edge) dy = -Math.ceil((r.top + edge - _bPt.y) / 3);
+  else if (_bPt.y > r.bottom - edge) dy = Math.ceil((_bPt.y - (r.bottom - edge)) / 3);
+  dy = Math.max(-26, Math.min(26, dy));
+  if (!dy) return;
+  var before = sc.scrollTop; sc.scrollTop += dy;
+  if (sc.scrollTop !== before) _bMove(_bPt.x, _bPt.y);
+  _bScrollRaf = requestAnimationFrame(_bAutoScroll);
+}
 function _bDragTo(hit){
   var d = _bDrag, rect, dm = bDims();
   if (d.kind === 'well') { if (hit.kind !== 'well') return; rect = _bRect(d.a, hit.p); }
@@ -2453,7 +2493,7 @@ function _bDragTo(hit){
     var zl = e.target.closest('.w-zone span');
     if (zl && zl.dataset.s) { e.preventDefault(); bSelect(new Set(bWellsOf(function(m){ return m.s === zl.dataset.s; })), 'cpd'); return; }
     if (zl && zl.dataset.k === 'trc') { e.preventDefault(); bSelect(new Set(bWellsOf(function(m){ return m.k === 'trc'; })), 'trc'); return; }
-    var hit = _bHit(e.clientX, e.clientY); if (!hit) return;
+    var hit = _bHit(e.clientX, e.clientY) || (e.target === g ? _bNearest(e.clientX, e.clientY) : null); if (!hit) return;
     e.preventDefault();
     var add = e.metaKey || e.ctrlKey;
     if (hit.kind === 'well') {
@@ -2475,9 +2515,10 @@ function _bDragTo(hit){
   });
   g.addEventListener('pointermove', function(e){
     if (!_bDrag) return;
-    var hit = _bHit(e.clientX, e.clientY); if (hit) _bDragTo(hit);
+    _bPt = { x: e.clientX, y: e.clientY }; _bMove(e.clientX, e.clientY);
+    if (!_bScrollRaf) _bScrollRaf = requestAnimationFrame(_bAutoScroll);
   });
-  function end(){ if (_bDrag) { _bDrag = null; bPrefill(); bRenderPanel(); } }
+  function end(){ if (_bDrag) { _bDrag = null; _bPt = null; bPrefill(); bRenderPanel(); } }
   g.addEventListener('pointerup', end);
   g.addEventListener('pointercancel', end);
   // Double-click takes everything the well belongs to: all the controls of its kind, or the whole compound.
@@ -3939,7 +3980,7 @@ function bhRender(){
 // on screen is the plate being set up), so nothing here is a second model: anything done on the plate is already in the dialog when
 // it opens, and anything done in the dialog is already on the plate when it closes.
 // ═════════════════════════════════════════════════════════════════════════════════════════════
-var BS = { step: 0, built: false, all: true, hand: false, ch: 'donor', mode: 'cpd', form: { top: 10, unit: 'µM', fac: 3, pts: null, reps: 2, dir: 'right', run: 'rows', start: '', names: '' }, from: null };
+var BS = { step: 0, built: false, all: true, dist: 'order', assign: null, hand: false, ch: 'donor', mode: 'cpd', form: { top: 10, unit: 'µM', fac: 3, pts: null, reps: 2, dir: 'right', run: 'rows', start: '', names: '' }, from: null };
 var BS_STEPS = [['assay', 'Assay'], ['readings', 'Readings'], ['controls', 'Controls'], ['compounds', 'Compounds'], ['review', 'Review']];
 var BS_X = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
 function bsEl(id){ return document.getElementById(id); }
@@ -4206,14 +4247,15 @@ function bsCompounds(){
       '<div class="sx-f"><label>Highest concentration at</label><div class="seg bs-seg" id="bs-dir" role="group"><button type="button" data-d="right" class="' + (f.dir === 'right' ? 'active' : '') + '">The ' + (f.run === 'rows' ? 'left' : 'top') + '</button><button type="button" data-d="left" class="' + (f.dir === 'left' ? 'active' : '') + '">The ' + (f.run === 'rows' ? 'right' : 'bottom') + '</button></div></div>' +
       '<div class="sx-f"><label>The series runs</label><div class="seg bs-seg" id="bs-run" role="group"><button type="button" data-r="rows" class="' + (f.run === 'rows' ? 'active' : '') + '">Along the rows</button><button type="button" data-r="cols" class="' + (f.run === 'cols' ? 'active' : '') + '">Down the columns</button></div></div>' +
       '<div class="sx-f"><label for="bs-start">Start at</label><input id="bs-start" type="text" placeholder="auto: ' + free.at + '" value="' + esc(f.start) + '" spellcheck="false" autocomplete="off"><div class="sx-hint">the first well of the first block</div></div>' +
-    '</div>' + (state.plates.length > 1 ? '<label style="display:flex;gap:8px;align-items:center;font-size:var(--fs-3);color:var(--text2);cursor:pointer"><input type="checkbox" id="bs-all2"' + (BS.all ? ' checked' : '') + '> The same layout on every plate (replicate plates pool in Results)</label>' : '') +
-    '<div class="bs-plan" id="bs-plan"></div><div class="sx-inline"><button class="btn btn-primary" id="bs-place" style="height:36px;padding-top:0;padding-bottom:0">' + (trc ? 'Place the titration' : 'Place compounds') + '</button><button class="sx-link" id="bs-unplace">Clear ' + (trc ? 'the tracer' : 'the compounds') + '</button></div></div></section>' +
+    '</div>' + (state.plates.length > 1 ? (trc ? '<label style="display:flex;gap:8px;align-items:center;font-size:var(--fs-3);color:var(--text2);cursor:pointer"><input type="checkbox" id="bs-all2"' + (BS.all ? ' checked' : '') + '> The same layout on every plate</label>' :
+      '<div class="sx-f" style="margin-top:12px"><label>' + state.plates.length + ' plates</label><div class="seg bs-seg" id="bs-dist-seg" role="group"><button type="button" data-g="order" class="' + (BS.dist === 'order' ? 'active' : '') + '">Fill the plates in order</button><button type="button" data-g="same" class="' + (BS.dist === 'same' ? 'active' : '') + '">The same on every plate</button></div><div class="sx-hint">' + (BS.dist === 'order' ? 'Different compounds on each plate: the first plate takes as many as its layout holds, the rest go on the next plate in the same order and set-up.' : 'Replicate plates: every plate gets the same compounds, and their replicates pool in Results.') + '</div></div>') : '') +
+    '<div class="bs-plan" id="bs-plan"></div><div id="bs-dist"></div><div class="sx-inline"><button class="btn btn-primary" id="bs-place" style="height:36px;padding-top:0;padding-bottom:0">' + (trc ? 'Place the titration' : 'Place compounds') + '</button><button class="sx-link" id="bs-unplace">Clear ' + (trc ? 'the tracer' : 'the compounds') + '</button></div></div></section>' +
     '</div><div class="bs-side"><div class="bs-mini-wrap" id="bs-mini-p"></div></div></div>';
   bsPlanText(); bsMiniInto('bs-mini-p');
 }
 // Where blocks start by default: after the last column (or row) that holds a control, the width left to the series as the default number of points.
-function bsFree(){
-  var pl = bPl(); if (!pl) return { c0: 0, r0: 0, pts: 10, at: 'A1' };
+function bsFree(pl){
+  pl = pl || bPl(); if (!pl) return { c0: 0, r0: 0, pts: 10, at: 'A1' };
   var run = BS.form.run, cc = -1, rr = -1;
   // controls sit along an edge: a column (or row) with two or more of them is part of that edge, one stray well is not — it is slid past
   var cn = {}, rn = {};
@@ -4227,9 +4269,9 @@ function bsFree(){
 }
 function bsNames(){ return PlateEngine.pasteList(BS.form.names).filter(function(x){ return x; }); }
 // The placement: compounds are blocks of `reps` lines by `pts` points. A block starts where the last ended, one band further along; when the plate runs out of bands the next group of blocks starts beside the first. Controls are never overwritten.
-function bsPlan(pl){
-  var f = BS.form, fr = bsFree(), trc = BS.mode === 'trc' && state.assayMode === 'displacement', pts = f.pts || fr.pts, reps = trc ? 1 : f.reps, run = f.run, out = { blocks: [], pts: pts, reps: reps, miss: 0, need: 0 };
-  var names = bsNames(), need = trc ? 1 : Math.max(names.length, 1);
+function bsPlan(pl, want){
+  var f = BS.form, fr = bsFree(pl), trc = BS.mode === 'trc' && state.assayMode === 'displacement', pts = f.pts || fr.pts, reps = trc ? 1 : f.reps, run = f.run, out = { blocks: [], pts: pts, reps: reps, miss: 0, need: 0 };
+  var names = bsNames(), need = trc ? 1 : want != null ? want : Math.max(names.length, 1);
   var start = f.start ? PlateEngine.parseRange(f.start, { r: pl.rows, c: pl.cols }) : null, r0 = fr.r0, c0 = fr.c0;
   if (start && start.length) { var q = PlateEngine.rc(start[0]); r0 = q.r; c0 = q.c; }
   var used = {};
@@ -4255,16 +4297,74 @@ function bsPlan(pl){
   out.need = need; out.miss = need - placed;
   return out;
 }
-function bsPlanText(){
+// How many compounds this plate takes with the layout asked for (blocks of `reps` lines by `pts` points around its own controls).
+function bsCap(pl){ return bsPlan(pl, 999).blocks.length; }
+// Which names go on which plate. Several plates, "in order": the list fills the first plate as far as its layout takes compounds, what is
+// left goes on the next plate in the same order and the same set-up, and so on; "the same": every plate takes the same list (replicate
+// plates, their replicates pool in Results). Boxes the person has edited (BS.assign) win until the list or the choice changes.
+function bsSplit(){
+  var r = bsSplit0(), placed = {};
+  r.fit = r.per.map(function(a, i){ return a.slice(0, r.caps[i]); });
+  r.fit.forEach(function(a){ a.forEach(function(n){ placed[n.toLowerCase()] = 1; }); });
+  r.per.forEach(function(a, i){ a.slice(r.caps[i]).forEach(function(n){ if (!placed[n.toLowerCase()] && r.left.indexOf(n) < 0) r.left.push(n); }); });
+  return r;
+}
+function bsSplit0(){
+  var names = bsNames(), P = state.plates, per = [], left = [], caps = P.map(bsCap);
+  if (!names.length) return { per: P.map(function(){ return []; }), left: [], gen: true, manual: false, caps: caps };
+  if (P.length < 2 || BS.dist === 'same') {
+    P.forEach(function(pl, i){ per.push(names.slice(0, caps[i])); });
+    return { per: per, left: names.slice(Math.max.apply(null, caps)), gen: false, manual: false, caps: caps };
+  }
+  if (BS.assign && BS.assign.length === P.length) {
+    per = BS.assign.map(function(t){ return PlateEngine.pasteList(t).filter(Boolean); });
+    var placed = {}; per.forEach(function(a){ a.forEach(function(n){ placed[n.toLowerCase()] = 1; }); });
+    return { per: per, left: names.filter(function(n){ return !placed[n.toLowerCase()]; }), gen: false, manual: true, caps: caps };
+  }
+  var k = 0;
+  P.forEach(function(pl, i){ var take = names.slice(k, k + caps[i]); k += take.length; per.push(take); });
+  return { per: per, left: names.slice(k), gen: false, manual: false, caps: caps };
+}
+function bsOrdered(){ return state.plates.length > 1 && BS.dist === 'order' && !(BS.mode === 'trc' && state.assayMode === 'displacement'); }
+function bsPlanText(){ bsPlanHead(); bsDistBoxes(); }
+function bsPlanHead(){
   var el = bsEl('bs-plan'), pl = bPl(); if (!el || !pl) return;
-  var f = BS.form, trc = BS.mode === 'trc' && state.assayMode === 'displacement', pn = bsPlan(pl), fac = f.fac > 1 ? f.fac : 3, hi = f.top * (BM_UNIT[f.unit] || 1);
-  var nn = bsEl('bs-names-n'); if (nn) { var n = bsNames().length; nn.textContent = n ? bPlural(n, 'name') + (n > 24 ? '' : '') : 'No names yet: they are called Compound A, B, C… and can be renamed on the Plate tab.'; }
+  var f = BS.form, trc = BS.mode === 'trc' && state.assayMode === 'displacement', fac = f.fac > 1 ? f.fac : 3, hi = f.top * (BM_UNIT[f.unit] || 1);
+  var nn = bsEl('bs-names-n'); if (nn) { var n = bsNames().length; nn.textContent = n ? bPlural(n, 'name') : 'No names yet: one compound is made, called Compound A, and can be renamed on the Plate tab.'; }
+  var sp = trc ? null : bsSplit(), P = state.plates, multi = P.length > 1, ord = bsOrdered();
+  var pn = bsPlan(pl, trc ? null : sp.gen ? 1 : Math.min(sp.per[state.plate].length, 999));
+  var total = trc ? 0 : sp.fit.reduce(function(a, b){ return a + b.length; }, 0) || (sp.gen ? 1 : 0);
   var all = pn.blocks.reduce(function(a, b){ return a.concat(b.map(function(x){ return x.p; })); }, []), rows = {}, cols = {};
   all.forEach(function(p){ var q = PlateEngine.rc(p); rows[q.r] = 1; cols[q.c] = 1; });
   var rk = Object.keys(rows).map(Number).sort(function(a, b){ return a - b; }), ck = Object.keys(cols).map(Number).sort(function(a, b){ return a - b; });
   var span = all.length ? bPos(rk[0], ck[0]) + '–' + bPos(rk[rk.length - 1], ck[ck.length - 1]) : '–';
-  el.innerHTML = '<b>' + (trc ? 'Tracer titration' : bPlural(pn.blocks.length, 'compound') + ' × ' + bPlural(pn.reps, 'replicate')) + '</b> · ' + bPlural(pn.pts, 'point') + ' · ' + bFmtConc(hi) + ' → ' + bFmtConc(hi / Math.pow(fac, pn.pts - 1)) + ' · ' + span + (pn.miss > 0 ? '<br><span class="warn">' + bPlural(pn.miss, 'compound') + ' do not fit on this plate — the names wait for the next plate you set up.</span>' : '') +
-    (!f.start && bsFree().c0 + bsFree().r0 > 0 ? '<br>Starts after the controls, at ' + bsFree().at + '.' : '');
+  var what = trc ? 'Tracer titration' : ord ? bPlural(total, 'compound') + ' on ' + bPlural(P.length, 'plate') : bPlural(pn.blocks.length, 'compound');
+  var lost = trc ? 0 : sp.left.length;
+  el.innerHTML = '<b>' + what + '</b>' + (trc ? '' : ' × ' + bPlural(pn.reps, 'replicate')) + ' · ' + bPlural(pn.pts, 'point') + ' · ' + bFmtConc(hi) + ' → ' + bFmtConc(hi / Math.pow(fac, pn.pts - 1)) + (ord ? '' : ' · ' + span) +
+    (lost > 0 ? '<br><span class="warn">' + bPlural(lost, 'name') + (sp.manual ? ' on no plate (or past what its plate holds) — they wait for the next compounds you make.' : ' do not fit on ' + (multi ? 'the plates' : 'this plate') + ' — add a plate in Readings and place again, and they go on it.') + '</span>' : '') +
+    (!f.start && bsFree(pl).c0 + bsFree(pl).r0 > 0 ? '<br>Starts after the controls, at ' + bsFree(pl).at + '.' : '');
+}
+// One box per plate, each holding the names that go on it: filled in order by itself, and the boxes are text — cut a name from one and
+// paste it into another to move it.
+function bsDistBoxes(){
+  var el = bsEl('bs-dist'); if (!el) return;
+  if (!bsOrdered()) { el.innerHTML = ''; return; }
+  var sp = bsSplit();
+  el.innerHTML = '<div class="bs-dgrid">' + state.plates.map(function(pl, i){
+    return '<div class="sx-f"><label for="bs-pl-' + i + '"><b>' + esc(bPlateName(i)) + '</b></label><textarea id="bs-pl-' + i + '" data-pl="' + i + '" rows="' + Math.max(3, Math.min(8, sp.per[i].length + 1)) + '" spellcheck="false" placeholder="Nothing goes on this plate">' + esc(sp.per[i].join('\n')) + '</textarea><div class="sx-hint" id="bs-dn-' + i + '"></div></div>';
+  }).join('') + '</div><div class="sx-hint" id="bs-dfoot"></div>';
+  bsDistNotes();
+}
+function bsDistNotes(){
+  if (!bsEl('bs-dist') || !bsOrdered()) return;
+  var sp = bsSplit();
+  state.plates.forEach(function(pl, i){
+    var el = bsEl('bs-dn-' + i); if (!el) return;
+    var n = sp.per[i].length, cap = sp.caps[i];
+    el.innerHTML = n > cap ? '<span style="color:var(--poor)">' + bPlural(n, 'name') + ' — only ' + cap + ' fit</span>' : bPlural(n, 'compound') + ' · room for ' + cap;
+  });
+  var ft = bsEl('bs-dfoot');
+  if (ft) ft.innerHTML = (sp.manual ? 'Placed by hand. <button class="sx-link" data-redist="1">Fill in order again</button>' : 'Filled in order: each plate takes what its layout holds and the next plate the rest.') + (sp.left.length ? ' <span style="color:var(--poor)">' + bPlural(sp.left.length, 'name') + ' on no plate.</span>' : '');
 }
 function bsCpdList(){}
 function bsPlace(){
@@ -4273,27 +4373,28 @@ function bsPlace(){
   if (!(f.fac > 1)) { beaconToast('The dilution factor has to be above 1.', 'err'); bsEl('bs-fac').focus(); return; }
   if (f.start && !PlateEngine.parseRange(f.start, { r: bPl().rows, c: bPl().cols })) { beaconToast('“' + f.start + '” is not a well — write one like C1, or leave it empty.', 'err'); bsEl('bs-start').focus(); return; }
   bMark();
-  var targets = bsTargets(), names = trc ? [] : bsNames(), left = [], total = 0, miss = 0, series = [];
-  var cur = bPl(), pn0 = bsPlan(cur), need = pn0.need;
-  for (var i = 0; i < need; i++) { var nm = names[i]; if (!nm) { nm = series.length ? PlateEngine.nextName(series[series.length - 1]) : bFreshName(); var g = 0; while ((bFindSeries(nm) && names.indexOf(nm) < 0 || series.indexOf(nm) >= 0) && g++ < 60) nm = PlateEngine.nextName(nm); } series.push(nm); }
-  targets.forEach(function(pl){
-    Object.keys(pl.map).forEach(function(p){ var k = pl.map[p].k; if (trc ? k === 'trc' : k === 'cpd') delete pl.map[p]; });
-    var save = state.plate; var pn = (function(){ var keep = state.plate; state.plate = state.plates.indexOf(pl); var r = bsPlan(pl); state.plate = keep; return r; })();
-    var fac = f.fac, hi = f.top * (BM_UNIT[f.unit] || 1);
+  var P = trc ? bsTargets() : state.plates, sp = trc ? null : bsSplit(), hi = f.top * (BM_UNIT[f.unit] || 1), left = trc ? [] : sp.left.slice(), per = [];
+  P.forEach(function(pl){ Object.keys(pl.map).forEach(function(p){ var k = pl.map[p].k; if (trc ? k === 'trc' : k === 'cpd') delete pl.map[p]; }); });
+  var gen = null;
+  if (!trc && sp.gen) { bPruneSeries(); gen = [bFreshName()]; }
+  P.forEach(function(pl, i){
+    var names = trc ? null : gen || sp.per[i], pn = bsPlan(pl, trc ? null : names.length);
     pn.blocks.forEach(function(w, bi){
-      var s = trc ? null : (bFindSeries(series[bi]) || bNewSeries(series[bi]));
-      w.forEach(function(x){ var c = hi / Math.pow(fac, f.dir === 'right' ? x.i : pn.pts - 1 - x.i); pl.map[x.p] = trc ? { k: 'trc', c: c } : { k: 'cpd', s: s.id, c: c }; });
+      var s = trc ? null : (bFindSeries(names[bi]) || bNewSeries(names[bi]));
+      w.forEach(function(x){ var c = hi / Math.pow(f.fac, f.dir === 'right' ? x.i : pn.pts - 1 - x.i); pl.map[x.p] = trc ? { k: 'trc', c: c } : { k: 'cpd', s: s.id, c: c }; });
     });
-    total = Math.max(total, pn.blocks.length); miss = Math.max(miss, pn.miss);
+    per.push(pn.blocks.length);
+    if (!trc) names.slice(pn.blocks.length).forEach(function(n){ if (left.indexOf(n) < 0) left.push(n); });
   });
-  state.queue = []; if (miss > 0) state.queue = series.slice(series.length - miss);
+  state.queue = left;
   bPruneSeries(); bAfterChange(); bsRefresh();
-  beaconToast((trc ? 'Tracer titration placed' : bPlural(total, 'compound') + ' placed') + (miss ? ' — ' + bPlural(miss, 'name') + ' did not fit and wait for the next compounds you make' : '') + '. ⌘Z undoes it.');
+  var total = per.reduce(function(a, b){ return a + b; }, 0), split = P.length > 1 && !trc && bsOrdered() ? ' (' + per.map(function(n, i){ return bPlateName(i) + ': ' + n; }).join(' · ') + ')' : '';
+  beaconToast((trc ? 'Tracer titration placed' : bPlural(total, 'compound') + ' placed' + split) + (left.length ? ' — ' + bPlural(left.length, 'name') + ' did not fit anywhere and wait for the next compounds you make' : '') + '. ⌘Z undoes it.');
 }
 function bsUnplace(){
   var trc = BS.mode === 'trc' && state.assayMode === 'displacement', n = 0;
   bMark();
-  bsTargets().forEach(function(pl){ Object.keys(pl.map).forEach(function(p){ var k = pl.map[p].k; if (trc ? k === 'trc' : k === 'cpd') { delete pl.map[p]; n++; } }); });
+  (trc ? bsTargets() : state.plates).forEach(function(pl){ Object.keys(pl.map).forEach(function(p){ var k = pl.map[p].k; if (trc ? k === 'trc' : k === 'cpd') { delete pl.map[p]; n++; } }); });
   bPruneSeries(); bAfterChange(); bsRefresh(); beaconToast(n ? 'Cleared. ⌘Z undoes it.' : 'There was nothing to clear.');
 }
 // ── 5 · Review ──────────────────────────────────────────────────────────────────────────────
@@ -4325,7 +4426,8 @@ function bsWire(d){
     if (t.id === 'bs-name') { bsAssayHints(); return; }
     if (t.dataset.info) { state.info = state.info || {}; state.info[t.dataset.info] = t.value.trim(); return; }
     if (t.id === 'bs-paste') { var txt = t.value; if (txt && bPasteText(txt)) { t.value = ''; bsRefresh(); } return; }
-    if (t.id === 'bs-names') { BS.form.names = t.value; BS.namesTouched = true; bsPlanText(); }
+    if (t.id === 'bs-names') { BS.form.names = t.value; BS.namesTouched = true; BS.assign = null; bsPlanText(); }
+    else if (t.dataset.pl !== undefined) { BS.assign = state.plates.map(function(pl, i){ var b = bsEl('bs-pl-' + i); return b ? b.value : ''; }); bsPlanHead(); bsDistNotes(); }
     else if (t.id === 'bs-top') { BS.form.top = parseFloat(t.value); bsPlanText(); }
     else if (t.id === 'bs-fac') { BS.form.fac = parseFloat(t.value); bsPlanText(); }
     else if (t.id === 'bs-pts') { var n = parseInt(t.value, 10); BS.form.pts = n >= 2 ? Math.min(24, n) : null; bsPlanText(); bsMiniInto('bs-mini-p'); }
@@ -4360,6 +4462,8 @@ function bsWire(d){
     if (t.dataset.ch && t.closest('#bs-hand')) { BS.ch = t.dataset.ch; bsHand(); return; }
     if (t.closest('#bs-fmt') && t.dataset.f) { bSetFormat(+t.dataset.f); bsAssay(); return; }
     if (t.closest('#bs-mode')) { BS.mode = t.dataset.m; bsCompounds(); return; }
+    if (t.closest('#bs-dist-seg')) { BS.dist = t.dataset.g; BS.assign = null; bsCompounds(); return; }
+    if (t.dataset.redist) { BS.assign = null; bsPlanText(); return; }
     if (t.closest('#bs-reps')) { BS.form.reps = +t.dataset.n; bsCompounds(); return; }
     if (t.closest('#bs-dir')) { BS.form.dir = t.dataset.d; bsCompounds(); return; }
     if (t.closest('#bs-run')) { BS.form.run = t.dataset.r; bsCompounds(); return; }
@@ -5019,7 +5123,7 @@ var tourRegister, appTour, tourEnd, tourGuideRefresh, tourOffer;
         do: ['**Assay** — the analysis name, protein–protein or displacement, the plate format and optional notes (target, cell line, time point).',
           '**Readings** — drop the Excel files, paste from Excel, or type the values into a grid.',
           '**Controls** — say where each control is (`A1:D1`); the plate beside it shows what you typed.',
-          '**Compounds** — paste the names, give the top concentration, dilution, points and replicates, and place them; **Review** lists what is still missing.'],
+          '**Compounds** — paste the names, give the top concentration, dilution, points and replicates, and place them. With several plates the list fills the first plate as far as its layout holds and the rest goes on the next plate, in the same order (or choose *The same on every plate* for replicate plates); each plate has a box you can edit to move a name. **Review** lists what is still missing.'],
         steps: [{ sel: '#bs-open', t: 'Setup', place: 'bottom', b: 'Everything in Setup writes into the same plate you see on the Plate tab, so you can mix: type some in Setup, drag the rest on the plate.' }] },
 
       { id: 'readings', label: 'Plate › 1 Readings', tag: 'Plate', sel: stepBtn(1), go: step(1), head: false,
