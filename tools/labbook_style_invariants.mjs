@@ -29,6 +29,9 @@
 //                           Readout), every question under the heading of its own kind, none lost and none twice — in New experiment and in the
 //                           setup editor. It was one grid of thirteen unlike boxes, a checkbox and a pipetting limit mixed in with the plate
 //                           (Jon, 2026-10-19: "desordenado, agrupa")
+//   T18 one sheet, centred  the Journal page, the Planner's Day and its Week are the same sheet (a bordered .nb-page on the grey desk), centred in
+//                           the pane with desk down both sides — the Journal's sat against the left edge and the Planner had no sheet, so the
+//                           margins of a wide screen were empty white (Jon, 2026-10-19)
 //
 //   node tools/labbook_style_invariants.mjs [--url=URL] [--only=T1,T5]
 import { chromium } from 'playwright';
@@ -182,6 +185,13 @@ const CHECKS = [
           if(kind!==t) bad.push(h[1]+': "'+k+'" is under "'+t+'", it is a "'+kind+'" question'); }); });
       if(grps.length&&!grps.some(function(g){ return g.querySelector('[data-sf="format"]'); })) bad.push(h[1]+': the plate format is not under a heading'); });
     return bad; })()`],
+  ['T18', ['journal_day', 'planner_today', 'week'], `(function(){ var bad=[], pane=document.getElementById('pane-ed'), sh=pane.querySelector('.nb-page'); if(!sh) return ['no sheet on this screen'];
+    var pr=pane.getBoundingClientRect(), r=sh.getBoundingClientRect(), L=r.left-pr.left, R=pr.right-r.right, desk=sh.closest('.nb-desk,.wk-desk');
+    if(Math.abs(L-R)>20) bad.push('the sheet is not centred: '+Math.round(L)+'px of desk on the left, '+Math.round(R)+'px on the right');
+    if(L<12) bad.push('the sheet touches the pane edge ('+Math.round(L)+'px)');
+    if(!desk||getComputedStyle(desk).backgroundColor===getComputedStyle(pane).backgroundColor) bad.push('the sheet is not on the grey desk');
+    if(getComputedStyle(sh).backgroundColor!==getComputedStyle(document.documentElement).getPropertyValue('--surface').trim()&&!/^rgb/.test(getComputedStyle(sh).backgroundColor)) bad.push('the sheet has no paper colour');
+    if(parseFloat(getComputedStyle(sh).borderTopWidth)<1) bad.push('the sheet has no border'); return bad; })()`],
   ['T14', ['exp_done', 'outcome_picker'], `(function(){ var S=__st, bad=[], n=0;
     S.all('.oc-chip i,.xv-oc,.oc-band .oc-v i,.dlg-item .ic').forEach(function(e){ n++; var t=(e.textContent||'').trim();
       if(e.closest('.dlg-item')&&!e.closest('.dlg-item').querySelector('.ic-svg')&&/^[✓×~?–]$/.test(t)&&!/Not yet/.test(e.closest('.dlg-item').textContent)) bad.push('the outcome picker draws "'+t+'" as text');
