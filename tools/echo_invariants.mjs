@@ -153,6 +153,10 @@
 //       asks for as few        volume do not touch its checks. The planner uses as few intermediates as will do (none when Source reaches, one
 //       intermediates as       before two; a point nothing can reach does not buy more), and "Force number of intermediates" gives exactly that
 //       will do                many, the best it can, even if a point lands off plan.
+//   E61 Setup is a walk       Setup opens on Files and goes Files → Assay → Analysis → Output → Review with Back / Next; Back is not there on the first
+//                             step, Run Analysis only on the last (Next is gone there). Every setting sits on the step that decides it, every field
+//                             has a visible caption, the boxes and numbers of a card line up on one column, and a Review "Fix" button lands on the
+//                             step that holds the setting.
 //
 // Usage (repo root):  node tools/echo_invariants.mjs [--only=E1,E7] [--file=path/to/echo.html] [--verbose]
 import { chromium } from 'playwright';
@@ -2338,6 +2342,61 @@ if (run('E60')) await guard('E60', async () => {
   check('E60', 'forced above what is needed: exactly that many, all within tolerance', r.n === 4 && r.bad === 0, { n: r.n, bad: r.bad });
   r = await plan(A);
   check('E60', 'unticking Force hands the number back to the planner', r.n === 2 && !/forced/.test(r.lbl), { n: r.n, lbl: r.lbl });
+});
+
+if (run('E61')) await guard('E61', async () => {
+  for (const [w, h] of [[1440, 900], [390, 844]]) {
+    const c = await browser.newContext({ viewport: { width: w, height: h } }); const q = await c.newPage(); const tag = w + 'px · ';
+    await q.goto('file://' + FILE); await q.waitForTimeout(1200);
+    await q.evaluate(() => { loadTestData(); }); await q.waitForTimeout(900);
+    await q.evaluate(() => { openSetupModal(); switchSetupTab('files'); }); await q.waitForTimeout(300);
+    const vis = id => q.evaluate(i => { const e = document.getElementById(i); return !!(e && e.offsetParent !== null && getComputedStyle(e).visibility !== 'hidden'); }, id);
+    const active = () => q.evaluate(() => document.querySelector('.setup-stab.active').dataset.tab + '|' + document.querySelector('.setup-pane.active').id);
+    // 1. the walk
+    const order = ['files', 'assay', 'analysis', 'output', 'review'], seen = [];
+    for (let i = 0; i < order.length; i++) {
+      seen.push((await active()).split('|')[0]);
+      const st = { back: await vis('setup-back'), next: await vis('setup-next'), run: await vis('run-btn') };
+      check('E61', tag + order[i] + ': Back / Next / Run are where they belong', st.back === (i > 0) && st.next === (i < 4) && st.run === (i === 4), st);
+      if (i < 4) { await q.evaluate(() => document.getElementById('setup-next').click()); await q.waitForTimeout(150); }
+    }
+    check('E61', tag + 'Next walks the five steps in order', seen.join() === order.join(), seen);
+    await q.evaluate(() => setupStep(1)); check('E61', tag + 'Next past the last step stays on it', (await active()).startsWith('review'));
+    for (let i = 3; i >= 0; i--) { await q.evaluate(() => document.getElementById('setup-back').click()); await q.waitForTimeout(100); check('E61', tag + 'Back returns to ' + order[i], (await active()).startsWith(order[i] + '|'), await active()); }
+    // 2. every setting on the step that decides it
+    const home = { files: ['echo-zone', 'reader-zone', 'smiles-zone', 'p-skip', 'p-a1-loc'], assay: ['p-assay', 'p-assay-type', 'p-role', 'p-target', 'p-cell', 'p-time', 'p-group-mode', 'multi-assay-chk'],
+      analysis: ['p-ctrl', 'p-row-norm', 'p-skip-norm', 'p-hook', 'p-r2', 'p-sd', 'p-top', 'p-bot-val', 'p-hill-val', 'p-min-bot-val'], output: ['p-nd'] };
+    const where = await q.evaluate(h => { const o = {}; for (const k in h) h[k].forEach(id => { const e = document.getElementById(id), p = e && e.closest('.setup-pane'); if (!p || p.id !== 'setup-pane-' + k) o[id] = p ? p.id : 'missing'; }); return o; }, home);
+    check('E61', tag + 'every setting is on the step that decides it', !Object.keys(where).length, where);
+    const cols = await q.evaluate(() => [...document.querySelectorAll('.csv-col-cb')].filter(e => e.closest('#setup-pane-output')).length);
+    check('E61', tag + 'the 14 output columns are on Output', cols === 14, cols);
+    // 3. every field has a visible caption (the multi-assay panels are built at run time and have their own)
+    for (const t of ['files', 'assay', 'analysis', 'output']) {
+      await q.evaluate(t => switchSetupTab(t), t); await q.waitForTimeout(120);
+      const bare = await q.evaluate(() => [...document.querySelectorAll('.setup-pane.active input:not([type=file]):not([type=hidden]):not(.csv-col-cb), .setup-pane.active select, .setup-pane.active textarea')]
+        .filter(e => e.offsetParent !== null && !/^mat-/.test(e.id) && !e.closest('#mat-type-list, #mat-analysis-container'))
+        .filter(e => { const l = e.id && document.querySelector('label[for="' + e.id + '"]'); const own = e.closest('label'); const txt = (l || own || {}).textContent; const row = e.closest('.sx-row'); return !(txt && txt.trim().length > 1) && !(row && row.querySelector('label[for]')) && !e.classList.contains('sx-unit'); }).map(e => e.id));
+      check('E61', tag + t + ': every field is captioned', !bare.length, bare);
+    }
+    // 4. one column: the boxes of a card, the numbers of a card, and the two cards side by side
+    await q.evaluate(() => switchSetupTab('analysis')); await q.waitForTimeout(150);
+    const al = await q.evaluate(() => {
+      const out = [];
+      document.querySelectorAll('#single-analysis-params .sx-rows').forEach(card => {
+        const cb = [...card.querySelectorAll(':scope > .sx-row > input[type=checkbox]')].filter(e => e.offsetParent !== null).map(e => Math.round(e.getBoundingClientRect().left));
+        const nm = [...card.querySelectorAll(':scope > .sx-row > input[type=number]')].filter(e => e.offsetParent !== null).map(e => Math.round(e.getBoundingClientRect().left) + '/' + Math.round(e.getBoundingClientRect().width));
+        out.push({ cb: [...new Set(cb)].length, nm: [...new Set(nm)].length, n: cb.length });
+      });
+      const cards = [...document.querySelectorAll('#single-analysis-params .sx-group')].map(e => Math.round(e.getBoundingClientRect().top));
+      return { out, tops: [...new Set(cards)].length, ncards: cards.length };
+    });
+    check('E61', tag + 'a card\'s boxes and numbers share one column', al.out.length === 2 && al.out.every(o => o.n >= 3 && o.cb === 1 && o.nm === 1), al);
+    if (w > 700) check('E61', tag + 'the flags card and the fit card sit side by side', al.ncards === 2 && al.tops === 1, al);
+    // 5. a Review fix button lands on the step that holds the setting
+    const fix = await q.evaluate(() => { rvGo('assay', 'p-ctrl'); const a = document.querySelector('.setup-stab.active').dataset.tab; rvGo('assay', 'p-group-mode'); return [a, document.querySelector('.setup-stab.active').dataset.tab]; });
+    check('E61', tag + 'a Fix button goes to the step that has the control', fix[0] === 'analysis' && fix[1] === 'assay', fix);
+    await c.close();
+  }
 });
 
 await browser.close();
