@@ -682,7 +682,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
       <div class="st-lbl">Block tools</div>
       <div class="st-col">
         <div class="st-row">
-          <button class="btn btn-primary pd-tb-btn st-sm st-grow" onclick="applyMergedLabel()" title="Use the Label field above as one label spanning the whole selection">Merge label</button>
+          <button class="btn btn-primary pd-tb-btn st-sm st-grow" onclick="applyMergedLabel()" title="Label typed: one label spanning the whole selection. Field empty: wells that touch and share a label (replicates) merge into one block each">Merge label</button>
           <button class="btn btn-sec pd-tb-btn st-sm" onclick="ungroupSelection()" title="Split a merged label back into individual wells">Split</button>
         </div>
       </div>
@@ -2805,6 +2805,34 @@ document.addEventListener('keydown', function(e) {
   if (k === 'v') { e.preventDefault(); pdPasteWells(); return; }
 });
 
+// ─── Ink on a fill ───────────────────────────────────────────────────────────────
+// A label is white on a pale well and invisible: the concentration gradient runs up to a near-white
+// tint of the condition's colour. The ink is whichever of white and dark reaches the higher WCAG
+// contrast on the colour the well is actually painted, so it follows a type, a gradient shade, a
+// custom colour and the heat map alike.
+function _cssRgb(c) {
+  var m;
+  if (typeof c !== 'string') return null;
+  if ((m = /^#([0-9a-f]{3})$/i.exec(c))) return m[1].split('').map(function(h){ return parseInt(h + h, 16); });
+  if ((m = /^#([0-9a-f]{6})/i.exec(c))) return [0, 2, 4].map(function(i){ return parseInt(m[1].substr(i, 2), 16); });
+  if ((m = /^rgba?\(\s*([\d.]+)[ ,]+([\d.]+)[ ,]+([\d.]+)/i.exec(c))) return [+m[1], +m[2], +m[3]];
+  return null;
+}
+function _relLum(rgb) {
+  var v = rgb.map(function(x){ x /= 255; return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); });
+  return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2];
+}
+var PD_INK_LIGHT = '#ffffff', PD_INK_DARK = '#1a1d2e';
+// rgbs: one colour or a list of them (a merged block spanning a gradient is read on its mean).
+function inkOn(rgbs) {
+  var list = (Array.isArray(rgbs[0]) ? rgbs : [rgbs]).filter(Boolean);
+  if (!list.length) return PD_INK_LIGHT;
+  var mean = [0, 1, 2].map(function(i){ return list.reduce(function(a, c){ return a + c[i]; }, 0) / list.length; });
+  var L = _relLum(mean);
+  var onWhite = 1.05 / (L + 0.05), onDark = (L + 0.05) / (_relLum(_cssRgb(PD_INK_DARK)) + 0.05);
+  return onDark > onWhite ? PD_INK_DARK : PD_INK_LIGHT;
+}
+
 function drawPlateCanvas(canvas, opts) {
   if (!canvas || !canvas._meta) return;
   opts = opts || {};
@@ -2863,6 +2891,40 @@ function drawPlateCanvas(canvas, opts) {
     ctx.fillText(rowLetters[r], ox + labelW - 3, oy + labelH + r * (wellPx + gap) + wellPx / 2);
   }
 
+  // The colour a well is painted: heat map, else its own (gradient shade, custom), else its type's.
+  const fillFor = wid => {
+    const w = wellState[wid], ty = w ? typeById(w.typeId) : null;
+    return (pdHeatOn && (wid in pdVals)) ? pdHeatColor(pdVals[wid]) : (w && w.color) ? w.color : (ty ? ty.color : emptyFill);
+  };
+  // A merged label is one block: the wells keep their own colours (so a concentration gradient
+  // survives the merge) and, when the block is a plain rectangle of one colour, a bridge in that
+  // colour closes the gaps between them. It is painted BEFORE the wells so a selection ring still
+  // shows on top. The label is drawn once, after them, in ink picked for the colours under it.
+  const _groupBoxes = {};
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const wid = rowLetters[r] + (c + 1);
+      const ws = wellState[wid];
+      if (ws && ws.groupId) {
+        const g = _groupBoxes[ws.groupId] || (_groupBoxes[ws.groupId] = {r1:r, r2:r, c1:c, c2:c, n:0, fills:[], label: ws.label || ''});
+        g.r1 = Math.min(g.r1, r); g.r2 = Math.max(g.r2, r);
+        g.c1 = Math.min(g.c1, c); g.c2 = Math.max(g.c2, c);
+        g.n++; g.fills.push(fillFor(wid));
+      }
+    }
+  }
+  Object.values(_groupBoxes).forEach(g => {
+    g.full = g.n === (g.r2 - g.r1 + 1) * (g.c2 - g.c1 + 1);
+    g.uniform = g.fills.every(f => f === g.fills[0]);
+    if (!(g.full && g.uniform)) return;
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(ox + labelW + g.c1 * (wellPx + gap), oy + labelH + g.r1 * (wellPx + gap),
+      (g.c2 - g.c1 + 1) * (wellPx + gap) - gap, (g.r2 - g.r1 + 1) * (wellPx + gap) - gap, Math.min(10, wellPx * 0.2));
+    ctx.fillStyle = g.fills[0]; ctx.fill();
+    ctx.restore();
+  });
+
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const wid = rowLetters[r] + (c + 1);
@@ -2873,11 +2935,7 @@ function drawPlateCanvas(canvas, opts) {
       const wy = oy + labelH + r * (wellPx + gap);
 
       ctx.save();
-      ctx.fillStyle = (pdHeatOn && (wid in pdVals)) ? pdHeatColor(pdVals[wid])
-                    : (ws && ws.color) ? ws.color : (t ? t.color : emptyFill);
-      // Merged-label wells are washed out (lower alpha) so the bridging scrim + label
-      // drawn afterward reads clearly over them instead of fighting busy per-well color.
-      if (ws && ws.groupId) ctx.globalAlpha = 0.45;
+      ctx.fillStyle = fillFor(wid);
 
       const useSquare = is384 || wellShape === 'square';
       const sqR = is384 ? 2 : Math.max(2, wellPx * 0.1); // rounded corner radius for square mode (Lumina's: 4px on a 38px well)
@@ -2912,7 +2970,7 @@ function drawPlateCanvas(canvas, opts) {
       if (ws && ws.label && wellPx >= 16 && !ws.groupId) {
         const maxW = wellPx * 0.82;
         const fit = fitTextInWell(ctx, ws.label, maxW, wellPx * 0.8, _consistentFontSz, _wellFont);
-        ctx.fillStyle = 'rgba(255,255,255,0.92)';
+        ctx.fillStyle = inkOn(_cssRgb(fillFor(wid)));
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         const lineH = fit.size * 1.2;
         const totalH = fit.lines.length * lineH;
@@ -2925,40 +2983,39 @@ function drawPlateCanvas(canvas, opts) {
   }
 
   // ── Draw merged group labels, spanning each group's bounding box ──
-  const _groupBoxes = {};
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const wid = rowLetters[r] + (c + 1);
-      const ws = wellState[wid];
-      if (ws && ws.groupId) {
-        const g = _groupBoxes[ws.groupId] || (_groupBoxes[ws.groupId] = {r1:r, r2:r, c1:c, c2:c, label: ws.label || ''});
-        g.r1 = Math.min(g.r1, r); g.r2 = Math.max(g.r2, r);
-        g.c1 = Math.min(g.c1, c); g.c2 = Math.max(g.c2, c);
-      }
-    }
-  }
+  // One size for every merged label on the plate, set by the one that needs the smallest: blocks
+  // of the same shape read as a set, not as a big "1 µM" beside a small "0.46 nM".
+  const _gFont = '"IBM Plex Sans",sans-serif';
+  let _groupSz = Infinity;
+  Object.values(_groupBoxes).forEach(g => {
+    if (!g.label) return;
+    const bw = (g.c2 - g.c1 + 1) * (wellPx + gap) - gap, bh = (g.r2 - g.r1 + 1) * (wellPx + gap) - gap;
+    _groupSz = Math.min(_groupSz, fitTextInWell(ctx, g.label, bw * 0.88, bh * 0.8, Math.min(20, bh / 3), _gFont).size);
+  });
   Object.values(_groupBoxes).forEach(g => {
     if (!g.label) return;
     const bx = ox + labelW + g.c1 * (wellPx + gap);
     const by = oy + labelH + g.r1 * (wellPx + gap);
     const bw = (g.c2 - g.c1 + 1) * (wellPx + gap) - gap;
     const bh = (g.r2 - g.r1 + 1) * (wellPx + gap) - gap;
-    // Bridging scrim: one rounded rect spanning the whole group, covering the gaps between
-    // individual wells so the group reads as one merged block instead of separate wells,
-    // and giving the label consistent contrast regardless of the wells' own colors underneath.
+    const rgbs = g.fills.map(_cssRgb).filter(Boolean);
+    const ink = inkOn(rgbs);
+    const fit = fitTextInWell(ctx, g.label, bw * 0.88, bh * 0.8, Math.min(_groupSz, 20, bh / 3), _gFont);
     ctx.save();
-    ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, Math.min(10, wellPx * 0.2));
-    ctx.fillStyle = 'rgba(0,0,0,0.4)';
-    ctx.fill();
-    ctx.restore();
-    const fit = fitTextInWell(ctx, g.label, bw * 0.88, bh * 0.8, Math.min(20, bh / 3), '"IBM Plex Sans",sans-serif');
-    ctx.save();
-    ctx.fillStyle = 'rgba(255,255,255,0.95)';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     const lineH = fit.size * 1.2;
     const totalH = fit.lines.length * lineH;
+    // A block over several colours (a gradient merged under one label) has no one background to
+    // read against, so the text gets a thin halo in the opposite ink.
+    if (!g.uniform) {
+      ctx.lineJoin = 'round'; ctx.lineWidth = Math.max(2, fit.size * 0.22);
+      ctx.strokeStyle = ink === PD_INK_DARK ? 'rgba(255,255,255,0.85)' : 'rgba(26,29,46,0.7)';
+    }
+    ctx.fillStyle = ink;
     fit.lines.forEach((line, li) => {
-      ctx.fillText(line, bx + bw/2, by + bh/2 - totalH/2 + li * lineH + fit.size * 0.5);
+      const ty = by + bh/2 - totalH/2 + li * lineH + fit.size * 0.5;
+      if (!g.uniform) ctx.strokeText(line, bx + bw/2, ty);
+      ctx.fillText(line, bx + bw/2, ty);
     });
     ctx.restore();
   });
@@ -3700,19 +3757,65 @@ function shadeColor(baseHex, t) {
   return _hslToHex(h, s, lo + t * (hi - lo));
 }
 
-// ─── Merged multi-well label (one label spanning a whole selection block) ─────
+// ─── Merged multi-well label ─────────────────────────────────────────────────
+// With a label typed: one label across the whole selection. With the field empty ("Mixed…"):
+// each run of touching wells that already share a label becomes one block, so a titration in
+// triplicate selected whole merges its replicates and leaves every concentration its own label.
+function _pdSameLabelRuns(ids) {
+  const byLabel = {};
+  ids.forEach(id => { const l = (wellState[id] && wellState[id].label) || ''; if (l) (byLabel[l] = byLabel[l] || []).push(id); });
+  const runs = [];
+  Object.keys(byLabel).forEach(l => {
+    const left = new Set(byLabel[l]);
+    while (left.size) {
+      const first = left.values().next().value; left.delete(first);
+      const comp = [first], todo = [first];
+      while (todo.length) {
+        const cur = wellRowCol(todo.pop()), ri = ROWS_ALL.indexOf(cur.row);
+        [[ri - 1, cur.col], [ri + 1, cur.col], [ri, cur.col - 1], [ri, cur.col + 1]].forEach(p => {
+          const nid = ROWS_ALL[p[0]] + p[1];
+          if (p[0] >= 0 && left.has(nid)) { left.delete(nid); comp.push(nid); todo.push(nid); }
+        });
+      }
+      // A block is a rectangle; an L or a staircase of one label is cut into its rows.
+      const rc = comp.map(id => ({id, ri: ROWS_ALL.indexOf(wellRowCol(id).row), c: wellRowCol(id).col}));
+      const rs = rc.map(x => x.ri), cs = rc.map(x => x.c);
+      const area = (Math.max(...rs) - Math.min(...rs) + 1) * (Math.max(...cs) - Math.min(...cs) + 1);
+      if (area === comp.length) { runs.push(comp); continue; }
+      const rows = {};
+      rc.forEach(x => (rows[x.ri] = rows[x.ri] || []).push(x));
+      Object.values(rows).forEach(row => {
+        row.sort((a, b) => a.c - b.c);
+        let cur = [row[0]];
+        for (let k = 1; k < row.length; k++) {
+          if (row[k].c === cur[cur.length - 1].c + 1) cur.push(row[k]); else { runs.push(cur.map(x => x.id)); cur = [row[k]]; }
+        }
+        runs.push(cur.map(x => x.id));
+      });
+    }
+  });
+  return runs;
+}
 function applyMergedLabel() {
   const lblInput = document.getElementById('sp-lbl-input');
   const val = ((lblInput && lblInput.value) || '').trim();
   const selArr = Array.from(selection).filter(id => wellRowCol(id));
   if (selArr.length < 2) { pdToast('Select two or more wells first.'); return; }
-  if (!val) { pdToast('Enter a label first.'); return; }
-  const gid = 'g' + Date.now();
-  selArr.forEach(id => {
-    if (!wellState[id]) wellState[id] = {typeId: activeTypeId, label: val};
-    else wellState[id].label = val;
-    wellState[id].groupId = gid;
-  });
+  const stamp = Date.now();
+  if (val) {
+    const gid = 'g' + stamp;
+    selArr.forEach(id => {
+      if (!wellState[id]) wellState[id] = {typeId: activeTypeId, label: val};
+      else wellState[id].label = val;
+      wellState[id].groupId = gid;
+    });
+  } else {
+    const runs = _pdSameLabelRuns(selArr).filter(r => r.length > 1);
+    if (!runs.length) { pdToast(selArr.some(id => wellState[id] && wellState[id].label) ? 'No two touching wells share a label.' : 'Enter a label first.'); return; }
+    selArr.forEach(id => { if (wellState[id]) delete wellState[id].groupId; });
+    runs.forEach((r, k) => r.forEach(id => { wellState[id].groupId = 'g' + stamp + '_' + k; }));
+    pdToast(runs.length + ' label' + (runs.length === 1 ? '' : 's') + ' merged');
+  }
   drawPlateCanvas(document.getElementById('plate-canvas-main')); renderLegend(); updateSelToolbar();
 }
 
@@ -3780,7 +3883,14 @@ async function exportPNG() {
   });
   const LEGEND_LINE = 19, LEGEND_H = usedTypes.length ? 22 + legendRows.length * LEGEND_LINE : 0;
   const cH = PAD + TITLE_H + meta.canvasH + LEGEND_H + PAD;
-  const dpr = 600 / 96;
+  // 600 DPI, unless that is more canvas than the browser will hold. Safari gives a canvas about
+  // 16 million pixels (less on a phone) and past that it hands back an empty image, or the tab
+  // dies. A 384-well plate with brackets on four sides gets there; it is exported at the largest
+  // resolution that fits, and the toast says so.
+  const PD_MAX_PX = 12e6;
+  let dpr = 600 / 96;
+  const fitDpr = Math.sqrt(PD_MAX_PX / (cW * cH));
+  if (fitDpr < dpr) dpr = fitDpr;
 
   const canvas = document.createElement('canvas');
   canvas.width  = Math.round(cW * dpr);
@@ -3813,22 +3923,36 @@ async function exportPNG() {
     });
   }
 
-  ldHistAdd({
-    id: 'p'+Date.now(),
-    name: currentFormat+'-well plate · '+new Date().toLocaleDateString(),
-    date: new Date().toLocaleString(),
-    type: 'plate',
-    data: {
-      format: currentFormat,
-      wellState: JSON.parse(JSON.stringify(wellState)),
-      customTypes: JSON.parse(JSON.stringify(customTypes)),
-      typeNames: _typeNames(),
-      brackets: JSON.parse(JSON.stringify(pdBrackets)),
-      rowAnnotations: JSON.parse(JSON.stringify(rowAnnotations)),
-      colAnnotations: JSON.parse(JSON.stringify(colAnnotations))
-    }
-  });
-  canvas.toBlob(blob => { const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='plate_layout.png'; a.click(); }, 'image/png');
+  // Save the file first and the history entry second, and let neither stop the other: a history
+  // write that throws (Safari's storage quota, a private window) used to end the export before the
+  // image was made.
+  const _saveBlob = blob => {
+    if (!blob) { pdToast('The browser could not make the image — try a smaller plate or fewer brackets.'); return; }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'plate_layout.png';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    if (dpr < 600 / 96 - 0.01) pdToast('Exported at ' + Math.round(dpr * 96) + ' DPI — the largest this browser can hold for this plate.');
+  };
+  try { canvas.toBlob(_saveBlob, 'image/png'); }
+  catch (e) { pdToast('The browser could not make the image.'); }
+  try {
+    ldHistAdd({
+      id: 'p'+Date.now(),
+      name: currentFormat+'-well plate · '+new Date().toLocaleDateString(),
+      date: new Date().toLocaleString(),
+      type: 'plate',
+      data: {
+        format: currentFormat,
+        wellState: JSON.parse(JSON.stringify(wellState)),
+        customTypes: JSON.parse(JSON.stringify(customTypes)),
+        typeNames: _typeNames(),
+        brackets: JSON.parse(JSON.stringify(pdBrackets)),
+        rowAnnotations: JSON.parse(JSON.stringify(rowAnnotations)),
+        colAnnotations: JSON.parse(JSON.stringify(colAnnotations))
+      }
+    });
+  } catch (e) {}
 }
 
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}

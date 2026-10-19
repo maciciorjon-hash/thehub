@@ -30,6 +30,10 @@
 //                             aria-expanded.
 //   B13 a series is its own   Setting a dilution series colours the wells by it (the top is the type's own colour, each step paler, replicate
 //       gradient              rows alike) and there is no gradient/Reset tool to ask for that separately.
+//   B14 merge keeps what     "Merge label" with the field empty merges each run of touching wells that share a label
+//       the plate shows       (a titration in triplicate keeps one block per concentration), keeps the gradient colours,
+//                             writes dark ink on a pale well and white on a dark one, and an export is capped at a canvas
+//                             Safari can hold and still saves the image when the History write throws.
 //   N1 Beacon paste shapes    Beacon's grid parser (a pasted block or a CSV; Lumina's rules) reads tab, space,
 //                             lettered, semicolon/decimal-comma and comma grids, and a blank A1
 //                             stays in column 1. (It read a space-separated grid as one column.)
@@ -171,6 +175,74 @@ async function blueprint(pg) {
     check('B13', 'a dilution colours the wells', r.col.every(Boolean) && r.col[0] === r.col[3] && r.col[2] === r.col[5], r.col);
     check('B13', 'top is darkest, each step paler', r.dark, r.col);
     check('B13', 'no separate gradient tool', !r.tool, r.tool);
+  }
+  if (run('B14')) {
+    await fresh();
+    const r = await E(() => {
+      const ids = ['C1', 'C2', 'C3', 'C4', 'D1', 'D2', 'D3', 'D4', 'E1', 'E2', 'E3', 'E4'];
+      selection = new Set(ids); updateSelToolbar();
+      document.getElementById('dil-start').value = '1000'; document.getElementById('dil-factor').value = '10'; document.getElementById('dil-unit').value = 'nM';
+      applyDilution('row');
+      const before = ids.map(i => wellState[i].color);
+      updateSelToolbar();
+      const field = document.getElementById('sp-lbl-input').value;
+      applyMergedLabel();
+      const gids = [...new Set(ids.map(i => wellState[i].groupId))];
+      const cols = ids.map(i => wellState[i].color);
+      const o = { field, groups: gids.length, sizes: gids.map(g => ids.filter(i => wellState[i].groupId === g).length), keptColours: JSON.stringify(before) === JSON.stringify(cols),
+        labelsKept: ['C1', 'C4'].map(i => wellState[i].label).join('|') };
+      // the label field typed → one label across everything, as before
+      document.getElementById('sp-lbl-input').value = 'Cpd X'; applyMergedLabel();
+      o.typed = [...new Set(ids.map(i => wellState[i].groupId))].length + '/' + wellState.C1.label;
+      // a run that is not a rectangle is cut into rows, a lone well is not a block
+      wellState = {}; selection = new Set(['A1', 'A2', 'B1', 'D5']);
+      ['A1', 'A2', 'B1', 'D5'].forEach(i => { wellState[i] = { typeId: activeTypeId, label: '5' }; });
+      document.getElementById('sp-lbl-input').value = ''; applyMergedLabel();
+      o.ell = ['A1', 'A2', 'B1', 'D5'].map(i => wellState[i].groupId || '-').map((g, k, a) => g === '-' ? '-' : a.indexOf(g)).join(',');
+      // ink: pale → dark, dark → white (read where the label is painted)
+      wellState = {}; selection = new Set(); clearSelection();
+      wellState.A1 = { typeId: activeTypeId, label: '10', color: '#f2f6fb' }; wellState.A2 = { typeId: activeTypeId, label: '10', color: '#243b63' };
+      const seen = {}, orig = CanvasRenderingContext2D.prototype.fillText;
+      CanvasRenderingContext2D.prototype.fillText = function (t, x, y) { if (t === '10') (seen.list = seen.list || []).push(this.fillStyle); return orig.apply(this, arguments); };
+      drawPlateCanvas(document.getElementById('plate-canvas-main'));
+      CanvasRenderingContext2D.prototype.fillText = orig;
+      o.ink = seen.list;
+      return o;
+    });
+    check('B14', 'the field reads empty for mixed labels', r.field === '', r.field);
+    check('B14', 'four concentrations in triplicate → four blocks of three', r.groups === 4 && r.sizes.every(n => n === 3), r);
+    check('B14', 'the gradient colours survive the merge', r.keptColours, r);
+    check('B14', 'each block keeps its concentration', r.labelsKept === '1µM|1nM', r.labelsKept);
+    check('B14', 'a typed label is still one label for the selection', r.typed === '1/Cpd X', r.typed);
+    check('B14', 'an L is cut into rows, a row of one is not a block', r.ell === '0,0,-,-', r.ell);
+    check('B14', 'ink: dark on a pale well, white on a dark one', Array.isArray(r.ink) && r.ink.length === 2 && /1a1d2e/i.test(r.ink[0]) && /^#fff/i.test(r.ink[1]), r.ink);
+    // merged blocks are painted in the wells' own colour, not washed out under a scrim
+    await fresh();
+    const px = await E(() => {
+      const ids = ['C1', 'D1', 'E1'];
+      ids.forEach(i => { wellState[i] = { typeId: activeTypeId, label: '1µM', color: '#e0ecf8', groupId: 'g1' }; });
+      drawPlateCanvas(document.getElementById('plate-canvas-main'));
+      const c = document.getElementById('plate-canvas-main'), m = c._meta, d = m.dpr, g = c.getContext('2d');
+      const x = (m.ox || 0) + m.labelW + m.wellPx * 0.12, y = (m.oy || 0) + m.labelH + 2 * (m.wellPx + m.gap) + m.wellPx + m.gap / 2;   // in the gap between D1 and E1
+      const a = g.getImageData(Math.round(x * d), Math.round(y * d), 1, 1).data, w = g.getImageData(Math.round((m.ox || 0 + m.labelW + m.wellPx / 2) * d), Math.round(((m.oy || 0) + m.labelH + 2 * (m.wellPx + m.gap) + 2) * d), 1, 1).data;
+      return { gap: [...a].slice(0, 3), well: [...w].slice(0, 3) };
+    });
+    check('B14', 'the gap between merged wells is bridged in their colour', px.gap.join() === '224,236,248', px);
+    // export: capped at a canvas Safari can hold; the image is saved even when the History write throws
+    await fresh();
+    const ex = await E(async () => {
+      _doSetFormat('384');
+      pdBrackets = []; ['top', 'bottom', 'left', 'right'].forEach(side => { for (let lv = 1; lv <= 4; lv++) pdBrackets.push({ side, from: 1, to: 6, level: lv, label: 'x', fontSize: 14 }); });
+      let blobs = [], thrown = false;
+      const origTo = HTMLCanvasElement.prototype.toBlob, origAdd = window.ldHistAdd;
+      HTMLCanvasElement.prototype.toBlob = function (cb, t) { blobs.push(this.width * this.height); cb(new Blob(['x'], { type: 'image/png' })); };
+      window.ldHistAdd = function () { thrown = true; throw new Error('QuotaExceededError'); };
+      try { await exportPNG(); } catch (e) { thrown = 'escaped'; }
+      HTMLCanvasElement.prototype.toBlob = origTo; window.ldHistAdd = origAdd;
+      return { px: blobs[0], n: blobs.length, thrown };
+    });
+    check('B14', 'a big export stays inside the canvas Safari can hold', ex.px > 0 && ex.px <= 12.5e6, ex);
+    check('B14', 'the image is saved although the History write throws', ex.n === 1 && ex.thrown === true, ex);
   }
   if (run('B7')) {
     const T = `5" insert <b>x</b> & 'y'`;
