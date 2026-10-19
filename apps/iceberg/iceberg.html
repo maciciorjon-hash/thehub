@@ -2106,6 +2106,9 @@ function openAddVial(){
   _vf('by').value = (last && last.frozenBy) || '';
   _vf('count').value = 1;
   _vf('notes').value = '';
+  // The position box keeps whatever was typed last; offer a free one instead of a taken one.
+  var _pp = normalisePos(_vf('pos').value);
+  if (box && (!_pp || (box.vials && box.vials[_pp]))) _vf('pos').value = _freeFrom(box, 'A1', 1)[0] || '';
   vfSyncKind();
   refreshCellLineSuggestions();
   document.getElementById('vial-modal').classList.add('open');
@@ -2199,6 +2202,13 @@ function saveVial(){
   if (!name) { toast((_vf('kind').value === 'cells' ? 'Cell line' : 'A name') + ' is required'); return; }
 
   if (!box.vials) box.vials = {};
+  // A position holds one vial. Typing the position of a vial that is already there (a new vial, or an
+  // edit that moves one) used to replace that record without a word; the one already there is kept
+  // and the person is told whose it is.
+  if (box.vials[pos] && pos !== editingVialPos) {
+    toast(pos + ' already holds ' + (vialLabel(box.vials[pos]) || 'a vial') + ' \u2014 pick a free position' );
+    return;
+  }
   // If editing and position changed, delete the old key first
   if (editingVialPos && editingVialPos !== pos) delete box.vials[editingVialPos];
 
@@ -2302,12 +2312,15 @@ function parseBulkText(text){
   var lines = text.split(/\r?\n/).map(function(l){ return l.trim(); }).filter(Boolean);
   if (!lines.length) return [];
   // Detect header
-  var firstCells = lines[0].split(/\t|,/).map(function(c){ return c.trim().toLowerCase(); });
+  // A line with a tab is a tab-separated line: its own commas ("HCT116, DCAF15 KO #15", which is how this
+  // app names a line) are part of the name. Only a line with no tab is split on commas.
+  var _split = function(l){ return (l.indexOf('\t') >= 0 ? l.split('\t') : l.split(',')).map(function(c){ return c.trim(); }); };
+  var firstCells = _split(lines[0]).map(function(c){ return c.toLowerCase(); });
   var hasHeader = firstCells.some(function(c){ return ['position', 'pos', 'cell line', 'cellline'].includes(c); });
   var start = hasHeader ? 1 : 0;
   var out = [];
   for (var i = start; i < lines.length; i++) {
-    var cols = lines[i].split(/\t|,/).map(function(c){ return c.trim(); });
+    var cols = _split(lines[i]);
     if (cols.length < 2) continue;
     var pos = normalisePos(cols[0]);
     if (!pos || !cols[1]) continue;
@@ -2330,11 +2343,13 @@ function bulkAddCommit(){
   var parsed = parseBulkText(document.getElementById('bulk-text').value);
   if (!parsed.length) { toast('No valid rows'); return; }
   if (!box.vials) box.vials = {};
-  var added = 0, skipped = 0;
+  var added = 0, skipped = 0, taken = 0;
   parsed.forEach(function(v){
     var rowIdx = v.pos.charCodeAt(0) - 65;
     var colIdx = parseInt(v.pos.slice(1), 10);
     if (rowIdx < 0 || rowIdx >= box.rows || colIdx < 1 || colIdx > box.cols) { skipped++; return; }
+    // A position holds one vial: one that is already there (or listed twice) is kept, not replaced.
+    if (box.vials[v.pos]) { taken++; return; }
     box.vials[v.pos] = {
       cellLine: v.cellLine, passage: v.passage, freezeDate: v.freezeDate,
       freezeMedia: v.freezeMedia, cultureMedia: v.cultureMedia,
@@ -2345,7 +2360,7 @@ function bulkAddCommit(){
   saveState();
   closeBulkAdd();
   renderBoxDetail();
-  toast('Added ' + added + ' vial' + (added === 1 ? '' : 's') + (skipped ? ' · ' + skipped + ' out of range' : ''));
+  toast('Added ' + added + ' vial' + (added === 1 ? '' : 's') + (taken ? ' · ' + taken + ' left out, the position already holds a vial' : '') + (skipped ? ' · ' + skipped + ' out of range' : ''));
 }
 
 // ─── RACK / BOX CRUD ───────────────────────────────────────────────────────
@@ -2627,15 +2642,46 @@ function _detectGridSheet(aoa){
   return { rows: maxLetterCode, cols: maxNum, vials: vials };
 }
 function importXLSXBtn(){ document.getElementById('import-file').click(); }
+// What an import does with one vial. A position holds one vial: a file that names a position another vial
+// already holds does not replace it (that is a recorded vial, and the file may be someone else's), and a
+// position outside a box that was already there is not written where nothing draws it. A box the import
+// itself creates grows to fit what the file puts in it.
+function _importPut(box, pos, v, st){
+  var held = box.vials[pos];
+  if (held){ if (JSON.stringify(held) === JSON.stringify(v)) st.same++; else st.taken++; return; }
+  var r = pos.charCodeAt(0) - 64, c = parseInt(pos.slice(1), 10);
+  if (r > box.rows || c > box.cols){
+    if (st.made.indexOf(box) >= 0 && r <= 26 && c <= 99){ box.rows = Math.max(box.rows, r); box.cols = Math.max(box.cols, c); }
+    else { st.outside++; return; }
+  }
+  box.vials[pos] = v; st.added++;
+}
+// The sheet a storage was exported as is its label with the characters a sheet name cannot hold replaced.
+function _storageForSheet(sheetName){
+  var ks = storageKeys(), nm = String(sheetName).toLowerCase().trim();
+  for (var i = 0; i < ks.length; i++){
+    var lb = String(state.storages[ks[i]].label || ks[i]).replace(/[°₂\/\\?*:|"<>]/g, '_').slice(0, 31).toLowerCase();
+    if (lb === nm || String(state.storages[ks[i]].label || '').toLowerCase() === nm) return ks[i];
+  }
+  var guess = /n2|nitrogen|liquid/.test(nm) ? 'n2' : 'minus80';
+  return state.storages[guess] ? guess : (state.storages[currentTab] ? currentTab : ks[0]);
+}
+// A date a spreadsheet stored as a date is a serial number; as text it is whatever was typed.
+function _importDate(v){
+  if (typeof v === 'number' && v > 20000 && v < 80000) return new Date(Math.round((v - 25569) * 86400000)).toISOString().slice(0, 10);
+  return String(v == null ? '' : v);
+}
 function importXLSX(file){
   if (!file) return;
   if (typeof XLSX === 'undefined') { toast('XLSX library not loaded'); return; }
   var reader = new FileReader();
   reader.onload = function(e){
+    var snap = JSON.stringify(state.storages);   // an import that fails half way must leave the inventory as it was
     try {
       var data = new Uint8Array(e.target.result);
       var wb = XLSX.read(data, { type: 'array' });
-      var added = 0;
+      var st = { added: 0, same: 0, taken: 0, outside: 0, made: [] };
+      if (!storageKeys().length) throw new Error('there is no storage to import into');
       wb.SheetNames.forEach(function(sheetName){
         if (sheetName === 'Overview') return;   // the export's own summary of every box, not a table of vials
         var ws = wb.Sheets[sheetName];
@@ -2660,9 +2706,7 @@ function importXLSX(file){
         if (idx.pos < 0 || idx.cellLine < 0) {
           var grid = _detectGridSheet(aoa);
           if (!grid) return;
-          var sname2 = sheetName.toLowerCase();
-          var tab2 = /n2|nitrogen|liquid/.test(sname2) ? 'n2' : 'minus80';
-          var storage2 = state.storages[tab2];
+          var storage2 = state.storages[_storageForSheet(sheetName)];
           var rackName2 = 'Imported';
           for (var hr = 0; hr < Math.min(aoa.length, 8); hr++) {
             var line = String((aoa[hr] && (aoa[hr][0] || aoa[hr][1])) || '');
@@ -2673,14 +2717,12 @@ function importXLSX(file){
           if (!rack2) { rack2 = { id: uid(), name: rackName2, boxes: [] }; storage2.racks.push(rack2); }
           var boxName2 = sheetName;
           var box2 = rack2.boxes.find(function(b){ return b.name === boxName2; });
-          if (!box2) { box2 = { id: uid(), name: boxName2, rows: grid.rows, cols: grid.cols, vials: {} }; rack2.boxes.push(box2); }
-          Object.keys(grid.vials).forEach(function(pos){ box2.vials[pos] = grid.vials[pos]; added++; });
+          if (!box2) { box2 = { id: uid(), name: boxName2, rows: grid.rows, cols: grid.cols, vials: {} }; rack2.boxes.push(box2); st.made.push(box2); }
+          Object.keys(grid.vials).forEach(function(pos){ _importPut(box2, pos, grid.vials[pos], st); });
           return;
         }
-        // Guess which storage tab this sheet belongs to
-        var sname = sheetName.toLowerCase();
-        var tab = /n2|nitrogen|liquid/.test(sname) ? 'n2' : 'minus80';
-        var storage = state.storages[tab];
+        // Which storage this sheet belongs to: the one it was exported as, else by its name
+        var storage = state.storages[_storageForSheet(sheetName)];
         aoa.slice(1).forEach(function(row){
           var pos = normalisePos(row[idx.pos]); if (!pos) return;
           var cellLine = String(row[idx.cellLine] || '').trim(); if (!cellLine) return;
@@ -2691,29 +2733,34 @@ function importXLSX(file){
           var box = rack.boxes.find(function(b){ return b.name === boxName; });
           if (!box) {
             var sz = idx.size >= 0 ? /(\d+)\s*[×x]\s*(\d+)/i.exec(String(row[idx.size] || '')) : null;
-            box = { id: uid(), name: boxName, rows: sz ? +sz[1] : 8, cols: sz ? +sz[2] : 12, vials: {} }; rack.boxes.push(box);
+            box = { id: uid(), name: boxName, rows: sz ? Math.min(26, +sz[1]) : 8, cols: sz ? Math.min(99, +sz[2]) : 12, vials: {} }; rack.boxes.push(box); st.made.push(box);
           }
           var kindId = null;
           if (idx.kind >= 0) { var kl = String(row[idx.kind] || '').trim().toLowerCase(); var km = VIAL_KINDS.filter(function(x){ return x.label.toLowerCase() === kl; })[0]; if (km && km.id !== 'cells') kindId = km.id; }
-          box.vials[pos] = Object.assign(kindId ? { kind: kindId, label: cellLine } : {}, {
+          var nv = Object.assign(kindId ? { kind: kindId, label: cellLine } : {}, {
             cellLine: cellLine,
             passage: idx.passage >= 0 ? String(row[idx.passage] || '') : '',
-            freezeDate: idx.freezeDate >= 0 ? String(row[idx.freezeDate] || '') : '',
+            freezeDate: idx.freezeDate >= 0 ? _importDate(row[idx.freezeDate]) : '',
             freezeMedia: idx.freezeMedia >= 0 ? String(row[idx.freezeMedia] || '') : '',
             cultureMedia: idx.culture >= 0 ? String(row[idx.culture] || '') : '',
             frozenBy: idx.by >= 0 ? String(row[idx.by] || '') : '',
             vialCount: idx.count >= 0 ? (parseInt(row[idx.count], 10) || 1) : 1,
             notes: idx.notes >= 0 ? String(row[idx.notes] || '') : ''
           });
-          if (kindId) delete box.vials[pos].cellLine;   // a plasmid is known by its label, as the app writes it
-          added++;
+          if (kindId) delete nv.cellLine;   // a plasmid is known by its label, as the app writes it
+          _importPut(box, pos, nv, st);
         });
       });
-      saveState();
+      if (st.added) saveState();
       renderTab(currentTab);
-      toast('Imported ' + added + ' vial' + (added === 1 ? '' : 's'));
+      toast((st.added ? 'Imported ' + st.added + ' vial' + (st.added === 1 ? '' : 's') : 'Nothing new to import')
+        + (st.same ? ' · ' + st.same + ' already there' : '')
+        + (st.taken ? ' · ' + st.taken + ' left out, their position already holds another vial' : '')
+        + (st.outside ? ' · ' + st.outside + ' left out, outside the box' : ''));
     } catch (err) {
-      toast('Import failed: ' + err.message);
+      try { state.storages = JSON.parse(snap); } catch (e2) {}
+      renderTab(currentTab);
+      toast('Import failed, nothing was changed: ' + err.message);
     }
   };
   reader.readAsArrayBuffer(file);
