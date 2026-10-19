@@ -164,6 +164,11 @@
 //   E63 the budget is exact   The Gradient Planner's max transfer is vol × DMSO %, free of floating-point dust: 7.5 µL at 4.1 % is 307.5 nL (123 drops), not
 //                             307.49999999999994 (122), for every volume and DMSO % that makes a whole number of drops; a point that needs the last drop gets it.
 //
+//   E64 SD is judged in the   The replicate-SD gate is a limit in % of control. A gain-of-signal run and a run with no normalisation are in raw counts, where it
+//       units of the run       flagged every curve (SD=2128 against 25): there the SD is a percentage of the curve's own span, so clean curves are unflagged and a
+//                             replicate that really disagrees still is; a normalised run is judged exactly as before. A raw-count run is not held to the 100 % top
+//                             constraint (it fixed a 100,000-count curve's top at 100: every DC50 0.102 nM, R2 0) nor to a hook threshold of 10 counts.
+//
 // Usage (repo root):  node tools/echo_invariants.mjs [--only=E1,E7] [--file=path/to/echo.html] [--verbose]
 import { chromium } from 'playwright';
 import path from 'node:path';
@@ -2443,6 +2448,63 @@ if (run('E63')) await guard('E63', async () => {
     return { bad, n };
   });
   check('E63', 'a budget of a whole number of drops is all usable', r.n >= 4 && r.bad.length === 0, r);
+  await c.close();
+});
+
+// A small synthetic plate with known curves, built here (deterministic noise), for the checks that need a run on data they control.
+function synthPlate({ nCpd = 6, noise = 2, ctrl = 100000, badRep = false, gain = false } = {}) {
+  const hdr = 'Source Plate Name,Source Plate Barcode,Source Plate Type,Source Well,Source Concentration,Source Concentration Units,Destination Plate Name,Destination Plate Barcode,Destination Plate Type,Destination Well,Destination Concentration,Destination Concentration Units,Sample ID,Sample Name,Transfer Volume,Actual Volume,Current Fluid Volume,Fluid Composition,Fluid Units,Fluid Type,Transfer Status,Time Point';
+  const rows = [], sig = Array.from({ length: 16 }, (_, r) => Array.from({ length: 24 }, (_, c) => ctrl * (1 + 0.02 * Math.sin(r * 7 + c * 3))));
+  let k = 0;
+  for (let i = 0; i < nCpd; i++) for (let rp = 0; rp < 2; rp++, k++) for (let j = 0; j < 10; j++) {
+    const d = 2e-5 / Math.pow(3, j), c = -8.4 + 0.3 * i, h = 1 + 0.2 * i, E = Math.pow(10, h * (Math.log10(d) - c));
+    let y = 8 + 92 / (1 + E) + noise * Math.sin(k * 13 + j * 5);
+    if (badRep && i === 0 && rp === 1 && j === 6) y += 60;
+    sig[k][1 + j] = gain ? ctrl + (100 - y) * 500 : ctrl * y / 100;
+    rows.push(['S', 'RP', 'T', 'A1', '0.001', 'M', 'I', 'SYN-01', 'D', 'ABCDEFGHIJKLMNOP'[k] + (2 + j), d.toExponential(3), 'M', 'CPD-' + (i + 1), 'CPD-' + (i + 1), '12.5', '12.5', '45', '90', 'Percent', 'DMSO', '', '08:00'].join(','));
+  }
+  const text = ['Run ID,1', 'Run Date/Time,x', 'Application Name,x', 'Application Version,1', 'Protocol Name,x', 'User Name,x', '', '[DETAILS]', hdr, ...rows, ''].join('\r\n');
+  return { text, sig };
+}
+async function loadSynth(q, d) {
+  await q.evaluate(({ text, sig }) => {
+    echoFiles = [new File([text], 'echo.csv')]; echoFile = null;
+    const aoa = [['User: x'], ['Test ID: 1'], ['ID1: SYN 01'], [], [], ['Luminescence'], [], ['Raw Data (LUM plus)'], ['', ...Array.from({ length: 24 }, (_, i) => i + 1)]];
+    sig.forEach((r, i) => aoa.push(['ABCDEFGHIJKLMNOP'[i], ...r.map(v => Math.round(v))]));
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Microplate End point');
+    Object.keys(readerFiles).forEach(k => delete readerFiles[k]);
+    readerFiles['SYN-01.xlsx'] = new File([XLSX.write(wb, { type: 'array', bookType: 'xlsx' })], 'SYN-01.xlsx');
+    document.getElementById('p-ctrl').value = 'A20:P24'; document.getElementById('p-assay').value = 'SYN';
+    renderEchoList(); renderReaderList(); checkReady();
+  }, d);
+}
+async function runSynth(q) { await q.evaluate(() => { window.__done = false; runPipeline().then(() => { window.__done = true; }); }); await q.waitForFunction(() => window.__done === true, null, { timeout: 90000 }); return q.evaluate(() => _lastResultsData.map(r => ({ id: r.Sample_ID, flag: r.Flag_Reason, dc50: r.DC50_nM, r2: r.R2, top: r.Top_val }))); }
+
+if (run('E64')) await guard('E64', async () => {
+  const c = await browser.newContext({ viewport: { width: 1440, height: 900 } }); const q = await c.newPage();
+  await q.goto('file://' + FILE); await q.waitForTimeout(1200);
+  const clean = synthPlate({});
+  await loadSynth(q, clean);
+  let r = await runSynth(q);
+  check('E64', 'normalised: a clean synthetic plate has no SD flag', r.length === 6 && !r.some(x => /SD=/.test(x.flag)), r);
+  await loadSynth(q, synthPlate({ gain: true }));
+  await q.evaluate(() => { const e = document.getElementById('p-assay-type'); e.value = 'gain'; e.dispatchEvent(new Event('change')); });
+  r = await runSynth(q);
+  check('E64', 'gain of signal (raw counts): clean curves are not all flagged for SD', r.length > 0 && !r.some(x => /SD=/.test(x.flag)), r.slice(0, 3));
+  await loadSynth(q, clean);
+  await q.evaluate(() => { const e = document.getElementById('p-assay-type'); e.value = 'hibit'; e.dispatchEvent(new Event('change')); const n = document.getElementById('p-skip-norm'); n.checked = true; n.dispatchEvent(new Event('change')); });
+  r = await runSynth(q);
+  check('E64', 'no normalisation (raw counts): clean curves are not all flagged for SD', r.length > 0 && !r.some(x => /SD=/.test(x.flag)), r.slice(0, 3));
+  check('E64', 'no normalisation (raw counts): the 100 % top constraint is not applied to counts, so each curve is fitted: DC50 within x1.3 of the truth, R2 > 0.95, no hook invented', r.length === 6 && r.every(x => { const t = Math.pow(10, -8.4 + 0.3 * (+x.id.slice(4) - 1) + 9); return x.dc50 / t < 1.3 && t / x.dc50 < 1.3 && x.r2 > 0.95 && x.top > 1000 && !/Hook/.test(x.flag); }), r);
+  await q.evaluate(() => { const n = document.getElementById('p-skip-norm'); n.checked = false; n.dispatchEvent(new Event('change')); });
+  await q.evaluate(() => { const e = document.getElementById('p-assay-type'); e.value = 'hibit'; e.dispatchEvent(new Event('change')); });
+  await loadSynth(q, synthPlate({ badRep: true }));
+  r = await runSynth(q);
+  check('E64', 'normalised: a replicate 60 points off is still flagged for SD', /SD=/.test((r.find(x => x.id === 'CPD-1') || {}).flag || ''), r.slice(0, 2));
+  await loadSynth(q, synthPlate({ badRep: true, gain: true }));
+  await q.evaluate(() => { const e = document.getElementById('p-assay-type'); e.value = 'gain'; e.dispatchEvent(new Event('change')); });
+  r = await runSynth(q);
+  check('E64', 'gain of signal: a replicate that disagrees by most of the span is still flagged', /SD=/.test((r.find(x => x.id === 'CPD-1') || {}).flag || ''), r.slice(0, 2));
   await c.close();
 });
 

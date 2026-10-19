@@ -4265,6 +4265,13 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
     proteinCanon[lo] = Object.entries(variants).sort((a, b) => b[1] - a[1])[0][0];
   for (const r of merged) r.protein = proteinCanon[(r.proteinRaw || '').toLowerCase()] || r.proteinRaw;
 
+  // A run with No normalisation is either already in % (0-100) or in raw counts (luminescence in the tens of thousands).
+  // The settings that are written in % - the 100 % top constraint and the hook threshold - mean nothing on counts: the
+  // default Top constraint of 100 fixed the top of a 100,000-count curve at 100 counts and every curve came out at
+  // DC50 0.102 nM, R2 0, flagged EC50<range. On counts the top is fitted and the hook threshold is a % of the curve's range.
+  const _rawCounts = (() => { if (!skipNorm || gainMode) return false; const v = merged.map(r => r.measurement).filter(x => x !== null && isFinite(x)).sort((x, y) => x - y); return v.length > 0 && v[Math.floor(v.length / 2)] > 250; })();
+  if (_rawCounts) log('No normalisation, and the readings are raw counts: the Top constraint (a % of control) is not applied and the hook threshold is read as a % of each curve\'s range.', 'info');
+
   const nSamples = new Set(merged.map(r => r.sampleId)).size;
   const nProteins = new Set(merged.map(r => r.protein)).size;
   log('Merged: ' + merged.length + ' pts | ' + nSamples + ' cpds | ' + nProteins + ' proteins', 'ok');
@@ -4362,13 +4369,15 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
       const disableHook = assayType === 'gain' || assayType === 'displacement';
       if (hookEnabled && !disableHook && !(opt && opt.noHook)) {
         const cs = [...new Set(sdata.map(r => r.log10Conc))].sort((a, b) => b - a);
+        const _allM = sdata.map(r => r.measurement).filter(v => v !== null && isFinite(v));
+        const _hookAbs = _rawCounts && _allM.length ? hookThr / 100 * (Math.max(..._allM) - Math.min(..._allM)) : hookThr;
         for (let i = 0; i < Math.min(3, cs.length - 2); i++) {
           const hiMeas = sdata.filter(r => Math.abs(r.log10Conc - cs[i]) < 0.001).map(r => r.measurement).filter(v => v !== null);
           const refMeas = sdata.filter(r => Math.abs(r.log10Conc - cs[i + 2]) < 0.001).map(r => r.measurement).filter(v => v !== null);
           if (!hiMeas.length || !refMeas.length) break;
           const hiMean = hiMeas.reduce((s, v) => s + v, 0) / hiMeas.length;
           const refMean = refMeas.reduce((s, v) => s + v, 0) / refMeas.length;
-          if (hiMean > refMean + hookThr) hookConcs.add(cs[i]);
+          if (hiMean > refMean + _hookAbs) hookConcs.add(cs[i]);
           else break;
         }
       }
@@ -4407,7 +4416,7 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
         // Per-compound QC overrides for parameters
         let _tc = qc.fixTop !== undefined ? parseFloat(qc.fixTop) : topConstrain;
         let _effFreeTop = qc.fixTop !== undefined ? false : effFreeTop;
-        if (gainMode) _effFreeTop = true;
+        if (gainMode || (_rawCounts && qc.fixTop === undefined)) _effFreeTop = true;
         const _fixBot2 = qc.fixBot !== undefined ? true : effFixBot;
         const _botVal2 = qc.fixBot !== undefined ? parseFloat(qc.fixBot) : effBotVal;
         const _fixHill2 = qc.fixHill !== undefined ? true : fixHill;
@@ -4544,6 +4553,10 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
             if (sd > maxSD) maxSD = sd;
           }
         }
+        // The limit is in % of control. A gain-of-signal run (control subtracted) and a run with no normalisation are in
+        // raw counts, where a replicate SD of 2,000 against a limit of 25 flagged EVERY curve; there the SD is judged as a
+        // percentage of the curve's own span, which is what "25 %" means on the other scale.
+        if (gainMode || skipNorm) { const span = Math.abs(tc - bot); maxSD = span > 0 ? maxSD / span * 100 : (maxSD > 0 ? Infinity : 0); }
         if (sdEnabled && maxSD > maxSd) flags.push('SD=' + maxSD.toFixed(1));
         if (isHook) flags.push('Hookx' + hookConcs.size);
 
