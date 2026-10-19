@@ -8168,6 +8168,44 @@ var PlateEngine = (function(){
     while (lines.length && !lines[lines.length - 1]) lines.pop();
     return lines;
   }
+  // Where blocks of compounds start when nobody says: after the last column (or row) that holds a control. Controls sit along an
+  // edge — a column (or row) with two or more of them is part of that edge, one stray well is not, it is slid past. The width left
+  // to the series is the default number of points (2–12). `run` is 'rows' when a series runs along a row.
+  function freeStart(dims, controls, run){
+    var cc = -1, rr = -1, cn = {}, rn = {};
+    list(controls).forEach(function(p){ var q = rc(p); if (!q) return; cn[q.c] = (cn[q.c] || 0) + 1; rn[q.r] = (rn[q.r] || 0) + 1; });
+    Object.keys(cn).forEach(function(c){ if (cn[c] >= 2) cc = Math.max(cc, +c); });
+    Object.keys(rn).forEach(function(r){ if (rn[r] >= 2) rr = Math.max(rr, +r); });
+    var c0 = run === 'rows' ? cc + 1 : 0, r0 = run === 'cols' ? rr + 1 : 0;
+    var span = run === 'rows' ? dims.c - c0 : dims.r - r0;
+    if (span < 4) { c0 = 0; r0 = 0; span = run === 'rows' ? dims.c : dims.r; }
+    return { c0: c0, r0: r0, pts: Math.max(2, Math.min(12, span)), at: id(r0, c0) };
+  }
+  // Compounds as blocks of `reps` lines by `pts` points, one after the other from (r0, c0): a block starts where the last ended,
+  // one band further along; one that would land on a blocked well slides along until it clears it, and when the plate has no more
+  // room that way the next group of blocks starts beside the first. o: { reps, pts, run, r0, c0, need, blocked(well) }. A block
+  // is [{ p: well, i: its point }]; blocks come back in the order they were placed.
+  function blockPlan(dims, o){
+    var reps = Math.max(1, o.reps || 1), pts = o.pts, run = o.run, r0 = o.r0 || 0, c0 = o.c0 || 0, need = o.need, used = {}, out = [];
+    function blockWells(line, grp){
+      var w = [];
+      for (var a = 0; a < reps; a++) for (var b = 0; b < pts; b++) {
+        var r = run === 'rows' ? r0 + line + a : r0 + grp * pts + b, c = run === 'rows' ? c0 + grp * pts + b : c0 + line + a;
+        if (r >= dims.r || c >= dims.c) return null;
+        var p = id(r, c);
+        if (used[p] || (o.blocked && o.blocked(p))) return null;
+        w.push({ p: p, i: b });
+      }
+      return w;
+    }
+    var lines = run === 'rows' ? dims.r - r0 : dims.c - c0, cursor = 0, grp = 0, guard = 0;
+    while (out.length < need && guard++ < 3000 && grp < 40) {
+      if (cursor + reps > lines) { grp++; cursor = 0; continue; }
+      var w = blockWells(cursor, grp);
+      if (w) { out.push(w); w.forEach(function(x){ used[x.p] = 1; }); cursor += reps; } else cursor++;
+    }
+    return out;
+  }
   // The next name in a run: EDA-099 → EDA-100, Compound A → Compound B, anything else → "… 2".
   function nextName(s){
     s = String(s || '').trim(); if (!s) return '';
@@ -8178,7 +8216,8 @@ var PlateEngine = (function(){
   }
   return { id: id, rc: rc, uniq: uniq, rect: rect, line: line, box: box, isRect: isRect, rangeText: rangeText,
            parseRange: parseRange, seriesDir: seriesDir, seriesPlan: seriesPlan, seriesConc: seriesConc,
-           splitOfShape: splitOfShape, bandPlan: bandPlan, sortZones: sortZones, pasteList: pasteList, nextName: nextName };
+           splitOfShape: splitOfShape, bandPlan: bandPlan, sortZones: sortZones, pasteList: pasteList, nextName: nextName,
+           freeStart: freeStart, blockPlan: blockPlan };
 })();
 // ═══ PLATE ENGINE — END ═════════════════════════════════════════════════════════════════════
 

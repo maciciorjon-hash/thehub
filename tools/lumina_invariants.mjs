@@ -17,6 +17,8 @@
 //   L9  a reader file whose grid is not the size of the plate on screen says so
 //   L11 a point left out of its curve: the fit is remade without it, the raw export marks it, the Prism tables omit it,
 //       the plate crosses it, and ⌘Z brings the fit back exactly (the click / right-click / undo gestures are in tools/transfer_invariants.mjs)
+//   L13 Setup is the same walk as Beacon's (tools/setupkit): five steps with Back / Next, typed control ranges mark exactly those wells,
+//       placing the names makes the compounds, the series and the plates they need, Escape closes, and ⌘Z undoes it all
 //   L10 the potency and the effect are called what the selected assay calls them — DC50/Dmax, IC50/Span,
 //       IC50, EC50/Emax — in the table, the curve, the Plot, every export and what goes to Labbook
 //
@@ -336,6 +338,55 @@ try { if (hasX) {
   });
   check('L12 the dropdown follows the plate: 96 after switching, 384 again after undo', l12c.v1 === '96' && l12c.back === '384' && l12c.fmt === 384, JSON.stringify(l12c));
 } } catch (e) { findings.push('✗ the run stopped: ' + e.message.split('\n')[0]); }
+
+// ── L13 the Setup dialog ─────────────────────────────────────────────────────────────────
+try {
+  const r = await ev(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms)), o = {};
+    if (state.format !== 96) setPlateFormat(96);
+    lsOpen(0); lsClearAll(); await wait(50);
+    const d = document.getElementById('ls');
+    o.tabs = [...d.querySelectorAll('.setup-stab')].map(t => t.textContent.replace(/^\d/, '')).join(',');
+    o.back0 = getComputedStyle(document.getElementById('ls-back')).visibility;
+    lsGo(2);
+    const inp = d.querySelector('input[data-role=ctrl]'); inp.value = 'A1:H1'; inp.dispatchEvent(new Event('change', { bubbles: true }));
+    o.ctrl = [...state.ctrlWells].sort().join(','); o.shown = inp.value;
+    inp.value = 'Z99'; inp.dispatchEvent(new Event('change', { bubbles: true }));
+    o.badKept = state.ctrlWells.size; o.badMark = inp.parentNode.classList.contains('bad');
+    inp.value = 'A1:H1'; inp.dispatchEvent(new Event('change', { bubbles: true }));
+    lsGo(3);
+    const names = document.getElementById('ls-names'); names.value = 'Alpha\nBeta\nGamma'; names.dispatchEvent(new Event('input', { bubbles: true }));
+    o.plan = document.getElementById('ls-plan').textContent;
+    document.getElementById('ls-place').click(); await wait(50);
+    const g = state.layout.grads[0], conc = p => lmConcAt(p);
+    o.placed = { S: _lmS(), grads: state.layout.grads.length, names: state.names.join(','), top: conc('B2'), end: conc('B12'), reps: state.layout.zones[0].length / 11, ctrlFree: state.layout.zones.every(z => z.every(w => !state.ctrlWells.has(w))), rows: state.layout.zones.map(z => [...new Set(z.map(w => w[0]))].join('')).join('|') };
+    // more names than a plate holds: 4 replicates of 11 points leaves room for two compounds a plate, so five names need three plates
+    LS.form.reps = 4; names.value = 'a\nb\nc\nd\ne'; names.dispatchEvent(new Event('input', { bubbles: true }));
+    document.getElementById('ls-place').click(); await wait(50);
+    o.spill = { S: _lmS(), plates: state.plates.length, names: state.names.join('') };
+    lmUndo(); await wait(50);
+    o.undone = { S: _lmS(), plates: state.plates.length };
+    // the dialog follows what is done on the plate itself
+    LM_SEL = new Set(['H12']); lmMarkCtrl('ctrl'); lsGo(2); await wait(30);
+    o.follow = d.querySelector('input[data-role=ctrl]').value;
+    // typed values
+    lsGo(1); document.getElementById('ls-hand-tog').click(); await wait(30);
+    const cell = d.querySelector('#ls-hand input[data-p="B3"]'); cell.value = '12,5'; cell.dispatchEvent(new Event('change', { bubbles: true })); await wait(400);
+    o.typed = state.plates[0].signal.B3;
+    lsGo(4); o.review = document.getElementById('ls-p-review').textContent; o.next = document.getElementById('ls-next').textContent;
+    d.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    o.closed = d.classList.contains('hidden');
+    lsClearAll(); await wait(30); d.classList.add('hidden');
+    return o;
+  });
+  check('L13 Setup is five steps (Assay · Readings · Controls · Compounds · Review) and Back is hidden on the first', r.tabs === 'Assay,Readings,Controls,Compounds,Review' && r.back0 === 'hidden', JSON.stringify([r.tabs, r.back0]));
+  check('L13 a typed control range marks exactly those wells, is shown back normalised, and a range naming no well changes nothing', r.ctrl === 'A1,B1,C1,D1,E1,F1,G1,H1' && r.shown === 'A1:H1' && r.badKept === 8 && r.badMark, JSON.stringify([r.ctrl, r.shown, r.badKept, r.badMark]));
+  check('L13 placing 3 names makes 3 compounds of 2 replicates over the 11 free columns, 10 µM at the left, one gradient, nothing on a control', r.placed.S === 3 && r.placed.grads === 1 && r.placed.names === 'Alpha,Beta,Gamma' && Math.abs(r.placed.top / 1e-5 - 1) < 1e-9 && Math.abs(r.placed.end / (1e-5 / Math.pow(3, 10)) - 1) < 1e-9 && r.placed.reps === 2 && r.placed.ctrlFree && r.placed.rows === 'AB|CD|EF', JSON.stringify(r.placed));
+  check('L13 five names on a layout that holds two a plate fill three plates in order, and ⌘Z puts the layout back', r.spill.S === 2 && r.spill.plates === 3 && r.spill.names === 'abcde' && r.undone.S === 3 && r.undone.plates === 1, JSON.stringify([r.spill, r.undone]));
+  check('L13 the dialog follows the plate: a control marked on the plate shows in the box', /H12/.test(r.follow) || r.follow.indexOf('H1') >= 0, r.follow);
+  check('L13 a value typed into the grid is a reading (decimal comma kept as a decimal)', r.typed === 12.5, r.typed);
+  check('L13 Review says what is missing, the last button says what comes next, and Escape closes', /no readings|No dilution|no name|Before you fit/.test(r.review) && /Open the plate|Fit curves/.test(r.next) && r.closed, JSON.stringify([r.next, r.closed]));
+} catch (e) { findings.push('✗ L13 the run stopped: ' + e.message.split('\n')[0]); }
 // _lmReadFmt is arithmetic and needs no file
 {
   const r = await ev(() => [[3237970, 5], [9100, 5], [76190, 5], [1274665, 4], [-2500000, 5], [0.00123, 5]].map(([v, f]) => _lmReadFmt(v, f).length <= Math.max(f, 3)));
