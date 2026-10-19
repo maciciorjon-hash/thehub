@@ -26,7 +26,7 @@
 //   C13 healthy       a culture that was split on time and has no myco test logged is Healthy, not Needs attention
 //   C14 one logic     the shell's alerts and actions and the copy Incubator carries for standalone use agree on a battery of
 //                     cultures and on every action (node-side, no browser)
-//   C15 sync          the tick that Incubator's log gives a task needs a log made after the task existed, and never undoes an un-tick
+//   C15 sync          the tick that Incubator's log gives a task needs a log made after the task existed; a task you un-ticked is only ticked by hand
 //   C7  stable        the rows keep their order while they are answered; no console errors
 //
 //   node tools/cellcheck_invariants.mjs [--base=http://127.0.0.1:PORT]      exit 1 on any finding
@@ -264,8 +264,10 @@ try {
     await f.evaluate(i => togglePlannerTask(i), rid); await p.waitForTimeout(300);
     await p.evaluate(() => JournalStore.updateCell('a1', { note: 'another change' })); await p.waitForTimeout(300);
     eq('C15', W + 'un-ticking it stays un-ticked when the store changes', await f.evaluate(i => !!LB.data.planner.tasks[i].done, rid), false);
-    await p.evaluate(() => JournalStore.updateCell('a1', { mediaLast: Date.now() })); await p.waitForTimeout(300);
-    eq('C15', W + 'a media change logged after un-ticking ticks it again', await f.evaluate(i => !!LB.data.planner.tasks[i].done, rid), true);
+    await p.evaluate(() => JournalStore.updateCell('a1', { mediaLast: Date.now() + 60000, seeded: Date.now() + 60000 })); await p.waitForTimeout(300);
+    eq('C15', W + 'not even a log dated later puts the tick back: an un-ticked task is only ticked by hand', await f.evaluate(i => !!LB.data.planner.tasks[i].done, rid), false);
+    await f.evaluate(i => togglePlannerTask(i), rid); await p.waitForTimeout(200);
+    eq('C15', W + 'and by hand it ticks', await f.evaluate(i => !!LB.data.planner.tasks[i].done, rid), true);
 
     eq('C7', W + 'no console errors', errs, []);
     await ctx.close();
