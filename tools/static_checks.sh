@@ -31,6 +31,7 @@ run "Icon set"                         "$PY" tools/sync_icons.py --check
 run "Motion kit"                       "$PY" tools/sync_motion.py --check
 run "Right-click kit"                  "$PY" tools/sync_ctxkit.py --check
 run "Chart editor kit"                "$PY" tools/sync_chartkit.py --check
+run "Multi-plate reader kit"          "$PY" tools/sync_reader_plates.py --check
 run "Help assistant"                   "$PY" tools/sync_assist.py --check
 run "Shared Echo blocks"               "$PY" tools/sync_screen_engine.py --check
 run "Ribbon studio"                    "$PY" tools/ribbon_dev/inject_studio.py --check

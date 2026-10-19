@@ -8108,3 +8108,15 @@ Jon (Spanish): visual errors in Beacon; an empty white banner on top; no History
 - **Clear all** (`bClearAll`, bar + Setup footer): one empty 96-well protein–protein plate, no name; ⌘Z brings it back. B15.
 - **Results keys** like Lumina's: ↑ ↓ / j k / PageUp PageDown / Home End walk compounds, ← → the plate under Controls; `rsPick` updates row, curve and title without rebuilding the table (scroll kept). B13.
 - **Prism copy**: `bDoseData(rel)` feeds both the figure and `_bPrismBlock`: concentration in nM descending down column A, each compound's replicates side by side under its name (merged), relative to the vehicle (corrected mBU when none is marked); workbook sheets *Prism Copy*, *Prism (mBU)*, *Prism (tracer)*; Export › **Copy for Prism** puts the same table on the clipboard. B14.
+
+## A reader workbook with several plates (2026-10-19)
+
+A PHERAstar can export a whole run into one `.xlsx`: per plate a grid sheet (`Microplate End point`, `…_1`, `…_2`, newest first) and a settings sheet (`Protocol Information`, `…_1`…), the plate's name in `ID1:` at the top of both, `Test ID:` rising in the order the plates were read. Seen first in a 5-plate 96-well CellTiter-Glo run (Jon's `CTG20261016_72h_All.xlsx`, kept in `Backup/`, ignored by git); 384 is the same layout with 16 × 24.
+
+- **One kit, three apps.** `tools/readerkit/reader_plates.js` → `RDR` (`plates(wb)`, `expand(files)`, `plateBook`), copied by `tools/sync_reader_plates.py` into Echo, Lumina and Beacon between `READER PLATES — BEGIN/END` markers; `static_checks.sh` runs `--check`. Edit the kit only.
+- **Order is the Test ID, not the sheet order** (sheets are newest first; sorting by sheet gives plate 5 → 1). Then the `_N` suffix, then sheet index. Name = ID1, else ID2/ID3, else `Plate k`; duplicates get `(2)`.
+- **A grid = a header row 1,2,3… with A,B,C… in the column to its left**; the text above it is its label (`Raw Data (LUM plus)`). A sheet with two grids (460 / 610) has two blocks.
+- **Echo and Lumina take it as files**: `RDR.expand` turns a workbook with ≥2 plates into one `File` per plate named `<ID1>.xlsx` (grid + settings sheet re-written under the plain names), so the existing one-file-per-plate code (barcode from file name, pairing, protocol sheet, shape notes, replace-by-file-name) runs unchanged. A one-plate workbook comes back as the same File. Lumina sorts the files first and expands after, so reading order survives.
+- **Beacon takes it as plates**: `bPlaceReaderPlates` (only when the sheet is not a `Table End point` list and the workbook has ≥2 plates, so a plain one-plate grid file keeps the old path): first grid donor, second acceptor unless the label says (`bChannelOf`), plate named for its ID1, its Protocol sheet as the run details.
+- Not touched: Hit Finder, Tempo, Dora, Iceberg (they read other things than plate reads).
+- `tools/readerkit_invariants.mjs` R1–R5 (R6 with `--real=path`): R1 fails with the sort by sheet order, R3 fails without the expand call. Runs in CI with the Data Analysis suites.
