@@ -633,6 +633,10 @@ input[type=checkbox]:focus-visible{outline:2px solid var(--accent-soft);outline-
 .sf-derived:empty{display:none;}
 /* The note takes a row of its own; without this the fields after it stay behind the gap it leaves. */
 .cc-inputs:has(>.sf-derived.sf-row){grid-auto-flow:row dense;}
+/* A setup under headings: one kind of question to a block, a hairline between blocks. */
+.su-grp + .su-grp{margin-top:10px;padding-top:8px;border-top:1px solid var(--border);}
+.su-grp .ci-f.chk{grid-column:1/-1;}
+.su-gh{font-size:var(--fs-2);font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text3);margin:0 0 5px;}
 .sf-apply{border:1px solid var(--border2);background:var(--surface2);color:var(--text);
   border-radius:var(--r-1);padding:1px 7px;font-size:var(--fs-1);cursor:pointer;
   transition:background var(--dur-1) var(--ease),border-color var(--dur-1) var(--ease);}
@@ -3155,7 +3159,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
   <div class="modal">
     <div class="modal-t">Experiment setup<span class="grow"></span></div>
     <div class="nm-setup-hd">Set up</div>
-    <div class="cc-inputs" id="es-fields"></div>
+    <div id="es-fields"></div>
     <div class="es-diffwrap" id="es-diff"></div>
     <div class="modal-act"><button class="btn ghost sm" onclick="closeSetupEditor()">Cancel</button><button class="btn sm" onclick="applySetupEdit()">Apply</button></div>
   </div>
@@ -5814,8 +5818,8 @@ var PLATE_LAYOUTS=[
      o=o||{};
      var d=PLATE_FORMATS['384'], p=newPlate('384');
      var nConc=Math.max(1,Math.round(+o.nConc||7));
-     var nReps=Math.max(1,Math.round(+o.nReps||2));
      var rows=d.r-2, cols=d.c-2;                       // 14 usable rows, 22 usable columns
+     var nReps=Math.min(rows,Math.max(1,Math.round(+o.nReps||2)));   // more bands than rows ran off the plate, past row P
      // They have to fit. If they do not it is the concentrations that give: a replicate you
      // asked for and silently did not get is the worse of the two lies.
      if(nConc*nReps>rows) nConc=Math.max(1,Math.floor(rows/nReps));
@@ -12827,6 +12831,27 @@ function nmSetupField(f,lead,src,upd){
     // captions, and it wrapped to four lines in a column. Beside the label, across the row.
     +(f.plates?(_setupPlatesNote(src,upd)||'<div class="sf-derived"></div>').replace('class="sf-derived"','class="sf-derived sf-row"'):'');
 }
+// A setup is up to a dozen questions, and they are of a few kinds — the plate and cells, the constructs, the compounds, the dose series, the
+// treatment, what is read out. Said in one grid they read as a form dump; said under a heading each, a person finds the one they came to change.
+// The kind is looked up by the question's key, so the schema, the presets' own added questions and the Designer's keep their shape and order:
+// headings only appear when there are enough questions to need them, a key with no kind goes last under "Other", and questions keep their order
+// inside a kind. `build` is the one field renderer (nmSetupField), so what a field looks like and how it is read back do not change.
+var SETUP_GROUPS=[['plate','Plate and cells'],['constructs','Constructs'],['cmpd','Compounds'],['dose','Dosing'],['read','Readout'],['more','Other']];
+var SETUP_GROUP_OF={format:'plate',cellLine:'plate',cellsPerWell:'plate',nPlates:'plate',nSamples:'plate',nWells:'plate',nSetups:'plate',
+  donors:'constructs',acceptors:'constructs',ratios:'constructs',plasmid:'constructs',dnaNg:'constructs',fugeneRatio:'constructs',nTransfect:'constructs',
+  compounds:'cmpd',vehicle:'cmpd',vehiclePct:'cmpd',dmsoMax:'cmpd',nCompounds:'cmpd',nTotal:'cmpd',
+  concs:'dose',treatH:'dose',dosing:'dose',doseResp:'dose',doseSeries:'dose',topConc:'dose',topUM:'dose',df:'dose',nPoints:'dose',nConc:'dose',nReps:'dose',minVol:'dose',timepoints:'dose',runMin:'dose',intervalMin:'dose',endpointD:'dose',ligand:'dose',mg132:'dose',
+  targets:'read',loadCtrl:'read',abDil:'read'};
+var SETUP_GROUP_MIN=7;
+var SETUP_TAIL={minVol:1};   // a limit on the series (the smallest volume pipetted), so it follows the series' own numbers
+function setupFieldsHTML(flds,build){
+  var by={}, tail={};
+  flds.forEach(function(f,i){ var g=SETUP_GROUP_OF[f.f]||'more', into=SETUP_TAIL[f.f]?tail:by; (into[g]=into[g]||[]).push(build(f,i)); });
+  Object.keys(tail).forEach(function(g){ by[g]=(by[g]||[]).concat(tail[g]); });
+  var used=SETUP_GROUPS.filter(function(g){ return by[g[0]]; });
+  if(flds.length<SETUP_GROUP_MIN||used.length<2) return '<div class="cc-inputs">'+flds.map(build).join('')+'</div>';
+  return used.map(function(g){ return '<section class="su-grp"><div class="su-gh">'+g[1]+'</div><div class="cc-inputs">'+by[g[0]].join('')+'</div></section>'; }).join('');
+}
 // The plate line under a number field has to follow what is typed anywhere in the form — the
 // total, the per-plate figure and the format all move it — without re-rendering the panel, which
 // would take the caret out of the box being typed in.
@@ -12853,9 +12878,9 @@ function nmSetup(){ var host=el('nm-setup'); if(!host) return;
         +'</select></label>') : '')):'';
   if(!flds.length && !plate){ host.style.display='none'; host.innerHTML=''; return; }
   host.style.display='';
-  var fields=flds.map(function(f,i){ return nmSetupField(f,i===0&&f.t==='format'); }).join('');
+  var fields=setupFieldsHTML(flds,function(f,i){ return nmSetupField(f,i===0&&f.t==='format'); });
   // "Set up" heads the questions. With none, it would head nothing.
-  host.innerHTML=(flds.length?('<div class="nm-setup-hd">Set up</div><div class="cc-inputs">'+fields+'</div>'):'')+plate;
+  host.innerHTML=(flds.length?('<div class="nm-setup-hd">Set up</div>'+fields):'')+plate;
 }
 // Read the panel back into NM_SETUP. reRender=true when a cell line changed, so its default
 // cells/well can follow (same behaviour as the seeding calculator's cell-line picker).
@@ -13995,8 +14020,7 @@ function esRender(){
   // because that variant has no such step — bringing it back here as an empty box asks about
   // something the experiment does not have.
   var flds=expSetupFields(e,ES_SETUP);
-  var fields=flds.map(function(f,i){ return nmSetupField(f,i===0&&f.t==='format',ES_SETUP,'esSetupUpd'); }).join('');
-  el('es-fields').innerHTML=fields;
+  el('es-fields').innerHTML=setupFieldsHTML(flds,function(f,i){ return nmSetupField(f,i===0&&f.t==='format',ES_SETUP,'esSetupUpd'); });
   el('es-diff').innerHTML=esDiffHtml(e);
 }
 function esSetupUpd(reRender){
@@ -20090,7 +20114,7 @@ function dsParamsHtml(){
   var flds=all.filter(function(f){ return !f.custom; }), mine=all.filter(function(f){ return f.custom; });
   var S=setupSchema(D.type);
   var body=flds.length
-    ? '<div class="cc-inputs">'+flds.map(function(f,i){ return nmSetupField(f,i===0&&f.t==='format',D.setup,'dsSetupUpd'); }).join('')+'</div>'
+    ? setupFieldsHTML(flds,function(f,i){ return nmSetupField(f,i===0&&f.t==='format',D.setup,'dsSetupUpd'); })
     : '<div class="ds-none">This type asks no parameters of its own. Add the ones your run needs below — every module can quote them.</div>';
   var when=(D.mode==='exp')
     ? '<div class="ds-grid"><div class="mrow"><label for="ds-start">Start date</label><input id="ds-start" type="date" value="'+esc(D.startDate)+'" oninput="DS.startDate=this.value||todayStr();dsFoot()"></div></div>'

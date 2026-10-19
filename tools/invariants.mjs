@@ -72,6 +72,8 @@
 //       key order            an old stamp (insertion order) must still match, and a real change must still differ. (all 20 of
 //                            Jon's default designs read "edited", so no seed correction reached them; a hand-written paragraph
 //                            read "stale" with nothing changed)
+//   I28 layouts stay on the   A plate layout that takes the setup's numbers draws only wells the plate has, however large the numbers typed
+//       plate                (16 replicates on the D2B 384 plate wrote a row past H and made creating the experiment throw)
 //   I18 no box loses focus   Every text box, number box and editor on every screen reachable
 //                            — experiments with the Report open, the plate editor, every
 //                            dialog, the Journal, the Designer — keeps the caret
@@ -1134,6 +1136,19 @@ async function suite(opts) {
         same.aim = 'changed after the paragraph was written';
         if (!pubIsStale(same)) bad('I27', 'methods ' + key, 'a changed record no longer makes the hand-written paragraph stale');
       } finally { cleanup(e); }
+    });
+  }
+
+  // ── I28 a layout built from absurd setup numbers still lies on the plate ──
+  if (run('I28')) {
+    await guard('I28', 'layouts', async () => {
+      for (const L of PLATE_LAYOUTS) for (const o of [{}, { nConc: 99, nReps: 99, nCompounds: 999, nPoints: 99 }, { nConc: 15, nReps: 16, nCompounds: 12 }, { nConc: 1, nReps: 1, nCompounds: 1 }]) {
+        tick('I28');
+        let p; try { p = L.build(Object.assign({}, o)); } catch (e) { bad('I28', L.id, 'build threw for ' + J(o) + ': ' + e.message); continue; }
+        const off = Object.keys(p.wells || {}).filter(id => !wellRC(id));
+        if (off.length) bad('I28', L.id, `${J(o)} draws ${off.length} wells that are not on the plate (${off.slice(0, 3).join(', ')})`);
+        try { plateSummary(p); } catch (e) { bad('I28', L.id, 'the summary threw for ' + J(o) + ': ' + e.message); }
+      }
     });
   }
 

@@ -25,6 +25,10 @@
 //   T16 setup rows align    in the setup editor the plate note ("96 compounds · 20 per 384-well plate → 10 plates") is its own line, not inside a
 //                           field's cell: inside, that one cell was taller than its row-mates and their inputs floated away from their captions
 //                           (Jon, SP_D2B20261014)
+//   T17 setup under headings a setup of seven questions or more is said under headings (Plate and cells · Constructs · Compounds · Dosing ·
+//                           Readout), every question under the heading of its own kind, none lost and none twice — in New experiment and in the
+//                           setup editor. It was one grid of thirteen unlike boxes, a checkbox and a pipetting limit mixed in with the plate
+//                           (Jon, 2026-10-19: "desordenado, agrupa")
 //
 //   node tools/labbook_style_invariants.mjs [--url=URL] [--only=T1,T5]
 import { chromium } from 'playwright';
@@ -163,6 +167,21 @@ const CHECKS = [
     S.all('label .sf-derived',host).forEach(function(n){ if(!n.closest('.sf-list')) bad.push('the plate note sits inside a field cell and makes it taller than its row'); });
     S.all('label.ci-f',host).forEach(function(l){ var i=l.querySelector('input,select'); if(!i) return; var k=Math.round(l.getBoundingClientRect().top/4); (rows[k]=rows[k]||[]).push(Math.round(i.getBoundingClientRect().bottom)); });
     Object.keys(rows).forEach(function(k){ var b=rows[k]; if(b.length>1&&Math.max.apply(null,b)-Math.min.apply(null,b)>1) bad.push('one row of the setup has its inputs at '+b.join(' / ')); }); return bad; })()`],
+  ['T17', ['new_exp', 'setup_editor'], `(function(){ var bad=[], hosts=[['nm-setup','New experiment'],['es-fields','the setup editor']];
+    hosts.forEach(function(h){ var host=document.getElementById(h[0]); if(!host||!host.offsetParent) return;
+      var all=[].slice.call(host.querySelectorAll('[data-sf]')), ids=all.map(function(n){ return n.getAttribute('data-sf'); });
+      var want=h[0]==='nm-setup'?setupFieldsFor(document.getElementById('nm-type').value,NM_SETUP).length:expSetupFields(LB.data.experiments[ES_EXP],ES_SETUP).length;
+      if(all.length!==want) bad.push(h[1]+': '+all.length+' questions on screen, the setup asks '+want);
+      if(ids.length!==new Set(ids).size) bad.push(h[1]+': a question is on screen twice');
+      var grps=[].slice.call(host.querySelectorAll('.su-grp'));
+      if(want>=7&&grps.length<2) bad.push(h[1]+': '+want+' questions in one undivided grid');
+      if(want<7&&grps.length) bad.push(h[1]+': '+want+' questions do not need headings');
+      var order=SETUP_GROUPS.map(function(g){ return g[1]; }), last=-1;
+      grps.forEach(function(g){ var t=g.querySelector('.su-gh').textContent, i=order.indexOf(t); if(i<=last) bad.push(h[1]+': heading "'+t+'" is out of order'); last=i;
+        [].slice.call(g.querySelectorAll('[data-sf]')).forEach(function(n){ var k=n.getAttribute('data-sf'), kind=SETUP_GROUPS.filter(function(x){ return x[0]===(SETUP_GROUP_OF[k]||'more'); })[0][1];
+          if(kind!==t) bad.push(h[1]+': "'+k+'" is under "'+t+'", it is a "'+kind+'" question'); }); });
+      if(grps.length&&!grps.some(function(g){ return g.querySelector('[data-sf="format"]'); })) bad.push(h[1]+': the plate format is not under a heading'); });
+    return bad; })()`],
   ['T14', ['exp_done', 'outcome_picker'], `(function(){ var S=__st, bad=[], n=0;
     S.all('.oc-chip i,.xv-oc,.oc-band .oc-v i,.dlg-item .ic').forEach(function(e){ n++; var t=(e.textContent||'').trim();
       if(e.closest('.dlg-item')&&!e.closest('.dlg-item').querySelector('.ic-svg')&&/^[✓×~?–]$/.test(t)&&!/Not yet/.test(e.closest('.dlg-item').textContent)) bad.push('the outcome picker draws "'+t+'" as text');
