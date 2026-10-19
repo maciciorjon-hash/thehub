@@ -11,7 +11,12 @@
  * of every mean, error bar and fit — it is drawn as a ghost point so it is clear it was omitted.
  */
 var ChartKitCore = (function(){
+  // One hue, from dark to light: the default. A ramp has no list of colours — each compound takes its step of however many there
+  // are (blueRamp), so two compounds are far apart and twelve are still told apart; `c` is only the strip drawn on the palette button.
+  function hsl(h, s, l){ s /= 100; l /= 100; var a = s * Math.min(l, 1 - l), f = function(n){ var k = (n + h / 30) % 12, c = l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)); return Math.round(255 * c); }; return '#' + [f(0), f(8), f(4)].map(function(x){ return (x < 16 ? '0' : '') + x.toString(16); }).join(''); }
+  function blueRamp(i, n){ var t = n <= 1 ? 0.3 : i / (n - 1); return hsl(215, 64 - 8 * t, 26 + 40 * t); }
   var PALETTES = [
+    { id: 'blue',    name: 'Blue',                ramp: true, c: [0, 1, 2, 3, 4, 5, 6, 7].map(function(i){ return blueRamp(i, 8); }) },
     { id: 'prism',   name: 'Prism',               c: ['#4b2991', '#872b4f', '#215d3a', '#4c7fc0', '#8e6fc5', '#d77bd6', '#8cbf4f', '#2f8fb0', '#6e4ea0', '#c46a2c', '#2c2c2c', '#9a9a9a'] },
     { id: 'okabe',   name: 'Colour-blind safe',   c: ['#0072b2', '#d55e00', '#009e73', '#cc79a7', '#e69f00', '#56b4e9', '#f0e442', '#000000', '#7f7f7f', '#8c564b', '#17becf', '#bcbd22'] },
     { id: 'pastel',  name: 'Pastel',              c: ['#8fb8de', '#f4b183', '#a9d18e', '#f2a3a8', '#b9a7d8', '#f5d76e', '#9fd6d2', '#d9b7a4', '#c5c5c5', '#e6a8d7', '#b7d98f', '#a0b4e8'] },
@@ -24,22 +29,27 @@ var ChartKitCore = (function(){
   var MARKERS = ['circle', 'square', 'triangle', 'diamond'];
   var T95 = [0, 12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262, 2.228, 2.201, 2.179, 2.16, 2.145, 2.131, 2.12, 2.11, 2.101, 2.093, 2.086, 2.08, 2.074, 2.069, 2.064, 2.06, 2.056, 2.052, 2.048, 2.045, 2.042];
 
+  // Every size below is in points on a page REF_W inches wide. With `scale` on (the default) the whole figure — type, lines, markers,
+  // margins, the positions things were dragged to — is multiplied by page width / REF_W, so a figure made at one size is the same
+  // figure at any other, only larger or smaller. Off, the sizes are real points whatever the page.
+  var REF_W = 6.5;
   function defaults(){
     return {
-      v: 1, kind: 'auto',
+      v: 2, kind: 'auto',
       w: 6.5, h: 4.2,                                   // inches
+      scale: true,
       font: 'Arial',
-      title: [{ text: null, size: 15, bold: true, italic: false }, { text: null, size: 15, bold: true, italic: false }, { text: null, size: 13, bold: false, italic: true }],
-      xTitle: { text: null, size: 13, bold: false, italic: false }, yTitle: { text: null, size: 13, bold: false, italic: false },
-      x: { size: 10, rot: 45, labels: true, order: 'given', min: null, max: null }, y: { size: 10, min: null, max: null, major: null, log: false, dec: null },
-      axisW: 1.5, tick: 4, box: false, grid: false,
-      palette: 'prism', colors: {}, fill: 'solid',
-      bar: { width: 1, gap: 1.1, inner: 0.12, border: 1.2, shade: false },
-      err: { type: 'sd', cap: 4, w: 1.2, dir: 'up' },
-      pts: { show: false, size: 2.6 },
-      xy: { marker: 'circle', msize: 4.5, lw: 1.8, fit: true, points: true, open: false, dash: false },
-      ref: { show: true, y: null, dash: true, w: 1, label: true },
-      legend: { show: true, size: 10, swatch: 11, pos: 'auto' },
+      title: [{ text: null, size: 13, bold: true, italic: false }, { text: null, size: 13, bold: true, italic: false }, { text: null, size: 11, bold: false, italic: true }],
+      xTitle: { text: null, size: 11, bold: false, italic: false }, yTitle: { text: null, size: 11, bold: false, italic: false },
+      x: { size: 9, rot: 45, labels: true, order: 'given', min: null, max: null }, y: { size: 9, min: null, max: null, major: null, log: false, dec: null },
+      axisW: 1.1, tick: 3.5, box: false, grid: false,
+      palette: 'blue', colors: {}, fill: 'solid',
+      bar: { width: 1, gap: 1.1, inner: 0.12, border: 1, shade: false },
+      err: { type: 'sd', cap: 3, w: 1, dir: 'up' },
+      pts: { show: false, size: 1.8 },
+      xy: { marker: 'circle', msize: 2.8, lw: 1.4, fit: true, points: true, open: false, dash: false },
+      ref: { show: true, y: null, dash: true, w: 0.9, label: true },
+      legend: { show: true, size: 9, swatch: 9, pos: 'auto' },
       hidden: {}, omit: {}, pos: {}, margin: { l: 0, r: 0, t: 0, b: 0 },
       snap: true, grid2: false
     };
@@ -49,7 +59,7 @@ var ChartKitCore = (function(){
   // they mean ("" → 0 → 8, "99" on the way to "9.9"), and a spec kept in localStorage may hold anything: none of it may
   // reach the drawing as a figure 71 892 pt wide (a 16 000 × 1 px PNG) or a font of 0. null stays null (auto).
   var RANGE = { w: [3, 20], h: [2.6, 20], axisW: [0.25, 5], tick: [0, 12], 'x.size': [4, 40], 'y.size': [4, 40], 'xTitle.size': [4, 60], 'yTitle.size': [4, 60], 'legend.size': [4, 40],
-    'bar.width': [0.2, 1.2], 'bar.gap': [0, 4], 'bar.inner': [0, 1], 'bar.border': [0, 5], 'err.cap': [0, 16], 'err.w': [0.25, 5], 'xy.msize': [1, 14], 'xy.lw': [0.25, 6], 'ref.w': [0.25, 5],
+    'bar.width': [0.2, 1.2], 'bar.gap': [0, 4], 'bar.inner': [0, 1], 'bar.border': [0, 5], 'err.cap': [0, 16], 'err.w': [0.25, 5], 'xy.msize': [0.8, 14], 'xy.lw': [0.25, 6], 'ref.w': [0.25, 5],
     'margin.l': [-40, 200], 'margin.r': [-40, 200], 'margin.t': [-40, 200], 'margin.b': [-40, 200], 'y.dec': [0, 6], 'y.major': [0, 1e6] };
   function getp(o, path){ return path.split('.').reduce(function(a, k){ return a == null ? a : a[k]; }, o); }
   function putp(o, path, v){ var ks = path.split('.'), t = o; for (var i = 0; i < ks.length - 1; i++) { if (t[ks[i]] == null || typeof t[ks[i]] !== 'object') t[ks[i]] = {}; t = t[ks[i]]; } t[ks[ks.length - 1]] = v; }
@@ -121,16 +131,16 @@ var ChartKitCore = (function(){
     } catch (e) { return text.length * size * 0.55; }
   }
 
-  function itemColor(spec, it, idx){
+  function itemColor(spec, it, idx, n){
     var pal = PALETTES.filter(function(p){ return p.id === spec.palette; })[0] || PALETTES[0];
-    return spec.colors[it.id] || pal.c[idx % pal.c.length];
+    return spec.colors[it.id] || (pal.ramp ? blueRamp(idx, n || 6) : pal.c[idx % pal.c.length]);
   }
 
   // ── the data the chart shows, with omitted replicates left out ──
   function model(doc, spec){
     var items = [];
     (doc.items || []).forEach(function(it, idx){
-      var col = itemColor(spec, it, idx), pts = (it.points || []).map(function(p){
+      var col = itemColor(spec, it, idx, (doc.items || []).length), pts = (it.points || []).map(function(p){
         var kept = [], dropped = [];
         (p.reps || []).forEach(function(r){ if (!fin(r.v)) return; (spec.omit[r.id] ? dropped : kept).push(r); });
         var st = stats(kept.map(function(r){ return r.v; }));
@@ -198,8 +208,31 @@ var ChartKitCore = (function(){
   }
 
   // ── the scene ───────────────────────────────────────────────
+  // The scene is built at the reference page width and then multiplied, so nothing in it (a font, a line, a marker, a margin, a
+  // position) has to know the page was resized: that is what keeps a figure the same figure at every size.
   function build(doc, specIn){
-    var spec = withDefaults(specIn), kind = spec.kind === 'auto' ? autoKind(doc, spec) : spec.kind;
+    var spec = withDefaults(specIn), k = spec.scale ? spec.w / REF_W : 1;
+    if (k === 1) { var s1 = buildRef(doc, spec); s1.k = 1; return s1; }
+    var ref = JSON.parse(JSON.stringify(spec)); ref.w = spec.w / k; ref.h = spec.h / k;
+    return scaleScene(buildRef(doc, ref), k);
+  }
+  function scaleScene(sc, k){
+    var NUM = ['x', 'y', 'w', 'h', 'x1', 'y1', 'x2', 'y2', 'cx', 'cy', 'r', 'sw', 'size', 'cap'];
+    function sp(p){
+      var q = {}; Object.keys(p).forEach(function(a){ q[a] = p[a]; });
+      NUM.forEach(function(f){ if (typeof q[f] === 'number') q[f] *= k; });
+      if (q.pts) q.pts = q.pts.map(function(a){ return [a[0] * k, a[1] * k]; });
+      if (q.dash) q.dash = String(q.dash).split(/\s+/).map(function(d){ return +(+d * k).toFixed(2); }).join(' ');
+      if (q.kids) q.kids = q.kids.map(sp);
+      return q;
+    }
+    sc.prims = sc.prims.map(sp); sc.W *= k; sc.H *= k;
+    ['plot', 'clip'].forEach(function(f){ var o = sc[f]; if (o) Object.keys(o).forEach(function(a){ o[a] *= k; }); });
+    if (sc.grew) ['w', 'h', 'askedW', 'askedH'].forEach(function(a){ sc.grew[a] *= k; });
+    sc.k = k; return sc;
+  }
+  function buildRef(doc, specIn){
+    var spec = specIn, kind = spec.kind === 'auto' ? autoKind(doc, spec) : spec.kind;
     var W = spec.w * 72, H = spec.h * 72, prims = [], els = {}, F = spec.font || 'Arial';
     var items = model(doc, spec), vis = items.filter(function(i){ return !i.hidden; });
     var pos = function(id){ return spec.pos[id] || { dx: 0, dy: 0 }; };
@@ -399,5 +432,5 @@ var ChartKitCore = (function(){
     return vis.every(function(i){ return (i.points || []).length < 4; }) ? 'bars' : 'xy';
   }
 
-  return { build: build, defaults: defaults, withDefaults: withDefaults, sanitize: sanitize, RANGE: RANGE, decadeLabels: decadeLabels, PALETTES: PALETTES, MARKERS: MARKERS, autoKind: autoKind, model: model, stats: stats, measure: measure, lighten: lighten, darken: darken, rgb: rgb, hex: hex, fin: fin, itemColor: itemColor, merge: merge };
+  return { build: build, defaults: defaults, withDefaults: withDefaults, sanitize: sanitize, RANGE: RANGE, decadeLabels: decadeLabels, PALETTES: PALETTES, MARKERS: MARKERS, REF_W: REF_W, blueRamp: blueRamp, autoKind: autoKind, model: model, stats: stats, measure: measure, lighten: lighten, darken: darken, rgb: rgb, hex: hex, fin: fin, itemColor: itemColor, merge: merge };
 })();

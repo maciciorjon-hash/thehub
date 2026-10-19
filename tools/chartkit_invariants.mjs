@@ -28,6 +28,12 @@
 //   K14 consistent axes   A run of decades is labelled all as powers of ten or all as plain numbers, never "10^-3, 0.01, 0.1"
 //   K15 narrow windows    At 900 and 700 px wide nothing scrolls sideways in any of the three apps
 //
+//   K16 one figure at any size  Resizing the page keeps the figure the same figure: type, lines, markers, margins and where things were dragged are all in proportion to the page's
+//                               width (with Scale off they are real points). 3.4 in and 9 in give the same ratios.
+//   K17 fits the screen         In Beacon, Lumina and Echo the whole figure and its whole panel are inside the window at 1440 × 900 and 1280 × 720 without scrolling, and the figure is as large
+//                               as the room allows (it is the width or the height that stops it, not a fixed size) — whatever shape the page is.
+//   K18 the defaults            One hue by default (a blue ramp), a step apart for 2 to 12 compounds; markers, lines and error-bar caps small enough not to hide the data.
+//
 //   node tools/chartkit_invariants.mjs        exit 1 on any finding
 import { chromium } from 'playwright';
 import path from 'node:path';
@@ -171,7 +177,7 @@ check('K8 the same data keeps what was done to it; different data drops omitted 
 await page.evaluate(() => { const host = document.createElement('div'); host.id = 'persist-host'; document.body.appendChild(host); window.__pk = ChartKit.mount(host, { key: 'persist2', doc: () => ({ sig: 's', title: ['T'], items: [{ id: 'a', name: 'A', points: [{ x: 1, reps: [{ id: 'w1', v: 1 }] }] }] }) }); const sp = window.__pk.spec(); sp.omit.w1 = true; sp.colors.a = '#abcdef'; sp.title[0].text = 'Secret title'; });
 await page.click('#persist-host [data-tab=colors]'); await page.click('#persist-host [data-pal=bold]');
 await page.waitForTimeout(500);
-const saved = await ev(() => JSON.parse(localStorage.getItem('ck:persist2') || 'null'));
+const saved = await ev(() => JSON.parse(localStorage.getItem('ck2:persist2') || 'null'));
 check('K8 what is stored between visits is the style (the palette) and none of the data\'s own state (omitted replicates, colours, titles)', saved && saved.palette === 'bold' && Object.keys(saved.omit).length === 0 && Object.keys(saved.colors).length === 0 && saved.title[0].text === null, JSON.stringify(saved && { palette: saved.palette, omit: saved.omit, colors: saved.colors, t: saved.title[0].text }));
 
 // ═════ the editor inside the apps (what a person actually meets) ═════
@@ -201,6 +207,28 @@ async function openApp(name, vp) {
   return { c, pg, e, a };
 }
 const appErrs = [];
+
+// K16 / K18 — the core
+await open('xy');
+const k16 = await ev(() => {
+  const C = ChartKitCore, doc = { title: ['T', '', ''], xTitle: 'x', yTitle: 'y', items: [{ id: 'a', name: 'A', fit: { fn: x => 1 - 1 / (1 + Math.pow(x / 100, -1)) }, points: [1000, 300, 100, 30, 10, 3].map((c, j) => ({ x: c, label: String(c), reps: [0, 1].map(r => ({ id: 'a' + j + r, v: 1 - 1 / (1 + Math.pow(c / 100, -1)) + r * 0.03 })) })) }] };
+  function at(w, scale) { const sp = { w: w, h: w * 0.62, kind: 'xy', pos: { yTitle: { dx: 6, dy: 0 } } }; if (scale === false) sp.scale = false; const sc = C.build(doc, sp), mk = sc.prims.find(p => p.t === 'marker'), ln = sc.prims.find(p => p.el === 'axisX'), tk = sc.prims.find(p => p.t === 'text' && /^yTick/.test(p.el)), yt = sc.prims.find(p => p.el === 'yTitle'), base = C.build(doc, (scale === false ? { w: w, h: w * 0.62, kind: 'xy', scale: false } : { w: w, h: w * 0.62, kind: 'xy' })).prims.find(p => p.el === 'yTitle');
+    return { r: mk.r / sc.W, sw: ln.sw / sc.W, tick: tk.size / sc.W, plot: sc.plot.w / sc.W, drag: (yt.x - base.x) / sc.W, W: sc.W }; }
+  return { small: at(3.4, undefined), big: at(9, undefined), refSmall: at(3.4, false), refBig: at(9, false) };
+});
+const same = (a, b) => ['r', 'sw', 'tick', 'plot', 'drag'].every(k => Math.abs(a[k] - b[k]) <= Math.max(1e-4, Math.abs(a[k]) * 0.03));
+check('K16 a figure 3.4 in wide and one 9 in wide have the same marker, line, type, plot and dragged position in proportion to their width', same(k16.small, k16.big) && Math.abs(k16.small.W - 3.4 * 72) < 0.01 && Math.abs(k16.big.W - 9 * 72) < 0.01, JSON.stringify(k16));
+check('K16 with Scale off the sizes are real points, so a smaller page holds relatively larger marks', !same(k16.refSmall, k16.refBig) && k16.refSmall.r > k16.refBig.r * 1.5, JSON.stringify({ a: k16.refSmall, b: k16.refBig }));
+const k18 = await ev(() => {
+  const C = ChartKitCore, d = C.defaults(), o = {};
+  function hue(h) { const c = C.rgb(h).map(x => x / 255), mx = Math.max(...c), mn = Math.min(...c), dl = mx - mn; let hh = dl === 0 ? 0 : mx === c[0] ? ((c[1] - c[2]) / dl) % 6 : mx === c[1] ? (c[2] - c[0]) / dl + 2 : (c[0] - c[1]) / dl + 4; hh = (hh * 60 + 360) % 360; return { h: hh, l: (mx + mn) / 2 }; }
+  o.pal = d.palette; o.ramps = [2, 4, 8, 12].map(n => { const hs = Array.from({ length: n }, (_, i) => hue(C.blueRamp(i, n))); return { n, hueSpan: Math.max(...hs.map(x => x.h)) - Math.min(...hs.map(x => x.h)), minStep: Math.min(...hs.slice(1).map((x, i) => Math.abs(x.l - hs[i].l))) }; });
+  o.msize = d.xy.msize; o.lw = d.xy.lw; o.cap = d.err.cap; o.ptsize = d.pts.size;
+  const sc = C.build({ items: [{ id: 'a', name: 'A', points: [{ x: 1, reps: [{ id: 'r', v: 1 }] }, { x: 10, reps: [{ id: 'r2', v: 2 }] }] }, { id: 'b', name: 'B', points: [{ x: 1, reps: [{ id: 'r3', v: 1 }] }] }] }, { kind: 'xy' }); o.colours = [...new Set(sc.prims.filter(p => p.t === 'marker').map(p => p.fill))];
+  return o;
+});
+check('K18 the default palette is a blue ramp: 2, 4, 8 and 12 compounds share one hue (within 6°) and neighbouring steps differ in lightness', k18.pal === 'blue' && k18.ramps.every(r => r.hueSpan < 6 && (r.n > 8 ? r.minStep > 0.02 : r.minStep > 0.04)), JSON.stringify(k18.ramps));
+check('K18 default markers (r ≤ 3.2 pt), lines (≤ 1.6 pt), error caps (≤ 3.5 pt) and replicate points (≤ 2.2 pt) are small, and the figure draws two blues', k18.msize <= 3.2 && k18.lw <= 1.6 && k18.cap <= 3.5 && k18.ptsize <= 2.2 && k18.colours.length === 2, JSON.stringify(k18));
 
 // K14 — a run of decades is labelled one way (the editor's own core, three data ranges)
 await open('xy');
@@ -253,6 +281,19 @@ for (const name of Object.keys(APPS)) {
   const png = await E(async k => { const kit = window[k], s = kit.spec(); s.w = 1e6; s.h = 0; kit.draw(); const sc = kit.scene(), r = await ChartKitExport.toPNG(sc, 300), b = new Uint8Array(await r.blob.arrayBuffer()), dv = new DataView(b.buffer); s.w = 6.5; s.h = 4.2; kit.draw(); return { w: dv.getUint32(16), h: dv.getUint32(20) }; }, a.kit);
   check('K11 ' + name + ': a figure of absurd size still exports a real picture (300 dpi: ' + png.w + ' × ' + png.h + ' px, not 16000 × 1)', png.w >= 900 && png.h >= 600, JSON.stringify(png));
   await E(() => window.scrollTo(0, 0));
+  // K17 — the figure and its panel fit the window, at the size the room allows
+  for (const [w, h] of [[1440, 900], [1280, 720]]) {
+    await pg.setViewportSize({ width: w, height: h }); await pg.waitForTimeout(500);
+    await E(() => window.scrollTo(0, 0));
+    const shapes = [[6.5, 4.2], [4.5, 4.5], [9, 5.2], [3.4, 2.7]], bad = [];
+    for (const [pw, ph] of shapes) {
+      const r = await E(([k, root, pw, ph]) => { const kit = window[k], s = kit.spec(); s.w = pw; s.h = ph; kit.draw(); return new Promise(res => setTimeout(() => { const sv = document.querySelector(root + ' svg.ck-svg').getBoundingClientRect(), p = document.querySelector(root + ' .ck-panel').getBoundingClientRect(), cv = document.querySelector(root + ' .ck-canvas').getBoundingClientRect(); res({ top: Math.round(sv.top), bottom: Math.round(sv.bottom), right: Math.round(sv.right), vh: innerHeight, vw: innerWidth, panelBottom: Math.round(p.bottom), fillW: sv.width / (cv.width - 32), fillH: sv.height / (cv.height - 32) }); }, 120)); }, [a.kit, a.root, pw, ph]);
+      if (r.top < 0 || r.bottom > r.vh + 1 || r.right > r.vw + 1 || r.panelBottom > r.vh + 1 || Math.max(r.fillW, r.fillH) < 0.93) bad.push(pw + '×' + ph + ' ' + JSON.stringify(r));
+    }
+    await E(k => { const s = window[k].spec(); s.w = 6.5; s.h = 4.2; window[k].draw(); }, a.kit);
+    check('K17 ' + name + ' ' + w + '×' + h + ': the whole figure and panel are inside the window, and the figure is as large as the room allows (4 page shapes)', bad.length === 0, bad.slice(0, 2).join(' | '));
+  }
+  await pg.setViewportSize({ width: 1280, height: 800 });
   // K15 — narrow windows
   for (const [w, h] of [[900, 700], [700, 900]]) { await pg.setViewportSize({ width: w, height: h }); await pg.waitForTimeout(450); const ov = await E(() => [document.documentElement.scrollWidth, innerWidth]); check('K15 ' + name + ' at ' + w + ' px nothing scrolls sideways', ov[0] <= ov[1], JSON.stringify(ov)); }
   await pg.setViewportSize({ width: 1280, height: 800 });

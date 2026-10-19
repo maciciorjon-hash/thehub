@@ -19,14 +19,16 @@ var ChartKit = (function(){
 
   function mount(root, opts){
     opts = opts || {};
-    var KEY = 'ck:' + (opts.key || 'chart'), spec, doc = { items: [] }, scene = null, sel = null, tab = 'data', undo = [], redo = [], lastUndoKey = '', lastUndoAt = 0, dpi = 1200, saveT = 0, drag = null;
+    var KEY = 'ck2:' + (opts.key || 'chart'), spec, doc = { items: [] }, scene = null, sel = null, tab = 'data', undo = [], redo = [], lastUndoKey = '', lastUndoAt = 0, dpi = 1200, saveT = 0, drag = null;
     try { spec = C.withDefaults(JSON.parse(localStorage.getItem(KEY) || 'null')); } catch (e) { spec = C.withDefaults(null); }
 
     root.classList.add('ck-root'); root.setAttribute('tabindex', '-1');
     root.innerHTML =
       '<div class="ck-stage">' +
         '<div class="ck-bar" role="toolbar" aria-label="Chart">' +
+          '<div class="ck-slot"></div>' +
           '<div class="ck-seg ck-kind" role="group" aria-label="Chart type"><button type="button" data-kind="auto">Auto</button><button type="button" data-kind="bars">Bars</button><button type="button" data-kind="xy">Curves</button></div>' +
+          '<span class="ck-sep"></span>' +
           '<button type="button" class="ck-btn" data-a="undo" title="Undo (⌘Z)">Undo</button><button type="button" class="ck-btn" data-a="redo" title="Redo (⇧⌘Z)">Redo</button>' +
           '<label class="ck-chk" title="Titles and the legend snap to each other, to the plot and to the centre of the figure. Hold Alt to move freely."><input type="checkbox" data-a="snap"> Snap &amp; align</label>' +
           '<span class="ck-gap"></span>' +
@@ -68,16 +70,33 @@ var ChartKit = (function(){
 
     // ── drawing ────────────────────────────────────────────────
     function scale(){ var r = svg.getBoundingClientRect(); return scene && r.width ? r.width / scene.W : 1; }
+    // What is dragged is stored in the reference page's points (the scene is multiplied by k afterwards), so a title put
+    // somewhere stays there when the page is made larger or smaller.
+    function kk(){ return scene && scene.k || 1; }
+    // The figure takes the room the host leaves it — the window's height below where it starts — and is drawn as large as fits that
+    // room and its width, whatever its shape; on a narrow window it takes the width and the panel goes under it.
+    function narrow(){ return window.matchMedia && window.matchMedia('(max-width:900px)').matches; }
+    function fit(){
+      if (!root.offsetParent || !scene) return;
+      var cv = root.querySelector('.ck-canvas'), cs = getComputedStyle(cv), pw = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight), ph = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom), nar = narrow();
+      if (nar) root.style.height = '';
+      else { var room = opts.room ? opts.room() : window.innerHeight - root.getBoundingClientRect().top - (opts.bottom === undefined ? 16 : opts.bottom); root.style.height = Math.max(440, Math.round(room)) + 'px'; }
+      var aw = cv.clientWidth - pw, ah = nar ? Infinity : cv.clientHeight - ph;
+      if (aw <= 0) return;
+      var f = Math.min(aw / scene.W, ah / scene.H);
+      svg.style.width = Math.floor(scene.W * f) + 'px'; svg.style.height = Math.floor(scene.H * f) + 'px';
+    }
     function draw(){
       scene = C.build(doc, spec);
       var s = X.toSVG(scene, { transparent: true });
       var inner = s.slice(s.indexOf('>') + 1, s.lastIndexOf('</svg>'));
       svg.setAttribute('viewBox', '0 0 ' + scene.W.toFixed(2) + ' ' + scene.H.toFixed(2));
-      svg.style.aspectRatio = scene.W + ' / ' + scene.H;
+      fit();
       svg.innerHTML = inner + '<g class="ck-ov"></g>';
       var bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect'); bg.setAttribute('width', scene.W); bg.setAttribute('height', scene.H); bg.setAttribute('fill', '#ffffff'); bg.setAttribute('class', 'ck-paper'); svg.insertBefore(bg, svg.firstChild.nextSibling || null);
       overlay(); pngNote(); fitNote();
     }
+    if (window.ResizeObserver) { var ro = new ResizeObserver(function(){ fit(); overlay(); }); ro.observe(root.querySelector('.ck-canvas')); ro.observe(root); }
     // A curve that cannot be refitted without the replicates left out is not drawn; say so where the figure is, not only in the Data tab.
     var lastFitNote = '';
     function fitFailed(){ return scene && scene.kind === 'xy' ? scene.items.filter(function(i){ return i.refitFailed && !i.hidden; }) : []; }
@@ -115,16 +134,17 @@ var ChartKit = (function(){
       } else if (itemOf(sel)) {
         var id = itemOf(sel), it = (doc.items || []).filter(function(x){ return x.id === id; })[0], ci = (doc.items || []).indexOf(it);
         if (it) {
-          var col = C.itemColor(spec, it, ci), pal = C.PALETTES.filter(function(p){ return p.id === spec.palette; })[0] || C.PALETTES[0];
+          var col = C.itemColor(spec, it, ci, (doc.items || []).length), pal = C.PALETTES.filter(function(p){ return p.id === spec.palette; })[0] || C.PALETTES[0];
           h = '<div class="ck-selh"><b>' + esc(it.name) + '</b><button type="button" class="ck-link" data-a="deselect">Done</button></div>' +
             '<div class="ck-row"><label class="ck-f"><span>Colour</span><input class="ck-color" type="color" data-item="' + esc(id) + '" value="' + col + '"></label>' +
             '<button type="button" class="ck-link" data-a="resetcolor" data-id="' + esc(id) + '">Back to the palette</button><button type="button" class="ck-link" data-a="hideitem" data-id="' + esc(id) + '">Hide</button></div>' +
-            '<div class="ck-sw">' + pal.c.map(function(c){ return '<button type="button" class="ck-swb' + (c.toLowerCase() === col.toLowerCase() ? ' on' : '') + '" style="background:' + c + '" data-a="setcolor" data-id="' + esc(id) + '" data-c="' + c + '" aria-label="' + c + '"></button>'; }).join('') + '</div>';
+            '<div class="ck-sw">' + palColors(pal).map(function(c){ return '<button type="button" class="ck-swb' + (c.toLowerCase() === col.toLowerCase() ? ' on' : '') + '" style="background:' + c + '" data-a="setcolor" data-id="' + esc(id) + '" data-c="' + c + '" aria-label="' + c + '"></button>'; }).join('') + '</div>';
         }
       } else if (sel === 'ref') h = '<div class="ck-selh"><b>Reference line</b><button type="button" class="ck-link" data-a="deselect">Done</button></div><div class="ck-hint">Its value and style are under <b>Axes</b>.</div>';
       else if (sel === 'axisX' || sel === 'axisY') h = '<div class="ck-selh"><b>' + (sel === 'axisX' ? 'X' : 'Y') + ' axis</b><button type="button" class="ck-link" data-a="deselect">Done</button></div><div class="ck-hint">Range, ticks and line width are under <b>Axes</b>.</div>';
       selBox.innerHTML = h;
     }
+    function palColors(pal){ var n = (doc.items || []).length; return pal.ramp ? Array.apply(null, Array(Math.max(2, Math.min(12, n)))).map(function(_, i, a){ return C.blueRamp(i, a.length); }) : pal.c; }
     function alignRow(){ return '<div class="ck-row ck-align"><button type="button" class="ck-btn" data-al="cx">Centre on plot</button><button type="button" class="ck-btn" data-al="fx">Centre on figure</button><button type="button" class="ck-link" data-a="resetpos">Reset position</button></div>'; }
     function defaultText(id){ if (id === 'xTitle') return doc.xTitle || ''; if (id === 'yTitle') return doc.yTitle || ''; return (doc.title && doc.title[+id.slice(5)]) || ''; }
 
@@ -158,17 +178,24 @@ var ChartKit = (function(){
       }
       else if (tab === 'colors') {
         h = '<div class="ck-grp">Palette</div><div class="ck-pals">' + C.PALETTES.map(function(p){ return '<button type="button" class="ck-pal' + (spec.palette === p.id ? ' on' : '') + '" data-pal="' + p.id + '" title="' + p.name + '"><span class="ck-pn">' + p.name + '</span><span class="ck-ps">' + p.c.slice(0, 8).map(function(c){ return '<i style="background:' + c + '"></i>'; }).join('') + '</span></button>'; }).join('') + '</div>' +
-          '<div class="ck-grp">Each compound</div><div class="ck-items">' + (doc.items || []).map(function(it, i){ var col = C.itemColor(spec, it, i); return '<div class="ck-itrow"><input class="ck-color" type="color" data-item="' + esc(it.id) + '" value="' + col + '" aria-label="Colour of ' + esc(it.name) + '"><button type="button" class="ck-name" data-pick="bar:' + esc(it.id) + '">' + esc(it.name) + '</button>' + (spec.colors[it.id] ? '<button type="button" class="ck-link" data-a="resetcolor" data-id="' + esc(it.id) + '">palette</button>' : '') + '</div>'; }).join('') + '</div>' +
+          '<div class="ck-grp">Each compound</div><div class="ck-items">' + (doc.items || []).map(function(it, i){ var col = C.itemColor(spec, it, i, (doc.items || []).length); return '<div class="ck-itrow"><input class="ck-color" type="color" data-item="' + esc(it.id) + '" value="' + col + '" aria-label="Colour of ' + esc(it.name) + '"><button type="button" class="ck-name" data-pick="bar:' + esc(it.id) + '">' + esc(it.name) + '</button>' + (spec.colors[it.id] ? '<button type="button" class="ck-link" data-a="resetcolor" data-id="' + esc(it.id) + '">palette</button>' : '') + '</div>'; }).join('') + '</div>' +
           '<div class="ck-note">Choosing a palette recolours every compound; a colour picked for one compound is kept until you apply a palette again.</div>';
       }
       else if (tab === 'page') {
         h = '<div class="ck-grp">Size of the figure</div><div class="ck-pg">' + PAGES.map(function(p){ return '<button type="button" class="ck-li' + (Math.abs(spec.w - p[1]) < 0.01 && Math.abs(spec.h - p[2]) < 0.01 ? ' on' : '') + '" data-page="' + p[1] + ',' + p[2] + '">' + p[0] + '<em>' + p[1] + ' × ' + p[2] + ' in</em></button>'; }).join('') + '</div>' +
           '<div class="ck-grid">' + fld('Width (in)', 'w', 'num', { step: 0.1 }) + fld('Height (in)', 'h', 'num', { step: 0.1 }) + '</div>' +
+          fld('Scale text, lines and points with the page', 'scale', 'bool') + '<div class="ck-note" id="ck-scalenote"></div>' +
           '<div class="ck-grp">Space around the plot (pt)</div><div class="ck-grid">' + fld('Left', 'margin.l', 'num', { step: 1 }) + fld('Right', 'margin.r', 'num', { step: 1 }) + fld('Top', 'margin.t', 'num', { step: 1 }) + fld('Bottom', 'margin.b', 'num', { step: 1 }) + '</div>' +
           '<div class="ck-row"><button type="button" class="ck-btn" data-a="resetlayout">Reset positions &amp; margins</button><button type="button" class="ck-btn" data-a="resetall">Reset everything</button></div>' +
           '<div class="ck-note" id="ck-pngnote"></div>';
       }
-      panel.innerHTML = h; pngNote();
+      panel.innerHTML = h; pngNote(); scaleNote();
+    }
+    // What the type comes to on paper: with Scale on the sizes follow the page width, so a narrow page is a small figure — and said so.
+    function scaleNote(){
+      var el = panel.querySelector('#ck-scalenote'); if (!el || !scene) return;
+      var k = scene.k || 1, pt = spec.x.size * k, y = spec.y.size * k, lo = Math.min(pt, y);
+      el.innerHTML = spec.scale ? 'Everything in the figure is drawn in proportion to its width, so the page can be resized without changing how it looks. Axis numbers are ' + (+lo.toFixed(1)) + ' pt at ' + (+spec.w.toFixed(1)) + ' in.' + (lo < 6 ? ' <span class="ck-warn">Most journals want 6 pt or more — raise the sizes, or use a wider page.</span>' : '') : 'Sizes are real points: a smaller page holds the same type and lines, so they take more of it.';
     }
     function pngNote(){ var el = panel.querySelector('#ck-pngnote'); if (!el || !scene) return; var s = X.pngSize(scene, dpi); el.textContent = 'PNG at ' + dpi + ' dpi: ' + s.w + ' × ' + s.h + ' px' + (s.scaled ? ' — larger than a browser can draw, so it is made at ' + s.effective + ' dpi' : '') + '.'; }
     function dataHtml(){
@@ -176,7 +203,7 @@ var ChartKit = (function(){
       if (!its.length) return '<div class="ck-hint">Nothing to plot yet.</div>';
       var anyOmit = Object.keys(spec.omit).some(function(k){ return spec.omit[k]; });
       return '<div class="ck-note">Click a replicate to leave it out of the chart — means, error bars and fits are recalculated without it.' + (anyOmit ? ' <button type="button" class="ck-link" data-a="restoreomit">Put them all back</button>' : '') + '</div>' + its.map(function(it, ii){
-        var hid = spec.hidden[it.id], col = C.itemColor(spec, it, ii);
+        var hid = spec.hidden[it.id], col = C.itemColor(spec, it, ii, its.length);
         var failed = !hid && fitFailed().some(function(f){ return f.id === it.id; });
         return '<div class="ck-dg' + (hid ? ' off' : '') + '"><div class="ck-dh"><i style="background:' + col + '"></i><button type="button" class="ck-name" data-pick="bar:' + esc(it.id) + '">' + esc(it.name) + '</button><button type="button" class="ck-link" data-a="hideitem" data-id="' + esc(it.id) + '">' + (hid ? 'Show' : 'Hide') + '</button></div>' +
           (failed ? '<div class="ck-fitnote">Too few points left to refit — its curve is not drawn.</div>' : '') +
@@ -230,7 +257,7 @@ var ChartKit = (function(){
     function align(how){
       var id = sel && sel.indexOf('leg:') === 0 ? 'legend' : sel, nd = id && nodeOf(id); if (!nd || !scene) return;
       var r = rectOf(nd), cur = spec.pos[id] || { dx: 0, dy: 0 }, target = how === 'cx' ? scene.plot.x + scene.plot.w / 2 : scene.W / 2, mid = (r.l + r.r) / 2;
-      pushUndo('align'); spec.pos[id] = { dx: +(cur.dx + target - mid).toFixed(1), dy: cur.dy }; draw(); overlay(); save();
+      pushUndo('align'); spec.pos[id] = { dx: +(cur.dx + (target - mid) / kk()).toFixed(2), dy: cur.dy }; draw(); overlay(); save();
     }
 
     // ── dragging with snap & align ─────────────────────────────
@@ -266,7 +293,7 @@ var ChartKit = (function(){
         if (bx) { ddx += bx.d; guides.push({ v: bx.c }); }
         if (by) { ddy += by.d; guides.push({ h: by.c }); }
       }
-      spec.pos[drag.id] = { dx: +(drag.start.dx + ddx).toFixed(1), dy: +(drag.start.dy + ddy).toFixed(1) };
+      spec.pos[drag.id] = { dx: +(drag.start.dx + ddx / kk()).toFixed(2), dy: +(drag.start.dy + ddy / kk()).toFixed(2) };
       var keep = guides; draw(); overlay(keep);
     });
     function endDrag(){ if (!drag) return; var m = drag.moved; drag = null; if (m) { draw(); save(); } else overlay(); }
@@ -280,11 +307,11 @@ var ChartKit = (function(){
       if (e.key === 'Escape') { select(null); return; }
       var id = sel && sel.indexOf('leg:') === 0 ? 'legend' : sel;
       if (id && DRAG.test(id) && /^Arrow/.test(e.key)) {
-        e.preventDefault(); var st = e.shiftKey ? 10 : 1, cur = spec.pos[id] || { dx: 0, dy: 0 };
-        pushUndo('nudge:' + id); spec.pos[id] = { dx: cur.dx + (e.key === 'ArrowRight' ? st : e.key === 'ArrowLeft' ? -st : 0), dy: cur.dy + (e.key === 'ArrowDown' ? st : e.key === 'ArrowUp' ? -st : 0) }; draw(); overlay(); save();
+        e.preventDefault(); var st = (e.shiftKey ? 10 : 1) / kk(), cur = spec.pos[id] || { dx: 0, dy: 0 };
+        pushUndo('nudge:' + id); spec.pos[id] = { dx: +(cur.dx + (e.key === 'ArrowRight' ? st : e.key === 'ArrowLeft' ? -st : 0)).toFixed(3), dy: +(cur.dy + (e.key === 'ArrowDown' ? st : e.key === 'ArrowUp' ? -st : 0)).toFixed(3) }; draw(); overlay(); save();
       }
     });
-    window.addEventListener('resize', function(){ overlay(); });
+    window.addEventListener('resize', function(){ fit(); overlay(); });
 
     // ── export ─────────────────────────────────────────────────
     function base(){ var n = opts.filename ? opts.filename() : (opts.key || 'chart'); return String(n || 'chart').replace(/[^\w.\-]+/g, '_').slice(0, 60); }
@@ -303,7 +330,9 @@ var ChartKit = (function(){
         spec.omit = {}; spec.hidden = {}; spec.colors = {}; spec.pos = {}; spec.ref.y = null; spec.title.forEach(function(t){ t.text = null; }); spec.xTitle.text = null; spec.yTitle.text = null; undo = []; redo = []; sel = null;
       }
       if (doc.sig !== undefined) lastSig = doc.sig;
+      var slot = root.querySelector('.ck-slot'); if (slot && opts.slot) { try { opts.slot(slot); } catch (e) {} }
       draw(); renderSel(); renderTabs(); renderPanel(); syncBar();
+      setTimeout(fit, 0);
     }
     refresh();
     return { refresh: refresh, draw: draw, spec: function(){ return spec; }, scene: function(){ return scene; }, select: select, exportPNG: exportPNG, exportPDF: exportPDF };
