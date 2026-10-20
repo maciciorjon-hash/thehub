@@ -5082,6 +5082,17 @@ function downloadBlob(blob) {
   a.href = URL.createObjectURL(new Blob([blob.bytes], {type: blob.type}));
   a.download = blob.name; a.click();
 }
+// Text to the clipboard, or say it could not. A rejected or missing navigator.clipboard falls back to a hidden textarea
+// and execCommand; the promise resolves only when something was really copied. A button flashes 'Copied' without losing its icon.
+function _echoCopy(text) {
+  const legacy = () => new Promise((res, rej) => {
+    const ta = document.createElement('textarea'); ta.value = text; ta.setAttribute('readonly', ''); ta.setAttribute('aria-hidden', 'true'); ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
+    document.body.appendChild(ta); ta.select(); let ok = false; try { ok = document.execCommand('copy'); } catch (e) {} ta.remove(); ok ? res() : rej(new Error('copy refused'));
+  });
+  try { if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(text).catch(legacy); } catch (e) {}
+  return legacy();
+}
+function _flashBtn(btn, label) { if (!btn || btn._flash) return; const h = btn.innerHTML; btn._flash = true; btn.textContent = label; setTimeout(() => { btn.innerHTML = h; btn._flash = false; }, 1500); }
 function copyResultsTSV() {
   if (!_lastResultsData.length) { echoToast('No results to copy.'); return; }
   const _selTsv = new Set([...document.querySelectorAll('.csv-col-cb:checked')].map(el=>el.dataset.col));
@@ -5098,10 +5109,10 @@ function copyResultsTSV() {
   // potency and effect columns by what they are for every row (they used to read "DC50" on a viability row).
   if (window._lastAnalysisParams && window._lastAnalysisParams.multiAssay) { cols.unshift('Assay'); _lbl.Assay='Assay'; _lbl.DC50_nM='Potency (nM)'; _lbl.Dmax_pct='Effect (% or signal)'; }
   const rows = [cols.map(k=>_lbl[k]||k).join('\t'), ..._lastResultsData.map(r=>cols.map(c=>_tsvCell(c==='Assay'?(_MA_NAMES[r._assayType]||r._assayType||''):_outVal(r,c))).join('\t'))];
-  navigator.clipboard.writeText(rows.join('\n')).then(()=>{
-    const btn=document.querySelector('[onclick="copyResultsTSV()"]');
-    if(btn){const t=btn.textContent;btn.textContent='✓ Copied';setTimeout(()=>btn.textContent=t,1500);}
-  }).catch(()=>echoToast('Clipboard write failed — use CSV export instead.', 'err'));
+  _echoCopy(rows.join('\n')).then(()=>{
+    _flashBtn(document.querySelector('[onclick="copyResultsTSV()"]'), 'Copied');
+    echoToast('Copied ' + _lastResultsData.length + ' rows, tab-separated — paste into Excel or Prism.');
+  }).catch(()=>echoToast('The browser did not allow copying — use Export instead.', 'err'));
 }
 
 // ── The screen export: what Hit Finder reads ───────────────────────────────────────────────────────────
@@ -6238,10 +6249,9 @@ function clearRectSelect(){
 }
 function copySelectedIDs(){
   if(!_selectedIDs.size){echoToast('Nothing selected.');return;}
-  navigator.clipboard.writeText([..._selectedIDs].join('\n')).then(()=>{
-    const btn=document.querySelector('#sc-select-banner button');
-    if(btn){const t=btn.textContent;btn.textContent='✓ Copied!';setTimeout(()=>btn.textContent=t,1500);}
-  });
+  _echoCopy([..._selectedIDs].join('\n')).then(()=>{
+    _flashBtn(document.querySelector('#sc-select-banner button'), 'Copied');
+  }).catch(()=>echoToast('The browser did not allow copying — select the names by hand.', 'err'));
 }
 function _attachRectListeners(){
   const ov=document.getElementById('sc-select-overlay');

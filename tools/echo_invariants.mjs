@@ -181,6 +181,9 @@
 //   E67 the keyboard is seen  Pressing Tab through every Setup step and every tab, each stop shows a mark (an outline, a shadow or a changed border): the Curves
 //                             selects and Y limits and the Plate tab's search and selects carried outline:none and showed nothing.
 //
+//   E68 a copy is a copy      Copy TSV keeps its icon after it flashes 'Copied' (it was rewritten as bare text), still copies when the async clipboard is refused
+//                             (textarea fallback), says so on screen when nothing could be copied, and Copy selected IDs does the same instead of failing in silence.
+//
 // Usage (repo root):  node tools/echo_invariants.mjs [--only=E1,E7] [--file=path/to/echo.html] [--verbose]
 import { chromium } from 'playwright';
 import path from 'node:path';
@@ -2597,6 +2600,35 @@ if (run('E67')) await guard('E67', async () => {
   await q.evaluate(() => runPipeline()); await q.waitForFunction(() => typeof _lastResultsData !== 'undefined' && _lastResultsData && _lastResultsData.length > 0, null, { timeout: 120000 }); await q.waitForTimeout(1200);
   await q.evaluate(() => closeSetupModal());
   for (const t of ['results', 'curves', 'scatter', 'plate', 'history', 'protocol', 'source']) { await q.evaluate(t => { const b = document.querySelector(`.tab[data-tab="${t}"]`); b && b.click(); document.activeElement && document.activeElement.blur(); document.getElementById('tabbtn-' + (t === 'source' ? 'survey' : t)).focus(); }, t); await q.waitForTimeout(350); await stops('tab ' + t, 45); }
+  await c.close();
+});
+
+if (run('E68')) await guard('E68', async () => {
+  const c = await browser.newContext({ viewport: { width: 1440, height: 900 } }); const q = await c.newPage();
+  await q.route(/^https?:\/\/(?!127\.0\.0\.1|localhost)/, r => r.abort());
+  await q.goto('file://' + FILE); await q.waitForTimeout(1200);
+  await q.evaluate(() => { loadTestData(); }); await q.waitForTimeout(800);
+  await q.evaluate(() => runPipeline()); await q.waitForFunction(() => typeof _lastResultsData !== 'undefined' && _lastResultsData && _lastResultsData.length > 0, null, { timeout: 120000 }); await q.waitForTimeout(1000);
+  await q.evaluate(() => document.querySelector('.tab[data-tab="results"]').click()); await q.waitForTimeout(300);
+  const btn = () => q.evaluate(() => { const b = document.querySelector('[onclick="copyResultsTSV()"]'); return b ? { svg: !!b.querySelector('svg'), text: b.textContent.trim() } : null; });
+  const before = await btn();
+  // 1. the async clipboard refuses; execCommand works
+  await q.evaluate(() => { window.__copied = null; Object.defineProperty(navigator, 'clipboard', { value: { writeText: () => Promise.reject(new Error('denied')) }, configurable: true }); document.execCommand = c => { if (c === 'copy') { window.__copied = document.activeElement && document.activeElement.value; return true; } return false; }; copyResultsTSV(); });
+  await q.waitForTimeout(500);
+  const mid = await btn(); const copied = await q.evaluate(() => window.__copied);
+  check('E68', 'the async clipboard refused: the table is copied through the fallback', typeof copied === 'string' && copied.split('\n').length > 20 && /DC50/.test(copied.split('\n')[0]), (copied || '').slice(0, 80));
+  check('E68', 'the button says Copied while it flashes', mid && /Copied/.test(mid.text), mid);
+  await q.waitForTimeout(1700);
+  const after = await btn();
+  check('E68', 'the button gets its icon and its words back', before && before.svg && after && after.svg && /Copy TSV/.test(after.text), { before, after });
+  // 2. nothing works: it is said
+  await q.evaluate(() => { document.execCommand = () => false; copyResultsTSV(); }); await q.waitForTimeout(500);
+  const say = await q.evaluate(() => document.body.innerText);
+  check('E68', 'when nothing can be copied the screen says so', /did not allow copying/.test(say), say.slice(-200));
+  // 3. selected IDs
+  const sel = await q.evaluate(() => { try { _selectedIDs.add('X1'); copySelectedIDs(); return 'ok'; } catch (e) { return String(e); } }); await q.waitForTimeout(500);
+  const say2 = await q.evaluate(() => document.body.innerText);
+  check('E68', 'Copy selected IDs that cannot copy says so, not a silent rejection', sel === 'ok' && /did not allow copying — select the names/.test(say2), { sel, tail: say2.slice(-160) });
   await c.close();
 });
 
