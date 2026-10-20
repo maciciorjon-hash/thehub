@@ -68,7 +68,7 @@
 //       all of it            the later days follow only when asked; moving one step moves that
 //                            step alone. (the day's first step moved and its siblings stayed)
 //   I26 the proposed code    The code the New-experiment window proposes has one shape per type:
-//                            PREFIX_TYPEDATE[_POI], and for D2B PREFIX_[POI_]D2B_DATE — with or
+//                            PREFIX_TYPEDATE[_POI] (TYPE is the preset's own codeTag when it names one), and for D2B PREFIX_[POI_]D2B_DATE — with or
 //                            without a POI. (a D2B with no POI came out D2B20260929, the only
 //                            code of its type with no underscore)
 //   I27 a signature is one   A design's "edited" stamp and a Methods paragraph's "stale" stamp are compared as text, so the
@@ -1166,7 +1166,7 @@ async function suite(opts) {
       const code = el('nm-code').value, d = dateCompact(el('nm-date').value), pr = projPrefix(projById(NM_TARGET.pid));
       closeNew();
       tick('I26');
-      const want = pr + '_' + (type === 'D2B' ? ((poi ? poi + '_' : '') + 'D2B_' + d) : (type + d + (poi ? '_' + poi : '')));
+      const want = pr + '_' + (type === 'D2B' ? ((poi ? poi + '_' : '') + 'D2B_' + d) : (presetCodeTag(key) + d + (poi ? '_' + poi : '')));   // a curated preset may name its own letters (TC on KD); the type stays
       if (code !== want) bad('I26', key + ' / poi=' + (poi || 'none'), `proposed "${code}", expected "${want}"`);
     });
   }
