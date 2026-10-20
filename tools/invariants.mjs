@@ -3232,6 +3232,11 @@ async function suite(opts) {
           if (Math.abs(tot - took - need) > Math.max(0.05, need * 0.01)) bad('B10', tag + ' · tube ' + (i + 1), `${tot} µL made, ${took} taken on, ${need} µL needed for its wells`);
           if (Math.abs(tot - cell(series[0], 5)) > 0.011) bad('B10', tag + ' · tube ' + (i + 1), `${tot} µL, tube 1 is ${cell(series[0], 5)} µL: a serial dilution makes every tube the same`);
           if (i > 1 && Math.abs(from - cell(series[1], 2)) > 0.011) bad('B10', tag + ' · tube ' + (i + 1), `takes ${from} µL from the tube before, tube 2 takes ${cell(series[1], 2)} µL`); });
+        // every tube states its DNA total, the same in all of them: c1 ng/µL, and tube volume × c1 ng in the tube
+        series.forEach((tr, i) => { const m = /DNA total:[^()]*·\s*([\d.,]+)\s*ng\/µL\s*\(([\d.,]+)\s*ng in the tube\)/.exec(tr.children[1].textContent);
+          if (!m) { bad('B10', tag + ' · tube ' + (i + 1), 'no "DNA total" line in the tube cell'); return; }
+          const tot = cell(tr, 5);
+          if (Math.abs(num(m[1]) - c1) > c1 * 0.003 || Math.abs(num(m[2]) - tot * c1) > Math.max(0.5, tot * c1 * 0.003)) bad('B10', tag + ' · tube ' + (i + 1), `DNA total says ${m[1]} ng/µL, ${m[2]} ng; ${c1} ng/µL × ${tot} µL = ${(tot * c1).toFixed(1)} ng`); });
         // the carrier stock is an input: a stock twice as strong pipettes half the carrier and takes more Opti-MEM down
         const v2 = Object.assign({}, v, { carrierStock: v.carrierStock * 2 }), s2 = tbls(CALC_KINDS.nbtx.compute(v2, {}))[0];
         if (s2 && s2.length > 1) { const c0 = cell(series[1], 3), c2 = cell(s2[1], 3), o0 = cell(series[1], 4), o2 = cell(s2[1], 4);
