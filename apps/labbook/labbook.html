@@ -1393,8 +1393,18 @@ html.lb-loading body > *{visibility:hidden;}
 .pl-nt-l .pl-nt-br{width:5px;border-right:0;margin:2px 0;}
 .pl-nt-r .pl-nt-br{width:5px;border-left:0;margin:2px 0;}
 .pl-nt-1 .pl-nt-br{display:none;}
-.pl-nt.ed{cursor:text;border-radius:var(--r-1);}
+.pl-nt.ed{position:relative;cursor:grab;border-radius:var(--r-1);}
 .pl-nt.ed:hover{color:var(--text);background:var(--surface3);}
+.pl-nt-h{position:absolute;z-index:1;opacity:0;border-radius:var(--r-1);}
+.pl-nt-t .pl-nt-h,.pl-nt-b .pl-nt-h{top:0;bottom:0;width:7px;cursor:ew-resize;}
+.pl-nt-l .pl-nt-h,.pl-nt-r .pl-nt-h{left:0;right:0;height:7px;cursor:ns-resize;}
+.pl-nt-h[data-h=a]{left:0;top:0;}
+.pl-nt-t .pl-nt-h[data-h=b],.pl-nt-b .pl-nt-h[data-h=b]{left:auto;right:0;}
+.pl-nt-l .pl-nt-h[data-h=b],.pl-nt-r .pl-nt-h[data-h=b]{top:auto;bottom:0;}
+.pl-nt.ed:hover .pl-nt-h{opacity:1;background:var(--accent-soft);}
+.pl-edrop{position:fixed;display:none;z-index:300;pointer-events:none;border:1.5px dashed var(--accent);background:var(--accent-dim);border-radius:var(--r-1);}
+.pl-np-span{display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:var(--fs-1);font-weight:600;color:var(--text2);}
+.pl-np-span .pl-btn{min-width:0;margin-left:auto;padding:2px 9px;font-size:var(--fs-1);}
 .pl-ng{display:flex;align-items:center;justify-content:center;box-sizing:border-box;min-width:0;min-height:0;overflow:hidden;border:1.5px dashed var(--border2);border-radius:var(--r-1);color:var(--text3);font-size:var(--fs-1);font-weight:700;line-height:1;cursor:pointer;white-space:nowrap;}
 .pl-ng:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-dim);}
 .pl-ng-l span,.pl-ng-r span{writing-mode:vertical-rl;}
@@ -3273,7 +3283,8 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
 </div>
 
 <div id="pl-band"></div>
-<div id="pl-note-pop" role="dialog" aria-label="Label for the plate"><input id="pl-note-in" maxlength="40" autocomplete="off" spellcheck="false" placeholder="e.g. 10 &micro;M, + MG132, Compound A" onkeydown="plEdgeKey(event)"><div class="pl-np-chips" id="pl-np-chips"></div><div class="pl-np-foot"><span>Enter to add &middot; Esc to cancel</span><button class="pl-btn danger" id="pl-np-rm" onmousedown="event.preventDefault()" onclick="plEdgeRemove()">Remove</button></div></div>
+<div id="pl-edge-drop" class="pl-edrop"></div>
+<div id="pl-note-pop" role="dialog" aria-label="Label for the plate"><div class="pl-np-span"><span id="pl-np-span"></span><button class="pl-btn" id="pl-np-cov" onmousedown="event.preventDefault()" onclick="plEdgeCover()" title="Make this label cover the wells that are selected now">Cover the selection</button></div><input id="pl-note-in" maxlength="40" autocomplete="off" spellcheck="false" placeholder="e.g. 10 &micro;M, + MG132, Compound A" onkeydown="plEdgeKey(event)"><div class="pl-np-chips" id="pl-np-chips"></div><div class="pl-np-foot"><span>Enter to add &middot; Esc to cancel</span><button class="pl-btn danger" id="pl-np-rm" onmousedown="event.preventDefault()" onclick="plEdgeRemove()">Remove</button></div></div>
 
 <!-- Cmd+K spotlight -->
 <div id="spot-back" onclick="if(event.target.id==='spot-back')closeSpot()">
@@ -6499,8 +6510,9 @@ function _plEdgePos(n,o){
   return rows+';grid-column:'+(n.side==='l'?(o.CO-n.tier):(o.CO+o.c0+d.c+n.tier)); }
 function _plEdgeHtml(n,o,ed){
   return '<div class="pl-nt pl-nt-'+n.side+(n.b>n.a?'':' pl-nt-1')+(ed?' ed':'')+'" style="'+_plEdgePos(n,o)+'" title="'+esc(n.text)+(ed?' \u2014 click to edit':'')+'"'
-    +(ed?(' data-note="'+esc(n.id)+'" onclick="plEdgeOpen(\''+n.side+'\','+n.a+','+n.b+',\''+esc(n.id)+'\')"'):'')
-    +'><span class="pl-nt-x">'+esc(n.text)+'</span><i class="pl-nt-br"></i></div>'; }
+    +(ed?(' data-note="'+esc(n.id)+'" onmousedown="plEdgeDrag(event,\''+esc(n.id)+'\')" onclick="plEdgeOpen(\''+n.side+'\','+n.a+','+n.b+',\''+esc(n.id)+'\')"'):'')
+    +'><span class="pl-nt-x">'+esc(n.text)+'</span><i class="pl-nt-br"></i>'
+    +(ed?'<i class="pl-nt-h" data-h="a"></i><i class="pl-nt-h" data-h="b"></i>':'')+'</div>'; }
 function _plColShift(col,by){ return String(col).split(' / ').map(function(x){ return String(+x+by); }).join(' / '); }
 function wellIdOf(r,c){ return PLATE_ROWS.charAt(r)+(c+1); }
 // Well ids are unpadded ("A1", "A10") — always resolve through this, never sort them as strings.
@@ -8580,7 +8592,11 @@ function _plEdgePlace(anchor,side){ var pop=el('pl-note-pop'); if(!pop||!anchor)
   else { x=r.left+r.width/2-w/2; y=(side==='t')?(r.top-h-8):(r.bottom+8);
     if(y<8) y=r.bottom+8; if(y+h>vh-8) y=r.top-h-8; }
   pop.style.left=Math.max(8,Math.min(x,vw-w-8))+'px'; pop.style.top=Math.max(8,Math.min(y,vh-h-8))+'px'; }
+function _plEdgeSpanText(side,a,b){
+  var h=(side==='t'||side==='b'), f=function(i){ return h?String(i+1):PLATE_ROWS.charAt(i); };
+  return (h?'Column':'Row')+(b>a?'s ':' ')+f(a)+(b>a?'\u2013'+f(b):''); }
 function plEdgeOpen(side,a,b,id){ var p=plCur(); if(!p) return;
+  if(PLE.suppress&&Date.now()-PLE.suppress<400) return;   // the click that ends a drag is not a request to edit
   if(PLE.open) plEdgeCommit();   // the one being written is kept before the next opens
   p=plCur(); var cur=null; if(id) (p.edges||[]).forEach(function(n){ if(n.id===id) cur=n; });
   var anchor=_plEdgeAnchor(side,a,b,cur?cur.id:null); if(!anchor) return;
@@ -8589,8 +8605,15 @@ function plEdgeOpen(side,a,b,id){ var p=plCur(); if(!p) return;
   PLE.sugg=_plEdgeSugg(p);
   el('pl-np-chips').innerHTML=PLE.sugg.map(function(t,i){ return '<button class="pl-btn" onmousedown="event.preventDefault()" onclick="plEdgePick('+i+')">'+esc(t)+'</button>'; }).join('');
   el('pl-np-rm').style.display=cur?'':'none';
+  _plEdgeSpanShow();
   el('pl-note-pop').style.display='block';
   _plEdgePlace(anchor,side); inp.focus(); inp.select(); }
+function _plEdgeSpanShow(){ var o=PLE.open; if(!o) return;
+  el('pl-np-span').textContent=_plEdgeSpanText(o.side,o.a,o.b);
+  var sp=plEdgeSpan(o.side);   // a selection that covers something else offers to take the label there
+  el('pl-np-cov').style.display=(sp&&(sp.a!==o.a||sp.b!==o.b))?'':'none'; }
+function plEdgeCover(){ var o=PLE.open; if(!o) return; var sp=plEdgeSpan(o.side); if(!sp) return;
+  o.a=sp.a; o.b=sp.b; _plEdgeSpanShow(); el('pl-note-in').focus(); }
 function plEdgeClose(){ PLE.open=null; var pop=el('pl-note-pop'); if(pop) pop.style.display='none'; }
 function plEdgeKey(ev){
   if(ev.key==='Enter'){ ev.preventDefault(); ev.stopPropagation(); plEdgeCommit(); }
@@ -8602,11 +8625,47 @@ function plEdgeCommit(){ var o=PLE.open; if(!o) return;
   plEdgeClose();
   var p=plCur(); if(!p) return;
   var cur=null; if(o.id) (p.edges||[]).forEach(function(n){ if(n.id===o.id) cur=n; });
-  if(cur?(cur.text===v):!v) return;
+  if(cur?(cur.text===v&&+cur.a===o.a&&+cur.b===o.b):!v) return;
   plMark('Plate label');
-  if(cur){ if(v) cur.text=v; else { p.edges=p.edges.filter(function(n){ return n!==cur; }); if(!p.edges.length) delete p.edges; } }
+  if(cur){ if(v){ cur.text=v; cur.a=o.a; cur.b=o.b; } else { p.edges=p.edges.filter(function(n){ return n!==cur; }); if(!p.edges.length) delete p.edges; } }
   else { if(!p.edges) p.edges=[]; p.edges.push({id:'n'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),side:o.side,a:o.a,b:o.b,text:v}); }
   platePersist(PL.key); plRender(); }
+// Move a label along the plate, pull one of its ends to change what it covers, or drop it past the
+// plate's middle onto the opposite side. The dashed box shows where it will land. A press that does
+// not travel is a click, and edits it. The columns (or rows) are the headers' own, measured at the press.
+var PLED=null;
+function _plEdgeIdx(D,ev){ var pos=D.horiz?ev.clientX:ev.clientY, best=0, bd=1e9;
+  D.heads.forEach(function(r,i){ var c=D.horiz?(r.left+r.right)/2:(r.top+r.bottom)/2, d=Math.abs(pos-c); if(d<bd){ bd=d; best=i; } });
+  return best; }
+function _plEdgeDrop(D){ var o=el('pl-edge-drop'); if(!o) return;
+  var t=D.to, ra=D.heads[t.a], rb=D.heads[t.b], bx=D.box, L, T, W, H;
+  if(t.side==='t'||t.side==='b'){ L=ra.left; W=rb.right-ra.left; H=18; T=(t.side==='t')?bx.t-24:bx.b+6; }
+  else { T=ra.top; H=rb.bottom-ra.top; W=18; L=(t.side==='l')?bx.l-24:bx.r+6; }
+  o.style.cssText='display:block;left:'+L+'px;top:'+T+'px;width:'+W+'px;height:'+H+'px'; }
+function plEdgeDrag(ev,id){ if(ev.button) return; var p=plCur(); if(!p) return;
+  var N=plateEdges(p).items.filter(function(x){ return x.id===id; })[0]; if(!N) return;
+  var h=(ev.target&&ev.target.getAttribute)?ev.target.getAttribute('data-h'):null, horiz=(N.side==='t'||N.side==='b');
+  var heads=[].slice.call(document.querySelectorAll(horiz?'#pl-grid .pl-colh':'#pl-grid .pl-rowh')).map(function(x){ return x.getBoundingClientRect(); });
+  var ws=[].slice.call(document.querySelectorAll('#pl-grid .pl-w')).map(function(x){ return x.getBoundingClientRect(); });
+  if(!heads.length||!ws.length) return;
+  var box={l:1e9,t:1e9,r:-1e9,b:-1e9}; ws.forEach(function(r){ box.l=Math.min(box.l,r.left); box.t=Math.min(box.t,r.top); box.r=Math.max(box.r,r.right); box.b=Math.max(box.b,r.bottom); });
+  PLED={id:id,side:N.side,a:N.a,b:N.b,mode:h||'move',horiz:horiz,heads:heads,box:box,x0:ev.clientX,y0:ev.clientY,moved:false,to:null};
+  PLED.i0=_plEdgeIdx(PLED,ev); ev.preventDefault(); }
+document.addEventListener('mousemove',function(ev){ var D=PLED; if(!D) return;
+  if(!D.moved){ if(Math.abs(ev.clientX-D.x0)+Math.abs(ev.clientY-D.y0)<5) return; D.moved=true; if(PLE.open) plEdgeClose(); }
+  var i=_plEdgeIdx(D,ev), last=D.heads.length-1, side=D.side, a=D.a, b=D.b;
+  if(D.mode==='a') a=Math.min(i,D.b);
+  else if(D.mode==='b') b=Math.max(i,D.a);
+  else { var w=D.b-D.a; a=Math.max(0,Math.min(last-w,D.a+i-D.i0)); b=a+w;
+    if(D.horiz) side=(ev.clientY<(D.box.t+D.box.b)/2)?'t':'b'; else side=(ev.clientX<(D.box.l+D.box.r)/2)?'l':'r'; }
+  D.to={side:side,a:a,b:b}; _plEdgeDrop(D); });
+document.addEventListener('mouseup',function(){ var D=PLED; if(!D) return; PLED=null;
+  var o=el('pl-edge-drop'); if(o) o.style.display='none';
+  if(!D.moved||!D.to) return;
+  PLE.suppress=Date.now();
+  var p=plCur(); if(!p) return; var n=null; (p.edges||[]).forEach(function(x){ if(x.id===D.id) n=x; });
+  if(!n||(n.side===D.to.side&&+n.a===D.to.a&&+n.b===D.to.b)) return;
+  plMark('Move plate label'); n.side=D.to.side; n.a=D.to.a; n.b=D.to.b; platePersist(PL.key); plRender(); });
 // A click anywhere else keeps what was typed (a click on another label or another + goes through plEdgeOpen).
 document.addEventListener('mousedown',function(ev){ if(!PLE.open) return; var t=ev.target;
   if(t&&t.closest&&(t.closest('#pl-note-pop')||t.closest('.pl-nt.ed')||t.closest('.pl-ng'))) return;

@@ -2881,6 +2881,33 @@ async function suite(opts) {
       if (!plCur().edges.some(n => n.text === 'kept')) bad('B54', 'click away', 'clicking away lost what was typed');
       // beyond the plate is not drawn, whatever format it is switched to
       if (plateEdges({ format: '24', edges: [{ id: 'z', side: 't', a: 10, b: 11, text: 'x' }, { id: 'y', side: 'l', a: 3, b: 9, text: 'y' }] }).items.length !== 1) bad('B54', 'range', 'a label past the last column is still drawn, or one running past the last row is dropped');
+      // move, pull an end, drop on the other side, re-cover from a selection; a press that does not travel still edits
+      await say('t', 9, 9, 'drag me');
+      const noteOf = t => q('#pl-grid .pl-nt').find(n => n.textContent.trim() === t), edge = t => plCur().edges.find(n => n.text === t);
+      const mouse = (type, x, y, tgt) => (tgt || document).dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: x, clientY: y, button: 0 }));
+      const centre = r => [(r.left + r.right) / 2, (r.top + r.bottom) / 2];
+      const colX = i => centre(q('#pl-grid .pl-colh')[i].getBoundingClientRect())[0];
+      const wellsB = () => { const r = q('#pl-grid .pl-w').map(n => n.getBoundingClientRect()); return Math.max(...r.map(x => x.bottom)); };
+      const drag = async (el0, x1, y1) => { const [x0, y0] = centre(el0.getBoundingClientRect()); mouse('mousedown', x0, y0, el0); mouse('mousemove', x1, y1); mouse('mouseup', x1, y1); await sleep(40); };
+      let nd = noteOf('drag me'), yy = centre(nd.getBoundingClientRect())[1];
+      await drag(nd, colX(6), yy);
+      if (edge('drag me').a !== 6 || edge('drag me').b !== 6) bad('B54', 'move', 'dragging a label from column 10 to column 7 left it over ' + edge('drag me').a + '–' + edge('drag me').b);
+      await drag(noteOf('drag me').querySelector('[data-h=b]'), colX(8), yy);
+      if (edge('drag me').a !== 6 || edge('drag me').b !== 8) bad('B54', 'pull end', 'pulling the right end to column 9 gave ' + edge('drag me').a + '–' + edge('drag me').b);
+      await drag(noteOf('drag me').querySelector('[data-h=a]'), colX(5), yy);
+      if (edge('drag me').a !== 5 || edge('drag me').b !== 8) bad('B54', 'pull start', 'pulling the left end to column 6 gave ' + edge('drag me').a + '–' + edge('drag me').b);
+      await drag(noteOf('drag me'), centre(noteOf('drag me').getBoundingClientRect())[0], wellsB() + 20);
+      if (edge('drag me').side !== 'b' || edge('drag me').a !== 5 || edge('drag me').b !== 8) bad('B54', 'other side', 'dropping a label under the plate left it on ' + edge('drag me').side + ' over ' + edge('drag me').a + '–' + edge('drag me').b);
+      noteOf('drag me').click(); await sleep(20);
+      if (PLE.open) { bad('B54', 'click after drag', 'the click that ends a drag opened the label for editing'); plEdgeClose(); }
+      await sleep(450);
+      const dn = noteOf('drag me'), dr = centre(dn.getBoundingClientRect()); mouse('mousedown', dr[0], dr[1], dn); mouse('mouseup', dr[0], dr[1]); dn.click(); await sleep(40);
+      if (!PLE.open || PLE.open.id !== edge('drag me').id) bad('B54', 'click', 'a press that did not travel did not open the label for editing'); plEdgeClose();
+      await sel(0, 0, 1, 2); plEdgeOpen('b', 5, 8, edge('drag me').id);
+      if (document.getElementById('pl-np-cov').style.display === 'none') bad('B54', 'cover offered', 'a selection that is elsewhere is not offered as the label\'s new cover');
+      plEdgeCover(); plEdgeKey(key1('Enter')); await sleep(40);
+      if (edge('drag me').a !== 1 || edge('drag me').b !== 2) bad('B54', 'cover', '"Cover the selection" gave ' + edge('drag me').a + '–' + edge('drag me').b + ', expected 1–2');
+      await say('b', 1, 2, '', edge('drag me').id);
       // a phone has no spare column (the empty ones go): the grid must still be a track list, with the labels still beside the plate
       const wide0 = window._plWide, pc = plCur(), kept = pc.edges; pc.edges = kept.filter(n => n.side === 't' || n.side === 'b'); window._plWide = () => false; plRender(); await sleep(40);
       const gridEl = document.getElementById('pl-grid'), tracks = getComputedStyle(gridEl).gridTemplateColumns.trim().split(/\s+/).length, geoN = PL.gg.geo.Lc + 1 + 12 + PL.gg.geo.R;
