@@ -3021,11 +3021,21 @@ var RDR = (function () {
       var head = '';
       for (var u = b.r - 1; u > prev && u >= b.r - 6 && !head; u--) { var t = str((rows[u] || [])[0]); if (t && !/:$/.test(t)) head = t; }
       prev = b.r + (b.rows || 0);
-      var kind = /lumin/i.test(head) ? 'lum' : /fluor/i.test(head) ? 'fluor' : /absorb|\bOD\b/i.test(head) ? 'abs' : 'other';
-      ch.push({ kind: kind, label: head || b.label, rows: b.rows, cols: b.cols, n: b.n, vals: b.vals });
+      // A BRET reading is a section of three grids: the ratio under "BRET", then "Donor:" and "Acceptor:" named in column B
+      // of their own header row.
+      var own = str((rows[b.r] || [])[1]).replace(/:\s*$/, ''), lab = /^reading$/i.test(own) ? '' : own;
+      var kind = /donor/i.test(lab) ? 'donor' : /accept/i.test(lab) ? 'acceptor' : /lumin/i.test(head) ? 'lum' : /fluor/i.test(head) ? 'fluor' : /\bBRET\b/i.test(head) ? 'bret' : /absorb|\bOD\b/i.test(head) ? 'abs' : 'other';
+      ch.push({ kind: kind, label: lab || head || b.label, rows: b.rows, cols: b.cols, n: b.n, vals: b.vals });
     });
     if (!ch.length) return null;
     return { name: rm[1].trim(), protocol: pm[1].trim(), sheet: sn, channels: ch };
+  }
+  // The grid a one-signal app reads from a GloMax plate (its luminescence, else the first grid that is not fluorescence) and the
+  // fluorescence of the same plate beside it, when it has one — a double read. null `via` for a fluorescence-only file.
+  function glomaxSignal(G) {
+    var c = G.channels, sig = c.filter(function (x) { return x.kind === 'lum'; })[0] || c.filter(function (x) { return x.kind !== 'fluor'; })[0] || c[0];
+    var via = sig.kind === 'fluor' ? null : c.filter(function (x) { return x.kind === 'fluor'; })[0] || null;
+    return { sig: sig, via: via };
   }
   // One plate as a workbook of its own — its grid sheet and its settings sheet, under the plain names — so
   // code that reads one reader file per plate reads it unchanged.
@@ -3060,7 +3070,7 @@ var RDR = (function () {
     }
     return out;
   }
-  return { plates: plates, blocks: blocks, expand: expand, plateBook: plateBook, glomax: glomax };
+  return { plates: plates, blocks: blocks, expand: expand, plateBook: plateBook, glomax: glomax, glomaxSignal: glomaxSignal };
 })();
 // ═══ READER PLATES — END ═══
 // ══════════════════════════════════════════════════════════════
@@ -3243,10 +3253,20 @@ function lmPasteButton(){
   }).catch(function(){ toast('The browser did not allow reading the clipboard — click the plate and press ⌘V (Ctrl+V).'); });
 }
 
-// There was a Reader format menu here offering PHERAstar and GloMax. Only PHERAstar was ever
-// implemented — choosing GloMax refused the file — so the menu asked a question with one answer.
-// The parser finds the lettered grid wherever the export puts it; a GloMax parser goes here, and
-// is picked from the file itself, when an example export turns up.
+// There is no Reader format menu: the file says what it is. A PHERAstar export is found by its lettered grid
+// wherever it sits; a GloMax export (RDR.glomax: a "Results" sheet with one headed grid per reading) gives the
+// plate's luminescence, else its first grid that is not fluorescence. A second reading in the same file (the
+// fluorescence of a double read) is not a second plate: the toast says it was left alone.
+function lmGlomaxSignal(G){
+  var pk = RDR.glomaxSignal(G), ch = pk.sig, sig = {}, n = 0;
+  for (var ri = 0; ri < state.rows; ri++) for (var ci = 0; ci < state.cols; ci++) {
+    var w = 'ABCDEFGHIJKLMNOP'.charAt(ri) + (ci + 1), v = ch.vals[w];
+    if (v !== undefined && v !== null) { sig[w] = v; n++; }
+  }
+  var skipped = G.channels.filter(function(c){ return c !== ch; }).map(function(c){ return (c.label || c.kind).toLowerCase(); });
+  return { sig: sig, n: n, shape: ch.rows > state.rows ? 'bigger' : (ch.rows < state.rows ? 'smaller' : ''),
+    note: 'GloMax ' + (ch.label || ch.kind).toLowerCase() + ' read' + (skipped.length ? '; the ' + skipped.join(' and ') + ' in the file was not used.' : '.') };
+}
 async function handleReaderFile(file, plateIdx, quiet){
   var target = plateIdx === undefined ? state.plate : plateIdx;
   if (!file) return false;
@@ -3265,12 +3285,14 @@ async function handleReaderFile(file, plateIdx, quiet){
     }
     var buf = await file.arrayBuffer();
     var wb = XLSX.read(buf, { type: 'array', cellDates: false, raw: true });
+    var G = RDR.glomax(wb), gm = G ? lmGlomaxSignal(G) : null;
     var ws = wb.Sheets[wb.SheetNames[0]];
-    var raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
-    var wells = parsePHERAstarSheet(raw, state.rows, state.cols);
+    var raw = gm ? [] : XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+    var wells = gm ? {} : parsePHERAstarSheet(raw, state.rows, state.cols);
+    if (gm) { _lmReadByPos = false; _lmReadShape = gm.shape; }
     // No lettered grid: before guessing PHERAstar's fixed offsets, see whether the sheet is
     // simply the values — what a spreadsheet saved by hand, or another reader's export, holds.
-    if (_lmReadByPos) {
+    if (_lmReadByPos && !gm) {
       var parsedX = lmParseGrid(XLSX.utils.sheet_to_csv(ws, { FS: '\t' }), state.rows, state.cols);
       if (parsedX) {
         if (!quiet) lmMark();
@@ -3286,7 +3308,8 @@ async function handleReaderFile(file, plateIdx, quiet){
       }
     }
     var sig = {}, matched = 0;
-    Object.keys(wells).forEach(function(well){ if (wells[well] === null) return; sig[well] = wells[well]; matched++; });
+    if (gm) { sig = gm.sig; matched = gm.n; }
+    else Object.keys(wells).forEach(function(well){ if (wells[well] === null) return; sig[well] = wells[well]; matched++; });
     if (!matched) { toast('No readings found in ' + file.name + ' — is it the reader export for a ' + state.format + '-well plate?'); return false; }
     while (state.plates.length <= target) state.plates.push(_lmNewPlate());
     if (!quiet) lmMark();
@@ -3296,7 +3319,7 @@ async function handleReaderFile(file, plateIdx, quiet){
     if (!quiet) {
       state.plate = target; state.activeSubtab = 'signal';
       lmAfterChange();
-      toast(lmPlateName(target) + ': ' + matched + ' readings from ' + file.name + '.' + (_lmReadByPos ? ' No lettered grid was found, so it was read by position — check the values.' : '') + _lmShapeNote(_lmReadShape));
+      toast(lmPlateName(target) + ': ' + matched + ' readings from ' + file.name + '.' + (_lmReadByPos ? ' No lettered grid was found, so it was read by position — check the values.' : '') + (gm ? ' ' + gm.note : '') + _lmShapeNote(_lmReadShape));
     }
     return true;
   } catch(e) {

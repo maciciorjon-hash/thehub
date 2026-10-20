@@ -103,11 +103,21 @@ var RDR = (function () {
       var head = '';
       for (var u = b.r - 1; u > prev && u >= b.r - 6 && !head; u--) { var t = str((rows[u] || [])[0]); if (t && !/:$/.test(t)) head = t; }
       prev = b.r + (b.rows || 0);
-      var kind = /lumin/i.test(head) ? 'lum' : /fluor/i.test(head) ? 'fluor' : /absorb|\bOD\b/i.test(head) ? 'abs' : 'other';
-      ch.push({ kind: kind, label: head || b.label, rows: b.rows, cols: b.cols, n: b.n, vals: b.vals });
+      // A BRET reading is a section of three grids: the ratio under "BRET", then "Donor:" and "Acceptor:" named in column B
+      // of their own header row.
+      var own = str((rows[b.r] || [])[1]).replace(/:\s*$/, ''), lab = /^reading$/i.test(own) ? '' : own;
+      var kind = /donor/i.test(lab) ? 'donor' : /accept/i.test(lab) ? 'acceptor' : /lumin/i.test(head) ? 'lum' : /fluor/i.test(head) ? 'fluor' : /\bBRET\b/i.test(head) ? 'bret' : /absorb|\bOD\b/i.test(head) ? 'abs' : 'other';
+      ch.push({ kind: kind, label: lab || head || b.label, rows: b.rows, cols: b.cols, n: b.n, vals: b.vals });
     });
     if (!ch.length) return null;
     return { name: rm[1].trim(), protocol: pm[1].trim(), sheet: sn, channels: ch };
+  }
+  // The grid a one-signal app reads from a GloMax plate (its luminescence, else the first grid that is not fluorescence) and the
+  // fluorescence of the same plate beside it, when it has one — a double read. null `via` for a fluorescence-only file.
+  function glomaxSignal(G) {
+    var c = G.channels, sig = c.filter(function (x) { return x.kind === 'lum'; })[0] || c.filter(function (x) { return x.kind !== 'fluor'; })[0] || c[0];
+    var via = sig.kind === 'fluor' ? null : c.filter(function (x) { return x.kind === 'fluor'; })[0] || null;
+    return { sig: sig, via: via };
   }
   // One plate as a workbook of its own — its grid sheet and its settings sheet, under the plain names — so
   // code that reads one reader file per plate reads it unchanged.
@@ -142,5 +152,5 @@ var RDR = (function () {
     }
     return out;
   }
-  return { plates: plates, blocks: blocks, expand: expand, plateBook: plateBook, glomax: glomax };
+  return { plates: plates, blocks: blocks, expand: expand, plateBook: plateBook, glomax: glomax, glomaxSignal: glomaxSignal };
 })();
