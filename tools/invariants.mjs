@@ -186,6 +186,8 @@
 //                            made of plasmids has Plate · Plasmids (· Compounds): naming wells and blocks is a fold under the selection, not a step.
 //   B43 plates side by side  The plate cards of a run are ~34 px a well at most and sit in ONE row of equal cards (.xp-track), never wrapped: a fifth plate
 //                            used to take the whole free row and come out twice the size of the others; the step text (13 px) and the tick (20 px) are in T15.
+//   B53 time course       Time Course is Kinetic degradation with the compound left open: type KD (Tempo still takes it), code tag TC, the same steps, waits and measures,
+//                            no compound of the lab's own named in the prose, and an experiment from it keeps the 900 min / 5 min run and its plate.
 //   B52 one list of         The Compounds step has ONE box for every compound to test, a line each (a column from Excel). The names flow onto the compound
 //       compounds           blocks of the plates there are as you type, in reading order, plate by plate; a paste or leaving the box also adds the plates the
 //                            list needs with the same layout (a layout that carries the compound on its wells, with no blocks, gets blocks on the copy), names
@@ -2776,6 +2778,39 @@ async function suite(opts) {
       e3.plate.wells = {}; e3.plate.groups = {}; openPlateEditor('exp:' + e3.id); await sleep(60); plSetMode('dose'); plRender();
       if (!/No compound blocks/.test((document.getElementById('pl-cpd-plan') || {}).textContent || '')) bad('B52', 'no blocks', 'a plate with no compound blocks does not say so');
       closePlateEditor();
+    });
+
+    // B53 — Time Course is Kinetic degradation with the compound left open.
+    if (run('B53')) await guard('B53', 'time course', async () => {
+      const P = (LB.data.projects || []).find(p => (p.sections || []).length);
+      const key = 'KD_TIMECOURSE', tpl = LB.data.presets[key], kd = LB.data.presets.KD;
+      if (!tpl) { bad('B53', 'preset', 'the Time Course preset is not in the notebook'); return; }
+      if (tpl.name !== 'Time Course' || presetBase(key) !== 'KD') bad('B53', 'identity', 'name ' + tpl.name + ', type ' + presetBase(key) + ' (want Time Course on KD, so Tempo still takes it)');
+      if (presetCodeTag(key) !== 'TC' || presetCodeTag('KD') !== 'KD') bad('B53', 'code', 'code tags are ' + presetCodeTag(key) + ' / ' + presetCodeTag('KD') + ', expected TC / KD');
+      if (!/presetCodeTag/.test(String(nmUpdateCode))) bad('B53', 'code', 'the New-experiment code does not use the preset\'s code tag');
+      // the same plate, waits and calculators as the kinetic preset: only the words about the compound differ
+      const a = tpl.blocks, b = kd.blocks;
+      if (a.length !== b.length) bad('B53', 'steps', 'Time Course has ' + a.length + ' steps, Kinetic degradation ' + b.length);
+      else a.forEach((x, i) => {
+        const y = b[i], cx = x.calc || {}, cy = y.calc || {};
+        if ((x.dayOffset || 0) !== (y.dayOffset || 0) || (x.waitMin || 0) !== (y.waitMin || 0)) bad('B53', 'timing ' + x.title, 'day ' + x.dayOffset + ' / wait ' + x.waitMin + ' differs from ' + y.dayOffset + ' / ' + y.waitMin);
+        if (cx.kind !== cy.kind) bad('B53', 'calc ' + x.title, 'calculator ' + cx.kind + ' vs ' + cy.kind);
+        const ix = Object.assign({}, cx.inputs), iy = Object.assign({}, cy.inputs); delete ix.name; delete iy.name; delete ix.minVolUL; delete iy.minVolUL;
+        if (_canonJSON(ix) !== _canonJSON(iy)) bad('B53', 'measures ' + x.title, 'inputs ' + _canonJSON(ix) + ' differ from ' + _canonJSON(iy)); });
+      // generic: no compound of the lab's own in the steps
+      const text = a.map(x => [x.title, x.html, x.pub].join(' ')).join(' ') + ' ' + tpl.title;
+      if (/\bOA\b|oligomycin|antimycin/i.test(text)) bad('B53', 'generic', 'the preset names a compound: ' + (text.match(/\bOA\b|oligomycin|antimycin/i) || [])[0]);
+      if (!/compound/i.test(text)) bad('B53', 'wording', 'the preset does not say "compound"');
+      // an experiment made from it keeps the setup questions of the kinetic type and its plate
+      const su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup || {})));
+      if (su.runMin !== 900 || su.intervalMin !== 5) bad('B53', 'setup', 'run ' + su.runMin + ' min / interval ' + su.intervalMin + ' min, expected 900 / 5');
+      const before = new Set(Object.keys(LB.data.experiments));
+      buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-10-01', type: presetBase(key), title: 'INV time course', code: 'INV_B53', setup: su, plate: true });
+      const e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); if (!e) { bad('B53', 'create', 'no experiment was made'); return; }
+      clean.push(e); openExp(e.id); tick('B53');
+      if (e.type !== 'KD') bad('B53', 'type', 'the experiment is type ' + e.type + ', not KD');
+      if (!e.plate) bad('B53', 'plate', 'no plate map on a Time Course');
+      const en = (e.blocks || []).find(x => /Endurazine/.test(x.title || '')); if (en && en.waitMin !== 150) bad('B53', 'wait', 'Endurazine equilibration is ' + en.waitMin + ' min, expected 150');
     });
 
     // B28 — a date typed into Repeat is a real day or it is refused.
