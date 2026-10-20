@@ -184,6 +184,10 @@
 //   E68 a copy is a copy      Copy TSV keeps its icon after it flashes 'Copied' (it was rewritten as bare text), still copies when the async clipboard is refused
 //                             (textarea fallback), says so on screen when nothing could be copied, and Copy selected IDs does the same instead of failing in silence.
 //
+//   E69 one button, one input  docs/UI.md 2026-10-21 at desktop widths, on every Setup step, tab and the Gradient Planner: a text button is 32px with --r-1 corners and a
+//                              form box is 32px with --r-1 (small icon buttons, table-cell inputs and tabs apart); the tabs are <button role=tab aria-selected>, never
+//                              a div; no typed check mark (a drawn one) on screen; a Tab-reachable close button on Setup is 28px.
+//
 // Usage (repo root):  node tools/echo_invariants.mjs [--only=E1,E7] [--file=path/to/echo.html] [--verbose]
 import { chromium } from 'playwright';
 import path from 'node:path';
@@ -2629,6 +2633,43 @@ if (run('E68')) await guard('E68', async () => {
   const sel = await q.evaluate(() => { try { _selectedIDs.add('X1'); copySelectedIDs(); return 'ok'; } catch (e) { return String(e); } }); await q.waitForTimeout(500);
   const say2 = await q.evaluate(() => document.body.innerText);
   check('E68', 'Copy selected IDs that cannot copy says so, not a silent rejection', sel === 'ok' && /did not allow copying — select the names/.test(say2), { sel, tail: say2.slice(-160) });
+  await c.close();
+});
+
+if (run('E69')) await guard('E69', async () => {
+  const c = await browser.newContext({ viewport: { width: 1440, height: 900 } }); const q = await c.newPage();
+  await q.route(/^https?:\/\/(?!127\.0\.0\.1|localhost)/, r => r.abort());
+  await q.goto('file://' + FILE); await q.waitForTimeout(1200);
+  await q.addStyleTag({ content: '*{transition:none!important}' });
+  await q.evaluate(() => { loadTestData(); }); await q.waitForTimeout(800);
+  const PROBE = () => {
+    const out = { btn: [], inp: [], glyph: [] }; const modal = document.getElementById('setup-modal'); const mopen = modal && !modal.classList.contains('hidden') && modal.offsetParent !== null; const root = mopen ? modal : document.body;
+    const SKIP_B = /\b(tab|outer-tab|setup-stab|plate-view|hx-ic|hx-tg|na-btn|plate-png|rrm|sx-link|setup-reopen-btn|setup-hclose|opts-btn|eg-x|cv-tbl-x|cv-mode-single|cv-mode-compare|ck-[\w-]+|tk-[\w-]+|as-[\w-]+|eg-sel|eg-tin|pinfo|dz-[\w-]+|ctx[\w-]*|cv-dl-item|rv-fix)\b/;
+    for (const e of root.querySelectorAll('button')) {
+      const r = e.getBoundingClientRect(), cs = getComputedStyle(e); if (r.width < 2 || r.height < 2 || cs.visibility === 'hidden' || cs.display === 'none' || e.disabled === undefined) continue;
+      if (SKIP_B.test(e.className + ' ' + e.id) || e.closest('#dep-stack,.ck-root,.as-panel,[class*="tk-"]') || (e.textContent || '').trim().length < 3) continue;
+      if (Math.round(r.height) !== 32 || cs.borderTopLeftRadius !== '4px') out.btn.push((e.id || e.className).toString().slice(0, 30) + ' ' + Math.round(r.height) + 'h r' + cs.borderTopLeftRadius);
+    }
+    for (const e of root.querySelectorAll('input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]):not([type=hidden]),select')) {
+      const r = e.getBoundingClientRect(), cs = getComputedStyle(e); if (r.width < 2 || r.height < 2 || cs.visibility === 'hidden' || cs.display === 'none') continue;
+      if (/\b(rv-g|eg-sel|eg-tin|eg-top-unit|ck-[\w-]+)\b/.test(e.className + ' ' + e.id) || e.closest('.pl-find,.ck-root,.eg-tbl,#eg-table')) continue;
+      if (Math.round(r.height) !== 32 || cs.borderTopLeftRadius !== '4px') out.inp.push((e.id || e.className).toString().slice(0, 30) + ' ' + Math.round(r.height) + 'h r' + cs.borderTopLeftRadius);
+    }
+    const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT); let n; while ((n = w.nextNode())) { if (/✓/.test(n.textContent) && n.parentElement && n.parentElement.offsetParent !== null && !n.parentElement.closest('.guide-pane,#tab-guide,script,style,canvas,svg')) out.glyph.push(n.textContent.trim().slice(0, 30)); }
+    return out;
+  };
+  const probe = async where => { const r = await q.evaluate(PROBE); check('E69', where + ': text buttons are 32px / --r-1', r.btn.length === 0, r.btn.slice(0, 5)); check('E69', where + ': form boxes are 32px / --r-1', r.inp.length === 0, r.inp.slice(0, 5)); check('E69', where + ': no typed check mark', r.glyph.length === 0, r.glyph.slice(0, 3)); };
+  for (const t of ['files', 'assay', 'analysis', 'output', 'review']) { await q.evaluate(t => { openSetupModal(); switchSetupTab(t); }, t); await q.waitForTimeout(t === 'review' ? 2200 : 250); await probe('setup ' + t); }
+  const tabs = await q.evaluate(() => [...document.querySelectorAll('.tab,.setup-stab,.outer-tab')].map(e => e.tagName + '|' + e.getAttribute('role') + '|' + (e.getAttribute('aria-selected') !== null)).filter(x => x !== 'BUTTON|tab|true'));
+  check('E69', 'every tab is a <button role=tab aria-selected>', tabs.length === 0, tabs.slice(0, 4));
+  const ta = await q.evaluate(() => { echoToast('boom', 'err'); const e = document.querySelector('[role=alert]'); const a = e ? e.getAttribute('aria-live') : null; echoToast('fine'); const o = [...document.querySelectorAll('[role=status]')].some(x => x.textContent === 'fine'); return { alert: !!e, live: a, ok: o }; });
+  check('E69', 'a toast is role=status, an error toast role=alert', ta.alert && ta.live === 'assertive' && ta.ok, ta);
+  const hc = await q.evaluate(() => { const b = document.getElementById('setup-hclose'); const r = b.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; });
+  check('E69', 'Setup close button is 28px', hc[0] === 28 && hc[1] === 28, hc);
+  await q.evaluate(() => runPipeline()); await q.waitForFunction(() => typeof _lastResultsData !== 'undefined' && _lastResultsData && _lastResultsData.length > 0, null, { timeout: 120000 }); await q.waitForTimeout(1200);
+  await q.evaluate(() => closeSetupModal());
+  for (const t of ['results', 'curves', 'scatter', 'plate', 'props', 'history', 'protocol', 'survey']) { await q.evaluate(t => document.querySelector(`.tab[data-tab="${t}"]`).click(), t); await q.waitForTimeout(400); await probe('tab ' + t); }
+  await q.evaluate(() => { [...document.querySelectorAll('.outer-tab')].find(b => /Gradient/.test(b.textContent)).click(); }); await q.waitForTimeout(600); await probe('gradient planner');
   await c.close();
 });
 
