@@ -1249,7 +1249,7 @@ html.lb-loading body > *{visibility:hidden;}
 @media (prefers-reduced-motion:reduce){ .xpa-c{animation:none;} }
 .pp-two{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;}
 .pp-grid-wrap{overflow-x:auto;padding:2px 0;flex:0 1 auto;}
-@media (max-width:420px){ .pp-grid{grid-template-columns:repeat(var(--c),minmax(0,1fr)) !important;} }   /* a 384-well preview in a 290px card: the columns give way instead of the last two going behind a swipe */
+@media (max-width:420px){ .pp-grid:not(.sn){grid-template-columns:repeat(var(--c),minmax(0,1fr)) !important;} }   /* a 384-well preview in a 290px card: the columns give way instead of the last two going behind a swipe */
 .pp-grid{display:grid;gap:2px;}
 /* Every plate of an experiment fills its card up to the same cap, whether or not it has doses: two plates of one format are one size (a dose plate used to grow to twice the base pitch and a plain one stayed at the base, so plate 1 and plate 2 of the same experiment came out 41 and 21 px). */
 .pp-grid{width:100%;}
@@ -1376,6 +1376,37 @@ html.lb-loading body > *{visibility:hidden;}
 .pl-gl span{font-size:var(--fs-2);font-weight:700;color:#1a1d2e;background:rgba(255,255,255,.8);border-radius:var(--r-1);padding:1px 7px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .pl-colh,.pl-rowh{display:flex;align-items:center;justify-content:center;font-size:var(--fs-1);font-weight:700;color:var(--text3);cursor:pointer;border-radius:var(--r-1);}
 .pl-colh:hover,.pl-rowh:hover{color:var(--accent);background:var(--surface3);}
+/* Words around the plate (p.edges): a label over the columns or rows it explains, with a plain bracket.
+   Tier 0 is next to the plate; a label that would sit on another goes one tier further out. The same
+   rules draw it in the editor and on the experiment's card. */
+.pl-nt{display:flex;align-items:center;justify-content:flex-end;min-width:0;min-height:0;box-sizing:border-box;color:var(--text2);font-size:var(--fs-1);font-weight:600;line-height:1.2;}
+.pl-nt-t{flex-direction:column;}
+.pl-nt-b{flex-direction:column-reverse;}
+.pl-nt-l{flex-direction:row;}
+.pl-nt-r{flex-direction:row-reverse;}
+.pl-nt-x{min-width:0;padding:0 2px;text-align:center;overflow-wrap:anywhere;}
+.pl-nt-l .pl-nt-x,.pl-nt-r .pl-nt-x{writing-mode:vertical-rl;padding:2px 0;}
+.pl-nt-l .pl-nt-x{transform:rotate(180deg);}
+.pl-nt-br{flex:none;align-self:stretch;box-sizing:border-box;border:1.5px solid currentColor;opacity:.55;}
+.pl-nt-t .pl-nt-br{height:5px;border-bottom:0;margin:0 2px;}
+.pl-nt-b .pl-nt-br{height:5px;border-top:0;margin:0 2px;}
+.pl-nt-l .pl-nt-br{width:5px;border-right:0;margin:2px 0;}
+.pl-nt-r .pl-nt-br{width:5px;border-left:0;margin:2px 0;}
+.pl-nt-1 .pl-nt-br{display:none;}
+.pl-nt.ed{cursor:text;border-radius:var(--r-1);}
+.pl-nt.ed:hover{color:var(--text);background:var(--surface3);}
+.pl-ng{display:flex;align-items:center;justify-content:center;box-sizing:border-box;min-width:0;min-height:0;overflow:hidden;border:1.5px dashed var(--border2);border-radius:var(--r-1);color:var(--text3);font-size:var(--fs-1);font-weight:700;line-height:1;cursor:pointer;white-space:nowrap;}
+.pl-ng:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-dim);}
+.pl-ng-l span,.pl-ng-r span{writing-mode:vertical-rl;}
+.pl-ng-l span{transform:rotate(180deg);}
+#pl-note-pop{position:fixed;z-index:310;display:none;width:248px;box-sizing:border-box;padding:8px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-3);box-shadow:var(--shadow-md);}
+#pl-note-pop input{width:100%;box-sizing:border-box;font:inherit;font-size:var(--fs-3);color:var(--text);background:var(--bg);border:1px solid var(--border2);border-radius:var(--r-2);padding:6px 8px;}
+#pl-note-pop input:focus{outline:none;border-color:var(--accent);}
+.pl-np-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;}
+.pl-np-chips:empty{display:none;}
+.pl-np-chips .pl-btn{min-width:0;padding:2px 8px;font-size:var(--fs-1);}
+.pl-np-foot{display:flex;align-items:center;gap:8px;margin-top:6px;font-size:var(--fs-1);color:var(--text3);}
+.pl-np-foot .pl-btn{min-width:0;padding:2px 9px;font-size:var(--fs-1);margin-left:auto;}
 .pl-w{aspect-ratio:1;border-radius:var(--r-1);background:var(--surface3);box-shadow:inset 0 0 0 1px var(--border2);cursor:pointer;display:flex;align-items:center;justify-content:center;overflow:hidden;color:#243;font-weight:600;text-align:center;}
 .pl-w.empty{background:transparent;}
 .pl-w.sel{box-shadow:inset 0 0 0 2px var(--accent),0 0 0 1px var(--accent);}
@@ -3224,7 +3255,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
 <!-- Plate map editor -->
 <div class="modal-back" id="plate-modal">
   <div class="modal plate-modal">
-    <div class="modal-t">Plate map<span class="pl-plates" id="pl-plates"></span><span class="pl-count" id="pl-count"></span><span class="grow"></span><span class="pl-hint">Drag a rectangle, then click a condition &middot; &#8984;/Ctrl+C, V, Z</span></div>
+    <div class="modal-t">Plate map<span class="pl-plates" id="pl-plates"></span><span class="pl-count" id="pl-count"></span><span class="grow"></span><span class="pl-hint">Drag a rectangle, then click a condition &middot; the dashed + beside the plate labels it &middot; &#8984;/Ctrl+C, V, Z</span></div>
     <div class="pl-body">
       <div class="pl-left">
         <div class="rotate-note" id="pl-rotate" role="note">
@@ -3242,6 +3273,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
 </div>
 
 <div id="pl-band"></div>
+<div id="pl-note-pop" role="dialog" aria-label="Label for the plate"><input id="pl-note-in" maxlength="40" autocomplete="off" spellcheck="false" placeholder="e.g. 10 &micro;M, + MG132, Compound A" onkeydown="plEdgeKey(event)"><div class="pl-np-chips" id="pl-np-chips"></div><div class="pl-np-foot"><span>Enter to add &middot; Esc to cancel</span><button class="pl-btn danger" id="pl-np-rm" onmousedown="event.preventDefault()" onclick="plEdgeRemove()">Remove</button></div></div>
 
 <!-- Cmd+K spotlight -->
 <div id="spot-back" onclick="if(event.target.id==='spot-back')closeSpot()">
@@ -6422,6 +6454,54 @@ function plateGroupBoxes(p){
     .sort(function(a,b){ return (a.r1-b.r1)||(a.c1-b.c1); });
 }
 function plateHasColLabels(p){ return Object.keys(plateColLabelsOf(p)).length>0; }
+// ── Words around the plate ─────────────────────────────────────────────────────────────────
+// A plate map says which well holds what; this says what a whole column or row IS — a compound,
+// a treatment, a dose, a time — in a few words beside the plate, over the columns or rows they
+// cover, with a plain bracket. p.edges = [{id, side:'t'|'b'|'l'|'r', a, b, text}], a..b being
+// 0-based columns for top and bottom, rows for left and right. No tier is stored: tier 0 is the
+// one next to the plate, and a label that would sit on another goes one tier further out, the
+// narrow ones inside, so "10 µM" over its column sits inside "Compound A" over all of them
+// without anyone placing it — which is also how rows above and below the plate come to exist.
+function plateEdges(p){
+  var d=plateDims(p), per={t:[],b:[],l:[],r:[]}, items=[], tiers={t:0,b:0,l:0,r:0};
+  ((p&&p.edges)||[]).forEach(function(n,i){
+    if(!n||!per[n.side]) return;
+    var txt=String(n.text==null?'':n.text).trim(); if(!txt) return;
+    var lim=(n.side==='t'||n.side==='b')?d.c:d.r, a=Math.min(+n.a,+n.b), b=Math.max(+n.a,+n.b);
+    if(!isFinite(a)||!isFinite(b)||a<0||a>=lim) return;
+    per[n.side].push({id:String(n.id||('i'+i)),side:n.side,a:a,b:Math.min(b,lim-1),text:txt,i:i}); });
+  Object.keys(per).forEach(function(side){
+    var occ=[];
+    per[side].slice().sort(function(x,y){ return ((x.b-x.a)-(y.b-y.a))||(x.i-y.i); }).forEach(function(n){
+      for(var k=0;;k++){ var o=occ[k]||(occ[k]=[]);
+        if(!o.some(function(m){ return n.a<=m.b&&m.a<=n.b; })){ o.push(n); n.tier=k; break; } }
+      items.push(n); });
+    tiers[side]=occ.length; });
+  return {items:items,t:tiers.t,b:tiers.b,l:tiers.l,r:tiers.r}; }
+// Where a new label over a..b would land: the first tier that is free there, else a new one.
+function plateEdgeTierFor(N,side,a,b){
+  for(var k=0;k<N[side];k++){
+    if(!N.items.some(function(m){ return m.side===side&&m.tier===k&&a<=m.b&&m.a<=b; })) return k; }
+  return N[side]; }
+// The editor always keeps one empty tier beyond the last used on every side, so there is always
+// a row above and below, and a column either side, to write in. A phone has no width to spare: the
+// empty columns go (a plate that just fit would scroll), and rows are written above and below.
+function plEdgeGeo(p,narrow){ var n=plateEdges(p); return {n:n,T:n.t+1,B:n.b+1,Lc:n.l+(narrow?0:1),R:n.r+(narrow?0:1)}; }
+// Grid placement of a label. o: RO rows above the plate's own, CO columns before it, hdr header rows
+// (column numbers and concentrations), c0 the first well column when there are none before it (2 in
+// the editor, which has a row-letter column; 1 on the card), d the plate's dimensions.
+function _plEdgePos(n,o){
+  var wr=o.hdr+1+o.RO, d=o.d;
+  if(n.side==='t'||n.side==='b'){
+    var cols=';grid-column:'+(n.a+o.c0+o.CO)+'/'+(n.b+o.c0+o.CO+1);
+    return 'grid-row:'+(n.side==='t'?(o.RO-n.tier):(wr+d.r+n.tier))+cols; }
+  var rows='grid-row:'+(n.a+wr)+'/'+(n.b+wr+1);
+  return rows+';grid-column:'+(n.side==='l'?(o.CO-n.tier):(o.CO+o.c0+d.c+n.tier)); }
+function _plEdgeHtml(n,o,ed){
+  return '<div class="pl-nt pl-nt-'+n.side+(n.b>n.a?'':' pl-nt-1')+(ed?' ed':'')+'" style="'+_plEdgePos(n,o)+'" title="'+esc(n.text)+(ed?' \u2014 click to edit':'')+'"'
+    +(ed?(' data-note="'+esc(n.id)+'" onclick="plEdgeOpen(\''+n.side+'\','+n.a+','+n.b+',\''+esc(n.id)+'\')"'):'')
+    +'><span class="pl-nt-x">'+esc(n.text)+'</span><i class="pl-nt-br"></i></div>'; }
+function _plColShift(col,by){ return String(col).split(' / ').map(function(x){ return String(+x+by); }).join(' / '); }
 function wellIdOf(r,c){ return PLATE_ROWS.charAt(r)+(c+1); }
 // Well ids are unpadded ("A1", "A10") — always resolve through this, never sort them as strings.
 // Columns are 1-based, so 'A0' is not a well — it used to come back as column -1, an index that
@@ -6780,7 +6860,22 @@ function plateToPNG(p,name){
   var boxes=plateGroupBoxes(p); if(!boxes.length) boxes=plateCompoundBoxes(p);
   var dose=boxes.filter(function(b){ return _plateBlockIsDose(p,b); });
   dose.forEach(function(b){ var w0=(p.wells||{})[wellIdOf(b.r1,b.c1)]; b.name=b.label||(w0&&w0.compound)||''; });
-  var cw=PAD*2+HDR+d.c*W;
+  // Words round the plate (p.edges), each with a plain bracket between it and the plate. Tier 0 is the one
+  // next to it. Above and below a tier is as tall as its longest label wrapped (three lines at most);
+  // beside the plate it is a fixed 20 px and the text is turned.
+  var NG=plateEdges(p), NTW=20, LW=NG.l*NTW, RW=NG.r*NTW, nx=document.createElement('canvas').getContext('2d');
+  nx.font='600 10px ui-sans-serif,system-ui,sans-serif';
+  function nWrap(t,maxW){ var lines=[], cur='';
+    String(t).split(/\s+/).forEach(function(wd){ var tr=cur?cur+' '+wd:wd; if(!cur||nx.measureText(tr).width<=maxW) cur=tr; else { lines.push(cur); cur=wd; } });
+    if(cur) lines.push(cur);
+    if(lines.length>3){ lines=lines.slice(0,3); lines[2]=lines[2]+'…'; }
+    return lines.map(function(l){ return nx.measureText(l).width>maxW?_plFit(nx,l,maxW):l; }); }
+  var tH={t:[],b:[]};
+  NG.items.forEach(function(n){ if(n.side!=='t'&&n.side!=='b') return;
+    n.lines=nWrap(n.text,(n.b-n.a+1)*W-6); tH[n.side][n.tier]=Math.max(tH[n.side][n.tier]||0,n.lines.length*12+9); });
+  function sumTiers(arr,from,to){ var t=0; for(var k=from;k<to;k++) t+=arr[k]||0; return t; }
+  var topH=sumTiers(tH.t,0,NG.t), botH=sumTiers(tH.b,0,NG.b), OX=PAD+LW+HDR;
+  var cw=PAD*2+LW+HDR+d.c*W+RW;
   // Measure the legend before the canvas exists: wrapped onto as many lines as it needs, or a
   // 384 with fourteen conditions ran its key off the right edge.
   var mx=document.createElement('canvas').getContext('2d'); mx.font='500 10px ui-sans-serif,system-ui,sans-serif';
@@ -6793,7 +6888,7 @@ function plateToPNG(p,name){
     if(cur.length && lw+iw>maxW){ keyLines.push(cur); cur=[]; lw=0; } cur.push({lbl:lbl,w:iw}); lw+=iw; });
   if(cur.length) keyLines.push(cur);
   var legH=(legLines.length+keyLines.length)?(10+16*(legLines.length+keyLines.length)):0;
-  var ch=PAD*2+titleH+clH+HDR+d.r*W+legH;
+  var ch=PAD*2+titleH+topH+clH+HDR+d.r*W+botH+legH;
   var cv=document.createElement('canvas');
   cv.width=cw*S; cv.height=ch*S;
   var x=cv.getContext('2d'); x.scale(S,S);
@@ -6803,21 +6898,22 @@ function plateToPNG(p,name){
   var y0=PAD;
   if(p.title){ x.fillStyle=ink; x.textAlign='left'; x.font='600 15px ui-sans-serif,system-ui,sans-serif';
     x.fillText(p.title,PAD,y0+11); x.textAlign='center'; y0+=titleH; }
+  var nTop=y0; y0+=topH;   // the words above the plate are drawn once the wells are down
   if(hasCL){
     x.fillStyle=faint; x.font='500 9px ui-sans-serif,system-ui,sans-serif';
-    if(p.colTitle){ x.textAlign='right'; x.fillText(p.colTitle,PAD+HDR-3,y0+9); x.textAlign='center'; }
-    for(var ci=0;ci<d.c;ci++){ var cl=(p.colLabels||{})[ci]; if(cl) x.fillText(String(cl),PAD+HDR+ci*W+W/2,y0+9); }
+    if(p.colTitle){ x.textAlign='right'; x.fillText(p.colTitle,OX-3,y0+9); x.textAlign='center'; }
+    for(var ci=0;ci<d.c;ci++){ var cl=(p.colLabels||{})[ci]; if(cl) x.fillText(String(cl),OX+ci*W+W/2,y0+9); }
     y0+=clH;
   }
   x.fillStyle=faint; x.font='600 10px ui-sans-serif,system-ui,sans-serif';
-  for(var c=0;c<d.c;c++) x.fillText(String(c+1),PAD+HDR+c*W+W/2,y0+HDR/2);
+  for(var c=0;c<d.c;c++) x.fillText(String(c+1),OX+c*W+W/2,y0+HDR/2);
   var top=y0+HDR;
   for(var r=0;r<d.r;r++){
-    x.fillStyle=faint; x.fillText(PLATE_ROWS.charAt(r),PAD+HDR/2,top+r*W+W/2);
+    x.fillStyle=faint; x.fillText(PLATE_ROWS.charAt(r),(OX-HDR/2),top+r*W+W/2);
     for(var c2=0;c2<d.c;c2++){
       var id=wellIdOf(r,c2), w=(p.wells||{})[id];
       var col=plValueColor(p,id)||plateWellColor(p,w);
-      var wx=PAD+HDR+c2*W, wy=top+r*W;
+      var wx=OX+c2*W, wy=top+r*W;
       x.fillStyle=col||'#f4f5f8';
       _plRoundRect(x,wx+1,wy+1,W-2,W-2,Math.min(4,W/6)); x.fill();
       x.strokeStyle=line; x.lineWidth=0.7; x.stroke();
@@ -6840,7 +6936,7 @@ function plateToPNG(p,name){
   // Numbered conditions: the block outline and one number, centred, at one size across the whole
   // plate. The legend underneath says what each number is, which is how the sheet is read.
   if(_nos) plateNumberBoxes(p).forEach(function(b){
-    var bx=PAD+HDR+b.c1*W, by=top+b.r1*W, bw=(b.c2-b.c1+1)*W, bh=(b.r2-b.r1+1)*W;
+    var bx=OX+b.c1*W, by=top+b.r1*W, bw=(b.c2-b.c1+1)*W, bh=(b.r2-b.r1+1)*W;
     if(b.n>1){ x.strokeStyle='rgba(0,0,0,0.26)'; x.lineWidth=1.1;
       _plRoundRect(x,bx+1,by+1,bw-2,bh-2,4); x.stroke(); }
     var fl=b.flags?b.flags.split(' ').map(_plFlagLbl).join(' '):'', nfs=_plNoFs(W,bw,bh,!!(fl||b.cap));
@@ -6853,7 +6949,7 @@ function plateToPNG(p,name){
   // A compound block: outlined, and its name written once along its top edge with a halo so it
   // reads over the wells. The concentrations are already in the wells.
   dose.forEach(function(b){
-    var bx=PAD+HDR+b.c1*W, by=top+b.r1*W, bw=(b.c2-b.c1+1)*W, bh=(b.r2-b.r1+1)*W;
+    var bx=OX+b.c1*W, by=top+b.r1*W, bw=(b.c2-b.c1+1)*W, bh=(b.r2-b.r1+1)*W;
     x.strokeStyle='rgba(0,0,0,0.55)'; x.lineWidth=1.6; _plRoundRect(x,bx+1,by+1,bw-2,bh-2,4); x.stroke();
     if(!b.name) return;
     var fs=Math.max(8,Math.min(13,Math.round(W/3.4))); x.font='700 '+fs+'px ui-sans-serif,system-ui,sans-serif';
@@ -6863,14 +6959,32 @@ function plateToPNG(p,name){
   });
   // Block labels are written once across their wells, exactly as the editor draws them.
   if(!_nos) plateGroupBoxes(p).filter(function(b){ return !dose.some(function(z){ return z.gid===b.gid; }); }).forEach(function(b){
-    var bx=PAD+HDR+b.c1*W, by=top+b.r1*W, bw=(b.c2-b.c1+1)*W, bh=(b.r2-b.r1+1)*W;
+    var bx=OX+b.c1*W, by=top+b.r1*W, bw=(b.c2-b.c1+1)*W, bh=(b.r2-b.r1+1)*W;
     x.strokeStyle='rgba(0,0,0,0.28)'; x.lineWidth=1.1;
     _plRoundRect(x,bx+1,by+1,bw-2,bh-2,4); x.stroke();
     x.fillStyle=ink; x.font='600 '+Math.max(9,Math.min(15,Math.round(bw/6)))+'px ui-sans-serif,system-ui,sans-serif';
     x.fillText(_plFit(x,b.label,bw-8),bx+bw/2,by+bh/2);
   });
+  // Words round the plate: the text, and a plain bracket between it and the wells it covers.
+  x.fillStyle='#4a4f66'; x.strokeStyle='rgba(74,79,102,0.75)'; x.lineWidth=1.2; x.font='600 10px ui-sans-serif,system-ui,sans-serif';
+  x.textAlign='center'; x.textBaseline='middle';
+  NG.items.forEach(function(n){ var span=n.b>n.a;
+    if(n.side==='t'||n.side==='b'){
+      var x0=OX+n.a*W+3, x1=OX+(n.b+1)*W-3, xc=(x0+x1)/2, hh=tH[n.side][n.tier], ys;
+      if(n.side==='t'){ ys=nTop+sumTiers(tH.t,n.tier+1,NG.t);
+        n.lines.forEach(function(l,i){ x.fillText(l,xc,ys+6+i*12); });
+        if(span){ var by=ys+hh-5; x.beginPath(); x.moveTo(x0,by+4); x.lineTo(x0,by); x.lineTo(x1,by); x.lineTo(x1,by+4); x.stroke(); } }
+      else { ys=top+d.r*W+4+sumTiers(tH.b,0,n.tier);
+        if(span){ var bb=ys+4; x.beginPath(); x.moveTo(x0,bb-4); x.lineTo(x0,bb); x.lineTo(x1,bb); x.lineTo(x1,bb-4); x.stroke(); }
+        n.lines.forEach(function(l,i){ x.fillText(l,xc,ys+(span?13:6)+i*12); }); }
+    } else {
+      var y0n=top+n.a*W+3, y1n=top+(n.b+1)*W-3, yc=(y0n+y1n)/2, left=(n.side==='l');
+      var xs=left?(PAD+(NG.l-1-n.tier)*NTW):(OX+d.c*W+n.tier*NTW);
+      x.save(); x.translate(left?xs+8:xs+NTW-8,yc); x.rotate(left?-Math.PI/2:Math.PI/2); x.fillText(_plFit(x,n.text,y1n-y0n),0,0); x.restore();
+      if(span){ var bx2=left?xs+NTW-5:xs+5, dir=left?1:-1; x.beginPath(); x.moveTo(bx2+dir*4,y0n); x.lineTo(bx2,y0n); x.lineTo(bx2,y1n); x.lineTo(bx2+dir*4,y1n); x.stroke(); } }
+  });
   if(legLines.length||keyLines.length){
-    var ly=top+d.r*W+16;
+    var ly=top+d.r*W+botH+16;
     x.textAlign='left'; x.font='500 10px ui-sans-serif,system-ui,sans-serif';
     legLines.forEach(function(ln){ var lx=PAD;
       ln.forEach(function(it){ x.fillStyle=it.t.color; _plRoundRect(x,lx,ly-5,10,10,2); x.fill();
@@ -7950,8 +8064,9 @@ function platePreviewHtml(p,key,readonly){ if(!p) return ''; p=plateView(p);
   var stag=hasCL&&wpx<30;
   var glOff=hasCL?(stag?3:2):1;
   var _nos=plateHasNos(p);
-  if(hasCL){ for(var ca=0;ca<d.c;ca++){ var hc=_plHdrCell(ca,d.c,stag,1);
-    grid+='<div class="pp-cl'+hc.cls+'" style="grid-row:'+hc.row+';grid-column:'+hc.col+'">'+esc(stag?_plHdrCompact((p.colLabels||{})[ca]):((p.colLabels||{})[ca]||''))+'</div>'; } }
+  var NG=plateEdges(p), RO=NG.t, CO=NG.l;   // words beside the plate push everything else down and across
+  if(hasCL){ for(var ca=0;ca<d.c;ca++){ var hc=_plHdrCell(ca,d.c,stag,1+RO);
+    grid+='<div class="pp-cl'+hc.cls+'" style="grid-row:'+hc.row+';grid-column:'+_plColShift(hc.col,CO)+'">'+esc(stag?_plHdrCompact((p.colLabels||{})[ca]):((p.colLabels||{})[ca]||''))+'</div>'; } }
   for(var r=0;r<d.r;r++) for(var c=0;c<d.c;c++){ var id=wellIdOf(r,c), w=(p.wells||{})[id];
     var col=plateWellColor(p,w);
     var inner=(function(){
@@ -7962,14 +8077,14 @@ function platePreviewHtml(p,key,readonly){ if(!p) return ''; p=plateView(p);
       if(w&&w.groupId&&grouped[w.groupId]) return '';
       return showText?('<span>'+esc(plateWellShort(w))+'</span>'):''; })();
     var wfl=plateWellFlags(w);
-    grid+='<div class="pp-w'+(w?'':' empty')+(_nos?' pp-wn':'')+(wfl?(' '+wfl):'')+'" style="grid-row:'+(r+glOff)+';grid-column:'+(c+1)+';'+(col?'background:'+col:'')+'" title="'+esc(plateWellTip(p,id,w))+'">'
+    grid+='<div class="pp-w'+(w?'':' empty')+(_nos?' pp-wn':'')+(wfl?(' '+wfl):'')+'" style="grid-row:'+(r+glOff+RO)+';grid-column:'+(c+1+CO)+';'+(col?'background:'+col:'')+'" title="'+esc(plateWellTip(p,id,w))+'">'
       +inner+'</div>'; }
   // One number, once, over the wells that hold it.
   nboxes.forEach(function(b){ if(b.n<=1) return;
     var bw=(b.c2-b.c1+1)*wpx, bh=(b.r2-b.r1+1)*wpx;
     var sub=[].concat(b.flags?b.flags.split(' ').map(_plFlagLbl):[], b.cap?[b.cap]:[]).join(' · ');
     var fs=_plNoFs(wpx,bw,bh,!!sub), ffs=Math.max(6,Math.round(fs*0.45));
-    grid+='<div class="pp-nb" style="grid-row:'+(b.r1+glOff)+'/'+(b.r2+glOff+1)+';grid-column:'+(b.c1+1)+'/'+(b.c2+2)+'"'
+    grid+='<div class="pp-nb" style="grid-row:'+(b.r1+glOff+RO)+'/'+(b.r2+glOff+RO+1)+';grid-column:'+(b.c1+1+CO)+'/'+(b.c2+2+CO)+'"'
       +' title="'+esc(b.no+' · '+b.name+(sub?(' · '+sub):''))+'">'
       +'<span style="font-size:'+fs+'px">'+esc(String(b.no))+'</span>'
       +(sub?('<em class="pp-nbf" style="font-size:'+ffs+'px">'+esc(sub)+'</em>'):'')
@@ -7980,7 +8095,9 @@ function platePreviewHtml(p,key,readonly){ if(!p) return ''; p=plateView(p);
   boxes.forEach(function(b){
     var w0=(p.wells||{})[wellIdOf(b.r1,b.c1)], n=(_nos&&!b.dose)?plateWellNo(p,w0):'';
     var lbl=b.dose?(b.label||(w0&&w0.compound)||''):b.label;
-    grid+='<div class="pp-gl'+(n?' pp-gl-n':'')+(b.dose?' pp-gl-dose':'')+'" style="grid-row:'+(b.r1+glOff)+'/'+(b.r2+glOff+1)+';grid-column:'+(b.c1+1)+'/'+(b.c2+2)+'" title="'+esc(lbl)+'"><span>'+esc(n||lbl)+'</span></div>'; });
+    grid+='<div class="pp-gl'+(n?' pp-gl-n':'')+(b.dose?' pp-gl-dose':'')+'" style="grid-row:'+(b.r1+glOff+RO)+'/'+(b.r2+glOff+RO+1)+';grid-column:'+(b.c1+1+CO)+'/'+(b.c2+2+CO)+'" title="'+esc(lbl)+'"><span>'+esc(n||lbl)+'</span></div>'; });
+  var _no={RO:RO,CO:CO,hdr:glOff-1,c0:1,d:d};
+  NG.items.forEach(function(n){ grid+=_plEdgeHtml(n,_no,false); });
   var leg=plateUsedTypes(p).map(function(t){ return '<span class="pp-leg-i"><i style="background:'+t.color+'"></i>'
     +(t.no?('<b>'+t.no+'</b> '):'')+esc(t.name)+'</span>'; }).join('');
   var _ow=_plateOwner(key), _nb=(_ow&&_ow.exp&&_ow.exp.type==='NB');
@@ -8006,7 +8123,7 @@ function platePreviewHtml(p,key,readonly){ if(!p) return ''; p=plateView(p);
       : '<div class="pp-two">'
       // A map with dose blocks has a concentration to print in every well, so its wells grow
       // with the room they are given (up to 2× the base size); a plain map keeps its fixed pitch.
-      +'<div class="pp-grid-wrap"><div class="pp-grid'+(showText?' txt':'')+(hasCL?' cl':'')+(boxes.some(function(b){ return b.dose; })?' dose':'')+'" style="--c:'+d.c+';grid-template-columns:repeat('+d.c+',minmax('+(showText?wpx:0)+'px,1fr));max-width:'+_ppMax+'px">'+grid+'</div>'
+      +'<div class="pp-grid-wrap"><div class="pp-grid'+(showText?' txt':'')+(hasCL?' cl':'')+(boxes.some(function(b){ return b.dose; })?' dose':'')+((NG.l||NG.r)?' sn':'')+'" style="--c:'+d.c+';grid-template-columns:'+(NG.l?'repeat('+NG.l+',auto) ':'')+'repeat('+d.c+',minmax('+(showText?wpx:0)+'px,1fr))'+(NG.r?' repeat('+NG.r+',auto)':'')+';max-width:'+_ppMax+'px">'+grid+'</div>'
         +(leg?'<div class="pp-leg">'+leg+'</div>':'')+'</div>'
       +(sum?'<div class="pp-sum">'+sum+'</div>':'')
     +'</div>')+'</div>'; }
@@ -8279,6 +8396,7 @@ function _plCopyLayout(src,tgt){ var c=JSON.parse(JSON.stringify(src));
   tgt.format=c.format; tgt.types=c.types; tgt.wells=c.wells||{}; tgt.groups=c.groups||{};
   if(c.colLabels) tgt.colLabels=c.colLabels; else delete tgt.colLabels;
   if(c.colTitle) tgt.colTitle=c.colTitle; else delete tgt.colTitle;
+  if(c.edges&&c.edges.length) tgt.edges=c.edges; else delete tgt.edges;   // the words round the plate are layout (a dose, a treatment); check them against the new plate
   if(c.dosing!=null) tgt.dosing=c.dosing;
   delete tgt.values;
   Object.keys(tgt.groups).forEach(function(g){ var G=tgt.groups[g]; if(G&&G.cpd){ delete G.named; G.label=''; } });
@@ -8310,10 +8428,11 @@ function plDuplicateToNext(){ var key=PL.key, o=_plateOwner(key); if(!o||o.ds||!
     platePersist(tkey); e.updated=Date.now(); save();
     var lab=plateLabel(tkey,tgt);
     PL.mode=_plMode(); plSwitchPlate(tkey);
-    toast('Layout copied to '+lab+(Object.keys(tgt.groups).some(function(g){ return tgt.groups[g].cpd; })?' — name its compounds':'')); }
+    toast('Layout copied to '+lab+(Object.keys(tgt.groups).some(function(g){ return tgt.groups[g].cpd; })?' — name its compounds':'')+((tgt.edges&&tgt.edges.length)?(Object.keys(tgt.groups).some(function(g){ return tgt.groups[g].cpd; })?', check its labels':' \u2014 check its labels'):'')); }
   if(nx&&plateCount(nx.p)) lbConfirm('Replace the layout of '+plateLabel(nx.key,nx.p)+' with this one? Its wells are overwritten (⌘Z puts them back).',{title:'Copy layout',ok:'Replace',danger:true}).then(function(ok){ if(ok) go(); });
   else go(); }
 function plSwitchPlate(key){ var p=plateOf(key); if(!p) return;
+  if(PLE.open) plEdgeCommit();
   PL.key=key; PL.sel={}; PL.anchor=null; PL.band=null; PL.type=(plateTypes(p)[1]||plateTypes(p)[0]).id; PL._selSig='';
   if(!_plHasStep(PL.mode)) PL.mode=_plSteps()[0][0];
   plRender(); }
@@ -8323,7 +8442,7 @@ function plRenderPlates(){ var host=el('pl-plates'); if(!host) return;
   var L=expPlateList(o.exp);
   host.innerHTML=L.map(function(x){ return '<button class="pl-pchip'+(x.key===PL.key?' on':'')+'" onclick="plSwitchPlate(\''+x.key+'\')" title="'+esc(plateLabel(x.key,x.p))+'">'+esc(plateLabel(x.key,x.p))+'</button>'; }).join('')
     +'<button class="pl-pchip add" onclick="addMorePlate(\''+o.exp.id+'\',true)" title="Another plate for this experiment — more compounds, a repeat of the layout">+ Add plate</button>'; }
-function closePlateEditor(){ var wasDs=/^ds:/.test(String(PL.key||'')); el('plate-modal').classList.remove('open'); _plHideBand(); PL.key=null; PL.sel={}; PL.band=null;
+function closePlateEditor(){ var wasDs=/^ds:/.test(String(PL.key||'')); if(PLE.open) plEdgeCommit(); el('plate-modal').classList.remove('open'); _plHideBand(); PL.key=null; PL.sel={}; PL.band=null;
   if(wasDs&&DS){ DS_PLEXP=null; dsDraw(); } else renderEditor(); }
 // Every plate mutation restores through the experiment that owns the map — a plate lives inside
 // a block or an experiment, so that record is the unit an undo has to put back.
@@ -8354,31 +8473,34 @@ function _dlgRoom(card,min){
   return Math.max(min||200, Math.floor(window.innerHeight*0.88)-used-8);
 }
 function _plRoom(){ var m=document.querySelector('#plate-modal .modal'); return _dlgRoom(m,220); }
-function _plFitWpx(p,host){
+function _plWide(host){ var left=host&&host.closest?host.closest('.pl-left'):null; return !!(left&&left.clientWidth>0); }   // on a phone .pl-left dissolves (display:contents) and has no box
+function _plFitWpx(p,host,geo){
+  geo=geo||plEdgeGeo(p,!_plWide(host));
   var wpx=PLATE_WPX[String(p.format)]||34;
   var left=host&&host.closest?host.closest('.pl-left'):null;
   var wide=!!(left&&left.clientWidth>0);   // on a phone .pl-left dissolves (display:contents) and has no box
   var wrap=wide?left:(host&&host.parentElement); if(!wrap) return wpx;
-  var d=plateDims(p), avail=wrap.clientWidth-4-26-2*d.c;   // padding, the row-header column, the gaps
+  var d=plateDims(p), avail=wrap.clientWidth-4-26-2*d.c-(geo.Lc+geo.R)*20;   // padding, the row-header column, the gaps, the columns for words beside the plate
   if(avail<=0) return wpx;
   var fit=Math.floor(avail/d.c), floor=PLATE_WPX_FLOOR[String(p.format)]||14;
   if(wide){ var availH=_plRoom()-44;   // the room the dialog leaves its body, less the Layout list bar
-    fit=Math.min(fit,Math.floor((availH-26)/d.r)-2); wpx=Math.max(wpx,PLATE_WPX_MAX[String(p.format)]||wpx); }
+    fit=Math.min(fit,Math.floor((availH-26-(geo.T+geo.B)*22)/d.r)-2); wpx=Math.max(wpx,PLATE_WPX_MAX[String(p.format)]||wpx); }
   return Math.max(floor, Math.min(wpx, fit));
 }
 function plRenderGrid(){ var p=plCur(), host=el('pl-grid'); if(!p||!host) return; p=plateView(p);
   var pm=el('plate-modal'); if(pm) pm.classList.toggle('pl-384', String(p.format)==='384');   // in portrait the grid gives way to a note (see #pl-rotate)
   if(pm) pm.style.setProperty('--pl-bodyh', Math.min(_plRoom(),580)+'px');   // both columns are this tall on every step: the dialog does not move when you walk the steps
-  var d=plateDims(p), wpx=_plFitWpx(p,host), fs=Math.max(6,Math.round(wpx/4.2));
+  var geo=plEdgeGeo(p,!_plWide(host)), RO=geo.T, CO=geo.Lc;   // rows above and columns before the plate's own: the words beside it, plus one empty tier to write in
+  var d=plateDims(p), wpx=_plFitWpx(p,host,geo), fs=Math.max(6,Math.round(wpx/4.2));
   var hasCL=plateHasColLabels(p), h='';
   var stag=hasCL&&wpx<40;
   // Block labels are grid items placed over the wells they span. Once anything is placed
   // explicitly, auto-placed items would flow around it — so every cell states its own position.
   var base=hasCL?(stag?4:3):2, hdrRow=hasCL?(stag?3:2):1;
-  function at(r,c){ return 'grid-row:'+r+';grid-column:'+c+';'; }
+  function at(r,c){ return 'grid-row:'+(r+RO)+';grid-column:'+(c+CO)+';'; }
   // Optional annotation row above the column numbers (e.g. the nM of each dose column).
-  if(hasCL){ h+='<div class="pl-cltitle" style="grid-row:1'+(stag?' / 3':'')+';grid-column:1;" title="Column header units">'+esc(p.colTitle||'')+'</div>';
-    for(var ca=0;ca<d.c;ca++){ var hc=_plHdrCell(ca,d.c,stag,1); var cols=stag?hc.col.split(' / ').map(function(x){ return String(+x+1); }).join(' / '):String(ca+2);
+  if(hasCL){ h+='<div class="pl-cltitle" style="grid-row:'+(1+RO)+(stag?' / '+(3+RO):'')+';grid-column:'+(1+CO)+';" title="Column header units">'+esc(p.colTitle||'')+'</div>';
+    for(var ca=0;ca<d.c;ca++){ var hc=_plHdrCell(ca,d.c,stag,1+RO); var cols=stag?hc.col.split(' / ').map(function(x){ return String(+x+1+CO); }).join(' / '):String(ca+2+CO);
       h+='<div class="pl-cl'+hc.cls+'" style="grid-row:'+hc.row+';grid-column:'+cols+'">'+esc(stag?_plHdrCompact((p.colLabels||{})[ca]):((p.colLabels||{})[ca]||''))+'</div>'; } }
   h+='<div class="pl-corner" style="'+at(hdrRow,1)+'" title="Select every well" onclick="plSelectAll()"></div>';
   for(var c=0;c<d.c;c++) h+='<div class="pl-colh" style="'+at(hdrRow,c+2)+'" title="Select column '+(c+1)+'" onmousedown="plSelectCol('+c+',event)">'+(c+1)+'</div>';
@@ -8406,11 +8528,89 @@ function plRenderGrid(){ var p=plCur(), host=el('pl-grid'); if(!p||!host) return
   plateGroupBoxes(p).forEach(function(b){
     // On a numbered plate the label rides in the block's top-left corner instead of across its
     // middle — centred, its opaque pill sat exactly on the numbers it is there to explain.
-    h+='<div class="pl-gl'+(_nos?' pl-gl-c':'')+'" style="grid-row:'+(b.r1+base)+'/'+(b.r2+base+1)+';grid-column:'+(b.c1+2)+'/'+(b.c2+3)+'" title="'+esc(b.label)+'">'
+    h+='<div class="pl-gl'+(_nos?' pl-gl-c':'')+'" style="grid-row:'+(b.r1+base+RO)+'/'+(b.r2+base+RO+1)+';grid-column:'+(b.c1+2+CO)+'/'+(b.c2+3+CO)+'" title="'+esc(b.label)+'">'
       +'<span>'+esc(b.label)+'</span></div>'; });
-  host.style.gridTemplateColumns='26px repeat('+d.c+','+wpx+'px)';
+  // What the user wrote around the plate; plSyncGhosts adds the dashed + that offers to write more.
+  var no={RO:RO,CO:CO,hdr:base-1,c0:2,d:d};
+  geo.n.items.forEach(function(n){ h+=_plEdgeHtml(n,no,true); });
+  PL.gg={geo:geo,o:no,wpx:wpx};
+  function tiers(n,mn){ return n?('repeat('+n+',minmax('+mn+'px,auto)) '):''; }   // repeat(0,…) is not a track list: the whole declaration would be dropped
+  host.style.gridTemplateColumns=tiers(CO,16)+'26px repeat('+d.c+','+wpx+'px)'+(geo.R?(' '+tiers(geo.R,16)):'');
+  host.style.gridTemplateRows=tiers(RO,18)+'repeat('+(base-1+d.r)+',auto)'+(geo.B?(' '+tiers(geo.B,18)):'');
   host.style.fontSize=fs+'px';
-  host.innerHTML=h; }
+  host.innerHTML=h; plSyncGhosts(); }
+// ── Writing on the plate ─────────────────────────────────────────────────────────────────────
+// Select wells, and a dashed + appears beside the plate on every side, over exactly the columns
+// (above, below) or rows (left, right) the selection covers. Click it, type, Enter. Click a label
+// to change it; empty and Enter takes it away. The suggestions are what the plate already knows:
+// its compounds and its conditions.
+var PLE={open:null,sugg:[]};
+function plEdgeSpan(side){ var ids=plSelIds(); if(!ids.length) return null;
+  var r0=99,r1=-1,c0=99,c1=-1;
+  ids.forEach(function(id){ var x=wellRC(id); if(!x) return; r0=Math.min(r0,x.r); r1=Math.max(r1,x.r); c0=Math.min(c0,x.c); c1=Math.max(c1,x.c); });
+  if(r1<0) return null;
+  return (side==='t'||side==='b')?{a:c0,b:c1}:{a:r0,b:r1}; }
+function plSyncGhosts(){ var g=el('pl-grid'); if(!g) return;
+  Array.prototype.forEach.call(g.querySelectorAll('.pl-ng'),function(n){ n.parentNode.removeChild(n); });
+  var p=plCur(), gg=PL.gg; if(!p||!gg||PL.drag||!plSelIds().length) return;
+  var h='', where={t:'above the plate',b:'below the plate',l:'left of the plate',r:'right of the plate'};
+  ['t','b','l','r'].forEach(function(s){ var sp=plEdgeSpan(s); if(!sp) return;
+    var n={side:s,a:sp.a,b:sp.b,tier:plateEdgeTierFor(gg.geo.n,s,sp.a,sp.b)};
+    if(n.tier>=({t:gg.geo.T,b:gg.geo.B,l:gg.geo.Lc,r:gg.geo.R})[s]) return;   // no room for it on this screen (a phone has no spare columns)
+    var many=sp.b>sp.a, noun=(s==='t'||s==='b')?'column':'row';
+    h+='<div class="pl-ng pl-ng-'+s+'" data-g="'+s+'-'+sp.a+'-'+sp.b+'" style="'+_plEdgePos(n,gg.o)+'" title="Write what '+(many?'these '+noun+'s are':'this '+noun+' is')+', '+where[s]+'"'
+      +' onclick="plEdgeOpen(\''+s+'\','+sp.a+','+sp.b+',null)"><span>'+(((sp.b-sp.a+1)*gg.wpx>=60)?'+ label':'+')+'</span></div>'; });
+  g.insertAdjacentHTML('beforeend',h); }
+function _plEdgeSugg(p){ var out=[], seen={};
+  function add(t){ t=String(t==null?'':t).trim(); var k=t.toLowerCase(); if(!t||t.length>40||seen[k]) return; seen[k]=1; out.push(t); }
+  Object.keys(p.groups||{}).forEach(function(g){ add((p.groups[g]||{}).label); });
+  Object.keys(p.wells||{}).forEach(function(id){ add((p.wells[id]||{}).compound); });
+  plateUsedTypes(p).forEach(function(t){ add(t.name); });
+  var fl={}; Object.keys(p.wells||{}).forEach(function(id){ var w=p.wells[id]; if(w&&w.noLig) fl.l=1; if(w&&w.noSub) fl.s=1; });
+  if(fl.l) add('− ligand'); if(fl.s) add('− substrate');
+  return out.slice(0,6); }
+function _plEdgeAnchor(side,a,b,id){ var g=el('pl-grid'); if(!g) return null;
+  return g.querySelector(id?('[data-note="'+id+'"]'):('.pl-ng[data-g="'+side+'-'+a+'-'+b+'"]')); }
+// Beside the thing it labels, clamped by its measured size to the window.
+function _plEdgePlace(anchor,side){ var pop=el('pl-note-pop'); if(!pop||!anchor) return;
+  pop.style.left='0px'; pop.style.top='0px';
+  var r=anchor.getBoundingClientRect(), w=pop.offsetWidth, h=pop.offsetHeight, vw=window.innerWidth, vh=window.innerHeight, x, y;
+  if(side==='l'){ x=r.left-w-8; y=r.top+r.height/2-h/2; if(x<8) x=r.right+8; }
+  else if(side==='r'){ x=r.right+8; y=r.top+r.height/2-h/2; if(x+w>vw-8) x=r.left-w-8; }
+  else { x=r.left+r.width/2-w/2; y=(side==='t')?(r.top-h-8):(r.bottom+8);
+    if(y<8) y=r.bottom+8; if(y+h>vh-8) y=r.top-h-8; }
+  pop.style.left=Math.max(8,Math.min(x,vw-w-8))+'px'; pop.style.top=Math.max(8,Math.min(y,vh-h-8))+'px'; }
+function plEdgeOpen(side,a,b,id){ var p=plCur(); if(!p) return;
+  if(PLE.open) plEdgeCommit();   // the one being written is kept before the next opens
+  p=plCur(); var cur=null; if(id) (p.edges||[]).forEach(function(n){ if(n.id===id) cur=n; });
+  var anchor=_plEdgeAnchor(side,a,b,cur?cur.id:null); if(!anchor) return;
+  PLE.open={side:side,a:a,b:b,id:cur?cur.id:null};
+  var inp=el('pl-note-in'); inp.value=cur?cur.text:'';
+  PLE.sugg=_plEdgeSugg(p);
+  el('pl-np-chips').innerHTML=PLE.sugg.map(function(t,i){ return '<button class="pl-btn" onmousedown="event.preventDefault()" onclick="plEdgePick('+i+')">'+esc(t)+'</button>'; }).join('');
+  el('pl-np-rm').style.display=cur?'':'none';
+  el('pl-note-pop').style.display='block';
+  _plEdgePlace(anchor,side); inp.focus(); inp.select(); }
+function plEdgeClose(){ PLE.open=null; var pop=el('pl-note-pop'); if(pop) pop.style.display='none'; }
+function plEdgeKey(ev){
+  if(ev.key==='Enter'){ ev.preventDefault(); ev.stopPropagation(); plEdgeCommit(); }
+  else if(ev.key==='Escape'){ ev.preventDefault(); ev.stopPropagation(); plEdgeClose(); } }
+function plEdgePick(i){ if(PLE.sugg[i]==null) return; el('pl-note-in').value=PLE.sugg[i]; plEdgeCommit(); }
+function plEdgeRemove(){ el('pl-note-in').value=''; plEdgeCommit(); }
+function plEdgeCommit(){ var o=PLE.open; if(!o) return;
+  var v=String(el('pl-note-in').value||'').replace(/\s+/g,' ').trim();
+  plEdgeClose();
+  var p=plCur(); if(!p) return;
+  var cur=null; if(o.id) (p.edges||[]).forEach(function(n){ if(n.id===o.id) cur=n; });
+  if(cur?(cur.text===v):!v) return;
+  plMark('Plate label');
+  if(cur){ if(v) cur.text=v; else { p.edges=p.edges.filter(function(n){ return n!==cur; }); if(!p.edges.length) delete p.edges; } }
+  else { if(!p.edges) p.edges=[]; p.edges.push({id:'n'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),side:o.side,a:o.a,b:o.b,text:v}); }
+  platePersist(PL.key); plRender(); }
+// A click anywhere else keeps what was typed (a click on another label or another + goes through plEdgeOpen).
+document.addEventListener('mousedown',function(ev){ if(!PLE.open) return; var t=ev.target;
+  if(t&&t.closest&&(t.closest('#pl-note-pop')||t.closest('.pl-nt.ed')||t.closest('.pl-ng'))) return;
+  plEdgeCommit(); },true);
 // The flags a well can carry, and which experiment types they mean anything for.
 var PLATE_FLAGS=[
   {k:'noLig', lbl:'− ligand',    title:'No HaloTag ligand — the matched control for a BRET pair', types:['NB']},
@@ -8802,7 +9002,7 @@ function _plIdleHtml(p,tab){ var touch=_lbTouch();
     dose:(touch?'Drag a finger over':'Drag across')+' the area the compounds fill.</b> Set the dilution series on it, then make the compounds — one block of replicates each — and name them here.' };
   return '<div class="pl-idle"><b>'+say[tab||'contents']
     +((touch||(tab&&tab!=='contents'&&tab!=='plasmids'))?'':'<div class="pl-keys">Shift extends · ⌘/Ctrl adds · a row or column label takes the line · double-click takes a well’s block · Enter applies · Delete clears · ⌘C ⌘V copy a block · ⌘Z undo</div>')+'</div>'; }
-function plRenderSide(){ var p=plCur(), host=el('pl-side'); if(!p||!host) return;
+function plRenderSide(){ plSyncGhosts(); var p=plCur(), host=el('pl-side'); if(!p||!host) return;
   var ids=plSelIds(), n=ids.length, d=plateDims(p), dosing=_plDosing();
   // A new selection is a new question: what it is for is worked out again from what it holds.
   var sig=ids.slice().sort().join(','); if(sig!==PL._selSig){ PL._selSig=sig; PL.dir=null; PL.split=null; }
@@ -8918,6 +9118,7 @@ function _plPlateCard(p,dosing,ex,inExp,many){
     +'<div class="pl-row2"><button class="pl-btn" onclick="plLayoutMenu()">'+tbIco(P_GRID,13)+' Start from a layout…</button>'
       +(_plExpTypes().length?'<button class="pl-btn" onclick="plUseExpTypes()" title="Replace the palette with the conditions this experiment is made of">Use this experiment\'s conditions</button>':'')
     +'</div>'
+    +'<div class="pl-howto" style="margin:8px 0 0">Say what each column or row is: select wells, click the dashed <b>+</b> beside the plate and type (a compound, a dose, a treatment). Labels stack outwards on their own.</div>'
     // The compound and concentration tools are off for a NanoBRET by default — a PPI plate has
     // conditions, not concentrations — but a titration run on one of those conditions is the
     // ordinary next experiment, so the switch is here, where you notice you want it.
@@ -21571,6 +21772,19 @@ var PLATE_PRINT_CSS=
  +'.pk-g td.pk-bt{border-top:1.6pt solid #222}.pk-g td.pk-bb{border-bottom:1.6pt solid #222}'
  +'.pk-g td.pk-bl{border-left:1.6pt solid #222}.pk-g td.pk-br{border-right:1.6pt solid #222}'
  +'.pk-leg b{font-weight:700;margin-right:3px}'
+ // Words round the plate: a text cell and a bracket cell per tier (above and below in rows, beside in columns).
+ +'.pk-g td.pk-e{border:0;padding:0;height:auto;background:none}'
+ +'.pk-g td.pk-nt{border:0;padding:0 1px;height:auto;background:none;font:600 7pt/1.15 sans-serif;color:#222;word-break:normal;overflow-wrap:anywhere}'
+ +'.pk-g td.pk-nt-t{vertical-align:bottom}.pk-g td.pk-nt-b{vertical-align:top}'
+ +'.pk-g td.pk-bk{padding:0;height:4pt;border:0 solid #444;background:none}'
+ +'.pk-g td.pk-bk-t{border-top-width:1pt;border-left-width:1pt;border-right-width:1pt}'
+ +'.pk-g td.pk-bk-b{border-bottom-width:1pt;border-left-width:1pt;border-right-width:1pt}'
+ +'.pk-g td.pk-bk-l{border-left-width:1pt;border-top-width:1pt;border-bottom-width:1pt}'
+ +'.pk-g td.pk-bk-r{border-right-width:1pt;border-top-width:1pt;border-bottom-width:1pt}'
+ +'.pk-g td.pk-bk-1{border:0}'
+ +'.pk-g td.pk-nv{border:0;padding:0;background:none;text-align:center;vertical-align:middle}'
+ +'.pk-vt{writing-mode:vertical-rl;margin:0 auto;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font:600 7pt/1.15 sans-serif;color:#222}.pk-vt-l{transform:rotate(180deg)}'
+ +'#print-root .pk-g td.pk-nt,#print-root .pk-vt{font-size:7pt}'
  +'.pk-leg{margin-top:7px;font:400 8.5pt/1.6 sans-serif;color:#111}'
  +'.pk-leg i{display:inline-block;width:9px;height:9px;border:.5pt solid #555;margin-right:4px;vertical-align:-1px}'
  +'.pk-leg span{display:inline-block;margin-right:14px;white-space:nowrap}'
@@ -22327,6 +22541,29 @@ function _labBodyHtml(b,bench,no){
 // fill fights the number written on it, so the print map takes every well colour at half
 // strength. The information is in the numbers, the outlines and the legend, not in the hue.
 function _printTint(col){ if(!col) return null; try{ return _mixWhite(col,0.5); }catch(e){ return col; } }
+// One row above or below the plate for one tier of words: the text, or the bracket under/over it.
+function _pkSpanRow(NG,side,k,d,nL,nR,bracket){
+  var items=NG.items.filter(function(n){ return n.side===side&&n.tier===k; }).sort(function(x,y){ return x.a-y.a; });
+  var h='<tr><td class="pk-e" colspan="'+(2*nL+1)+'"></td>', c=0;
+  items.forEach(function(n){ if(n.a>c) h+='<td class="pk-e" colspan="'+(n.a-c)+'"></td>';
+    h+=bracket?('<td class="pk-bk pk-bk-'+side+(n.b>n.a?'':' pk-bk-1')+'" colspan="'+(n.b-n.a+1)+'"></td>')
+      :('<td class="pk-nt pk-nt-'+side+'" colspan="'+(n.b-n.a+1)+'">'+esc(n.text)+'</td>');
+    c=n.b+1; });
+  if(c<d.c) h+='<td class="pk-e" colspan="'+(d.c-c)+'"></td>';
+  return h+(nR?'<td class="pk-e" colspan="'+(2*nR)+'"></td>':'')+'</tr>'; }
+// The cells before (side l) or after (side r) one row of wells: per tier a text cell and a bracket cell,
+// each one tall cell spanning the rows its label covers.
+function _pkSideCells(NG,side,r){
+  var ks=[]; for(var k=0;k<NG[side];k++) ks.push(k);
+  if(side==='l') ks.reverse();
+  return ks.map(function(k){
+    var n=null; NG.items.forEach(function(m){ if(m.side===side&&m.tier===k&&m.a<=r&&r<=m.b) n=m; });
+    var start=n&&n.a===r, span=n?(n.b-n.a+1):1, t, br;
+    if(!n){ t=br='<td class="pk-e"></td>'; }
+    else if(!start){ t=br=''; }
+    else { t='<td class="pk-nv" rowspan="'+span+'"><div class="pk-vt pk-vt-'+side+'" style="max-height:'+(span*22-4)+'px">'+esc(n.text)+'</div></td>';
+      br='<td class="pk-bk pk-bk-'+side+(span>1?'':' pk-bk-1')+'" rowspan="'+span+'"></td>'; }
+    return side==='l'?(t+br):(br+t); }).join(''); }
 function printPlateHtml(p,title,opts){
   if(!p) return ''; p=plateView(p);
   opts=opts||{};
@@ -22365,7 +22602,18 @@ function printPlateHtml(p,title,opts){
   head+='</tr>';
   if(plateHasColLabels(p)){ var ch='<tr><th class="pk-rh">'+esc(p.colTitle||'')+'</th>';
     for(var c1=0;c1<d.c;c1++) ch+='<th>'+esc((p.colLabels||{})[c1]||'')+'</th>';
-    head=ch+head; }
+    head=ch+'</tr>'+head; }
+  // Words round the plate: padded cells on the header rows, then the rows above and below, then a column
+  // set (the fixed layout reads its widths from the first row, which may now be a row of words).
+  var NG=plateEdges(p), nL=NG.l, nR=NG.r, topRows='', botRows='', cg='';
+  if(nL||nR) head=head.replace(/<tr>/g,'<tr>'+(nL?'<td class="pk-e" colspan="'+(2*nL)+'"></td>':'')).replace(/<\/tr>/g,(nR?'<td class="pk-e" colspan="'+(2*nR)+'"></td>':'')+'</tr>');
+  for(var k1=NG.t-1;k1>=0;k1--) topRows+=_pkSpanRow(NG,'t',k1,d,nL,nR,false)+_pkSpanRow(NG,'t',k1,d,nL,nR,true);
+  for(var k2=0;k2<NG.b;k2++) botRows+=_pkSpanRow(NG,'b',k2,d,nL,nR,true)+_pkSpanRow(NG,'b',k2,d,nL,nR,false);
+  if(NG.items.length){ cg='<colgroup>';
+    for(var q=0;q<nL;q++) cg+='<col style="width:11pt"><col style="width:4pt">';
+    cg+='<col style="width:20px">'; for(var q2=0;q2<d.c;q2++) cg+='<col>';
+    for(var q3=0;q3<nR;q3++) cg+='<col style="width:4pt"><col style="width:11pt">';
+    cg+='</colgroup>'; }
   var rows='';
   for(var r2=0;r2<d.r;r2++){ var tds='';
     for(var c2=0;c2<d.c;c2++){ var key=r2+':'+c2, bx=gAt[key];
@@ -22388,7 +22636,7 @@ function printPlateHtml(p,title,opts){
       inner=(cap?'<span class="pk-cap pk-cap-top">'+esc(cap)+'</span>':'')+(txt?'<span class="pk-v">'+esc(txt)+'</span>':'')+(fl2?'<span class="pk-cap">'+esc(fl2)+'</span>':'');
       if(nos&&/^\d+$/.test(txt)&&!cap) cls.push('pk-no1');
       tds+='<td'+(col?' style="background:'+col+'"':'')+(cls.length?' class="'+cls.join(' ')+'"':'')+'>'+inner+'</td>'; }
-    rows+='<tr><th class="pk-rh">'+PLATE_ROWS.charAt(r2)+'</th>'+tds+'</tr>'; }
+    rows+='<tr>'+_pkSideCells(NG,'l',r2)+'<th class="pk-rh">'+PLATE_ROWS.charAt(r2)+'</th>'+tds+_pkSideCells(NG,'r',r2)+'</tr>'; }
   // With numbers the legend is a numbered list, in condition order — the same order and the
   // same numbers as the mix table above it.
   var used=plateUsedTypes(p);
@@ -22411,7 +22659,7 @@ function printPlateHtml(p,title,opts){
   var fmtTxt=(ttl.indexOf((d.r*d.c)+'-well')>=0)?'':(' &middot; '+(d.r*d.c)+'-well');
   return '<div class="pk-p"><div class="pk-t">'+esc(ttl)+fmtTxt+'</div>'
     +((opts.note&&p.note)?('<div class="pk-n">'+esc(p.note)+'</div>'):'')
-    +'<table class="pk-g">'+head+rows+'</table>'
+    +'<table class="pk-g">'+cg+topRows+head+rows+botRows+'</table>'
     +(leg?('<div class="pk-leg">'+leg+'</div>'):'')+sum+'</div>';
 }
 // The stored title of a layout said what the layout was asked for ("11 compounds × 4 pts"); the

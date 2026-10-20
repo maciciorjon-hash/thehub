@@ -186,6 +186,9 @@
 //                            made of plasmids has Plate · Plasmids (· Compounds): naming wells and blocks is a fold under the selection, not a step.
 //   B43 plates side by side  The plate cards of a run are ~34 px a well at most and sit in ONE row of equal cards (.xp-track), never wrapped: a fifth plate
 //                            used to take the whole free row and come out twice the size of the others; the step text (13 px) and the tick (20 px) are in T15.
+//   B54 plate labels      Words round the plate: select wells and a dashed + sits beside the plate on all four sides over exactly the selected columns/rows; a label
+//                            is typed, edited, removed and undone; a wider one stacks outside a narrower one; nothing written round the plate sits on a well, a header or
+//                            another label; the card, the PNG, the print table and a copied layout all carry it. (the plate map could not say what a column was)
 //   B53 time course       Time Course is Kinetic degradation with the compound left open: type KD (Tempo still takes it), code tag TC, the same steps, waits and measures,
 //                            no compound of the lab's own named in the prose, and an experiment from it keeps the 900 min / 5 min run and its plate.
 //   B52 one list of         The Compounds step has ONE box for every compound to test, a line each (a column from Excel). The names flow onto the compound
@@ -2811,6 +2814,102 @@ async function suite(opts) {
       if (e.type !== 'KD') bad('B53', 'type', 'the experiment is type ' + e.type + ', not KD');
       if (!e.plate) bad('B53', 'plate', 'no plate map on a Time Course');
       const en = (e.blocks || []).find(x => /Endurazine/.test(x.title || '')); if (en && en.waitMin !== 150) bad('B53', 'wait', 'Endurazine equilibration is ' + en.waitMin + ' min, expected 150');
+    });
+
+    // B54 — words round the plate: what a column or a row is, written beside it.
+    if (run('B54')) await guard('B54', 'plate labels', async () => {
+      const P = (LB.data.projects || []).find(p => (p.sections || []).length);
+      const key = 'NB_BIO_RTX96', tpl = LB.data.presets[key];
+      const su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup || {})));
+      const before = new Set(Object.keys(LB.data.experiments));
+      buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-10-01', type: 'NB', title: 'INV labels', code: 'INV_B54', setup: su, plate: true });
+      const e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); if (!e) { bad('B54', 'create', 'no experiment was made'); return; }
+      clean.push(e); openExp(e.id); tick('B54');
+      const hit = (a, b) => a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
+      const q = s => [...document.querySelectorAll(s)];
+      const sel = async (r0, r1, c0, c1) => { PL.sel = {}; for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) PL.sel[wellIdOf(r, c)] = 1; plRender(); await sleep(40); };
+      const key1 = ev => ({ key: ev, preventDefault() {}, stopPropagation() {} });
+      const say = async (side, a, b, text, id) => { if (!id) { if (side === 't' || side === 'b') await sel(0, 0, a, b); else await sel(a, b, 0, 0); } plEdgeOpen(side, a, b, id || null); const i = document.getElementById('pl-note-in'); i.value = text; plEdgeKey(key1('Enter')); await sleep(40); };
+      openPlateEditor('exp:' + e.id); await sleep(80);
+      // the + offers: four sides, over exactly the selection; none without one
+      await sel(0, -1, 0, -1);
+      if (q('.pl-ng').length) bad('B54', 'no selection', 'the dashed + is offered with nothing selected');
+      await sel(2, 4, 2, 3);
+      const want = ['t-2-3', 'b-2-3', 'l-2-4', 'r-2-4'], have = q('.pl-ng').map(n => n.getAttribute('data-g')).sort();
+      if (want.slice().sort().join() !== have.join()) bad('B54', 'offer', 'selection C3:E4 should offer ' + want.join(' ') + ', the plate offers ' + have.join(' '));
+      // type: one label over the columns, one over everything (it goes outside), one beside the rows, one under, one on the right
+      await say('t', 2, 3, '+ MG132');
+      const p = plCur();
+      if (!p.edges || p.edges.length !== 1 || p.edges[0].text !== '+ MG132') { bad('B54', 'typed', 'Enter did not store the label: ' + JSON.stringify(p.edges)); return; }
+      await say('t', 0, 11, 'Compound A');
+      await say('t', 2, 3, 'Second on the same columns');
+      await say('l', 2, 4, 'HEK293 + ligand');
+      await say('b', 0, 11, 'Dose: 3-fold from 1 µM');
+      await say('r', 0, 7, 'n = 3');
+      const nt = q('#pl-grid .pl-nt'), byText = t => nt.find(n => n.textContent.trim() === t);
+      if (nt.length !== 6) { bad('B54', 'drawn', nt.length + ' labels drawn, expected 6'); return; }
+      const row = n => parseInt(n.style.gridRow, 10);
+      if (!(row(byText('Compound A')) < row(byText('+ MG132')))) bad('B54', 'stack', 'the wide label is not outside the narrow one (rows ' + row(byText('Compound A')) + ' / ' + row(byText('+ MG132')) + ')');
+      if (row(byText('Second on the same columns')) === row(byText('+ MG132'))) bad('B54', 'same columns', 'two labels over the same columns share a row');
+      // nothing written round the plate sits on a well, a header, or another label
+      const solid = [...q('#pl-grid .pl-w'), ...q('#pl-grid .pl-colh'), ...q('#pl-grid .pl-rowh'), ...q('#pl-grid .pl-cl')].map(n => n.getBoundingClientRect());
+      const nr = nt.map(n => n.getBoundingClientRect());
+      nr.forEach((r, i) => {
+        if (solid.some(s => hit(r, s))) bad('B54', 'on the plate', 'label "' + nt[i].textContent.trim() + '" sits on a well or a header');
+        nr.forEach((r2, j) => { if (j > i && hit(r, r2)) bad('B54', 'overlap', 'labels "' + nt[i].textContent.trim() + '" and "' + nt[j].textContent.trim() + '" overlap'); });
+      });
+      // beside means beside: above the column numbers, left of the row letters, right of the last column, under the last row
+      const colh = q('#pl-grid .pl-colh')[0].getBoundingClientRect(), rowh = q('#pl-grid .pl-rowh')[0].getBoundingClientRect(), lastW = q('#pl-grid .pl-w').pop().getBoundingClientRect();
+      const rOf = t => byText(t).getBoundingClientRect();
+      if (rOf('Compound A').bottom > colh.top + 1) bad('B54', 'above', 'a label over the columns is not above the column numbers');
+      if (rOf('HEK293 + ligand').right > rowh.left + 1) bad('B54', 'left', 'a label beside the rows is not left of the row letters');
+      if (rOf('n = 3').left < lastW.right - 1) bad('B54', 'right', 'a label on the right is not right of the last column');
+      if (rOf('Dose: 3-fold from 1 µM').top < lastW.bottom - 1) bad('B54', 'below', 'a label under the plate is not under the last row');
+      // it spans what it was written over
+      const c3 = q('#pl-grid .pl-colh')[2].getBoundingClientRect(), c4 = q('#pl-grid .pl-colh')[3].getBoundingClientRect(), mg = rOf('+ MG132');
+      if (Math.abs(mg.left - c3.left) > 2 || Math.abs(mg.right - c4.right) > 2) bad('B54', 'span', 'the label over columns 3–4 spans ' + Math.round(mg.left) + '–' + Math.round(mg.right) + ', the columns ' + Math.round(c3.left) + '–' + Math.round(c4.right));
+      // edit, remove, undo
+      const id = p.edges.find(n => n.text === '+ MG132').id;
+      await say('t', 2, 3, '+ MG132 10 µM', id);
+      if (p.edges.find(n => n.id === id).text !== '+ MG132 10 µM') bad('B54', 'edit', 'editing a label did not change it');
+      await say('t', 2, 3, '', id);
+      if (p.edges.length !== 5) bad('B54', 'remove', 'an empty label should remove it: ' + p.edges.length + ' left');
+      lbUndo(); await sleep(60);
+      if (plCur().edges.length !== 6) bad('B54', 'undo', 'undo did not bring the removed label back (' + plCur().edges.length + ')');
+      // a mouse press elsewhere keeps what was typed
+      await sel(0, 0, 2, 3); plEdgeOpen('t', 2, 3, null); document.getElementById('pl-note-in').value = 'kept'; document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); await sleep(40);
+      if (!plCur().edges.some(n => n.text === 'kept')) bad('B54', 'click away', 'clicking away lost what was typed');
+      // beyond the plate is not drawn, whatever format it is switched to
+      if (plateEdges({ format: '24', edges: [{ id: 'z', side: 't', a: 10, b: 11, text: 'x' }, { id: 'y', side: 'l', a: 3, b: 9, text: 'y' }] }).items.length !== 1) bad('B54', 'range', 'a label past the last column is still drawn, or one running past the last row is dropped');
+      // a phone has no spare column (the empty ones go): the grid must still be a track list, with the labels still beside the plate
+      const wide0 = window._plWide, pc = plCur(), kept = pc.edges; pc.edges = kept.filter(n => n.side === 't' || n.side === 'b'); window._plWide = () => false; plRender(); await sleep(40);
+      const gridEl = document.getElementById('pl-grid'), tracks = getComputedStyle(gridEl).gridTemplateColumns.trim().split(/\s+/).length, geoN = PL.gg.geo.Lc + 1 + 12 + PL.gg.geo.R;
+      window._plWide = wide0; pc.edges = kept; plRender(); await sleep(40);
+      if (tracks !== geoN) bad('B54', 'narrow', 'with no spare columns the plate grid has ' + tracks + ' column tracks, its layout says ' + geoN + ' (an invalid template is dropped and the old one stays)');
+      closePlateEditor(); await sleep(80);
+      const E = LB.data.experiments[e.id];   // an undo puts the record back as a new object
+      // the card on the experiment page
+      openExp(e.id); await sleep(120);
+      const card = document.querySelector('.exp-plates .blk-plate');
+      if (!card) { bad('B54', 'card', 'no plate card'); return; }
+      const cn = [...card.querySelectorAll('.pl-nt')], cw = [...card.querySelectorAll('.pp-w')].map(n => n.getBoundingClientRect());
+      if (cn.length !== (E.plate.edges || []).length) bad('B54', 'card', 'the card shows ' + cn.length + ' labels, the plate has ' + (E.plate.edges || []).length);
+      cn.forEach(n => { const r = n.getBoundingClientRect(); if (cw.some(w => hit(r, w))) bad('B54', 'card on wells', 'label "' + n.textContent.trim() + '" sits on a well of the card'); });
+      // the PNG grows to hold them, on both axes
+      const size = pl => { const o = HTMLCanvasElement.prototype.toBlob; let s = null; HTMLCanvasElement.prototype.toBlob = function (cb) { s = [this.width, this.height]; cb(null); }; try { plateToPNG(pl, 't.png'); } finally { HTMLCanvasElement.prototype.toBlob = o; } return s; };
+      const bare = JSON.parse(JSON.stringify(E.plate)); delete bare.edges;
+      const s0 = size(bare), s1 = size(E.plate);
+      if (!s0 || !s1 || s1[0] <= s0[0] || s1[1] <= s0[1]) bad('B54', 'png', 'the PNG does not grow for its labels: ' + JSON.stringify(s0) + ' → ' + JSON.stringify(s1));
+      // the print table is still a rectangle, and says every label
+      const div = document.createElement('div'); div.innerHTML = printPlateHtml(E.plate, 'Plate', {});
+      const tbl = div.querySelector('table.pk-g'); if (!tbl) { bad('B54', 'print', 'no print table'); return; }
+      const occ = []; [...tbl.rows].forEach((tr, r) => { occ[r] = occ[r] || []; let c = 0; [...tr.cells].forEach(td => { while (occ[r][c]) c++; for (let i = 0; i < td.rowSpan; i++) { occ[r + i] = occ[r + i] || []; for (let j = 0; j < td.colSpan; j++) occ[r + i][c + j] = 1; } c += td.colSpan; }); });
+      const rowsOcc = occ.slice(0, tbl.rows.length), widths = rowsOcc.map(o => o.length), holes = rowsOcc.filter(o => Array.from(o).some(v => !v)).length;
+      if (new Set(widths).size !== 1 || holes) bad('B54', 'print table', 'the print table is not a rectangle: row widths ' + [...new Set(widths)].join('/') + ', ' + holes + ' rows with holes');
+      const ptxt = tbl.textContent; E.plate.edges.forEach(n => { if (ptxt.indexOf(n.text.slice(0, 8)) < 0) bad('B54', 'print text', 'the print table lacks "' + n.text + '"'); });
+      // a layout copied to the next plate brings them, as copies
+      const t2 = newPlate('96'); _plCopyLayout(E.plate, t2);
+      if (!t2.edges || t2.edges.length !== E.plate.edges.length || t2.edges === E.plate.edges) bad('B54', 'copy', 'a copied layout does not carry its labels (or shares them with the source)');
     });
 
     // B28 — a date typed into Repeat is a real day or it is refused.
