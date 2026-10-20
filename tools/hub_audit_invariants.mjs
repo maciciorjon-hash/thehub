@@ -13,6 +13,8 @@
 //   H7  backup                     Export with the cloud unreadable still writes what this browser holds (named local); an automatic backup never downloads
 //   H8  Lab panel                  no inline hex / px sizes, every switch has a name, a failed save is said and put back
 //   H9  contrast                   the announcement bar's text is >= 4.5:1 in both themes
+//   H10 contrast, the whole shell  every text run the shell draws (landings, Settings tabs, search, toast, bar) is >= 4.5:1 in both themes
+//                                  (ink on a solid accent fill is held at 3:1, docs/UI.md)
 //
 //   node tools/hub_audit_invariants.mjs [--shell=PATH] [--only=H2]      exit 1 on any finding
 import { chromium } from 'playwright';
@@ -272,6 +274,46 @@ if (run('H9')) {
     });
     if (c.err || c.ratio < 4.5) bad('H9', `announcement bar ${theme}: ${c.err ? 'colour not read: ' + c.err : c.ratio.toFixed(2) + ':1'}`); else ok();
     await context.close();
+  }
+}
+
+if (run('H10')) {
+  const scan = () => {
+    const parse = s => { const m = s.match(/rgba?\(([^)]+)\)/); if (m) { const p = m[1].split(/[ ,\/]+/).map(parseFloat); return [p[0], p[1], p[2], p.length > 3 ? p[3] : 1]; }
+      const c = s.match(/color\(srgb ([^)]+)\)/); if (c) { const p = c[1].split(/[ \/]+/).map(parseFloat); return [p[0] * 255, p[1] * 255, p[2] * 255, p.length > 3 ? p[3] : 1]; } return null; };
+    const over = (f, b) => { const a = f[3]; return [f[0] * a + b[0] * (1 - a), f[1] * a + b[1] * (1 - a), f[2] * a + b[2] * (1 - a), 1]; };
+    const lum = ([r, g, b]) => { const f = v => { v /= 255; return v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); }; return .2126 * f(r) + .7152 * f(g) + .0722 * f(b); };
+    const accent = parse(getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() ? (() => { const d = document.createElement('i'); d.style.color = getComputedStyle(document.documentElement).getPropertyValue('--accent'); document.body.appendChild(d); const c = getComputedStyle(d).color; d.remove(); return c; })() : 'rgb(0,0,0)');
+    const bgOf = el => { const stack = []; for (let n = el; n && n.nodeType === 1; n = n.parentElement) { const c = parse(getComputedStyle(n).backgroundColor); if (c && c[3] > 0) { stack.push(c); if (c[3] >= 1) break; } }
+      let b = parse(getComputedStyle(document.body).backgroundColor); if (!b || b[3] < 1) b = [255, 255, 255, 1]; for (let i = stack.length - 1; i >= 0; i--) b = over(stack[i], b); return b; };
+    const out = new Map(); const tw = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT); let t;
+    while ((t = tw.nextNode())) {
+      if (!t.nodeValue.trim()) continue; const el = t.parentElement; if (!el || el.closest('script,style,svg,#hub-intro,[inert],.as-root,.ctx')) continue;
+      let hid = false; for (let n = el; n; n = n.parentElement) { const c = getComputedStyle(n); if (c.display === 'none' || +c.opacity === 0 || c.visibility === 'hidden') { hid = true; break; } } if (hid) continue;
+      const r = el.getBoundingClientRect(); if (r.width < 2 || r.height < 2) continue;
+      const cs = getComputedStyle(el), fg = parse(cs.color); if (!fg) continue; const bg = bgOf(el), f = over(fg, bg);
+      const a = lum(f), b = lum(bg), ratio = (Math.max(a, b) + .05) / (Math.min(a, b) + .05);
+      const px = parseFloat(cs.fontSize), large = px >= 24 || (px >= 18.66 && +cs.fontWeight >= 700);
+      const onAccent = accent && Math.abs(bg[0] - accent[0]) < 3 && Math.abs(bg[1] - accent[1]) < 3 && Math.abs(bg[2] - accent[2]) < 3;
+      const need = onAccent ? 3 : (large ? 3 : 4.5);
+      if (ratio < need) { const k = (el.id ? '#' + el.id : el.tagName.toLowerCase()) + '.' + String(el.className).split(' ').slice(0, 2).join('.'); if (!out.has(k)) out.set(k, k + ' ' + ratio.toFixed(2) + ':1 "' + t.nodeValue.trim().slice(0, 24) + '"'); }
+    }
+    return [...out.values()];
+  };
+  for (const theme of ['light', 'dark']) {
+    const { context, page } = await open({ theme });
+    const all = new Set(); const add = async () => { for (const x of await page.evaluate(scan)) all.add(x); };
+    for (const L of ['analysis', 'archive', 'cells', 'more']) { await page.evaluate(l => wsGo(l), L); await settle(page, 450); await add(); }
+    await page.evaluate(() => openSettings('appearance')); await settle(page, 300); await add();
+    for (const t of ['data', 'lab', 'about']) { await page.evaluate(x => setTab(x), t); await settle(page, 300); await add(); }
+    await page.evaluate(() => closeSettings());
+    await page.evaluate(() => window.hubSpot.open()); await page.keyboard.type('echo'); await settle(page, 300); await add(); await page.keyboard.press('Escape');
+    await page.evaluate(() => { applyAnnouncement({ enabled: true, text: 'Notice' }); hubToast('toast'); }); await settle(page, 300); await add();
+    if (all.size) bad('H10', theme + ': ' + [...all].join(' | ')); else ok();
+    await context.close();
+    const v = await open({ theme, mode: 'visitor' }); const vs = await v.page.evaluate(scan);
+    if (vs.length) bad('H10', 'visitor ' + theme + ': ' + vs.join(' | ')); else ok();
+    await v.context.close();
   }
 }
 
