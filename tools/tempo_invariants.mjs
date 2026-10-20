@@ -420,6 +420,54 @@ try {
     check('K15 every tab of Analysis settings: one column, a caption each, inside the drawer, Apply in view — 1440 / 390 / 320, light and dark', bad.length === 0, bad.slice(0, 6).join(' | '));
   }
 
+  /* ───── K16 a keyboard reaches everything a mouse does, and what it reaches is big enough and legible ───── */
+  {
+    const bad = [];
+    for (const theme of ['light', 'dark']) {
+      const c4 = await browser.newContext({ viewport: { width: 1440, height: 900 } }), pg = await c4.newPage();
+      await pg.route(/^https?:/, r => r.abort());
+      await pg.addInitScript(t => { try { localStorage.clear(); localStorage.setItem('hub_theme', t); } catch (e) {} }, theme);
+      await pg.goto('file://' + FILE); await pg.waitForFunction(() => typeof tpTab === 'function');
+      await pg.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
+      await pg.addStyleTag({ content: '*{transition:none!important}' });
+      await pg.evaluate(() => tpLoadExample()); await pg.waitForTimeout(1500);
+      const scan = () => pg.evaluate(() => {
+        const out = [], vis = e => { const r = e.getBoundingClientRect(), cs = getComputedStyle(e); return r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none' && !e.closest('[hidden],#tp-dlg:not(.open)'); };
+        const d = e => e.tagName.toLowerCase() + (e.className && e.className.baseVal === undefined ? '.' + String(e.className).split(' ')[0] : '') + ' "' + (e.textContent || '').trim().slice(0, 18) + '"';
+        // 1 clickable and not natively focusable: it must carry a tabindex (and a name)
+        document.querySelectorAll('[onclick]').forEach(e => { if (!vis(e) || e.closest('#tp-tip')) return; if (/^(BUTTON|A|INPUT|SELECT|TEXTAREA|SUMMARY|LABEL)$/i.test(e.tagName)) return; if (e.tabIndex < 0 && !e.querySelector('button,a,input,select')) out.push('mouse only: ' + d(e)); });
+        // 2 a button / chip a pointer lands on is at least 24 px each way (WCAG 2.2 target size)
+        document.querySelectorAll('button,[role=button],.wchip,.pchip .x,.pill[tabindex]').forEach(e => { if (!vis(e) || e.closest('.tab-ink,svg')) return; const r = e.getBoundingClientRect(); if (r.height < 23.5 || r.width < 23.5) out.push('small ' + Math.round(r.width) + 'x' + Math.round(r.height) + ': ' + d(e)); });
+        // 3 a pill's ink on its own tint: 4.5:1 in both themes
+        const lum = c => { const f = v => { v /= 255; return v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); }; return .2126 * f(c[0]) + .7152 * f(c[1]) + .0722 * f(c[2]); };
+        const rgb = s => { const m = s.match(/[\d.]+/g).map(Number); return m; };
+        const surf = rgb(getComputedStyle(document.querySelector('.card') || document.body).backgroundColor);
+        document.querySelectorAll('.pill').forEach(e => { if (!vis(e)) return; const cs = getComputedStyle(e), f = rgb(cs.color), b = rgb(cs.backgroundColor), a = b.length > 3 ? b[3] : 1, bg = [0, 1, 2].map(i => b[i] * a + surf[i] * (1 - a)); const L1 = lum(f), L2 = lum(bg), r = (Math.max(L1, L2) + .05) / (Math.min(L1, L2) + .05); if (r < 4.5) out.push('pill ' + r.toFixed(2) + ': ' + d(e)); });
+        return out;
+      });
+      for (const t of ['plate', 'curves', 'results', 'compare']) { await pg.evaluate(t => tpTab(t), t); await pg.waitForTimeout(450); [...new Set(await scan())].forEach(x => bad.push(theme + ' ' + t + ': ' + x)); }
+      if (theme === 'light') {
+        // the plate by keyboard: focus A1, Shift+ArrowRight ×2, Shift+ArrowDown selects a 2×3 block; Space adds one; Escape clears
+        await pg.evaluate(() => tpTab('plate')); await pg.waitForTimeout(300);
+        await pg.focus('#tp-pgrid .w[data-id="A1"]');
+        await pg.keyboard.press('Shift+ArrowRight'); await pg.keyboard.press('Shift+ArrowRight'); await pg.keyboard.press('Shift+ArrowDown');
+        const sel = await pg.evaluate(() => [...TP.wsel].sort().join());
+        check('K16 the plate by keyboard: Shift+arrows select a block of wells', sel === 'A1,A2,A3,B1,B2,B3', sel);
+        await pg.keyboard.press('ArrowRight'); const one = await pg.evaluate(() => [...TP.wsel].join() + '|' + document.activeElement.dataset.id);
+        check('K16 an arrow moves the focus and the selection together', one === 'B4|B4', one);
+        await pg.keyboard.press('Escape'); check('K16 Escape clears the selection', await pg.evaluate(() => TP.wsel.size === 0));
+        // a result row opens its compound on Enter; a column header sorts on Enter
+        await pg.evaluate(() => tpTab('results')); await pg.waitForTimeout(300);
+        const k0 = await pg.evaluate(() => TP.ui.sort.k); await pg.focus('#tp-restbl th[data-k="name"]'); await pg.keyboard.press('Enter');
+        check('K16 a column header sorts on Enter', await pg.evaluate(k => TP.ui.sort.k === 'name' && k !== 'name', k0));
+        await pg.focus('#tp-restbl tr.pick'); await pg.keyboard.press('Enter'); await pg.waitForTimeout(300);
+        check('K16 a result row opens its curves on Enter', await pg.evaluate(() => TP.ui.tab === 'curves'));
+      }
+      await c4.close();
+    }
+    check('K16 everything clickable is reachable by keyboard, every target is 24 px, every pill reads at 4.5:1 — every tab, both themes', bad.length === 0, bad.slice(0, 6).join(' | ') + (bad.length > 6 ? ' … +' + (bad.length - 6) : ''));
+  }
+
   /* ───── K14 an x tick that sits on the y axis does not land on the lowest y label ───── */
   {
     const hit = await ev(() => {
