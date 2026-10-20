@@ -130,7 +130,9 @@
 //   B8 tree shapes            A tree in the wrong shape still draws every screen. (LB-8)
 //   B9 restore                Restore never offers an export as a notebook backup. (LB-21)
 //   B10 mixes close           Every transfection/spike table's parts add up to its total, however
-//                            small the stocks make the DNA. (LB-23, LB-24)
+//                            small the stocks make the DNA. (LB-23, LB-24) With a competitor series: the
+//                            tubes make what the wells take plus what the next tube takes, every well
+//                            gets the same DNA, and switched off the block is the one without it.
 //   B11 imported replicate    An imported copy does not join the set it came from. (LB-9)
 //   B12 concentrations        _fmtConc → _parseConcNM round-trips; a series reads as one either
 //                            way. (LB-10, LB-28)
@@ -3200,6 +3202,37 @@ async function suite(opts) {
         const sp = Object.assign({}, CALC_KINDS.spike.defaults, { stockUM: st, nWells: 4 }), sr = tbl(CALC_KINDS.spike.compute(sp));
         if (sr.length === 3) { const need = num(sr[0][1]), stk = num(sr[1][1]), dil = num(sr[2][1]);
           if (Math.abs(stk + dil - need) > Math.max(0.05, need * 0.002)) bad('B10', 'spike stock ' + st, `${stk} + ${dil} ≠ ${need} µL`); }
+      }
+      // A competitor series (HA-DELE1 against a pair): the mixes still close, the tubes make what the
+      // wells take plus what the next tube takes, and every well receives the same DNA however
+      // little of the competitor is in it. Off, the block is exactly the one without it.
+      const tbls = h => { const d = document.createElement('div'); d.innerHTML = h; return [...d.querySelectorAll('table.cc-tbl')].map(t => [...t.querySelectorAll('tr')].slice(1)); };
+      const base = Object.assign({}, CALC_KINDS.nbtx.defaults, { donorNames: 'NL', acceptorNames: 'HT', acceptorNg: 50, ratios: '10', donorStock: 100, acceptorStock: 100, carrierStock: 100,
+        excess: 1.2, minVolUL: 0.25, nPair: 3, nPairCtrl: 6, nDonor: 3, nAcceptor: 3, nMock: 0, nUntr: 3 });
+      for (const [df, n, top, tubeUL] of [[3, 8, 300, 3], [2, 5, 200, 2], [10, 4, 400, 4]]) {
+        tick('B10');
+        const v = Object.assign({}, base, { compOn: true, compName: 'HA', compNg: top, compStock: 100, compDf: df, compN: n, compReps: 3, compTubeUL: tubeUL });
+        const cs = _nbtxConditions(v), ngT = _nbtxDnaNg(v), doses = cs.filter(c => c.key === 'comp');
+        const tag = `comp ${top} ng 1:${df} × ${n}`;
+        if (doses.length !== n) bad('B10', tag, `${doses.length} dose conditions, not ${n}`);
+        doses.forEach((c, i) => { if (Math.abs(c.c - +(top / Math.pow(df, i)).toPrecision(3)) > 1e-9 || c.tube !== i + 1) bad('B10', tag, `dose ${i + 1} is ${c.c} ng, tube ${c.tube}`); });
+        if (cs.slice(0, n).some(c => c.key !== 'comp') || cs.filter(c => c.key === 'pair').length !== 1) bad('B10', tag, 'the doses are not conditions 1..n ahead of the pair without competitor');
+        cs.filter(c => !c.noMix).forEach(c => { const got = (c.d || 0) + (c.a || 0) + (c.key === 'comp' ? top : c.carrier);
+          if (Math.abs(got - ngT) > 1e-6) bad('B10', tag + ' · ' + c.name, `a well of this condition receives ${got} ng, the others ${ngT}`); });
+        const [series, mix] = tbls(CALC_KINDS.nbtx.compute(v, {}));
+        if (!series || !mix || series.length !== n) { bad('B10', tag, 'no series table with one row per tube'); continue; }
+        const need = tubeUL * 3 * 1.2, cell = (tr, i) => { const b = tr.children[i].querySelector('b'); return b ? num(b.textContent) : 0; };
+        series.forEach((tr, i) => { const from = cell(tr, 2), car = cell(tr, 3), tot = cell(tr, 4);
+          if (Math.abs(from + car - tot) > Math.max(0.05, tot * 0.003)) bad('B10', tag + ' · tube ' + (i + 1), `${from} + ${car} ≠ ${tot} µL`);
+          const next = series[i + 1], took = next ? cell(next, 2) : 0;
+          if (Math.abs(tot - took - need) > Math.max(0.05, need * 0.01)) bad('B10', tag + ' · tube ' + (i + 1), `${tot} µL made, ${took} taken on, ${need} µL needed for its wells`); });
+        mix.forEach(tr => { const td = [...tr.children]; if (/no complex|short by/.test(tr.textContent)) return;
+          const m = td.length, tot = num(td[m - 1].querySelector('b').textContent), om = num(td[m - 2].textContent), fu = num(td[m - 3].textContent);
+          let dna = 0; td.slice(2, m - 3).forEach(c => { const x = /→\s*([\d.,]+)\s*µL/.exec(c.textContent); const b = c.querySelector('b'); dna += x ? num(x[1]) : (b ? num(b.textContent) : 0); });
+          if (Math.abs(dna + fu + om - tot) > Math.max(0.05, tot * 0.002)) bad('B10', tag + ' · ' + td[1].textContent.slice(0, 20), `${dna.toFixed(2)} + ${fu} + ${om} ≠ ${tot} µL`); });
+        // Off, it is the block without it.
+        const off = Object.assign({}, v, { compOn: false });
+        if (_nbtxConditions(off).some(c => c.key === 'comp') || CALC_KINDS.nbtx.compute(off, {}) !== CALC_KINDS.nbtx.compute(base, {}) || _nbtxDnaNg(off) !== _nbtxDnaNg(base)) bad('B10', tag, 'a competitor that is switched off still changes the block');
       }
     });
 

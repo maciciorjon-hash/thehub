@@ -4485,6 +4485,16 @@ var CALC_KINDS={
     {k:'donorStock',t:'txt',lbl:'Donor stock (ng/µL)',
      hint:'One number for all of them, or one per donor separated by commas, in the same order as the names — several donors are several preps.'},
     {k:'acceptorStock',t:'txt',lbl:'Acceptor stock (ng/µL)',hint:'One number, or one per acceptor, comma-separated.'},
+    {k:'compOn',t:'check',lbl:'Competitor plasmid, dose series',
+     hint:'A third plasmid added to the pair at a series of doses — HA-DELE1 competing a NanoBRET pair. Every pair well then receives the same total DNA (the pair plus the top dose), the series is made in carrier DNA in tubes, and each well takes the same volume of its tube.'},
+    {k:'compName',t:'txt',lbl:'Competitor plasmid',show:function(v){ return !!v.compOn; }},
+    {k:'compNg',t:'num',lbl:'Competitor top dose (ng/well)',show:function(v){ return !!v.compOn; }},
+    {k:'compStock',t:'num',lbl:'Competitor stock (ng/µL)',show:function(v){ return !!v.compOn; }},
+    {k:'compDf',t:'num',lbl:'Dilution factor (1:X per tube)',step:'0.5',show:function(v){ return !!v.compOn; }},
+    {k:'compN',t:'num',lbl:'# concentrations',show:function(v){ return !!v.compOn; }},
+    {k:'compReps',t:'num',lbl:'Wells per concentration',show:function(v){ return !!v.compOn; }},
+    {k:'compTubeUL',t:'num',lbl:'Taken from its tube per well (µL)',step:'0.5',show:function(v){ return !!v.compOn; },
+     hint:'Every well takes this volume of its tube, so the tube is 1/X of the one before and the same total DNA concentration throughout: the dose changes between wells and the DNA does not.'},
     {k:'carrierStock',t:'num',lbl:'Carrier DNA stock (ng/µL)'},
     {k:'minVolUL',t:'num',lbl:'Min. volume to pipette (µL)',step:'0.05',
      hint:'Anything smaller is reported as a dilution to make, not as a volume to take.'},
@@ -4784,6 +4794,17 @@ function nbtxParts(v){
     aStock:function(i){ return _csvNum(v.acceptorStock,i,+v.acceptorStock||0)||0; },
     donor2:(v.donor2Stock!=null?+v.donor2Stock:null)};
 }
+// A competitor plasmid at a series of doses: null unless the block asks for one. The tubes are
+// the series (1/X of the one before, in carrier DNA); each well takes tubeUL of its tube, so the
+// DNA a well receives from it is the same at every dose and the dose is what the tube holds.
+function _nbtxComp(v){
+  if(!v||!v.compOn) return null;
+  var top=+v.compNg||0, n=Math.max(0,Math.round(+v.compN||0)); if(!(top>0)||!(n>0)) return null;
+  var df=+v.compDf>1?+v.compDf:3, tubeUL=+v.compTubeUL>0?+v.compTubeUL:3, doses=[];
+  for(var i=0;i<n;i++) doses.push(+(top/Math.pow(df,i)).toPrecision(3));
+  return {name:String(v.compName||'').trim()||'Competitor', top:top, n:n, df:df, tubeUL:tubeUL, doses:doses,
+          reps:Math.max(1,Math.round(+v.compReps||3)), stock:+v.compStock||+v.donorStock||100};
+}
 function _nbtxConditions(v,counts){
   // acceptorNg replaced ngPerWell; an experiment created before that reads its old key, where
   // the number was the same 80 and meant the total.
@@ -4797,6 +4818,7 @@ function _nbtxConditions(v,counts){
   // are transfected like any pair well, so they are extra wells on one pair mix rather than a
   // condition of their own. Which ratio they were made at is a decision, not a derivation.
   var cR=+v.ctrlRatio||ratios[0], nCtrl=+v.nPairCtrl||0;
+  var comp=_nbtxComp(v);
   var out=[];
   ratios.forEach(function(R,ri){
     var dNg=R?(aNg/R):0, ng=dNg+aNg;
@@ -4804,6 +4826,15 @@ function _nbtxConditions(v,counts){
       var rt=(ratios.length>1)?('@'+R):'';
       accs.forEach(function(A,ai){
         var extra=(nCtrl&&R===cR)?nCtrl:0;
+        // The competitor series comes before the pair without it: one condition per dose, each a
+        // mix of its own, numbered like the tube it takes (1 is tube 1) so the number on a well
+        // is the number on the tube.
+        if(comp) comp.doses.forEach(function(dose,k){
+          out.push({key:'comp', tid:'p:'+D+'+'+A+'+'+comp.name+'#'+(k+1)+rt, slot:'comp:'+ri+':'+di+':'+ai+':'+k,
+                    name:'Tube '+(k+1)+' · '+comp.name+' '+nfmt(dose)+' ng'+((donors.length*accs.length*ratios.length>1)?(' · '+D+' + '+A+tag(R)):''),
+                    n:comp.reps, d:dNg, a:aNg, c:dose, tube:k+1, dName:D, aName:A,
+                    dStock:dStock(di), aStock:P.aStock(ai), ng:ng+comp.top});
+        });
         // tid is what the plate paints with: a condition and a well type are the same thing, and
         // two ratios of the same pair are two conditions, so the ratio belongs in the id.
         // slot is the condition's place in the design — which donor, acceptor and ratio by
@@ -4838,7 +4869,8 @@ function _nbtxConditions(v,counts){
   // the FuGENE follows too (_nbtxDnaNg).
   var ngT=_nbtxDnaNg(v);
   return out.map(function(c){
-    c.carrier=Math.max(0, ngT-(c.d||0)-(c.a||0));
+    // A competitor well takes its carrier inside the tube, so none is added to the mix.
+    c.carrier=(c.key==='comp')?0:Math.max(0, ngT-(c.d||0)-(c.a||0));
     c.pct = ngT>0 ? (c.carrier/ngT) : 0;
     // Below a tenth of the total the top-up is noise you would pipette badly; the acceptor-only
     // control is short by exactly the donor's 1.57 ng, and nobody adds that.
@@ -4855,6 +4887,9 @@ function _nbtxDnaNg(v){
   var aNg=+(v.acceptorNg!=null?v.acceptorNg:v.ngPerWell)||0;
   var Rs=nbtxParts(v).ratios;
   var ngMax=Math.max.apply(null, Rs.map(function(r){ return aNg+(r?aNg/r:0); }));
+  // With a competitor, every well is topped up to the pair plus the competitor's top dose: that
+  // is what the highest-dose well receives, and the 10% rule has nothing to say about it.
+  var cp=_nbtxComp(v); if(cp) return ngMax+cp.top;
   if(!(aNg>0)) return ngMax>0?ngMax:0;
   return ((ngMax-aNg)<=aNg*0.1+1e-9) ? aNg : ngMax;
 }
@@ -4899,6 +4934,32 @@ function _dnaVol(ng, stock, minUL){
 // Opti-MEM per well and added the DNA and the FuGENE on top, so the pair mix was 11.1 µL a well
 // and the mock 10.3 — a different volume from each tube, and none of them the 10 on the sheet.
 function _nbtxDispenseTxt(v){ return nfmt(+v.optimemPerWell||0)+' µL'; }
+// The competitor's tubes, as the same kind of table as the mixes: tube 1 is the stock (or the
+// stock cut with carrier DNA down to what each well takes), every later tube is 1/X of the one
+// before in carrier DNA, and each tube is made to what its wells take plus what the next one
+// takes from it.
+function _nbtxSeriesHtml(v,cs){
+  var comp=_nbtxComp(v); if(!comp) return '';
+  var ex=+v.excess||1, minUL=+v.minVolUL||0.25, cS=+v.carrierStock||0, N=comp.n, df=comp.df;
+  var need=[]; for(var k=1;k<=N;k++) need[k]=0;
+  cs.forEach(function(c){ if(c.key==='comp'&&need[c.tube]!=null) need[c.tube]+=comp.tubeUL*c.n*ex; });
+  var vol=[]; vol[N]=need[N]; for(var k2=N-1;k2>=1;k2--) vol[k2]=need[k2]+vol[k2+1]/df;
+  var c1=comp.top/comp.tubeUL, warn=[];
+  var rows='';
+  for(var t=1;t<=N;t++){
+    var conc=c1/Math.pow(df,t-1), src, car;
+    if(t===1){ var su=vol[1]*c1/comp.stock; src=_amt(su, esc(comp.name)+' stock'+(comp.stock===c1?', undiluted':'')); car=su<vol[1]-1e-9?_amt(vol[1]-su,'carrier DNA'):'<span class="cc-dim">—</span>';
+      if(comp.stock<c1-1e-9) warn.push('The stock ('+nfmt(comp.stock)+' ng/µL) is more dilute than tube 1 ('+nfmt(c1)+' ng/µL) — raise the stock, or take more per well.');
+    } else { var tk=vol[t]/df; src=_amt(tk,'of tube '+(t-1)); car=_amt(vol[t]-tk,'carrier DNA');
+      if(tk<minUL-1e-9) warn.push('Tube '+t+' takes '+nfmt(tk)+' µL from tube '+(t-1)+', under your smallest volume ('+nfmt(minUL)+' µL).'); }
+    rows+='<tr><td class="cc-no">'+t+'</td><td><b>Tube '+t+'</b><br><span class="cc-dim">'+nfmt(comp.doses[t-1])+' ng in '+nfmt(comp.tubeUL)+' µL · '+nfmt(+conc.toPrecision(3))+' ng/µL</span></td>'
+      +'<td>'+src+'</td><td>'+car+'</td><td><b class="cc-amt">'+nfmt(vol[t])+' µL</b><br><span class="cc-dim">'+nfmt(need[t])+' µL for its wells'+(t<N?' + '+nfmt(vol[t+1]/df)+' µL on':'')+'</span></td></tr>';
+  }
+  if(cS>0 && Math.abs(cS-c1)>1e-9) warn.push('The carrier DNA ('+nfmt(cS)+' ng/µL) is not the concentration of tube 1 ('+nfmt(c1)+' ng/µL), so the total DNA in a well changes with the dose.');
+  return '<b>'+esc(comp.name)+' series — '+nfmt(N)+' tubes, 1:'+nfmt(df)+'</b>'
+    +'<div class="cc-tblwrap"><table class="cc-tbl cc-mix"><tr><th class="cc-no">#</th><th>Tube</th><th>From</th><th>Carrier DNA</th><th>Total</th></tr>'+rows+'</table></div>'
+    +(warn.length?('<div class="cc-warn">'+warn.join('<br>')+'</div>'):'');
+}
 function nbtxRecipe(v,counts,nos){
   var cs=_nbtxConditions(v,counts);
   // The row numbers are the plate's where the plate has them, so the number on a well and the
@@ -4919,7 +4980,8 @@ function nbtxRecipe(v,counts,nos){
   // One column per plasmid, the way FuGENE and Opti-MEM already have one. Three plasmids stacked
   // as prose inside a single "DNA" cell is the version you cannot read down: what you actually
   // do at the bench is take the same tube along a column.
-  var cols=P0.donors.concat(P0.accs).concat(['Carrier']);
+  var comp=_nbtxComp(v);
+  var cols=P0.donors.concat(P0.accs).concat(comp?[comp.name]:[]).concat(['Carrier']);
   var over=[];
   var rows=cs.map(function(c,ci){
     var W=c.n*ex;
@@ -4933,11 +4995,15 @@ function nbtxRecipe(v,counts,nos){
     // the undiluted 0.141, so the tube came to 101.9 µL instead of 88 and every 10 µL well got
     // 86% of the DNA and the FuGENE the table promised.
     var _in=function(V){ return V?(V.dil?V.ul*V.dil:V.ul):0; };
-    var om=tot-fu-_in(dV)-_in(aV)-_in(cV);
+    // A competitor well takes the same volume of its tube whatever the dose is.
+    var tubeUL=(c.key==='comp'&&comp)?comp.tubeUL*W:0;
+    var om=tot-fu-_in(dV)-_in(aV)-_in(cV)-tubeUL;
     if(om<0) over.push({name:c.name, by:-om, W:W});
     var nm=String(c.name).replace(/\s*\(NL 1:[^)]*\)\s*$/,'');
     var dNm=nm.split(' only')[0].split(' + ')[0], aNm=(nm.indexOf(' + ')>=0?nm.split(' + ')[1]:nm.split(' only')[0]);
+    if(c.key==='comp'){ dNm=c.dName; aNm=c.aName; }
     function cell(name){
+      if(comp && name===comp.name) return c.key==='comp'?_amt(tubeUL,'from tube '+c.tube):'<span class="cc-dim">—</span>';
       if(name==='Carrier'){
         if(c.needsCarrier) return cV&&cV.dil?_amt(cV.ul*cV.dil,nfmt(c.carrier*W)+' ng',cV.dil,cV.ul):_amt(cV?cV.ul:0,nfmt(c.carrier*W)+' ng');
         // A well short of the target that gets nothing added is a decision, not an oversight.
@@ -4964,12 +5030,15 @@ function nbtxRecipe(v,counts,nos){
   var ngMax=_nbtxDnaNg(v);
   var donorTxt=Rs.map(function(r){ return '1:'+nfmt(r)+' → '+nfmt(r?aNg/r:0)+' ng ('+nfmt(aNg+(r?aNg/r:0))+' ng/well)'; }).join(' &middot; ');
   var overTxt=over.length?('<div class="cc-warn">'+over.map(function(o){ return '<b>'+esc(o.name)+'</b>: the plasmids and the FuGENE alone come to '+nfmt(o.by)+' µL more than '+nfmt(+v.optimemPerWell||0)+' µL × '+nfmt(o.W)+' — no Opti-MEM fits. Use a more concentrated stock, or dispense more per well.'; }).join('<br>')+'</div>'):'';
-  return '<b>Reverse transfection — one mix per condition</b>'
+  return _nbtxSeriesHtml(v,cs)+'<b>Reverse transfection — one mix per condition</b>'
     +'<div class="cc-tblwrap"><table class="cc-tbl cc-mix">'+head+rows+'</table></div>'+overTxt
     +'<div class="cc-note">'+nfmt(aNg)+' ng '+esc(_P.accs.join(' or '))+' per well, with '
     +esc(names.join(' and '))+' at '+donorTxt+'. '
-    +'Every condition is topped up with carrier to <b>'+nfmt(ngMax)+' ng</b> — the acceptor\'s own amount when the donor adds 10% or less to it, '
-    +'otherwise the largest pair total — so every well on the plate receives the same amount of DNA; but only where the shortfall is more than 10% of it. '
+    +(comp?(esc(comp.name)+' is added to the pair from <b>'+nfmt(comp.top)+' ng</b> per well in 1:'+nfmt(comp.df)+' steps ('+nfmt(comp.n)+' concentrations, '
+        +nfmt(comp.reps)+' wells each), '+nfmt(comp.tubeUL)+' µL from its tube into each well. '
+      +'Every condition is topped up with carrier to <b>'+nfmt(ngMax)+' ng</b> — the pair plus the top dose — so every well on the plate receives the same amount of DNA. ')
+     :('Every condition is topped up with carrier to <b>'+nfmt(ngMax)+' ng</b> — the acceptor\'s own amount when the donor adds 10% or less to it, '
+      +'otherwise the largest pair total — so every well on the plate receives the same amount of DNA; but only where the shortfall is more than 10% of it. '))
     +(+v.fugeneRatio>0?('FuGENE HD at <b>'+nfmt(v.fugeneRatio)+':1</b> (µL:µg) on the <b>'+nfmt(_nbtxDnaNg(v))+' ng</b> a well receives → <b>'
       +nfmt(_nbtxFugeneUL(v))+' µL/well</b>. '):('FuGENE HD <b>'+nfmt(_nbtxFugeneUL(v))+' µL/well</b>. '))
     +(+v.nPairCtrl>0?('The '+nfmt(v.nPairCtrl)+' no-ligand / no-substrate control wells per donor are transfected like any pair well and are '
@@ -5361,8 +5430,16 @@ function calcUpd(id,key){ var b=_blkById(id); if(!b||!b.calc) return; var wrap=d
     var e0=_curExp(); if(e0) e0.updated=Date.now();
     save(); renderEditor(); return;
   }
+  var _compWas=!!b.calc.inputs.compOn;
   wrap.querySelectorAll('[data-k]').forEach(function(n){ var k=n.getAttribute('data-k'); var val=n.value;
     b.calc.inputs[k]=(n.type==='checkbox')?n.checked:((n.type==='number')?(val===''?'':parseFloat(val)):val); });
+  // The competitor's boxes are drawn only while it is on, so switching it on or off redraws the
+  // panel; the first time, they start at the values this assay uses rather than empty.
+  if(b.calc.kind==='nbtx' && key==='compOn' && _compWas!==!!b.calc.inputs.compOn){
+    var ci0=b.calc.inputs; if(ci0.compOn){ if(!ci0.compName) ci0.compName='Competitor plasmid'; if(ci0.compNg==null||ci0.compNg==='') ci0.compNg=300;
+      if(ci0.compStock==null||ci0.compStock==='') ci0.compStock=100; if(ci0.compDf==null||ci0.compDf==='') ci0.compDf=3; if(ci0.compN==null||ci0.compN==='') ci0.compN=8;
+      if(ci0.compReps==null||ci0.compReps==='') ci0.compReps=3; if(ci0.compTubeUL==null||ci0.compTubeUL==='') ci0.compTubeUL=3; }
+    var e1=_curExp(); if(e1) e1.updated=Date.now(); save(); renderEditor(); return; }
   // Typing into a derived field claims it. The whole panel is read back on every keystroke, so
   // without knowing *which* box moved every derived value would be claimed the moment you edited
   // anything else in the same calculator.
@@ -5787,7 +5864,9 @@ function nbPlateBlocks(su,I){
   });
   Object.keys(byR).forEach(function(k){
     var list=byR[k], out=[];
-    list.filter(function(c){ return c.key!=='pair'; }).forEach(function(c){ if(c.n>0) out.push({n:c.n, t:c.tid, label:c.name}); });
+    list.filter(function(c){ return c.key!=='pair'&&c.key!=='comp'; }).forEach(function(c){ if(c.n>0) out.push({n:c.n, t:c.tid, label:c.name}); });
+    // The competitor's doses, one block each, in tube order and before the pair without it.
+    list.filter(function(c){ return c.key==='comp'; }).forEach(function(c){ if(c.n>0) out.push({n:c.n, t:c.tid, label:c.name}); });
     list.filter(function(c){ return c.key==='pair'; }).forEach(function(c){
       var n=c.n-((nCtrl&&(!multiR||ratioOf(c.tid)===cR))?nCtrl:0);   // its control wells are drawn above
       if(n>0) out.push({n:n, t:c.tid, label:c.name});
@@ -12933,6 +13012,9 @@ var CALC_PUB={
       +' at '+(Rs.length>1?'donor:acceptor mass ratios of ':'a mass ratio of ')+ratioTxt
       +', complexed with FuGENE HD'+(+v.fugeneRatio>0?(' at a <b>'+nfmt(v.fugeneRatio)+':1</b> ratio (µL:µg DNA; '+nfmt(_nbtxFugeneUL(v))+' µL per well)'):(' (<b>'+nfmt(_nbtxFugeneUL(v))+' µL</b> per well)'))
       +' in Opti-MEM to <b>'+nfmt(v.optimemPerWell)+' µL</b> per well and dispensed into the plate before the cells.';
+    var cp=_nbtxComp(v);
+    if(cp) s+=' '+esc(cp.name)+' was added to the pair as a competitor from <b>'+nfmt(cp.top)+' ng</b> per well in <b>1:'+nfmt(cp.df)+'</b> steps over <b>'
+      +nfmt(cp.n)+' concentrations</b> ('+nfmt(cp.reps)+' wells each), diluted in carrier DNA so that every well received the same amount of DNA.';
     var ctrl=[];
     if(+v.nDonor>0) ctrl.push((d2?'each donor':dn)+' alone');
     if(P.accs.length>1) an=esc(_pubList(P.accs));
