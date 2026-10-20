@@ -460,6 +460,8 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 /* A number quoted from the step's calculator: marked so it reads as computed, not typed. */
 .cv{font-variant-numeric:tabular-nums;font-weight:600;color:var(--text);background:var(--accent-dim);border-radius:3px;padding:0 3px;white-space:nowrap;}
 .cv.cv-none{color:var(--text3);background:none;}
+/* a calculator value that is a sentence (the series, the parts, the untransfected note) wraps; a number stays on one line. Keyed on the token, never a class on the span: the unfill regexes match class="cv" exactly. */
+.cv[data-c=seriesText],.cv[data-c=partsText],.cv[data-c=untrNote]{white-space:normal;}
 .cv.cv-e{display:none;}
 .rt li{margin:2px 0;}
 .rt h1{font-size:var(--fs-7);font-weight:700;margin:10px 0 6px;}
@@ -1069,6 +1071,7 @@ html.lb-loading body > *{visibility:hidden;}
 #spot-back{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:300;display:none;align-items:flex-start;justify-content:center;padding-top:14vh;}
 #spot-back.open{display:flex;}
 #spot{width:100%;max-width:560px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-3);box-shadow:var(--shadow-lg);overflow:hidden;}
+#spot:focus-within{border-color:var(--accent);}
 #spot input{width:100%;border:none;background:none;padding:16px 18px;font-size:var(--fs-6);color:var(--text);outline:none;font-family:var(--sans);border-bottom:1px solid var(--border);}
 #spot-res{max-height:56vh;max-height:56dvh;overflow-y:auto;padding:6px;}
 .spot-item{display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:var(--r-2);cursor:pointer;color:var(--text2);}
@@ -1216,6 +1219,7 @@ html.lb-loading body > *{visibility:hidden;}
 @container (min-width:1200px){ .xp-view{--pn:4;} }
 .xp-rail{overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;scroll-behavior:smooth;overscroll-behavior-x:contain;scrollbar-width:none;outline:none;}
 .xp-rail::-webkit-scrollbar{display:none;}
+.xp-rail:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;border-radius:var(--r-1);}
 .xp-track{display:flex;gap:var(--xg);align-items:flex-start;position:relative;}
 .xp-track>.blk-plate{--vn:min(var(--pn),var(--n,1));flex:0 0 calc((100% - (var(--vn) - 1) * var(--xg)) / var(--vn));min-width:0;max-width:var(--pmax,100%);margin:0;scroll-snap-align:start;}
 .exp-plates.over .xp-track>.blk-plate{max-width:none;}
@@ -3178,7 +3182,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
     <div class="modal-t">New experiment<span class="nm-where" id="nm-where"></span></div>
     <div class="nm-body">
     <div class="nm-grid">
-      <div class="mrow"><label>Preset / type</label><select id="nm-type" onchange="nmUpdateCode();nmResetSetup();nmProtos();nmPreview()"></select></div>
+      <div class="mrow"><label for="nm-type">Preset / type</label><select id="nm-type" onchange="nmUpdateCode();nmResetSetup();nmProtos();nmPreview()"></select></div>
       <div class="mrow"><label for="nm-date">Start date</label><input id="nm-date" type="date" oninput="nmUpdateCode();nmPreview()"></div>
     </div>
     <div id="nm-setup" class="nm-setup"></div>
@@ -10320,6 +10324,7 @@ function _flushLocal(){ if(!_lsDirty) return;
   if(_localLoading) return;            // stays dirty; flushed the moment the notebook is known
   _lsDirty=false; clearTimeout(_lsT); _lsT=null;
   var json; try{ json=JSON.stringify(LB.data); }catch(e){ _storageFailed(e,'tree'); return; }
+  _xwBaseJson=json;                     // what the other window will have to be merged against (_xwMergeRoots)
   if(!_treeOK){ _lsWriteTree(json); return; }
   var upd=LB.data.updated||0;
   _treeLast=_treePut(json,upd).then(function(r){
@@ -10357,7 +10362,7 @@ function _adoptLocalTree(d){
 // nothing unsaved takes the newer notebook at once and redraws where it was; one that is typing or
 // has a save pending merges the newer notebook into its own, record by record, newest wins, so
 // neither side's work is lost and the editor under the caret is never replaced.
-var _xwId=Math.random().toString(36).slice(2), _xwCh=null, _xwBusy=false, _xwLate=false;
+var _xwId=Math.random().toString(36).slice(2), _xwCh=null, _xwBusy=false, _xwLate=false, _xwBaseJson=null;
 try{ if(window.BroadcastChannel){ _xwCh=new BroadcastChannel('lb-tree');
   _xwCh.onmessage=function(m){ var d=m&&m.data; if(d&&d.t==='saved'&&d.from!==_xwId) _xwSaved(d.at); }; } }catch(e){ _xwCh=null; }
 function _xwNote(at){ try{ if(_xwCh) _xwCh.postMessage({t:'saved',from:_xwId,at:at}); }catch(e){} }
@@ -10390,7 +10395,32 @@ function _xwMergeIn(t){
     else { var hs={}; (have[q.id].sections||[]).forEach(function(x){ hs[x.id]=1; });
       (q.sections||[]).forEach(function(x){ if(!hs[x.id]) (have[q.id].sections||(have[q.id].sections=[])).push(x); }); }
   });
+  _xwMergeRoots(t);
   m.updated=Math.max(m.updated||0,t.updated||0)+1;
+}
+// The top-level lists and tables that are neither a record map nor the planner: designs (presets), tags, antibodies,
+// modules, protocol days, the migration flags. The merge above left them alone, so a design saved in one window while
+// the other was typing was gone from both after the second one wrote (the idle window then adopted the merged tree).
+// Each is compared with what this window last wrote or loaded (_xwBaseJson): untouched here → theirs; untouched
+// there → ours; changed on both sides → the union, ours winning a key both have. Without a base it is the union.
+function _xwMergeRoots(t){
+  var m=LB.data, base=null; try{ base=_xwBaseJson?JSON.parse(_xwBaseJson):null; }catch(e){ base=null; }
+  Object.keys(t).forEach(function(k){
+    if(k==='updated'||k==='planner'||k==='projects'||_CLOUD_MAPS.indexOf(k)>=0) return;
+    var theirs=t[k], mine=m[k];
+    if(mine===undefined){ m[k]=theirs; return; }
+    var sm=_cjson(mine), st=_cjson(theirs); if(sm===st) return;
+    var sb=base&&base[k]!==undefined?_cjson(base[k]):undefined;
+    if(sb!==undefined&&st===sb) return;
+    if(sb!==undefined&&sm===sb){ m[k]=theirs; return; }
+    var idOf=function(v){ return _cjson(v&&typeof v==='object'&&v.id!=null?v.id:v); };
+    if(Array.isArray(mine)&&Array.isArray(theirs)){
+      var have={}; mine.forEach(function(v){ have[idOf(v)]=1; });
+      theirs.forEach(function(v){ var q=idOf(v); if(!have[q]){ have[q]=1; mine.push(v); } });
+    } else if(mine&&theirs&&typeof mine==='object'&&typeof theirs==='object'&&!Array.isArray(mine)&&!Array.isArray(theirs)){
+      Object.keys(theirs).forEach(function(q){ if(mine[q]===undefined) mine[q]=theirs[q]; });
+    } else if(theirs===true) m[k]=true;
+  });
 }
 function _xwRedraw(){
   if(SEL.node&&SEL.node.kind==='expsec'&&SEL.page&&!LB.data.experiments[SEL.page]) SEL.page=null;
@@ -10408,7 +10438,7 @@ function _xwSaved(at){
     if(_lsDirty||_saveP||_xwEditing()){
       _xwMergeIn(t); _lsDirty=true; _flushLocal();
       if(_xwEditing()) _xwLate=true; else _xwRedraw();
-    } else { LB.data=t; _xwRedraw(); }
+    } else { LB.data=t; _xwBaseJson=rec.json; _xwRedraw(); }
   }).catch(function(){}).then(function(){ _xwBusy=false; });
 }
 // What the merge could not draw under a caret is drawn when the caret leaves.
@@ -10435,6 +10465,7 @@ function _localLoad(){
     var d=null;
     if(rec&&typeof rec.json==='string'){ try{ d=JSON.parse(rec.json); }catch(e){ d=null; } }
     if(d&&(typeof d!=='object'||Array.isArray(d))) d=null;
+    if(d) _xwBaseJson=rec.json;
     if(d && (d.updated||0)>t0){
       _adoptLocalTree(d); _lsTree=false;
       // What localStorage held is older than this: nothing to keep it for.
@@ -23061,9 +23092,17 @@ function restoreFromBackupFile(file){
       ? ('It contains '+nBlob+' attachment'+(nBlob!==1?'s':'')+', which will be restored too.')
       : 'This is an older backup with no attachment data — images and files will come back as empty placeholders.')
       +(nVer?(' It also carries '+nVer+' saved version'+(nVer!==1?'s':'')+', which are added to this machine\u2019s history.'):'');
-    lbConfirm('Restore this backup? This REPLACES your entire current notebook — anything added since this backup was made will be lost unless it\'s in another backup.\n\n'
+    lbConfirm('Restore this backup? This REPLACES your entire current notebook. A copy of the notebook as it is now is kept first (Recover → Snapshots → Browse), so a wrong file can be undone.\n\n'
       +'The file holds '+nExp+' experiment'+(nExp===1?'':'s')+' in '+nProj+' project'+(nProj===1?'':'s')+(nDays?(' and '+nDays+' Journal day'+(nDays===1?'':'s')):'')+'. '+warn,{danger:true,title:'Restore from backup',ok:'Replace everything'}).then(function(ok){
       if(!ok) return;
+      // The notebook this replaces is kept before anything is swapped. A restore used to leave
+      // nothing of today's work but the morning's snapshot, and a restore of an older file lost
+      // every experiment made since — with no way back. If the copy cannot be made, say so and ask again.
+      return _keepBeforeRestore().then(function(kept){
+        if(kept) return true;
+        return lbConfirm('A copy of the current notebook could not be kept (this browser’s storage may be full). Restoring now cannot be undone. Back up first with Recover → Backup file → Back up now, or continue anyway?',{danger:true,title:'No safety copy',ok:'Restore anyway'}); })
+      .then(function(go){
+      if(!go) return;
       // Write the attachment bytes back into IndexedDB before swapping the tree, so the
       // reload finds them already in place.
       var ids=blobs?Object.keys(blobs):[];
@@ -23077,8 +23116,28 @@ function restoreFromBackupFile(file){
         toast('Restored'+(ids.length?(' with '+ids.length+' attachment'+(ids.length!==1?'s':'')):'')+' — reloading…');
         _written.then(function(){ setTimeout(function(){ location.reload(); },300); });
       });
+      });
     });
   };
+}
+// The notebook a restore is about to replace, kept in the same IndexedDB as the daily snapshots under its own
+// key (a snapshot is never rotated out by it, and it is never rotated out by a snapshot). The last three are
+// kept; Recover → Snapshots → Browse lists them first.
+var RESTORE_KEEP=3;
+function _keepBeforeRestore(){
+  return _buildBackupPayload().then(function(r){
+    return _idb().then(function(db){ return new Promise(function(res){
+      try{
+        var key='prerestore:'+Date.now(), tx=db.transaction('h','readwrite'), os=tx.objectStore('h');
+        os.put({at:Date.now(),date:todayStr(),json:JSON.stringify(r.payload)},key);
+        var all=os.getAllKeys();
+        all.onsuccess=function(){
+          var keys=(all.result||[]).filter(function(k){ return String(k).indexOf('prerestore:')===0; }).sort();
+          keys.slice(0,Math.max(0,keys.length-RESTORE_KEEP)).forEach(function(k){ try{ os.delete(k); }catch(e){} }); };
+        tx.oncomplete=function(){ res(true); }; tx.onerror=function(){ res(false); }; tx.onabort=function(){ res(false); };
+      }catch(e){ res(false); }
+    }); });
+  }).catch(function(){ return false; });
 }
 // Daily safety net.
 //
@@ -23474,14 +23533,17 @@ function restoreFromSnapshot(){
     if(!os.getAllKeys){ toast('No snapshots available in this browser.'); return; }
     var rq=os.getAllKeys();
     rq.onsuccess=function(){
-      var keys=(rq.result||[]).filter(function(k){ return String(k).indexOf('snapshot:')===0; }).sort().reverse();
-      if(!keys.length){ toast('No local snapshots yet.'); return; }
-      var items=keys.map(function(k){ return {id:k,label:fmtDate(String(k).slice(9)),sub:'local snapshot',ic:'↻',c:'#5e87c5'}; });
+      var all=rq.result||[];
+      var keys=all.filter(function(k){ return String(k).indexOf('snapshot:')===0; }).sort().reverse();
+      var pre=all.filter(function(k){ return String(k).indexOf('prerestore:')===0; }).sort().reverse();
+      if(!keys.length&&!pre.length){ toast('No local snapshots yet.'); return; }
+      var items=pre.map(function(k){ var t=new Date(+String(k).slice(11)); return {id:k,label:'Before the restore of '+fmtDate(t.getFullYear()+'-'+('0'+(t.getMonth()+1)).slice(-2)+'-'+('0'+t.getDate()).slice(-2))+' '+(''+t.getHours()).padStart(2,'0')+':'+(''+t.getMinutes()).padStart(2,'0'),sub:'the notebook a restore replaced',ic:'↻',c:'#5e87c5'}; })
+        .concat(keys.map(function(k){ return {id:k,label:fmtDate(String(k).slice(9)),sub:'local snapshot',ic:'↻',c:'#5e87c5'}; }));
       lbPicker('Restore a local snapshot',items,function(it){
         db.transaction('h','readonly').objectStore('h').get(it.id).onsuccess=function(ev){
           var rec=ev.target.result; if(!rec||!rec.json){ toast('That snapshot could not be read.'); return; }
           var blob=new Blob([rec.json],{type:'application/json'});
-          restoreFromBackupFile(new File([blob],'snapshot-'+String(it.id).slice(9)+'.json'));
+          restoreFromBackupFile(new File([blob],'snapshot-'+String(it.id).replace(/^[a-z]+:/,'')+'.json'));
         };
       });
     };
@@ -23552,7 +23614,7 @@ function openHistory(coll,id){ RECOVER.path=coll+'/'+id; openRecover('versions')
 function _recoverBody(){
   if(RECOVER.tab==='versions') return '<div class="rc-note">Reading history…</div>';
   if(RECOVER.tab==='snapshots')
-    return '<div class="rc-note">A rolling snapshot of the whole notebook — attachment bytes included — is kept in this browser for the last seven days. Restoring one <b>replaces everything</b>; it is the answer to “yesterday was better”, not to “I deleted one thing”.</div>'
+    return '<div class="rc-note">A rolling snapshot of the whole notebook — attachment bytes included — is kept in this browser for the last seven days, and so is the notebook each restore replaced (the last three). Restoring one <b>replaces everything</b>; it is the answer to “yesterday was better”, not to “I deleted one thing”.</div>'
       +'<div class="rc-act"><button class="btn" onclick="_lbDlgClose();restoreFromSnapshot()">Browse snapshots…</button>'
       +'<button class="btn ghost" onclick="_lbDlgClose();restoreProjectsFromSnapshot()" title="Put the project list from a snapshot back, by id, without touching experiments, pages or notes">Projects only…</button></div>';
   if(RECOVER.tab==='file'){
