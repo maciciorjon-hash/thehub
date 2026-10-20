@@ -73,6 +73,8 @@
 //                           a label, a row; in the export only with labels; kept by a design; hidden with a chain; follows the model.
 //   RB43 the graphics can be taken away  A lost WebGL context (a driver reset, a waking laptop) is asked back and the scene rebuilt from the structure and the design:
 //                           colours, labels and the camera kept, the pointer working, a second loss recovered; if the browser never gives it back a new canvas is made.
+//   RB44 keyboard and landmarks  One h1 and one main landmark; on every tab each scrolling region is reachable by keyboard, nothing interactive sits inside an image or a button,
+//                           no live control is drawn faded; the sequence works without a pointer (caret, Shift, Space, Home, Ctrl+A, Escape, Down a chain, Enter).
 //
 // 3Dmol comes from its CDN (pinned); every other network call is stubbed. If the CDN is unreachable the
 // checks that need the viewer are reported as skipped, not passed.
@@ -2785,7 +2787,74 @@ async function rb43() {
   }
 }
 
-const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20], ['RB21', rb21], ['RB22', rb22], ['RB23', rb23], ['RB24', rb24], ['RB25', rb25], ['RB26', rb26], ['RB27', rb27], ['RB28', rb28], ['RB29', rb29], ['RB30', rb30], ['RB31', rb31], ['RB32', rb32], ['RB33', rb33], ['RB34', rb34], ['RB35', rb35], ['RB36', rb36], ['RB37', rb37], ['RB38', rb38], ['RB39', rb39], ['RB40', rb40], ['RB41', rb41], ['RB42', rb42], ['RB43', rb43]];
+// ── RB44 the canvas app has a keyboard and a structure for a reader ──────────────────────────
+async function rb44() {
+  const { ctx, pg, E, go } = await open({ tag: 'RB44 ' });
+  if (!(await has3d(pg))) { skipped.push('RB44 (3Dmol could not load from its CDN)'); await ctx.close(); return; }
+  await go('7SEQ'); await sleep(300);
+  // landmarks: one h1, one main, and nothing stands outside a landmark
+  const lm = await E(() => ({ h1: document.querySelectorAll('h1').length, h1t: (document.querySelector('h1') || {}).textContent, main: document.querySelectorAll('main,[role=main]').length, outside: [...document.querySelectorAll('.top-bar,#seqBar,#viewport')].filter(e => !e.closest('header,main,[role=main],aside,nav,[role=dialog]')).map(e => e.id || e.className) }));
+  check('RB44', 'the page has one h1 (the app) and one main landmark that holds the toolbar, the sequence and the viewer', lm.h1 === 1 && lm.h1t === 'Ribbon' && lm.main === 1 && lm.outside.length === 0, lm);
+  // the generic walk, on every tab: a scroller can be reached, nothing interactive is inside something that is not, no live control is faded
+  for (const [st, tab] of [['8POC', 'open'], ['8POC', 'models'], ['8POC', 'colour'], ['8POC', 'analyse'], ['9DGM', 'analyse'], ['8POC', 'figure'], ['8POC', 'designs']]) {
+    await go(st); await sleep(200);
+    await E(t => rbTab(t), tab); await sleep(250);
+    if (tab === 'analyse') await E(() => { try { if (typeof siteSet === 'function' && ligands.length) siteSet(ligands[0].key); } catch (e) {} }); await sleep(400);
+    const w = await E(() => {
+      const vis = e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(e).visibility !== 'hidden'; };
+      const FOC = 'a[href],button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[tabindex]:not([tabindex="-1"]),summary';
+      const unreachable = [...document.querySelectorAll('*')].filter(e => { if (!vis(e) || e === document.body || e === document.documentElement) return false; const cs = getComputedStyle(e); if (!/(auto|scroll)/.test(cs.overflowY + cs.overflowX)) return false; if (!(e.scrollHeight > e.clientHeight + 1 || e.scrollWidth > e.clientWidth + 1)) return false; return !(e.matches(FOC) || e.querySelector(FOC)); }).map(e => e.id || e.className);
+      const nested = [...document.querySelectorAll('[role=img],[role=button],[role=link],button,a[href]')].filter(e => vis(e) && e.querySelector('[tabindex]:not([tabindex="-1"]),button,a[href],input,select')).map(e => (e.tagName + '#' + e.id + '.' + (e.getAttribute('class') || '')).slice(0, 50));
+      const svgImg = [...document.querySelectorAll('svg[role=img]')].filter(e => vis(e) && e.querySelector('[tabindex]')).map(e => e.getAttribute('aria-label'));
+      const faded = [...document.querySelectorAll('button:not(:disabled),[role=button]:not([aria-disabled=true])')].filter(e => { if (!vis(e)) return false; let o = 1; for (let n = e; n && n !== document.body; n = n.parentElement) o *= +getComputedStyle(n).opacity; return o > 0.01 && o < 0.7; }).map(e => (e.id || e.className || e.textContent).toString().slice(0, 40));
+      return { unreachable, nested: nested.concat(svgImg), faded };
+    });
+    check('RB44', `${st} ${tab}: every scrolling region can be reached by keyboard`, w.unreachable.length === 0, w.unreachable);
+    check('RB44', `${st} ${tab}: nothing interactive sits inside an image or a button`, w.nested.length === 0, w.nested);
+    check('RB44', `${st} ${tab}: no live control is drawn faded (state is a border and a tint, never half opacity)`, w.faded.length === 0, w.faded);
+  }
+  // the sequence from the keyboard, against what the structure says
+  await go('7SEQ'); await sleep(300);
+  await E(() => { selClear(); if (!SEQ.on) seqToggle(true); SEQ.show = 'A'; seqRender(); });
+  await pg.focus('#sqScroll');
+  const info = () => E(() => ({ sel: Object.keys(_sel).sort().join(','), n: _selN, car: _seqCar, carCls: !!document.querySelector('.sq-r.car'), info: document.getElementById('sqInfo').textContent, live: document.getElementById('sqInfo').getAttribute('aria-live') }));
+  let r = await info();
+  check('RB44', 'focus puts a caret on the first residue and says which it is in the live line', r.carCls && /A · \w{3} 1 /.test(r.info) && r.live === 'polite', r);
+  await pg.keyboard.press('ArrowRight'); await pg.keyboard.press('ArrowRight');
+  await pg.keyboard.press('Space');
+  r = await info();
+  check('RB44', 'arrows move the caret and Space selects the residue under it', r.n === 1 && r.sel === 'A|3' && r.car === 'A|3', r);
+  await pg.keyboard.down('Shift'); await pg.keyboard.press('ArrowRight'); await pg.keyboard.press('ArrowRight'); await pg.keyboard.press('ArrowRight'); await pg.keyboard.up('Shift');
+  r = await info();
+  check('RB44', 'Shift and the arrows extend the selection from where it began', r.sel === 'A|3,A|4,A|5,A|6' && r.car === 'A|6', r);
+  await pg.keyboard.press('Home'); await pg.keyboard.press('Space');
+  r = await info();
+  check('RB44', 'Home goes to the first residue; Space adds it', r.car === 'A|1' && r.sel === 'A|1,A|3,A|4,A|5,A|6', r);
+  await pg.keyboard.press('Space');
+  check('RB44', 'Space on a selected residue takes it away', (await info()).sel === 'A|3,A|4,A|5,A|6');
+  await pg.keyboard.press('Escape');
+  check('RB44', 'Escape clears the selection', (await info()).n === 0);
+  await pg.keyboard.press('ControlOrMeta+a');
+  r = await info();
+  check('RB44', 'Ctrl/Cmd+A selects the chain shown', r.n === 24, r);
+  await E(() => { selClear(); SEQ.show = '*'; seqRender(); });
+  await pg.focus('#sqScroll'); await pg.keyboard.press('ArrowDown');
+  check('RB44', 'with every chain shown, Down moves to the same place in the next chain', (await info()).car === 'B|1', await info());
+  await pg.keyboard.press('Enter');
+  check('RB44', 'Enter selects that residue alone and frames it', await E(() => _selN === 1 && !!_sel['B|1'] && _userMoved));
+  await pg.keyboard.press('Tab');
+  check('RB44', 'the caret goes when the focus leaves, and the sequence is not a trap', await E(() => !document.querySelector('.sq-r.car') && document.activeElement !== document.getElementById('sqScroll')));
+  // the command line completes with Tab only when it has something to offer; empty, Tab (and Shift+Tab) are Tab
+  await pg.focus('#cmdInput'); await pg.keyboard.press('Tab');
+  check('RB44', 'Tab leaves the command line when it has nothing to complete', await E(() => document.activeElement.id !== 'cmdInput'));
+  await pg.focus('#cmdInput'); await pg.keyboard.press('Shift+Tab');
+  check('RB44', 'and so does Shift+Tab', await E(() => document.activeElement.id !== 'cmdInput'));
+  await pg.focus('#cmdInput'); await pg.keyboard.type('colo'); await pg.keyboard.press('Tab');
+  check('RB44', 'with a word begun, Tab completes it and stays', await E(() => document.activeElement.id === 'cmdInput' && /^color /.test(document.getElementById('cmdInput').value)));
+  await ctx.close();
+}
+
+const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20], ['RB21', rb21], ['RB22', rb22], ['RB23', rb23], ['RB24', rb24], ['RB25', rb25], ['RB26', rb26], ['RB27', rb27], ['RB28', rb28], ['RB29', rb29], ['RB30', rb30], ['RB31', rb31], ['RB32', rb32], ['RB33', rb33], ['RB34', rb34], ['RB35', rb35], ['RB36', rb36], ['RB37', rb37], ['RB38', rb38], ['RB39', rb39], ['RB40', rb40], ['RB41', rb41], ['RB42', rb42], ['RB43', rb43], ['RB44', rb44]];
 const port = await freePort();
 const srv = spawn('python3', ['-m', 'http.server', String(port), '--bind', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });
 base = `http://127.0.0.1:${port}/`;

@@ -518,7 +518,8 @@ function cmdWire(){
   inp.addEventListener('scroll',function(){ $('cmdGhost').scrollLeft=inp.scrollLeft; });
   inp.addEventListener('keydown',function(e){
     var open=!pop.hidden&&CMD.sug.length&&!CMD.helpOpen;
-    if(e.key==='Tab'){ e.preventDefault(); if(open||CMD.ghost){ if(e.shiftKey&&open){ CMD.si=(CMD.si<=0?CMD.sug.length:CMD.si)-1; cmdRefresh(); } else cmdTake(); } return; }
+    // Tab completes only when there is something to complete; with nothing to offer it is Tab (the line was a keyboard trap that only Esc left)
+    if(e.key==='Tab'){ if(!(open||CMD.ghost)) return; e.preventDefault(); if(e.shiftKey&&open){ CMD.si=(CMD.si<=0?CMD.sug.length:CMD.si)-1; cmdRefresh(); } else cmdTake(); return; }
     if(e.key==='ArrowRight'&&inp.selectionStart===inp.value.length&&CMD.ghost){ e.preventDefault(); cmdTake(); return; }
     if(e.key==='ArrowDown'){ e.preventDefault(); if(open){ CMD.si=(CMD.si+1)%CMD.sug.length; cmdRefresh(); } else if(CMD.hi>=0){ CMD.hi++; if(CMD.hi>=CMD.hist.length){ CMD.hi=-1; inp.value=CMD.draft; } else inp.value=CMD.hist[CMD.hi]; } return; }
     if(e.key==='ArrowUp'){ e.preventDefault();
