@@ -468,6 +468,20 @@ try {
     check('K16 everything clickable is reachable by keyboard, every target is 24 px, every pill reads at 4.5:1 — every tab, both themes', bad.length === 0, bad.slice(0, 6).join(' | ') + (bad.length > 6 ? ' … +' + (bad.length - 6) : ''));
   }
 
+  /* ───── K17 a layout edit that cannot be read is refused out loud, not reported as done ───── */
+  {
+    const r = await ev(async () => {
+      await tpLoadExample(); tpTab('plate'); const p = tpPlate(), before = p.wells.A1.conc, n0 = TP_UNDO.stack.length, out = {};
+      for (const bad of ['abc', '-5', '1e999', '0,5x']) {
+        TP.wsel = new Set(['A1', 'A2']); tpRenderPlate(); document.getElementById('tp-sn').value = bad; tpApplySel();
+        const t = document.getElementById('tp-toast'); out[bad] = { conc: p.wells.A1.conc === before, warn: /warn/.test(t.className) && /not a concentration/.test(t.textContent), undo: TP_UNDO.stack.length === n0 };
+      }
+      TP.wsel = new Set(['A1']); tpRenderPlate(); document.getElementById('tp-sn').value = '2,5'; document.getElementById('tp-su').value = 'uM'; tpApplySel(); out.ok = Math.abs(p.wells.A1.conc - 2500) < 1e-9;
+      return out;
+    });
+    check('K17 a concentration that is not a number is refused with a warning and changes nothing; a decimal comma is read', ['abc', '-5', '1e999', '0,5x'].every(k => r[k].conc && r[k].warn && r[k].undo) && r.ok, JSON.stringify(r));
+  }
+
   /* ───── K14 an x tick that sits on the y axis does not land on the lowest y label ───── */
   {
     const hit = await ev(() => {

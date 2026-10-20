@@ -2090,8 +2090,11 @@ function tpSelPanel(p) {
 }
 function tpRenderSel() { const p = tpPlate(), el = $('#tp-sel'); if (!el) return; const t = document.createElement('div'); t.innerHTML = tpSelPanel(p); el.replaceWith(t.firstChild); }
 function tpApplySel() {
-  const p = tpPlate(); if (!p) return; tpUndoMark('wells changed'); const ids = [...TP.wsel].filter(id => p.wells[id]); if (!ids.length) return;
+  const p = tpPlate(); if (!p) return; const ids = [...TP.wsel].filter(id => p.wells[id]); if (!ids.length) return;
   const role = $('#tp-sr').value, cpd = tpCleanName($('#tp-sc').value), tg = tpCleanName($('#tp-st').value), nv = $('#tp-sn').value.trim(), un = $('#tp-su').value;
+  // a concentration that is not a number (or is negative) is said, not skipped while the toast claims the wells were updated
+  if (nv !== '') { const v0 = tpNum(nv); if (v0 == null || v0 < 0 || tpUnitNM(un) == null) { tpToast('“' + nv.slice(0, 24) + '” is not a concentration (a number of 0 or more) — nothing was changed', 'warn'); return; } }
+  tpUndoMark('wells changed');
   ids.forEach(id => {
     const w = p.wells[id];
     if (role === 'bkg') { w.kind = 'bkg'; delete w.role; } else if (role === 'blank') { w.kind = 'blank'; delete w.role; } else if (role) { w.kind = 'sample'; w.role = role; }
