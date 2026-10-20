@@ -169,6 +169,10 @@
 //                             replicate that really disagrees still is; a normalised run is judged exactly as before. A raw-count run is not held to the 100 % top
 //                             constraint (it fixed a 100,000-count curve's top at 100: every DC50 0.102 nM, R2 0) nor to a hook threshold of 10 counts.
 //
+//   E65 text is data          Markup in the assay name, the control wells, a plate barcode, a reader file's name, a compound ID, the target / cell line / time
+//                             boxes never becomes an element on any tab, plate view or Setup step (the Protocol tab wrote the assay name, control range, file
+//                             names and sheet name as HTML).
+//
 // Usage (repo root):  node tools/echo_invariants.mjs [--only=E1,E7] [--file=path/to/echo.html] [--verbose]
 import { chromium } from 'playwright';
 import path from 'node:path';
@@ -2452,7 +2456,7 @@ if (run('E63')) await guard('E63', async () => {
 });
 
 // A small synthetic plate with known curves, built here (deterministic noise), for the checks that need a run on data they control.
-function synthPlate({ nCpd = 6, noise = 2, ctrl = 100000, badRep = false, gain = false } = {}) {
+function synthPlate({ nCpd = 6, noise = 2, ctrl = 100000, badRep = false, gain = false, bc = 'SYN-01', suf = '' } = {}) {
   const hdr = 'Source Plate Name,Source Plate Barcode,Source Plate Type,Source Well,Source Concentration,Source Concentration Units,Destination Plate Name,Destination Plate Barcode,Destination Plate Type,Destination Well,Destination Concentration,Destination Concentration Units,Sample ID,Sample Name,Transfer Volume,Actual Volume,Current Fluid Volume,Fluid Composition,Fluid Units,Fluid Type,Transfer Status,Time Point';
   const rows = [], sig = Array.from({ length: 16 }, (_, r) => Array.from({ length: 24 }, (_, c) => ctrl * (1 + 0.02 * Math.sin(r * 7 + c * 3))));
   let k = 0;
@@ -2461,22 +2465,22 @@ function synthPlate({ nCpd = 6, noise = 2, ctrl = 100000, badRep = false, gain =
     let y = 8 + 92 / (1 + E) + noise * Math.sin(k * 13 + j * 5);
     if (badRep && i === 0 && rp === 1 && j === 6) y += 60;
     sig[k][1 + j] = gain ? ctrl + (100 - y) * 500 : ctrl * y / 100;
-    rows.push(['S', 'RP', 'T', 'A1', '0.001', 'M', 'I', 'SYN-01', 'D', 'ABCDEFGHIJKLMNOP'[k] + (2 + j), d.toExponential(3), 'M', 'CPD-' + (i + 1), 'CPD-' + (i + 1), '12.5', '12.5', '45', '90', 'Percent', 'DMSO', '', '08:00'].join(','));
+    rows.push(['S', 'RP', 'T', 'A1', '0.001', 'M', 'I', bc, 'D', 'ABCDEFGHIJKLMNOP'[k] + (2 + j), d.toExponential(3), 'M', 'CPD-' + (i + 1) + suf, 'CPD-' + (i + 1) + suf, '12.5', '12.5', '45', '90', 'Percent', 'DMSO', '', '08:00'].join(','));
   }
   const text = ['Run ID,1', 'Run Date/Time,x', 'Application Name,x', 'Application Version,1', 'Protocol Name,x', 'User Name,x', '', '[DETAILS]', hdr, ...rows, ''].join('\r\n');
-  return { text, sig };
+  return { text, sig, bc };
 }
 async function loadSynth(q, d) {
-  await q.evaluate(({ text, sig }) => {
+  await q.evaluate(({ text, sig, bc }) => {
     echoFiles = [new File([text], 'echo.csv')]; echoFile = null;
     const aoa = [['User: x'], ['Test ID: 1'], ['ID1: SYN 01'], [], [], ['Luminescence'], [], ['Raw Data (LUM plus)'], ['', ...Array.from({ length: 24 }, (_, i) => i + 1)]];
     sig.forEach((r, i) => aoa.push(['ABCDEFGHIJKLMNOP'[i], ...r.map(v => Math.round(v))]));
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Microplate End point');
     Object.keys(readerFiles).forEach(k => delete readerFiles[k]);
-    readerFiles['SYN-01.xlsx'] = new File([XLSX.write(wb, { type: 'array', bookType: 'xlsx' })], 'SYN-01.xlsx');
+    readerFiles[bc + '.xlsx'] = new File([XLSX.write(wb, { type: 'array', bookType: 'xlsx' })], bc + '.xlsx');
     document.getElementById('p-ctrl').value = 'A20:P24'; document.getElementById('p-assay').value = 'SYN';
     renderEchoList(); renderReaderList(); checkReady();
-  }, d);
+  }, { ...d, bc: d.bc || 'SYN-01' });
 }
 async function runSynth(q) { await q.evaluate(() => { window.__done = false; runPipeline().then(() => { window.__done = true; }); }); await q.waitForFunction(() => window.__done === true, null, { timeout: 90000 }); return q.evaluate(() => _lastResultsData.map(r => ({ id: r.Sample_ID, flag: r.Flag_Reason, dc50: r.DC50_nM, r2: r.R2, top: r.Top_val }))); }
 
@@ -2505,6 +2509,22 @@ if (run('E64')) await guard('E64', async () => {
   await q.evaluate(() => { const e = document.getElementById('p-assay-type'); e.value = 'gain'; e.dispatchEvent(new Event('change')); });
   r = await runSynth(q);
   check('E64', 'gain of signal: a replicate that disagrees by most of the span is still flagged', /SD=/.test((r.find(x => x.id === 'CPD-1') || {}).flag || ''), r.slice(0, 2));
+  await c.close();
+});
+
+if (run('E65')) await guard('E65', async () => {
+  const P = '<img src=x onerror=window.__mx=(window.__mx||0)+1>';
+  const c = await browser.newContext({ viewport: { width: 1440, height: 900 } }); const q = await c.newPage();
+  await q.route(/^https?:\/\/(?!127\.0\.0\.1|localhost)/, r => r.abort());
+  await q.goto('file://' + FILE); await q.waitForTimeout(1200);
+  await loadSynth(q, synthPlate({ nCpd: 3, bc: 'B' + P, suf: P }));
+  await q.evaluate(P => { document.getElementById('p-assay').value = 'A' + P; for (const id of ['p-target', 'p-cell', 'p-time']) document.getElementById(id).value = P; }, P);
+  await runSynth(q); await q.waitForTimeout(600);
+  const probe = async where => { const r = await q.evaluate(() => ({ ran: window.__mx || 0, imgs: document.querySelectorAll('img[src="x"]').length })); check('E65', where + ': markup is text', r.ran === 0 && r.imgs === 0, r); };
+  for (const t of ['results', 'curves', 'scatter', 'plate', 'props', 'graph', 'console', 'history', 'protocol', 'source']) { await q.evaluate(t => { const b = document.querySelector(`.tab[data-tab="${t}"]`); b && b.click(); }, t); await q.waitForTimeout(350); await probe('tab ' + t); }
+  for (const v of ['maps', 'qc', 'compare']) { await q.evaluate(v => plateSetView(v), v).catch(() => {}); await q.waitForTimeout(300); await probe('plate ' + v); }
+  await q.evaluate(() => { openSetupModal(); switchSetupTab('review'); }); await q.waitForTimeout(2000); await probe('setup review');
+  for (const t of ['files', 'assay', 'analysis', 'output']) { await q.evaluate(t => switchSetupTab(t), t); await q.waitForTimeout(200); await probe('setup ' + t); }
   await c.close();
 });
 
