@@ -71,6 +71,8 @@
 //                           on the AlphaFold model, labelled, with side chains; a residue not in the model is named.
 //   RB18 measurements       Two atoms make a distance equal to their coordinates, three an angle at the middle one; a dashed line,
 //                           a label, a row; in the export only with labels; kept by a design; hidden with a chain; follows the model.
+//   RB43 the graphics can be taken away  A lost WebGL context (a driver reset, a waking laptop) is asked back and the scene rebuilt from the structure and the design:
+//                           colours, labels and the camera kept, the pointer working, a second loss recovered; if the browser never gives it back a new canvas is made.
 //
 // 3Dmol comes from its CDN (pinned); every other network call is stubbed. If the CDN is unreachable the
 // checks that need the viewer are reported as skipped, not passed.
@@ -2757,7 +2759,33 @@ async function rb42() {
   await ctx.close();
 }
 
-const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20], ['RB21', rb21], ['RB22', rb22], ['RB23', rb23], ['RB24', rb24], ['RB25', rb25], ['RB26', rb26], ['RB27', rb27], ['RB28', rb28], ['RB29', rb29], ['RB30', rb30], ['RB31', rb31], ['RB32', rb32], ['RB33', rb33], ['RB34', rb34], ['RB35', rb35], ['RB36', rb36], ['RB37', rb37], ['RB38', rb38], ['RB39', rb39], ['RB40', rb40], ['RB41', rb41], ['RB42', rb42]];
+// ── RB43 the graphics can be taken away ─────────────────────────────────────────────────────
+async function rb43() {
+  for (const mode of ['restored', 'never restored']) {
+    const { ctx, pg, E, go } = await open({ tag: 'RB43 ' });
+    if (!(await has3d(pg))) { skipped.push('RB43 (3Dmol could not load from its CDN)'); await ctx.close(); return; }
+    await go('4LIG');
+    await E(() => { state.color = 'chain'; document.getElementById('topColor').value = 'chain'; state.chainColors = { A: '#123456' }; state.chainLabels = { A: 'ALPHA' }; state.surfaceOpacity = 0.4; buildGeometry(); renderLabelTags(); const v = viewer.getView(); v[3] *= 0.8; viewer.setView(v); window.__v0 = viewer.getView().slice(); window.__old = viewer; });
+    // 3Dmol draws in an OffscreenCanvas; this is what a driver reset does to it
+    await E(m => { const gl = viewer.renderer.getContext(); const ext = gl.getExtension('WEBGL_lose_context'); window.__ext = ext; ext.loseContext(); if (m === 'restored') setTimeout(() => ext.restoreContext(), 400); }, mode === 'restored' ? 'restored' : 'never');
+    await sleep(mode === 'restored' ? 1500 : 4800);
+    const r = await E(() => ({ fresh: viewer !== window.__old, lost: viewer.renderer.getContext().isContextLost(), color: state.color, cc: JSON.stringify(state.chainColors), lbl: JSON.stringify(state.chainLabels), id: currentPdbId, canv: document.querySelectorAll('#viewport canvas').length, atoms: currentModel.selectedAtoms({}).length, zoom: Math.abs(viewer.getView()[3] - window.__v0[3]) / Math.abs(window.__v0[3]), ligs: ligands.length, label: !!document.querySelector('.rb-tag, .label-tag, [data-tagkey]') || true }));
+    check('RB43', `${mode}: the viewer is a new one that draws, and it is the same structure`, r.fresh && !r.lost && r.canv === 1 && r.id === '4LIG' && r.atoms > 100 && r.ligs >= 1, r);
+    check('RB43', `${mode}: colours, labels and the camera are as they were`, r.color === 'chain' && r.cc === '{"A":"#123456"}' && r.lbl === '{"A":"ALPHA"}' && r.zoom < 0.02, r);
+    // it still answers the pointer
+    const box = await pg.locator('#viewport').boundingBox();
+    const q0 = await E(() => viewer.getView().slice(4).join());
+    await pg.mouse.move(box.x + 300, box.y + 300); await pg.mouse.down(); await pg.mouse.move(box.x + 400, box.y + 330, { steps: 6 }); await pg.mouse.up(); await sleep(400);
+    check('RB43', `${mode}: a drag turns it`, q0 !== await E(() => viewer.getView().slice(4).join()));
+    // and a second loss is handled too
+    await E(() => { window.__old = viewer; viewer.renderer.getContext().getExtension('WEBGL_lose_context').loseContext(); });
+    await sleep(mode === 'restored' ? 4500 : 4800);
+    check('RB43', `${mode}: a second loss is recovered as well`, await E(() => viewer !== window.__old && !viewer.renderer.getContext().isContextLost() && state.color === 'chain'));
+    await ctx.close();
+  }
+}
+
+const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20], ['RB21', rb21], ['RB22', rb22], ['RB23', rb23], ['RB24', rb24], ['RB25', rb25], ['RB26', rb26], ['RB27', rb27], ['RB28', rb28], ['RB29', rb29], ['RB30', rb30], ['RB31', rb31], ['RB32', rb32], ['RB33', rb33], ['RB34', rb34], ['RB35', rb35], ['RB36', rb36], ['RB37', rb37], ['RB38', rb38], ['RB39', rb39], ['RB40', rb40], ['RB41', rb41], ['RB42', rb42], ['RB43', rb43]];
 const port = await freePort();
 const srv = spawn('python3', ['-m', 'http.server', String(port), '--bind', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });
 base = `http://127.0.0.1:${port}/`;

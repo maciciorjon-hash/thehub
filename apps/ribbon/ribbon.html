@@ -1484,6 +1484,7 @@ function viewerFailed(){
   $('fetchBtn').disabled=false;
 }
 function rbRetry3D(){
+  if(_glDead){ _glDead=false; $('veRetry').hidden=true; document.body.classList.remove('rb-no3d'); $('veTitle').textContent='Redrawing…'; rbGlRecover(); return; }
   $('veRetry').hidden=true; $('veTitle').textContent='Loading the 3D viewer…'; $('veSub').textContent='';
   document.body.classList.remove('rb-no3d');
   rbLoad3D(0);
@@ -1501,6 +1502,7 @@ function initViewer(){
   var cv=$('viewport').querySelector('canvas');
   if(cv){ cv.setAttribute('role','img'); cv.setAttribute('aria-label','3D structure. Drag to rotate, scroll or pinch to zoom, hold Shift and scroll to move.'); }
   try{ viewer.setHoverDuration(120); }catch(e){}
+  rbGlWatch();
   rbPatchShaders(); rbCamInit();
   lookOnViewer();
   document.body.classList.remove('rb-no3d');
@@ -1510,6 +1512,38 @@ function initViewer(){
   if(!q.length) restoreLast();
 }
 
+// ── The graphics context can be taken away (a driver reset, a laptop waking, a dozen tabs). A browser gives it back only to a
+// page that asks (preventDefault on the lost event), and 3Dmol keeps no copy of what lived in it: without this the viewer is a
+// dead picture that answers nothing and says nothing. The scene is rebuilt from the structure and the design the page holds.
+var _glLost=false, _glT=0, _glDead=false;
+function rbGlWatch(){
+  // 3Dmol draws in an OffscreenCanvas and copies the frame to the one on the page, so the loss is announced on the drawing one
+  var gl=null; try{ gl=viewer.renderer.getContext(); }catch(e){}
+  var cv=gl&&gl.canvas&&gl.canvas.addEventListener?gl.canvas:(viewer&&viewer.getCanvas&&viewer.getCanvas()); if(!cv||cv._rbGl) return; cv._rbGl=1;
+  cv.addEventListener('webglcontextlost',function(e){
+    e.preventDefault(); if(_glLost) return; _glLost=true; rbCamHalt();
+    var bar=$('statusBar'); bar.innerHTML='<span class="spinner"></span>The graphics were reset. Redrawing&hellip;'; bar.classList.add('show');
+    clearTimeout(_glT); _glT=setTimeout(rbGlRecover,3000);   // normally the browser restores it at once; if it does not, a new canvas gets a new context
+  });
+  cv.addEventListener('webglcontextrestored',function(){ if(_glLost) rbGlRecover(); });
+}
+function rbGlRecover(){
+  clearTimeout(_glT); _glLost=false;
+  var cur=_cur, d=null; try{ d=currentModel?collectDesign():null; }catch(e){}
+  try{ if(viewer&&viewer.getCanvas) viewer.getCanvas().remove(); }catch(e){}
+  viewer=null; _rbPatched=false; _surfTok++; currentSurfs=[];
+  if(cur&&d) _viewerQueue.push({fn:function(){
+    _pendingDesign=Object.assign({_pdb:String(cur.meta.id||'').toUpperCase(),_view:d.view||null,_vp:d.vp||null},d.state);
+    buildModel(cur.text,cur.fmt,cur.meta,modelCount(cur.text,cur.fmt));
+    setLoading(false); showToast('The graphics were reset; the view is back.');
+  }}); else _viewerQueue.push({fn:function(){ setLoading(false); }});
+  try{ initViewer(); }catch(e){ console.error(e); }
+  if(!viewer){
+    _glDead=true; document.body.classList.add('rb-no3d'); $('emptyState').hidden=false;
+    $('veTitle').textContent='The 3D view stopped'; $('veSub').textContent='The graphics card reset and the browser could not draw again. Your colours, labels and views are kept; press Try again.'; $('veRetry').hidden=false;
+    setLoading(false);
+  }
+}
 // ── Source detection ─────────────────────────────────────────────────────────────────────────
 function normId(s){ return (s||'').trim().replace(/\.(pdb|cif|ent|mmcif)(\.gz)?$/i,''); }
 function isPdbId(s){ s=(s||'').trim(); return /^[1-9][A-Za-z0-9]{3}$/.test(s)||/^pdb_[0-9a-z]{8}$/i.test(s); }
