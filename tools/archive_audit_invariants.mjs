@@ -16,6 +16,7 @@
 //                                ask dialog and gives focus back, a focused button has a visible ring
 //   AR10 the phone               375x812, light and dark: no sideways scroll, the number column of every result table is on screen,
 //                                every button is 44px
+//   AR12 one standard            docs/UI.md: buttons and fields 32px with --r-1, headings in sentence case, tabs ←/→, every dialog Escape/trap/focus-return, µ in the text a person reads
 //   AR11 offline                 the installable build, after one visit, reloads with the network gone and still lists 34 protocols
 //
 //   node tools/archive_audit_invariants.mjs [--only=AR3] [--url=http://127.0.0.1:8807]      exit 1 on any finding
@@ -398,6 +399,55 @@ if (run('AR10')) await guard('AR10', 'phone', async () => {
     if (home[0] > home[1] + 1) bad('AR10', theme + ' home scrolls sideways'); else ok();
     await p.context().close();
   }
+});
+
+// ═════════ AR12 — one standard (docs/UI.md) ═════════
+if (run('AR12')) await guard('AR12', 'standard', async () => {
+  const p = await open();
+  await p.evaluate(() => { openProtocol('trex'); showDTab('trex', 'calc'); });
+  const r = await p.evaluate(() => {
+    const out = [], px = v => parseFloat(v);
+    const seen = {};
+    document.querySelectorAll('.detail-wrap.active .btn, #detail-trex .btn').forEach(b => { if (!b.offsetParent) return; const c = getComputedStyle(b); if (px(c.height) !== 32 || c.borderRadius !== '4px') seen['button ' + c.height + ' r' + c.borderRadius] = 1; });
+    document.querySelectorAll('.detail-wrap.active input[type=text],.detail-wrap.active input[type=number],.detail-wrap.active select').forEach(b => { if (!b.offsetParent) return; const c = getComputedStyle(b); if (px(c.height) < 32 || px(c.height) > 33 || c.borderRadius !== '4px' || px(c.borderTopWidth) !== 1) seen['field ' + c.height + ' r' + c.borderRadius + ' b' + c.borderTopWidth] = 1; });
+    document.querySelectorAll('.calc-box-title,.proto-section,.delivery-bar-label').forEach(h => { if (getComputedStyle(h).textTransform !== 'none') seen['heading is ' + getComputedStyle(h).textTransform + ': ' + h.className] = 1; });
+    out.push(...Object.keys(seen));
+    // µ: the text a person reads
+    const txt = [...document.querySelectorAll('.detail-wrap.active .dpane')].map(x => x.textContent).join(' ') + ' ' + PROTOCOLS.map(x => x.genSteps ? x.genSteps().map(s => s.label + s.bullets.join(' ')).join(' ') : '').join(' ');
+    const m = txt.replace(/<[^>]+>/g, '').match(/\b\d*\.?\d*\s?(uL|ug|uM)\b/); if (m) out.push('ASCII unit in text: ' + m[0]);
+    // tabs: right arrow moves and opens
+    const tab = document.querySelector('#detail-trex .dtab-btn.active'); tab.focus();
+    return out;
+  });
+  // an uppercase style turns µ (U+00B5) into Greek capital Mu: "per sample (µL)" would read "(ML)", millilitres
+  for (const pid of ['gibson', 'bca', 'trex', 'grna', 'transfo']) {
+    await p.evaluate(pid => { openProtocol(pid); showDTab(pid, 'calc'); }, pid);
+    const up = await p.evaluate(() => [...document.querySelectorAll('.detail-wrap.active .dpane.active *')].filter(e => e.children.length === 0 && /µ/.test(e.textContent) && getComputedStyle(e).textTransform === 'uppercase').map(e => e.tagName + '.' + e.className + ': ' + e.textContent.trim().slice(0, 40)));
+    up.slice(0, 3).forEach(u => r.push('uppercase turns the micro sign into M — ' + u));
+  }
+  r.forEach(x => bad('AR12', x)); if (!r.length) ok();
+  await p.evaluate(() => { openProtocol('trex'); showDTab('trex', 'calc'); });
+  await p.locator('#detail-trex .dtab-btn.active').focus(); await p.keyboard.press('ArrowRight');
+  const t2 = await p.evaluate(() => [document.activeElement.textContent.trim(), document.activeElement.getAttribute('aria-selected'), document.querySelectorAll('#detail-trex .dtab-btn[tabindex="0"]').length]);
+  if (t2[0] !== 'Output' || t2[1] !== 'true' || t2[2] !== 1) bad('AR12', 'ArrowRight on a tab should move to the next tab, open it and leave one tab stop: ' + t2.join('/')); else ok();
+  // the CSV import and the freezer picker behave like every dialog: named, Escape closes, Tab stays in, focus returns
+  await p.evaluate(() => closeProtocol()); await p.evaluate(() => setLibKind('primers'));
+  await p.locator('#lib-view button', { hasText: 'Import CSV' }).first().focus().catch(() => {});
+  const opener = await p.evaluate(() => { const b = [...document.querySelectorAll('#lib-view button')].find(x => /Import CSV/.test(x.textContent)); if (b) b.focus(); return !!b; });
+  await p.evaluate(() => { window._libImport = { kind: 'primers', add: [{ line: 2, rec: { name: 'P1', seq: 'ATGCGT' } }], dupe: [], conflict: [] }; libImportShow(); }); await p.waitForTimeout(80);
+  const d = await p.evaluate(() => { const b = document.querySelector('#libimp-back .libimp-box'); return [b && b.getAttribute('role'), b && b.getAttribute('aria-modal'), !!(b && b.getAttribute('aria-labelledby')), document.activeElement.closest('#libimp-back') ? 'in' : 'out']; });
+  if (d.join() !== 'dialog,true,true,in') bad('AR12', 'the CSV import dialog is not a named modal with focus inside: ' + d.join()); else ok();
+  for (let i = 0; i < 6; i++) await p.keyboard.press('Tab');
+  if (!(await p.evaluate(() => !!document.activeElement.closest('#libimp-back')))) bad('AR12', 'Tab leaves the CSV import dialog'); else ok();
+  await p.keyboard.press('Escape'); await p.waitForTimeout(80);
+  const gone = await p.evaluate(() => [!document.getElementById('libimp-back'), document.activeElement.textContent.trim().slice(0, 10)]);
+  if (!gone[0]) bad('AR12', 'Escape does not close the CSV import dialog'); else if (opener && !/Import/.test(gone[1])) bad('AR12', 'focus does not return to Import CSV (' + gone[1] + ')'); else ok();
+  // touch: a box is 40px
+  const tp = await open({ viewport: { width: 375, height: 812 }, hasTouch: true, isMobile: true });
+  await tp.evaluate(() => { openProtocol('trex'); showDTab('trex', 'calc'); });
+  const small = await tp.evaluate(() => [...document.querySelectorAll('#detail-trex input[type=number],#detail-trex select')].filter(e => e.offsetParent && e.getBoundingClientRect().height < 39.5).length);
+  if (small) bad('AR12', small + ' fields are under 40px on touch'); else ok();
+  await tp.context().close(); await p.context().close();
 });
 
 // ═════════ AR11 — offline ═════════
