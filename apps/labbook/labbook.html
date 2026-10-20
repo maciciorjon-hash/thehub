@@ -2450,7 +2450,8 @@ body.lb-nonav #mobile-nav-btn{display:none!important;}
 
 .ds-chain{margin:16px 0 0;border:1px solid var(--border);border-radius:var(--r-2);padding:10px 12px;}
 .ds-chain-t{font-size:var(--fs-2);color:var(--text2);margin-bottom:6px;}
-.ds-crow{display:flex;align-items:baseline;gap:10px;padding:3px 0;font-size:var(--fs-2);border-top:1px solid var(--border);}
+.ds-crow{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px;padding:3px 0;font-size:var(--fs-2);border-top:1px solid var(--border);}
+.ds-crow .note{flex:0 0 100%;font-size:var(--fs-1);color:var(--text3);}
 .ds-crow:first-of-type{border-top:none;}
 .ds-crow .n{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .ds-crow .v{font-family:var(--mono);color:var(--text2);flex:none;min-width:74px;text-align:right;}
@@ -3779,6 +3780,29 @@ var EXTRA_PRESET_SEED={
      calc:{kind:'lytic',inputs:{format:'384',nPlates:10,cellVolPerWell:25,ratio:1,lgbitDil:100,subDil:50,excess:1.2}},
      pub:'HiBiT-tagged protein levels were quantified with the Nano-Glo HiBiT Lytic assay (Promega): lytic reagent containing LgBiT at 1:100 and substrate at 1:50 was added at a 1:1 ratio to the culture volume, the plates shaken at 300 rpm for 1 min and luminescence read on a BMG PHERAstar at 0.1 s per well after 10 min at room temperature. Luminescence was normalised to the vehicle control and fitted with a four-parameter logistic model to give DC&#8325;&#8320; and D<sub>max</sub>; the two setups were compared at equal compound exposure.',
      html:'<ol><li>Make up the reagent &mdash; one prep for every plate of both setups: {{c.bufferUL}} buffer + {{c.lgbitUL}} LgBiT ({{c.lgbitDil}}) + {{c.substrateUL}} substrate ({{c.substrateDil}}). Mix gently &mdash; do not vortex.</li><li>Planned for 16:00. Add {{c.addPerWell}} per well ({{c.ratio}} reagent : cells).</li><li>Shake at 300 rpm for 1 min, then 10 min at room temperature with gentle shaking.</li><li>Read on the PHERAstar, integration time 0.1 s per well; save the data. Vehicle and assay controls are as on the plate map.</li></ol><p><b>Results</b></p><p></p>'}]},
+  // Kinetic degradation with the compound left open: the same plate, the same waits and the same
+  // read, for a protein followed through time after ANY spike (a stress, an inhibitor, a degrader).
+  // What the compound is lives in the setup's Compounds list, never in the steps. `codeTag` makes
+  // the experiment code read TC20261020 while the type underneath stays KD, so Tempo still takes it.
+  'KD_TIMECOURSE':{name:'Time Course',baseType:'KD',codeTag:'TC',
+   title:'Time course (live-cell HiBiT)',
+   blocks:[
+    {d:0,title:'Seeding',calc:{kind:'seed',inputs:{cellLine:'HEK293-HiBiT',cellsPerWell:20000,volPerWell:75,format:'96',nPlates:2,excess:1.5}},pub:'{{cellLine}} cells were seeded in white {{format}}-well plates.',html:'<ol><li>Count the cells and dilute the suspension to {{c.density}} &mdash; {{c.totalVol}} for {{c.wells}}.</li><li>Add {{c.volPerWell}} of the suspension to each well ({{c.cellsPerWell}}) into a <b>white</b> {{format}}-well plate.</li></ol>'},
+    {d:1,title:'LgBiT transfection (ViaScript mRNA)',
+     calc:{kind:'mixparts',inputs:{name:'transfection medium',parts:'LgBiT mRNA 1, ViaScript 1',diluent:'medium',volPerWell:100,format:'96',nPlates:2,excess:1.04,replace:true}},
+     pub:'Cells were transfected with LgBiT mRNA using ViaScript: {{c.partsText}} in {{c.total}} of medium, {{c.perWell}} per well, and incubated overnight at 37 &deg;C.',
+     html:'<ol><li>Make {{c.total}} of {{c.name}} for {{c.wells}}: {{c.partsText}} in {{c.diluent}}. Mix the mRNA and the ViaScript first in four times their volume of buffer and incubate 15&ndash;30 min at room temperature, then dilute into the medium.</li><li>Aspirate the wells; add {{c.perWell}} per well.</li><li>Incubate overnight at 37 &deg;C.</li></ol>'},
+    {d:2,title:'Endurazine medium',w:150,
+     calc:{kind:'reagent',inputs:{name:'Endurazine',diluent:'assay medium',perWellUL:90,nWells:192,excess:1.1,dilution:100,replace:true}},
+     pub:'Medium was replaced with {{c.perWell}} per well of CO&#8322;-independent medium containing 10% FBS and Endurazine ({{c.dilution}}), and equilibrated for 2.5 h at 37 &deg;C.',
+     html:'<ol><li>Assay medium: CO&#8322;-independent + 10% FBS.</li><li>Dilute the Endurazine: {{c.reagentUL}} {{c.name}} ({{c.dilution}}) + {{c.diluentUL}} {{c.diluent}} = {{c.total}} ({{c.perWell}} per well for {{c.nWells}}).</li><li>Aspirate; add {{c.perWell}} of Endurazine medium per well; equilibrate 2.5 h at 37 &deg;C.</li></ol>'},
+    {d:2,title:'Pre-read + compound addition',
+     calc:{kind:'spike',inputs:{name:'compound',wellVolUL:90,foldX:10,series:true,finalUM:0,stockUM:0,nWells:192,excess:1.1,diluent:'assay medium'}},
+     pub:'A pre-read was taken for normalisation and the compound was added at {{c.fold}} ({{c.addUL}} per well).',
+     html:'<ol><li>Prepare each condition at {{c.fold}} in {{c.diluent}}, as on the plate map. {{c.seriesText}}</li><li>Pre-read the plate (normalisation).</li><li>Add {{c.addUL}} of the {{c.fold}} to each well ({{c.wellVol}} already in the well &rarr; {{c.newVol}}); do not aspirate.</li></ol>'},
+    {d:2,title:'Kinetic read',
+     pub:'Luminescence was recorded at 37 &deg;C for {{runMin}} min at {{intervalMin}} min intervals. Traces were normalised to the pre-read and to the vehicle control.',
+     html:'<ol><li>Kinetic read on the GloMax at 37 &deg;C &mdash; {{runMin}} min at {{intervalMin}} min intervals.</li></ol>'}]},
   'CLONE_HIFI':{name:'Cloning — Restriction + HiFi (PX458)',baseType:'CLONE',title:'Cloning — Restriction + HiFi (PX458)',
    setup:{method:'NEBuilder HiFi'}, blocks:[
     {d:0,title:'Vector linearization',w:30,pub:'PX458 was linearized with BbsI for 30 min at 37 &deg;C, gel-purified and quantified.',html:'<ol><li>Linearize: digest 1 &micro;g PX458 with BbsI (NEB), 37 &deg;C for 30 min.</li><li>Confirm on a 1% gel (~9.3 kb); excise, NucleoSpin, NanoDrop.</li></ol>'},
@@ -9865,6 +9889,7 @@ function _presetFromExtra(k){
   if(s.plateOn!=null) np.plateOn=!!s.plateOn;
   if(s.layout) np.layout=s.layout;
   if(s.blank) np.blank=true;
+  if(s.codeTag) np.codeTag=s.codeTag;
   np._seedSig=_presetSig(np);
   return np;
 }
@@ -10045,6 +10070,10 @@ function _layoutFor(id,fmt){
     if(!ok) return null; }
   return L; }
 function presetBase(k){ var p=LB.data.presets[k]; return (p&&p.baseType)||k; }
+// The letters an experiment code carries for this preset: its own (TC) when a curated preset names
+// one, the type's otherwise. The type underneath is untouched, so every app that keys on it still does.
+function presetCodeTag(k){ var p=LB.data.presets[k], sd=EXTRA_PRESET_SEED[k];
+  return (p&&p.codeTag)||(sd&&sd.codeTag)||presetBase(k); }
 // presets seed / refresh (adds RTX for existing users)
 seedPresets();
 
@@ -13267,7 +13296,7 @@ function nmProtoOff(p,i){ return (p.off!=null)?p.off:((PROTO_OFFSET[p.id]!=null)
 function nmUpdateCode(){ var key=el('nm-type').value, type=presetBase(key), poi=(el('nm-poi').value||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,''), d=dateCompact(el('nm-date').value);
   // A D2B code is always TYPE_DATE (POI_ in front when there is one). With no POI it used to fall through
   // to the generic TYPE+DATE form and come out D2B20260929 — the one type whose code has an underscore.
-  var base = (type==='D2B') ? ((poi?(poi+'_'):'')+type+'_'+d) : (type+d+(poi?('_'+poi):''));
+  var base = (type==='D2B') ? ((poi?(poi+'_'):'')+type+'_'+d) : (presetCodeTag(key)+d+(poi?('_'+poi):''));
   // The project the entry is being created in owns the prefix, so the code is right before the
   // field is ever looked at — and it stays editable, like the rest of it.
   var pr=projById(NM_TARGET?NM_TARGET.pid:(SEL.node&&SEL.node.projectId));
@@ -20045,13 +20074,38 @@ function dsPseudo(D){
 function dsChain(pseudo){
   var v=0, out=[];
   blocksInRunOrder(pseudo).forEach(function(b){
-    var k=b.calc&&b.calc.kind, add=0;
+    var k=b.calc&&b.calc.kind, add=0, was=v;
     v=_chainStart(b,v);
     add=_blkAdds(b,v);
-    out.push({b:b, before:_wellVolRound(v), add:add, after:_wellVolRound(v+add)});
+    // `set`: the step aspirates the medium and puts its own in, so it is not a sum. `jump`: the
+    // step starts from a volume of its own (typed, or a first step), not the one above it left.
+    out.push({b:b, before:_wellVolRound(v), add:add, after:_wellVolRound(v+add),
+      set:_blkSets(b)>0, term:!!(k&&VOL_TERMINAL[k]), jump:_wellVolRound(v)!==_wellVolRound(was)});
     if(!(k&&VOL_TERMINAL[k])) v+=add; });
   return out;
 }
+// What the volume table says, one entry per step that does anything to the well — and every
+// entry adds up on its own terms. The table listed only steps with add>0, so a step that
+// REPLACES the medium (Endurazine, 100 → 90 µL) was missing and the spike after it read
+// "+10 µL, 100 µL" under a 100 µL line; the transfection that replaced the seeding medium read
+// "+25 µL". A replacement says so, a step that starts from a volume of its own says so, and a
+// read on its own copy of the plate is not a step the next one follows.
+function dsChainRows(ch){
+  var rows=[], run=0;   // `run`: the total the table has shown last — what a row's sum starts from
+  ch.forEach(function(x){
+    if(!(x.add>0||x.set)){ if(x.jump) run=x.before; return; }
+    var r={title:x.b.title||'\u2014', add:x.add, after:x.after, set:x.set, term:x.term, from:null, note:''};
+    if(x.set){ r.note=run>0?('Aspirates the '+nfmt(run)+' \u00b5L and puts in '+nfmt(x.after)+' \u00b5L.'):''; }
+    else if(Math.abs(x.before-run)>0.26){ r.from=x.before;
+      r.note='Starts from '+nfmt(x.before)+' \u00b5L, the volume set in this step'+(run>0?(' (the steps above leave '+nfmt(run)+' \u00b5L)'):'')+'.'; }
+    if(x.term) r.note=(r.note?r.note+' ':'')+'Read on its own copy of the plate \u2014 the next step does not start from this.';
+    if(!x.term) run=x.after;
+    rows.push(r); });
+  return rows;
+}
+// "+10 µL → 100 µL", "replaces → 90 µL": the same words in the module list, the step header and the table.
+function dsChainSay(r){
+  return r.set?('replaces the medium \u2192 '+nfmt(r.after)+' \u00b5L'):('+'+nfmt(r.add)+' \u00b5L \u2192 '+(r.term?'('+nfmt(r.after)+' \u00b5L)':nfmt(r.after)+' \u00b5L')); }
 // The plates and wells the steps above have committed to. Read off the blocks rather than off
 // the setup, because a module may carry its own plate count and the setup only scales it.
 function dsPlateAt(ps,i){
@@ -20609,7 +20663,7 @@ function dsModsHtml(){
   var rows=D.mods.map(function(m,i){
     // Same rule on the row: a step that does not change the volume was printing the running
     // total beside its name, which is the row above's number said twice.
-    var c=byIdx[i], vol=(c&&c.add>0)?('+'+nfmt(c.add)+' µL → '+nfmt(c.after)+' µL'):'';
+    var c=byIdx[i], cr=(c&&c.b&&(c.add>0||c.set))?dsChainRows([c])[0]:null, vol=cr?dsChainSay(cr):'';
     // The effective wait, not the module's own: a setup field marked `wait` writes over it, so
     // the list said "45 min" beside a step that waits 20 h.
     var wEff=(c&&c.b&&c.b.waitMin>0)?c.b.waitMin:(+m.w||0);
@@ -20889,8 +20943,7 @@ function dsConfHtml(){
     +(D.setup.cellLine?('<span class="v">'+esc(((cellLineDef(D.setup.cellLine)||{}).label)||D.setup.cellLine)+'</span>'):'')
     +'</div>';
   // Always drawn, empty when the step adds nothing, so a number typed below can fill it in place.
-  var adds='<div class="ds-adds" id="ds-adds"'+((here&&here.add>0)?'':' hidden')+'>'+((here&&here.add>0)
-    ? 'This step puts <b>'+nfmt(here.add)+' µL</b> into each well — the next one starts from <b>'+nfmt(here.after)+' µL</b>.' : '')+'</div>';
+  var adds='<div class="ds-adds" id="ds-adds"'+((here&&(here.add>0||here.set))?'':' hidden')+'>'+dsAddsHtml(here)+'</div>';
   // The wait the step will really have. A setup field marked `wait` writes over a module's own
   // whenever the module's prose quotes it, so the box showed "45 min" on a step that waits 20 h.
   var _wEff=(live&&live.waitMin>0)?live.waitMin:(+m.w||0);
@@ -21088,6 +21141,10 @@ function dsCalcSet(i,k,val){
 // sentence under it still said 11.11.
 function dsSetAdd(i,val){ var m=DS&&DS.mods[i]; if(!m) return;
   var n=parseFloat(val); if(n>0) m.addUL=n; else delete m.addUL; dsLiveRefresh(i); }
+function dsAddsHtml(x){
+  if(!x||!(x.add>0||x.set)) return '';
+  if(x.set) return 'This step replaces the medium with <b>'+nfmt(x.after)+' \u00b5L</b> per well'+(x.before>0?(' (there were '+nfmt(x.before)+' \u00b5L)'):'')+' \u2014 the next one starts from <b>'+nfmt(x.after)+' \u00b5L</b>.';
+  return 'This step puts <b>'+nfmt(x.add)+' \u00b5L</b> into each well'+(x.term?' \u2014 on its own copy of the plate, so the next one does not start from it.':(' \u2014 the next one starts from <b>'+nfmt(x.after)+' \u00b5L</b>.')); }
 function dsLiveRefresh(i){
   var D=DS, ps=dsPseudo(D), live=null;
   (ps.blocks||[]).forEach(function(b){ if(b.dsIdx===i) live=b; });
@@ -21099,8 +21156,8 @@ function dsLiveRefresh(i){
       var v=vals[sp.getAttribute('data-c')]; sp.innerHTML=(v==null?'—':v); sp.classList.toggle('cv-none',v==null); sp.classList.toggle('cv-e',v===''); }); }
   var ad=el('ds-adds'), here=null;
   if(ad){ dsChain(ps).forEach(function(x){ if(x.b.dsIdx===i) here=x; });
-    ad.hidden=!(here&&here.add>0);
-    if(here&&here.add>0) ad.innerHTML='This step puts <b>'+nfmt(here.add)+' µL</b> into each well — the next one starts from <b>'+nfmt(here.after)+' µL</b>.'; }
+    ad.hidden=!(here&&(here.add>0||here.set));
+    if(here&&(here.add>0||here.set)) ad.innerHTML=dsAddsHtml(here); }
 }
 function dsSetOwnPlate(i,on){
   var D=DS, m=D&&D.mods[i]; if(!m||!m.calc) return;
@@ -21135,13 +21192,14 @@ function dsDelCalc(i){
 // with a volume onwards, so "Results / data analysis" appeared with an em-dash and the running
 // total beside it — a results step is not a bench step, and the number says nothing about it.
 function dsChainHtml(D,ps,ch){
-  var rows=ch.filter(function(x){ return x.add>0; });
+  var rows=dsChainRows(ch);
   if(!rows.length) return '';
   return '<div class="ds-chain"><div class="ds-chain-t">What is in the well</div>'
     +rows.map(function(x){
-      return '<div class="ds-crow"><span class="n">'+esc(x.b.title||'—')+'</span>'
-        +'<span class="v">+'+nfmt(x.add)+' µL</span>'
-        +'<span class="t">'+nfmt(x.after)+' µL</span></div>'; }).join('')
+      return '<div class="ds-crow"><span class="n">'+esc(x.title)+'</span>'
+        +'<span class="v">'+(x.set?'replaces':('+'+nfmt(x.add)+' µL'))+'</span>'
+        +'<span class="t">'+(x.term?('('+nfmt(x.after)+' µL)'):(nfmt(x.after)+' µL'))+'</span>'
+        +(x.note?('<span class="note">'+esc(x.note)+'</span>'):'')+'</div>'; }).join('')
     +'<div class="ds-chain-h">Each step reads what the ones above it left. Nothing here was typed twice.</div></div>';
 }
 function dsReviewHtml(){

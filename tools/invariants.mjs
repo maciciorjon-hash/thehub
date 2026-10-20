@@ -58,6 +58,10 @@
 //       every step           from — in the Review and in the created record alike, for a step
 //                            with no volume calculator that says what it adds too. (a step that
 //                            added liquid was invisible; the read started from 111, not 123)
+//   I29 the volume table     Every row of the Review's "What is in the well", read off the DOM, adds up to the total above it — a step that
+//       adds up              replaces the medium says so and gives its total, one that starts from a volume of its own says so, a read on its own
+//                            copy says so — for every design and every ordered pair of volume-changing library modules. (the Endurazine step that
+//                            replaces the medium was missing: 75 → "+25" → 100 → "+10" → 100)
 //   I24 the Review's plate   Edit on the Review's plate map opens it, and what is changed there
 //       is editable          is the plate the experiment is created with. ("no plate map here")
 //   I25 a moved day moves    Moving a day from its header moves every step dated that day, and
@@ -1042,6 +1046,50 @@ async function suite(opts) {
       if (!e) { bad('I23', key, 'the design did not create an experiment'); return; }
       const rec = dsChain(e).map(x => x.b.title + ':' + x.after);
       if (JSON.stringify(rec) !== JSON.stringify(review)) bad('I23', key, `the record's well volumes are not the Review's: record ${rec.join(' · ')} / review ${review.join(' · ')}`);
+    });
+  }
+
+  // ── I29 the volume table adds up, as it is drawn ──
+  // The Review's "What is in the well" listed only the steps that ADD, so the Endurazine step that
+  // replaces the medium (100 → 90 µL) was missing and the compounds after it read "+10 µL, 100 µL"
+  // under a 100 µL line; the transfection that replaced the seeding medium read "+25 µL". Read off
+  // the DOM, every row is checked against the total drawn before it, for every design and every
+  // pair or triple of volume-changing library modules.
+  if (run('I29')) {
+    const num = t => { const m = String(t).match(/-?\d+(?:\.\d+)?/); return m ? parseFloat(m[0]) : NaN; };
+    const audit = (cs) => {
+      const ps = dsPseudo(DS), ch = dsChain(ps);
+      const box = document.createElement('div'); box.innerHTML = dsChainHtml(DS, ps, ch);
+      const rows = [...box.querySelectorAll('.ds-crow')];
+      const should = ch.filter(x => x.add > 0 || x.set).length;
+      tick('I29');
+      if (rows.length !== should) bad('I29', cs, `${should} steps change the well and the table draws ${rows.length}`);
+      // every step that puts something in the well is named, whatever it does to the total
+      ch.filter(x => x.add > 0 || x.set).forEach(x => { if (!rows.some(r => r.querySelector('.n').textContent === (x.b.title || '\u2014'))) bad('I29', cs, `"${x.b.title}" changes the well and is not in the table`); });
+      let run = 0;
+      rows.forEach(r => {
+        const name = r.querySelector('.n').textContent, v = r.querySelector('.v').textContent, t = r.querySelector('.t').textContent;
+        const note = (r.querySelector('.note') || {}).textContent || '', term = /^\(/.test(t), tot = num(t);
+        if (!(tot > 0)) { bad('I29', cs, `"${name}" ends with "${t}"`); return; }
+        if (/replaces/.test(v)) { if (!/Aspirates|^$/.test(note) && note) bad('I29', cs, `"${name}" replaces the medium and says "${note}"`); run = tot; return; }
+        let base = run;
+        const fr = note.match(/Starts from (\d+(?:\.\d+)?)/); if (fr) base = parseFloat(fr[1]);
+        if (Math.abs(base + num(v) - tot) > (tot >= 100 ? 0.55 : 0.26)) bad('I29', cs, `"${name}": ${nfmt(base)} + ${num(v)} is not ${tot} — the table says ${v} → ${t} under a total of ${run}${note ? ' (' + note + ')' : ''}`);
+        if (term && !/own copy/.test(note)) bad('I29', cs, `"${name}" is a read on its own copy and does not say so`);
+        if (!term) run = tot;
+      });
+    };
+    for (const key of KEYS) await guard('I29', key, async () => { designFrom(key, {}); audit(key); dsClose(); });
+    // Library modules, composed by hand: a seeding, then each one, then each ordered pair of the ones that move the volume.
+    const seed = STEP_LIBRARY.find(sp => sp.id === 'lib:seed');
+    const vol = STEP_LIBRARY.filter(sp => sp.calc && CALC_KINDS[sp.calc] && (VOL_ADD[sp.calc] || sp.calc === 'mixparts'));
+    const seqs = [];
+    STEP_LIBRARY.forEach(sp => seqs.push([seed, sp]));
+    vol.forEach(a => vol.forEach(b => seqs.push([seed, a, b])));
+    for (const sq of seqs) await guard('I29', sq.map(x => x.id).join(' → '), async () => {
+      dsOpen({ mode: 'exp', pid: PID, sid: SID }); DS.startDate = START;
+      sq.forEach(sp => DS.mods.push(dsSyncMod(dsMod(sp), DS.setup, true)));
+      audit(sq.map(x => x.id).join(' → ')); dsClose();
     });
   }
 
