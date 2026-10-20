@@ -173,6 +173,11 @@
 //                             boxes never becomes an element on any tab, plate view or Setup step (the Protocol tab wrote the assay name, control range, file
 //                             names and sheet name as HTML).
 //
+//   E66 text can be read      Every text run on every Setup step, tab and plate view, in both themes, is at least 3:1 against what is behind it (the floor
+//                             the Hub's own tertiary ink sets; 4.5:1 is the target, tracked in the report), disabled (dimmed) controls apart; the teal that
+//                             carried 'good' and the Compounds tile was 1.9:1 on white, the active segmented button 2.6:1, the group badges 2.7:1. The Review
+//                             table fits its card (its Notes column was cut at the edge).
+//
 // Usage (repo root):  node tools/echo_invariants.mjs [--only=E1,E7] [--file=path/to/echo.html] [--verbose]
 import { chromium } from 'playwright';
 import path from 'node:path';
@@ -2526,6 +2531,48 @@ if (run('E65')) await guard('E65', async () => {
   await q.evaluate(() => { openSetupModal(); switchSetupTab('review'); }); await q.waitForTimeout(2000); await probe('setup review');
   for (const t of ['files', 'assay', 'analysis', 'output']) { await q.evaluate(t => switchSetupTab(t), t); await q.waitForTimeout(200); await probe('setup ' + t); }
   await c.close();
+});
+
+if (run('E66')) await guard('E66', async () => {
+  const SCAN = (LIMIT) => {
+  const parse = c => { const m = c.match(/rgba?\(([^)]+)\)/); if (!m) return null; const p = m[1].split(/[ ,\/]+/).filter(Boolean).map(Number); return { r: p[0], g: p[1], b: p[2], a: p[3] === undefined ? 1 : p[3] }; };
+  const over = (f, b) => ({ r: f.r * f.a + b.r * (1 - f.a), g: f.g * f.a + b.g * (1 - f.a), b: f.b * f.a + b.b * (1 - f.a), a: 1 });
+  const lum = c => { const f = v => { v /= 255; return v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); }; return .2126 * f(c.r) + .7152 * f(c.g) + .0722 * f(c.b); };
+  const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + .05) / (Math.min(x, y) + .05); };
+  const bgOf = el => { const stack = []; let e = el; while (e && e.nodeType === 1) { const cs = getComputedStyle(e); if (cs.backgroundImage && cs.backgroundImage !== 'none' && /gradient|url/.test(cs.backgroundImage)) return null; const c = parse(cs.backgroundColor); if (c && c.a > 0) { stack.push(c); if (c.a >= 1) break; } e = e.parentElement; } let base = { r: 255, g: 255, b: 255, a: 1 }; const dark = document.documentElement.getAttribute('data-theme') === 'dark'; if (dark) base = { r: 13, g: 15, b: 20, a: 1 }; for (let i = stack.length - 1; i >= 0; i--) base = over(stack[i], base); return base; };
+  const out = []; const seen = new Set();
+  const modal = document.getElementById('setup-modal'); const mopen = modal && !modal.classList.contains('hidden') && modal.offsetParent !== null; const w = document.createTreeWalker(mopen ? modal : document.body, NodeFilter.SHOW_TEXT); let n;
+  while ((n = w.nextNode())) {
+    const t = n.textContent.trim(); if (!t) continue; const el = n.parentElement; if (!el || /^(SCRIPT|STYLE|OPTION|NOSCRIPT)$/.test(el.tagName)) continue;
+    const r = el.getBoundingClientRect(); if (r.width < 2 || r.height < 2) continue; const cs = getComputedStyle(el); if (cs.visibility === 'hidden' || cs.display === 'none' || +cs.opacity === 0) continue;
+    // ancestors opacity
+    let op = 1, e2 = el; while (e2 && e2.nodeType === 1) { op *= +getComputedStyle(e2).opacity; e2 = e2.parentElement; } if (op < 0.75) continue; /* a dimmed element is a disabled one */
+    if (el.closest('svg')) continue;
+    const bg = bgOf(el); if (!bg) continue; let fg = parse(cs.color); if (!fg) continue; fg = over({ ...fg, a: fg.a * op }, bg);
+    const cr = ratio(fg, bg); const size = parseFloat(cs.fontSize), bold = +cs.fontWeight >= 700; const need = (size >= 24 || (size >= 18.66 && bold)) ? 3 : 4.5;
+    if (cr < LIMIT) { const k = (el.className || el.tagName) + '|' + t.slice(0, 20); if (seen.has(k)) continue; seen.add(k); out.push({ t: t.slice(0, 40), cr: +cr.toFixed(2), need, cls: String(el.className).slice(0, 40), tag: el.tagName, id: el.closest('[id]') ? el.closest('[id]').id : '' }); }
+  }
+  return out;
+};;
+  for (const theme of ['light', 'dark']) {
+    const c = await browser.newContext({ viewport: { width: 1440, height: 900 } }); const q = await c.newPage();
+    await q.route(/^https?:\/\/(?!127\.0\.0\.1|localhost)/, r => r.abort());
+    await q.addInitScript(t => { try { localStorage.setItem('hub_theme', t); localStorage.setItem('assist_seen', '1'); } catch (e) {} }, theme);
+    await q.goto('file://' + FILE); await q.waitForTimeout(1200);
+    await q.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
+    await q.addStyleTag({ content: '*{transition:none!important;animation:none!important}' });
+    await q.evaluate(() => { loadTestData(); }); await q.waitForTimeout(800);
+    const scan = async where => { const r = await q.evaluate(`(${SCAN.toString()})(3.0)`); check('E66', theme + ' ' + where + ': every text run is at least 3:1', r.length === 0, r.slice(0, 4)); };
+    for (const t of ['files', 'assay', 'analysis', 'output', 'review']) {
+      await q.evaluate(t => { openSetupModal(); switchSetupTab(t); }, t); await q.waitForTimeout(t === 'review' ? 2200 : 250); await scan('setup ' + t);
+      if (t === 'review') { const f = await q.evaluate(() => { const e = document.querySelector('.rv-tw'); return e ? [e.scrollWidth, e.clientWidth] : null; }); check('E66', theme + ' Review table fits its card (no sideways scroll at 1440)', f && f[0] <= f[1], f); }
+    }
+    await q.evaluate(() => runPipeline()); await q.waitForFunction(() => typeof _lastResultsData !== 'undefined' && _lastResultsData && _lastResultsData.length > 0, null, { timeout: 120000 }); await q.waitForTimeout(1200);
+    await q.evaluate(() => closeSetupModal());
+    for (const t of ['results', 'curves', 'scatter', 'plate', 'props', 'history', 'protocol', 'source']) { await q.evaluate(t => { const b = document.querySelector(`.tab[data-tab="${t}"]`); b && b.click(); }, t); await q.waitForTimeout(400); await scan('tab ' + t); }
+    for (const v of ['maps', 'qc', 'compare']) { await q.evaluate(v => plateSetView(v), v).catch(() => {}); await q.waitForTimeout(350); await scan('plate ' + v); }
+    await c.close();
+  }
 });
 
 await browser.close();
