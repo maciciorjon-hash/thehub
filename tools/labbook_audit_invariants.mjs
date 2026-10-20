@@ -14,6 +14,8 @@
 //   L5 every field has a name  Every visible input / select / textarea of the screens reached has a label, aria-label or title
 //   L6 the bin never overwrites  Restoring from Deleted items puts a record back under its own id, but when a different record already lives
 //                           there (a version restored from Recover > Versions) the live one is kept and the bin's comes back beside it as a copy.
+//   L8 a step has its own id  A notebook whose experiment holds two steps with one id (a hand-edited or merged file) comes up with distinct ids, so
+//                           ticking the second does not tick the first.
 //   L7 an import is one undo step  Importing one experiment from a file is undone by one ⌘Z (the bundle had it; the single import did not)
 //
 //   node tools/labbook_audit_invariants.mjs [--url=URL] [--only=L1,L3]
@@ -189,8 +191,20 @@ try {
     if (n2 !== n0) bad('L7', `one undo did not take the import back (${n0} -> ${n1} -> ${n2})`);
     errs.forEach(m => bad('L7', 'page error: ' + m)); await ctx.close(); fs.rmSync(f, { force: true });
   }
+  // ── L8 ──
+  if (run('L8')) {
+    counts.L8 = 1;
+    const ctx = await newCtx(); const { page } = await open(ctx);
+    const ids = await page.evaluate(`${SEED}`); await page.waitForTimeout(1500);
+    await page.evaluate(id => { const bl = LB.data.experiments[id].blocks; bl[1].id = bl[0].id; LB.data.updated = Date.now() + 5000; save(); }, ids.bio);
+    await page.waitForTimeout(1500);
+    await page.reload(); await page.waitForFunction(() => typeof LB !== 'undefined' && LB.data && typeof renderAll === 'function'); await page.waitForTimeout(1500);
+    const r = await page.evaluate(id => LB.data.experiments[id].blocks.map(b => b.id), ids.bio);
+    if (new Set(r).size !== r.length) bad('L8', 'two steps of one experiment still share an id after a reload');
+    await ctx.close();
+  }
 } finally { await browser.close(); if (srv) srv.kill(); }
-for (const id of ['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7']) { if (ONLY && !ONLY.includes(id)) continue; const fs_ = findings.filter(f => f.id === id); process.stdout.write(`  ${fs_.length ? '✗' : '✓'} ${id}${fs_.length ? '  — ' + fs_.length + ' finding(s)' : ''}\n`); }
+for (const id of ['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8']) { if (ONLY && !ONLY.includes(id)) continue; const fs_ = findings.filter(f => f.id === id); process.stdout.write(`  ${fs_.length ? '✗' : '✓'} ${id}${fs_.length ? '  — ' + fs_.length + ' finding(s)' : ''}\n`); }
 const seen = new Set(); findings.forEach(f => { const k = f.id + f.m; if (seen.has(k)) return; seen.add(k); process.stdout.write(`     [${f.id}] ${f.m}\n`); });
 if (!findings.length) process.stdout.write('\nLabbook audit invariants hold.\n');
 process.exit(findings.length ? 1 : 0);
