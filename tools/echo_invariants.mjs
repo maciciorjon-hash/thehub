@@ -178,6 +178,9 @@
 //                             carried 'good' and the Compounds tile was 1.9:1 on white, the active segmented button 2.6:1, the group badges 2.7:1. The Review
 //                             table fits its card (its Notes column was cut at the edge).
 //
+//   E67 the keyboard is seen  Pressing Tab through every Setup step and every tab, each stop shows a mark (an outline, a shadow or a changed border): the Curves
+//                             selects and Y limits and the Plate tab's search and selects carried outline:none and showed nothing.
+//
 // Usage (repo root):  node tools/echo_invariants.mjs [--only=E1,E7] [--file=path/to/echo.html] [--verbose]
 import { chromium } from 'playwright';
 import path from 'node:path';
@@ -2573,6 +2576,28 @@ if (run('E66')) await guard('E66', async () => {
     for (const v of ['maps', 'qc', 'compare']) { await q.evaluate(v => plateSetView(v), v).catch(() => {}); await q.waitForTimeout(350); await scan('plate ' + v); }
     await c.close();
   }
+});
+
+if (run('E67')) await guard('E67', async () => {
+  const c = await browser.newContext({ viewport: { width: 1440, height: 900 } }); const q = await c.newPage();
+  await q.route(/^https?:\/\/(?!127\.0\.0\.1|localhost)/, r => r.abort());
+  await q.goto('file://' + FILE); await q.waitForTimeout(1200);
+  await q.addStyleTag({ content: '*{transition:none!important}' });
+  await q.evaluate(() => { loadTestData(); }); await q.waitForTimeout(800);
+  const SIG = `(() => { const e = document.activeElement; if (!e || e === document.body) return null; const cs = getComputedStyle(e); const r = e.getBoundingClientRect(); return { id: (e.id || e.className || e.tagName).toString().slice(0, 40), tag: e.tagName, ring: cs.outlineStyle !== 'none' && parseFloat(cs.outlineWidth) > 0, shadow: cs.boxShadow !== 'none', vis: r.width > 0 && r.height > 0 }; })()`;
+  const stops = async (where, n) => {
+    const seen = new Map(), bad = [];
+    for (let i = 0; i < n; i++) {
+      await q.keyboard.press('Tab'); const s = await q.evaluate(SIG); if (!s || !s.vis || seen.has(s.id)) continue; seen.set(s.id, 1);
+      if (!s.ring && !s.shadow) { const a = await q.evaluate(() => { const e = document.activeElement; const b = getComputedStyle(e).borderColor; e.blur(); const b2 = getComputedStyle(e).borderColor; e.focus(); return b !== b2; }); if (!a) bad.push(s.tag + '#' + s.id); }
+    }
+    check('E67', where + ': every Tab stop shows where it is (' + seen.size + ' stops)', seen.size > 3 && bad.length === 0, bad);
+  };
+  for (const t of ['files', 'assay', 'analysis', 'output', 'review']) { await q.evaluate(t => { openSetupModal(); switchSetupTab(t); document.activeElement && document.activeElement.blur(); }, t); await q.waitForTimeout(t === 'review' ? 2200 : 250); await stops('setup ' + t, 40); }
+  await q.evaluate(() => runPipeline()); await q.waitForFunction(() => typeof _lastResultsData !== 'undefined' && _lastResultsData && _lastResultsData.length > 0, null, { timeout: 120000 }); await q.waitForTimeout(1200);
+  await q.evaluate(() => closeSetupModal());
+  for (const t of ['results', 'curves', 'scatter', 'plate', 'history', 'protocol', 'source']) { await q.evaluate(t => { const b = document.querySelector(`.tab[data-tab="${t}"]`); b && b.click(); document.activeElement && document.activeElement.blur(); document.getElementById('tabbtn-' + (t === 'source' ? 'survey' : t)).focus(); }, t); await q.waitForTimeout(350); await stops('tab ' + t, 45); }
+  await c.close();
 });
 
 await browser.close();
