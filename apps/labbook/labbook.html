@@ -1376,7 +1376,7 @@ html.lb-loading body > *{visibility:hidden;}
 .pl-gl span{font-size:var(--fs-2);font-weight:700;color:#1a1d2e;background:rgba(255,255,255,.8);border-radius:var(--r-1);padding:1px 7px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .pl-colh,.pl-rowh{display:flex;align-items:center;justify-content:center;font-size:var(--fs-1);font-weight:700;color:var(--text3);cursor:pointer;border-radius:var(--r-1);}
 .pl-colh:hover,.pl-rowh:hover{color:var(--accent);background:var(--surface3);}
-/* Words around the plate (p.edges): a label over the columns or rows it explains, with a plain bracket.
+/* Words around the plate (p.edges): a label over the columns or rows it explains, with a hairline rule.
    Tier 0 is next to the plate; a label that would sit on another goes one tier further out. The same
    rules draw it in the editor and on the experiment's card. */
 .pl-nt{display:flex;align-items:center;justify-content:flex-end;min-width:0;min-height:0;box-sizing:border-box;color:var(--text2);font-size:var(--fs-1);font-weight:600;line-height:1.2;}
@@ -1387,11 +1387,11 @@ html.lb-loading body > *{visibility:hidden;}
 .pl-nt-x{min-width:0;padding:0 2px;text-align:center;overflow-wrap:anywhere;}
 .pl-nt-l .pl-nt-x,.pl-nt-r .pl-nt-x{writing-mode:vertical-rl;padding:2px 0;}
 .pl-nt-l .pl-nt-x{transform:rotate(180deg);}
-.pl-nt-br{flex:none;align-self:stretch;box-sizing:border-box;border:1.5px solid currentColor;opacity:.55;}
-.pl-nt-t .pl-nt-br{height:5px;border-bottom:0;margin:0 2px;}
-.pl-nt-b .pl-nt-br{height:5px;border-top:0;margin:0 2px;}
-.pl-nt-l .pl-nt-br{width:5px;border-right:0;margin:2px 0;}
-.pl-nt-r .pl-nt-br{width:5px;border-left:0;margin:2px 0;}
+.pl-nt-br{flex:none;align-self:stretch;box-sizing:border-box;border:0 solid currentColor;opacity:.5;}
+.pl-nt-t .pl-nt-br{height:5px;border-top-width:1px;margin:0 3px;}
+.pl-nt-b .pl-nt-br{height:5px;border-bottom-width:1px;margin:0 3px;}
+.pl-nt-l .pl-nt-br{width:5px;border-left-width:1px;margin:3px 0;}
+.pl-nt-r .pl-nt-br{width:5px;border-right-width:1px;margin:3px 0;}
 .pl-nt-1 .pl-nt-br{display:none;}
 .pl-nt.ed{position:relative;cursor:grab;border-radius:var(--r-1);}
 .pl-nt.ed:hover{color:var(--text);background:var(--surface3);}
@@ -3827,8 +3827,8 @@ var EXTRA_PRESET_SEED={
   // read, for a protein followed through time after ANY spike (a stress, an inhibitor, a degrader).
   // What the compound is lives in the setup's Compounds list, never in the steps. `codeTag` makes
   // the experiment code read TC20261020 while the type underneath stays KD, so Tempo still takes it.
-  'KD_TIMECOURSE':{name:'Time Course',baseType:'KD',codeTag:'TC',
-   title:'Time course (live-cell HiBiT)',
+  'KD_TIMECOURSE':{name:'Time Course (HiBiT reporter)',baseType:'KD',codeTag:'TC',
+   title:'Time Course (HiBiT reporter)',
    blocks:[
     {d:0,title:'Seeding',calc:{kind:'seed',inputs:{cellLine:'HEK293-HiBiT',cellsPerWell:20000,volPerWell:75,format:'96',nPlates:2,excess:1.5}},pub:'{{cellLine}} cells were seeded in white {{format}}-well plates.',html:'<ol><li>Count the cells and dilute the suspension to {{c.density}} &mdash; {{c.totalVol}} for {{c.wells}}.</li><li>Add {{c.volPerWell}} of the suspension to each well ({{c.cellsPerWell}}) into a <b>white</b> {{format}}-well plate.</li></ol>'},
     {d:1,title:'LgBiT transfection (ViaScript mRNA)',
@@ -3846,6 +3846,40 @@ var EXTRA_PRESET_SEED={
     {d:2,title:'Kinetic read',
      pub:'Luminescence was recorded at 37 &deg;C for {{runMin}} min at {{intervalMin}} min intervals. Traces were normalised to the pre-read and to the vehicle control.',
      html:'<ol><li>Kinetic read on the GloMax at 37 &deg;C &mdash; {{runMin}} min at {{intervalMin}} min intervals.</li></ol>'}]},
+  // Jon's SPARK NS time course: the generic Time Course on one 96-well plate with OA in two
+  // timings (just before the read; in the cell mix before seeding) and two concentrations, and
+  // a PROTAC series on top of the high one. Same steps, waits and read as Time Course; what is
+  // added is the OA, which this run names, and the plate (layout tcoa96).
+  'KD_TC_SPARKNS':{name:'Time Course (HiBiT reporter) - SPARK NS',baseType:'KD',codeTag:'TC',
+   title:'Time Course (HiBiT reporter) — SPARK NS, OA at the read vs from seeding (96-well)',
+   setup:{format:'96',nPlates:1,topUM:10,df:3,nConc:7,oligoHi:1,antiHi:10,oligoLo:0.1,antiLo:1},
+   setupAdd:[{f:'topUM',t:'num',lbl:'PROTAC, top concentration (µM)',d:10,step:'0.1'},
+             {f:'df',t:'num',lbl:'PROTAC, dilution factor',d:3,step:'0.5'},
+             {f:'nConc',t:'num',lbl:'PROTAC, # concentrations',d:7},
+             {f:'oligoHi',t:'num',lbl:'OA high — oligomycin (µM)',d:1,step:'0.05'},
+             {f:'antiHi',t:'num',lbl:'OA high — antimycin A (µM)',d:10,step:'0.05'},
+             {f:'oligoLo',t:'num',lbl:'OA low — oligomycin (µM)',d:0.1,step:'0.05'},
+             {f:'antiLo',t:'num',lbl:'OA low — antimycin A (µM)',d:1,step:'0.05'}],
+   plateOn:true, layout:'tcoa96', blocks:[
+    {d:0,title:'Seeding (OA in the cell mix for columns 7–12)',
+     calc:{kind:'seed',inputs:{cellLine:'HEK293-HiBiT',cellsPerWell:20000,volPerWell:75,format:'96',nPlates:1,excess:1.5}},
+     pub:'{{cellLine}} cells were seeded in a white 96-well plate. For columns 7–12 OA was added to the cell suspension immediately before seeding ({{oligoHi}} &micro;M oligomycin + {{antiHi}} &micro;M antimycin A in columns 7&ndash;8 and 11&ndash;12, {{oligoLo}} + {{antiLo}} &micro;M in columns 9&ndash;10); columns 1&ndash;6 were seeded without OA.',
+     html:'<ol><li>Count the cells and dilute the suspension to {{c.density}} &mdash; {{c.totalVol}} for {{c.wells}}.</li><li>Divide it in three. Columns 1&ndash;6: as it is. Columns 7&ndash;8 and 11&ndash;12: add OA high ({{oligoHi}} &micro;M oligomycin + {{antiHi}} &micro;M antimycin A, final). Columns 9&ndash;10: add OA low ({{oligoLo}} + {{antiLo}} &micro;M, final). Add the OA to the suspension immediately before seeding.</li><li>Add {{c.volPerWell}} of the suspension to each well ({{c.cellsPerWell}}) into a <b>white</b> 96-well plate, following the plate map.</li></ol>'},
+    {d:1,title:'LgBiT transfection (ViaScript mRNA)',
+     calc:{kind:'mixparts',inputs:{name:'transfection medium',parts:'LgBiT mRNA 1, ViaScript 1',diluent:'medium',volPerWell:100,format:'96',nPlates:1,excess:1.04,replace:true}},
+     pub:'Cells were transfected with LgBiT mRNA using ViaScript: {{c.partsText}} in {{c.total}} of medium, {{c.perWell}} per well, and incubated overnight at 37 &deg;C. The medium for columns 7&ndash;12 held the same OA as their cells.',
+     html:'<ol><li>Make {{c.total}} of {{c.name}} for {{c.wells}}: {{c.partsText}} in {{c.diluent}}. Mix the mRNA and the ViaScript first in four times their volume of buffer and incubate 15&ndash;30 min at room temperature, then dilute into the medium.</li><li>Columns 7&ndash;12 stay in OA: make their medium with the same OA as their cells (high in 7&ndash;8 and 11&ndash;12, low in 9&ndash;10). Columns 1&ndash;6 take it without OA.</li><li>Aspirate the wells; add {{c.perWell}} per well.</li><li>Incubate overnight at 37 &deg;C.</li></ol>'},
+    {d:2,title:'Endurazine medium',w:150,
+     calc:{kind:'reagent',inputs:{name:'Endurazine',diluent:'assay medium',perWellUL:90,nWells:96,excess:1.1,dilution:100,replace:true}},
+     pub:'Medium was replaced with {{c.perWell}} per well of CO&#8322;-independent medium containing 10% FBS and Endurazine ({{c.dilution}}), and equilibrated for 2.5 h at 37 &deg;C. Columns 7&ndash;12 were kept in the same OA.',
+     html:'<ol><li>Assay medium: CO&#8322;-independent + 10% FBS.</li><li>Dilute the Endurazine: {{c.reagentUL}} {{c.name}} ({{c.dilution}}) + {{c.diluentUL}} {{c.diluent}} = {{c.total}} ({{c.perWell}} per well for {{c.nWells}}).</li><li>Columns 7&ndash;12 stay in OA: add the OA to their share of this medium at the concentration of their cells.</li><li>Aspirate; add {{c.perWell}} of Endurazine medium per well; equilibrate 2.5 h at 37 &deg;C.</li></ol>'},
+    {d:2,title:'Pre-read + OA and PROTAC addition',
+     calc:{kind:'spike',inputs:{name:'PROTAC',wellVolUL:90,foldX:10,series:true,finalUM:0,stockUM:0,nWells:96,excess:1.1,diluent:'assay medium'}},
+     pub:'A pre-read was taken for normalisation. Columns 1&ndash;6 received OA at {{c.fold}} ({{c.addUL}} per well; {{oligoHi}} &micro;M oligomycin + {{antiHi}} &micro;M antimycin A, or {{oligoLo}} + {{antiLo}} &micro;M, final), in columns 5&ndash;6 together with the PROTAC series. Columns 7&ndash;12 had been in OA since seeding and received the PROTAC series (columns 11&ndash;12) or medium alone (7&ndash;10), {{c.addUL}} per well, made in medium holding OA at the concentration of the well so that it was not diluted.',
+     html:'<ol><li>Pre-read the plate (normalisation).</li><li>Prepare at {{c.fold}} in {{c.diluent}}: OA high and OA low (final {{oligoHi}} / {{antiHi}} &micro;M and {{oligoLo}} / {{antiLo}} &micro;M), and the PROTAC series as on the plate map. {{c.seriesText}}</li><li>Columns 1&ndash;6 (OA just before the read): add {{c.addUL}} of the {{c.fold}} OA to every well &mdash; OA alone in columns 1&ndash;4; in columns 5&ndash;6 the PROTAC series made up in the OA high {{c.fold}}, with matched DMSO in row H.</li><li>Columns 7&ndash;12 (OA already in): add {{c.addUL}} of the PROTAC series to columns 11&ndash;12 and of plain medium to 7&ndash;10, all made in assay medium holding OA at the concentration of the well (1&times;), so the OA is not diluted; matched DMSO in row H.</li><li>{{c.addUL}} into {{c.wellVol}} already in the well &rarr; {{c.newVol}}; do not aspirate.</li></ol>'},
+    {d:2,title:'Kinetic read',
+     pub:'Luminescence was recorded at 37 &deg;C for {{runMin}} min at {{intervalMin}} min intervals from the addition. Traces were normalised to the pre-read and to the vehicle control.',
+     html:'<ol><li>Kinetic read on the GloMax at 37 &deg;C straight after the addition &mdash; {{runMin}} min at {{intervalMin}} min intervals.</li></ol>'}]},
   'CLONE_HIFI':{name:'Cloning — Restriction + HiFi (PX458)',baseType:'CLONE',title:'Cloning — Restriction + HiFi (PX458)',
    setup:{method:'NEBuilder HiFi'}, blocks:[
     {d:0,title:'Vector linearization',w:30,pub:'PX458 was linearized with BbsI for 30 min at 37 &deg;C, gel-purified and quantified.',html:'<ol><li>Linearize: digest 1 &micro;g PX458 with BbsI (NEB), 37 &deg;C for 30 min.</li><li>Confirm on a 1% gel (~9.3 kb); excise, NucleoSpin, NanoDrop.</li></ol>'},
@@ -6233,6 +6267,57 @@ var PLATE_LAYOUTS=[
          p.wells[wellIdOf(r,c0+nPts)]={typeId:'dmso',compound:cmp,label:veh};
        }
      });
+     return p; }},
+  // SPARK NS time course: the same plate read two ways. Columns 1-6 are seeded plain and take OA
+  // just before the read (orange); columns 7-12 take OA into the cell mix and are seeded in it
+  // (blue). Inside each half, pairs of columns: OA high, OA low, OA high with a PROTAC series
+  // down the rows (7 points, DMSO in row H). The colours are the sheet's, darkest to lightest.
+  // Everything a number on the sheet says comes from the setup (OA pairs, PROTAC top/fold/points),
+  // and every word round the plate is p.edges: OA over each pair of columns, PROTAC over the two
+  // that carry it, the timing over each half, and the concentration beside each row.
+  {id:'tcoa96', label:'Time course 96 — OA at the read vs OA from seeding, × PROTAC series', format:'96',
+   sub:'Cols 1–6 OA added before the read, 7–12 OA in the cell mix; OA high · OA low · OA high + PROTAC (7 pts + DMSO) in each half',
+   build:function(o){
+     o=o||{};
+     var p=newPlate('96'), d=PLATE_FORMATS['96'];
+     var nM=function(v){ return String(+(+v).toPrecision(3)); };
+     var oligoHi=+o.oligoHi>0?+o.oligoHi:1, antiHi=+o.antiHi>0?+o.antiHi:10, oligoLo=+o.oligoLo>0?+o.oligoLo:0.1, antiLo=+o.antiLo>0?+o.antiLo:1;
+     var hi=nM(oligoHi)+' / '+nM(antiHi)+' µM', lo=nM(oligoLo)+' / '+nM(antiLo)+' µM';
+     var hiN=nM(oligoHi)+' / '+nM(antiHi), loN=nM(oligoLo)+' / '+nM(antiLo);
+     var topNM=(+o.topUM>0?+o.topUM:10)*1000, fold=+o.df>1?+o.df:3;
+     var nPts=Math.max(1,Math.min(Math.round(+o.nConc||7), d.r-1));
+     var all=_setupList(o.compounds), prot=all[0]||'PROTAC';
+     p.title='Time course — OA at the read vs OA from seeding';
+     p.note='Oligomycin / antimycin A (OA), in µM: '+hi+' (high) and '+lo+' (low). Columns 1–6 are seeded plain and take OA just before the read; '
+       +'columns 7–12 take OA into the cell mix and are seeded in it. In each half, columns 1–2 / 7–8 are OA high, 3–4 / 9–10 OA low, '
+       +'and 5–6 / 11–12 OA high with '+prot+' from '+_fmtConc(topNM)+', '+fold+'-fold down '+nPts+' rows, DMSO in row '+String.fromCharCode(65+nPts)+'.';
+     var shades={late:['#e3a07b','#f0c8ad','#f8e3d6'], early:['#62b0de','#96cbe8','#c8e4f3']};
+     var when={late:'added at the read', early:'in the cell mix'};
+     var what=[hi, lo, hi+' + '+prot];
+     p.types=[];
+     ['late','early'].forEach(function(t){ for(var k=0;k<3;k++) p.types.push({id:t+k, name:'OA '+what[k]+', '+when[t], color:shades[t][k]}); });
+     p.groups={};
+     ['late','early'].forEach(function(t,ti){
+       for(var k=0;k<3;k++){
+         var c0=ti*6+k*2, tid=t+k;
+         for(var r=0;r<d.r;r++) for(var c=c0;c<c0+2;c++){
+           var w={typeId:tid};
+           if(k===2){ w.compound=prot; if(r<nPts) w.conc=_fmtConc(topNM/Math.pow(fold,r)); else if(r===nPts) w.label='DMSO'; else w=null; }
+           if(w) p.wells[wellIdOf(r,c)]=w;
+         }
+       }
+     });
+     // With fewer than seven points the rows under the DMSO of a PROTAC column are simply not used.
+     var E=[], n=0, add=function(side,a,b,text){ E.push({id:'tc'+(n++),side:side,a:a,b:b,text:text}); };
+     // Each pair says its two numbers; the units are said once, over the whole plate.
+     [0,1,2].forEach(function(k){ [0,6].forEach(function(o0){ add('t',o0+k*2,o0+k*2+1,k===1?loN:hiN); }); });
+     add('t',4,5,prot); add('t',10,11,prot);
+     add('t',0,5,'OA added just before reading'); add('t',6,11,'OA in the cell mix, then seeded');
+     add('t',0,11,'Oligomycin / antimycin A (\u00b5M)');
+     for(var r3=0;r3<nPts;r3++) add('r',r3,r3,_fmtConc(topNM/Math.pow(fold,r3)));
+     add('r',nPts,nPts,'DMSO');
+     add('r',0,nPts,prot+' conc.');
+     p.edges=E;
      return p; }}
 ];
 function plLayoutMenu(){
@@ -6872,7 +6957,7 @@ function plateToPNG(p,name){
   var boxes=plateGroupBoxes(p); if(!boxes.length) boxes=plateCompoundBoxes(p);
   var dose=boxes.filter(function(b){ return _plateBlockIsDose(p,b); });
   dose.forEach(function(b){ var w0=(p.wells||{})[wellIdOf(b.r1,b.c1)]; b.name=b.label||(w0&&w0.compound)||''; });
-  // Words round the plate (p.edges), each with a plain bracket between it and the plate. Tier 0 is the one
+  // Words round the plate (p.edges), each with a hairline between it and the plate. Tier 0 is the one
   // next to it. Above and below a tier is as tall as its longest label wrapped (three lines at most);
   // beside the plate it is a fixed 20 px and the text is turned.
   var NG=plateEdges(p), NTW=20, LW=NG.l*NTW, RW=NG.r*NTW, nx=document.createElement('canvas').getContext('2d');
@@ -6977,23 +7062,23 @@ function plateToPNG(p,name){
     x.fillStyle=ink; x.font='600 '+Math.max(9,Math.min(15,Math.round(bw/6)))+'px ui-sans-serif,system-ui,sans-serif';
     x.fillText(_plFit(x,b.label,bw-8),bx+bw/2,by+bh/2);
   });
-  // Words round the plate: the text, and a plain bracket between it and the wells it covers.
-  x.fillStyle='#4a4f66'; x.strokeStyle='rgba(74,79,102,0.75)'; x.lineWidth=1.2; x.font='600 10px ui-sans-serif,system-ui,sans-serif';
+  // Words round the plate: the text, and a hairline between it and the wells it covers.
+  x.fillStyle='#4a4f66'; x.strokeStyle='rgba(74,79,102,0.55)'; x.lineWidth=1; x.font='600 10px ui-sans-serif,system-ui,sans-serif';
   x.textAlign='center'; x.textBaseline='middle';
   NG.items.forEach(function(n){ var span=n.b>n.a;
     if(n.side==='t'||n.side==='b'){
       var x0=OX+n.a*W+3, x1=OX+(n.b+1)*W-3, xc=(x0+x1)/2, hh=tH[n.side][n.tier], ys;
       if(n.side==='t'){ ys=nTop+sumTiers(tH.t,n.tier+1,NG.t);
         n.lines.forEach(function(l,i){ x.fillText(l,xc,ys+6+i*12); });
-        if(span){ var by=ys+hh-5; x.beginPath(); x.moveTo(x0,by+4); x.lineTo(x0,by); x.lineTo(x1,by); x.lineTo(x1,by+4); x.stroke(); } }
+        if(span){ var by=ys+hh-5; x.beginPath(); x.moveTo(x0,by); x.lineTo(x1,by); x.stroke(); } }
       else { ys=top+d.r*W+4+sumTiers(tH.b,0,n.tier);
-        if(span){ var bb=ys+4; x.beginPath(); x.moveTo(x0,bb-4); x.lineTo(x0,bb); x.lineTo(x1,bb); x.lineTo(x1,bb-4); x.stroke(); }
+        if(span){ var bb=ys+4; x.beginPath(); x.moveTo(x0,bb); x.lineTo(x1,bb); x.stroke(); }
         n.lines.forEach(function(l,i){ x.fillText(l,xc,ys+(span?13:6)+i*12); }); }
     } else {
       var y0n=top+n.a*W+3, y1n=top+(n.b+1)*W-3, yc=(y0n+y1n)/2, left=(n.side==='l');
       var xs=left?(PAD+(NG.l-1-n.tier)*NTW):(OX+d.c*W+n.tier*NTW);
       x.save(); x.translate(left?xs+8:xs+NTW-8,yc); x.rotate(left?-Math.PI/2:Math.PI/2); x.fillText(_plFit(x,n.text,y1n-y0n),0,0); x.restore();
-      if(span){ var bx2=left?xs+NTW-5:xs+5, dir=left?1:-1; x.beginPath(); x.moveTo(bx2+dir*4,y0n); x.lineTo(bx2,y0n); x.lineTo(bx2,y1n); x.lineTo(bx2+dir*4,y1n); x.stroke(); } }
+      if(span){ var bx2=left?xs+NTW-5:xs+5; x.beginPath(); x.moveTo(bx2,y0n); x.lineTo(bx2,y1n); x.stroke(); } }
   });
   if(legLines.length||keyLines.length){
     var ly=top+d.r*W+botH+16;
@@ -21839,10 +21924,11 @@ var PLATE_PRINT_CSS=
  +'.pk-g td.pk-nt{border:0;padding:0 1px;height:auto;background:none;font:600 7pt/1.15 sans-serif;color:#222;word-break:normal;overflow-wrap:anywhere}'
  +'.pk-g td.pk-nt-t{vertical-align:bottom}.pk-g td.pk-nt-b{vertical-align:top}'
  +'.pk-g td.pk-bk{padding:0;height:4pt;border:0 solid #444;background:none}'
- +'.pk-g td.pk-bk-t{border-top-width:1pt;border-left-width:1pt;border-right-width:1pt}'
- +'.pk-g td.pk-bk-b{border-bottom-width:1pt;border-left-width:1pt;border-right-width:1pt}'
- +'.pk-g td.pk-bk-l{border-left-width:1pt;border-top-width:1pt;border-bottom-width:1pt}'
- +'.pk-g td.pk-bk-r{border-right-width:1pt;border-top-width:1pt;border-bottom-width:1pt}'
+ +'.pk-g td.pk-bk-t i,.pk-g td.pk-bk-b i{display:block;height:3pt;margin:0 1.5pt;border:0 solid #444}'
+ +'.pk-g td.pk-bk-t i{border-top-width:.75pt}.pk-g td.pk-bk-b i{border-bottom-width:.75pt}'
+ +'.pk-g td.pk-bk-1 i{display:none}'
+ +'.pk-g td.pk-bk-l{border-left-width:.75pt}'
+ +'.pk-g td.pk-bk-r{border-right-width:.75pt}'
  +'.pk-g td.pk-bk-1{border:0}'
  +'.pk-g td.pk-nv{border:0;padding:0;background:none;text-align:center;vertical-align:middle}'
  +'.pk-vt{writing-mode:vertical-rl;margin:0 auto;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font:600 7pt/1.15 sans-serif;color:#222}.pk-vt-l{transform:rotate(180deg)}'
@@ -22608,7 +22694,7 @@ function _pkSpanRow(NG,side,k,d,nL,nR,bracket){
   var items=NG.items.filter(function(n){ return n.side===side&&n.tier===k; }).sort(function(x,y){ return x.a-y.a; });
   var h='<tr><td class="pk-e" colspan="'+(2*nL+1)+'"></td>', c=0;
   items.forEach(function(n){ if(n.a>c) h+='<td class="pk-e" colspan="'+(n.a-c)+'"></td>';
-    h+=bracket?('<td class="pk-bk pk-bk-'+side+(n.b>n.a?'':' pk-bk-1')+'" colspan="'+(n.b-n.a+1)+'"></td>')
+    h+=bracket?('<td class="pk-bk pk-bk-'+side+(n.b>n.a?'':' pk-bk-1')+'" colspan="'+(n.b-n.a+1)+'"><i></i></td>')
       :('<td class="pk-nt pk-nt-'+side+'" colspan="'+(n.b-n.a+1)+'">'+esc(n.text)+'</td>');
     c=n.b+1; });
   if(c<d.c) h+='<td class="pk-e" colspan="'+(d.c-c)+'"></td>';

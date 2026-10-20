@@ -191,6 +191,8 @@
 //                            another label; the card, the PNG, the print table and a copied layout all carry it. (the plate map could not say what a column was)
 //   B53 time course       Time Course is Kinetic degradation with the compound left open: type KD (Tempo still takes it), code tag TC, the same steps, waits and measures,
 //                            no compound of the lab's own named in the prose, and an experiment from it keeps the 900 min / 5 min run and its plate.
+//   B55 spark ns tc      The SPARK NS Time Course: one 96-well plate, OA high / low / high + PROTAC (7 pts + DMSO) in two timings (at the read, columns 1-6; in the cell mix, 7-12), drawn from the setup with its
+//                            words round the plate; same days, waits and 900 / 5 min run as the generic one, every calculator on 96 wells.
 //   B52 one list of         The Compounds step has ONE box for every compound to test, a line each (a column from Excel). The names flow onto the compound
 //       compounds           blocks of the plates there are as you type, in reading order, plate by plate; a paste or leaving the box also adds the plates the
 //                            list needs with the same layout (a layout that carries the compound on its wells, with no blocks, gets blocks on the copy), names
@@ -2788,7 +2790,7 @@ async function suite(opts) {
       const P = (LB.data.projects || []).find(p => (p.sections || []).length);
       const key = 'KD_TIMECOURSE', tpl = LB.data.presets[key], kd = LB.data.presets.KD;
       if (!tpl) { bad('B53', 'preset', 'the Time Course preset is not in the notebook'); return; }
-      if (tpl.name !== 'Time Course' || presetBase(key) !== 'KD') bad('B53', 'identity', 'name ' + tpl.name + ', type ' + presetBase(key) + ' (want Time Course on KD, so Tempo still takes it)');
+      if (tpl.name !== 'Time Course (HiBiT reporter)' || presetBase(key) !== 'KD') bad('B53', 'identity', 'name ' + tpl.name + ', type ' + presetBase(key) + ' (want Time Course (HiBiT reporter) on KD, so Tempo still takes it)');
       if (presetCodeTag(key) !== 'TC' || presetCodeTag('KD') !== 'KD') bad('B53', 'code', 'code tags are ' + presetCodeTag(key) + ' / ' + presetCodeTag('KD') + ', expected TC / KD');
       if (!/presetCodeTag/.test(String(nmUpdateCode))) bad('B53', 'code', 'the New-experiment code does not use the preset\'s code tag');
       // the same plate, waits and calculators as the kinetic preset: only the words about the compound differ
@@ -2814,6 +2816,53 @@ async function suite(opts) {
       if (e.type !== 'KD') bad('B53', 'type', 'the experiment is type ' + e.type + ', not KD');
       if (!e.plate) bad('B53', 'plate', 'no plate map on a Time Course');
       const en = (e.blocks || []).find(x => /Endurazine/.test(x.title || '')); if (en && en.waitMin !== 150) bad('B53', 'wait', 'Endurazine equilibration is ' + en.waitMin + ' min, expected 150');
+    });
+
+    // B55 — SPARK NS time course: the generic Time Course on one 96-well plate, OA at the read vs from seeding.
+    if (run('B55')) await guard('B55', 'spark ns time course', async () => {
+      const P = (LB.data.projects || []).find(p => (p.sections || []).length);
+      const key = 'KD_TC_SPARKNS', tpl = LB.data.presets[key], gen = LB.data.presets.KD_TIMECOURSE;
+      if (!tpl || !gen) { bad('B55', 'preset', 'the SPARK NS time course (or the generic one it follows) is not in the notebook'); return; }
+      if (presetBase(key) !== 'KD' || presetCodeTag(key) !== 'TC' || tpl.layout !== 'tcoa96') bad('B55', 'identity', 'type ' + presetBase(key) + ', tag ' + presetCodeTag(key) + ', layout ' + tpl.layout);
+      // the same days, waits and run as the generic Time Course (the OA is added to it, nothing is re-timed)
+      if (tpl.blocks.length !== gen.blocks.length) bad('B55', 'steps', tpl.blocks.length + ' steps vs ' + gen.blocks.length + ' in Time Course');
+      else tpl.blocks.forEach((b, i) => { const g = gen.blocks[i];
+        if ((b.dayOffset || 0) !== (g.dayOffset || 0) || (b.waitMin || 0) !== (g.waitMin || 0)) bad('B55', 'timing ' + b.title, 'day ' + b.dayOffset + ' wait ' + b.waitMin + ' vs ' + g.dayOffset + ' / ' + g.waitMin); });
+      const su0 = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup || {})));
+      if (su0.runMin !== 900 || su0.intervalMin !== 5 || String(su0.format) !== '96' || +su0.nPlates !== 1) bad('B55', 'setup', 'run ' + su0.runMin + ' / ' + su0.intervalMin + ' min, format ' + su0.format + ', plates ' + su0.nPlates);
+      // the map, drawn from the setup
+      const L = PLATE_LAYOUTS.find(x => x.id === 'tcoa96'); if (!L) { bad('B55', 'layout', 'no tcoa96 layout'); return; }
+      const col = (id) => +id.slice(1), row = (id) => id.charCodeAt(0) - 65;
+      let p = L.build(su0);
+      if (Object.keys(p.wells).length !== 96) bad('B55', 'wells', Object.keys(p.wells).length + ' wells, expected 96');
+      if (p.types.length !== 6) bad('B55', 'types', p.types.length + ' well types, expected 6');
+      Object.entries(p.wells).forEach(([id, w]) => { const early = col(id) > 6, late = col(id) <= 6;
+        if ((early && !/^early/.test(w.typeId)) || (late && !/^late/.test(w.typeId))) bad('B55', 'timing ' + id, 'well ' + id + ' is ' + w.typeId);
+        const prot = [5, 6, 11, 12].includes(col(id));
+        if (!prot && (w.compound || w.conc)) bad('B55', 'oa only ' + id, 'an OA-only well carries ' + (w.compound || w.conc));
+        if (prot && row(id) < 7 && !w.conc) bad('B55', 'series ' + id, 'a PROTAC well has no concentration'); });
+      const A5 = p.wells.A5, G11 = p.wells.G11, H5 = p.wells.H5;
+      if (!A5 || A5.conc !== '10 \u00b5M' || !G11 || G11.conc !== '13.7 nM' || !H5 || H5.label !== 'DMSO') bad('B55', 'series', 'A5 ' + (A5 && A5.conc) + ', G11 ' + (G11 && G11.conc) + ', H5 ' + (H5 && H5.label) + ' (want 10 \u00b5M, 13.7 nM, DMSO)');
+      const E = p.edges || [], has = (side, a, b, re) => E.some(n => n.side === side && n.a === a && n.b === b && re.test(n.text));
+      if (!has('t', 0, 5, /just before reading/) || !has('t', 6, 11, /cell mix/)) bad('B55', 'timing labels', 'the two timings are not named over their columns');
+      if (!has('t', 4, 5, /PROTAC/) || !has('t', 10, 11, /PROTAC/)) bad('B55', 'protac labels', 'PROTAC is not named over columns 5\u20136 and 11\u201312');
+      if (!has('t', 0, 1, /^1 \/ 10$/) || !has('t', 2, 3, /^0\.1 \/ 1$/) || !has('t', 8, 9, /^0\.1 \/ 1$/)) bad('B55', 'oa labels', 'the OA pairs are not over their columns: ' + E.filter(n => n.side === 't').map(n => n.a + '-' + n.b + ' ' + n.text).join(' | '));
+      if (E.filter(n => n.side === 'r' && n.a === n.b).length !== 8) bad('B55', 'row labels', 'expected a concentration (or DMSO) beside each of the 8 rows');
+      // a different series and a named PROTAC follow the setup, and the plate still says what it is
+      p = L.build(Object.assign({}, su0, { topUM: 5, df: 2, nConc: 5, compounds: 'SNS-1', oligoHi: 2 }));
+      if (p.wells.A5.conc !== '5 \u00b5M' || p.wells.E5.conc !== '313 nM' || p.wells.F5.label !== 'DMSO' || p.wells.G5 || p.wells.H11) bad('B55', 'setup follows', 'A5 ' + p.wells.A5.conc + ', E5 ' + p.wells.E5.conc + ', F5 ' + (p.wells.F5 && p.wells.F5.label) + ', G5 ' + JSON.stringify(p.wells.G5));
+      if (p.wells.A5.compound !== 'SNS-1') bad('B55', 'name', 'the PROTAC on the plate is ' + p.wells.A5.compound + ', not the one listed');
+      if (!p.types.some(t => /2 \/ 10/.test(t.name)) || !(p.edges || []).some(n => /^2 \/ 10$/.test(n.text))) bad('B55', 'oa follows', 'oligomycin 2 did not reach the types and the labels');
+      // an experiment made from it: one 96-well plate, every calculator on 96 wells, and the map is the preset's
+      const before = new Set(Object.keys(LB.data.experiments));
+      buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-10-01', type: presetBase(key), title: 'INV spark ns tc', code: 'INV_B55', setup: su0, plate: true });
+      const e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); if (!e) { bad('B55', 'create', 'no experiment was made'); return; }
+      clean.push(e); openExp(e.id); tick('B55');
+      if (!e.plate || Object.keys(e.plate.wells).length !== 96 || !(e.plate.edges || []).length) bad('B55', 'plate', 'the experiment has no 96-well map with its labels');
+      // (the spike counts the wells the map doses with the PROTAC, so it is the one calculator that is not 96)
+      const wells = (e.blocks || []).filter(b => !(b.calc && b.calc.kind === 'spike')).map(b => b.calc && b.calc.inputs && (b.calc.inputs.nWells != null ? b.calc.inputs.nWells : (b.calc.kind === 'seed' ? 96 * (+b.calc.inputs.nPlates || 1) : null))).filter(x => x != null);
+      if (wells.some(n => n !== 96)) bad('B55', 'wells', 'calculators count ' + wells.join(',') + ' wells, expected 96 each');
+      const txt = document.body.innerText; if (/\{\{[^}]*\}\}/.test(txt)) bad('B55', 'tokens', 'an unfilled token on the page: ' + (txt.match(/\{\{[^}]*\}\}/) || [])[0]);
     });
 
     // B54 — words round the plate: what a column or a row is, written beside it.

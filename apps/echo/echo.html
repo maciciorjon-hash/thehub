@@ -93,6 +93,7 @@ main{display:flex;flex:1;min-height:0;overflow:hidden;}
 .ritem .rdot{width:5px;height:5px;border-radius:50%;background:var(--accent3);flex-shrink:0;}
 .ritem .rrm{margin-left:auto;cursor:pointer;color:var(--text3);font-size:var(--fs-5);background:none;border:none;color:var(--text3);transition:color .2s;}
 .ritem .rrm:hover{color:var(--accent);}
+.ritem .rtag{flex-shrink:0;padding:1px 6px;border-radius:var(--r-1);background:var(--surface);color:var(--text3);font-size:var(--fs-2);}
 
 .field{margin-bottom:12px;}
 .field label{display:block;font-size:var(--fs-3);color:var(--text2);margin-bottom:5px;}
@@ -1899,7 +1900,7 @@ var SetupKit = (function(){
                 <div class="rlist" id="echo-list"></div>
               </div>
               <div class="sx-f">
-                <div class="sx-lbl">PHERAstar reader files <span class="sx-req">required</span></div>
+                <div class="sx-lbl">Reader files (PHERAstar or GloMax) <span class="sx-req">required</span></div>
                 <div class="dropzone" id="reader-zone">
                   <input type="file" id="reader-input" accept=".xls,.xlsx" multiple>
                   <span class="dz-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 9h16M4 15h16M10 3v18M16 3v18"/></svg></span>
@@ -2011,6 +2012,10 @@ var SetupKit = (function(){
               <div class="sx-row sx-row-2">
                 <input type="checkbox" id="p-row-norm">
                 <div class="sx-txt"><label for="p-row-norm" class="flbl">Smart DMSO control</label><span class="pinfo" data-tip="Learns the 100% reference from each plate's own control wells instead of taking their plain mean. A control well that is plainly wrong is left out, and the plate is tested for a row effect (e.g. one Multidrop Combi channel delivering a different volume), an odd/even row effect and a left-to-right drift. Each row's reference leans on the plate mean unless its own wells say otherwise, so a clean plate ends up at its mean. Row correction needs two or more control wells per row (e.g. B22:O23); a drift needs controls on both sides of the plate. Off: the plain mean of every control well. On: every curve says what it got — the method of each plate, how far its reference sat from the plain mean, and a second fit with the plain mean so you can see whether the potency depends on the choice." tabindex="0" role="img" aria-label="Explanation">?</span><span class="sx-hint">Learn the reference from each plate’s own controls instead of their plain mean</span></div>
+              </div>
+              <div class="sx-row sx-row-2">
+                <input type="checkbox" id="p-viab">
+                <div class="sx-txt"><label for="p-viab" class="flbl">Normalise to viability</label><span class="pinfo" data-tip="For a double read: luminescence (HiBiT, …) and fluorescence (CellTiter-Fluor, …) of the same plate. Each well’s luminescence is divided by that well’s own fluorescence, and that ratio is what is normalised to the DMSO wells of its plate. A GloMax export that holds both readings is used as it is. If the luminescence came from the PHERAstar, add the GloMax fluorescence files too. Name the GloMax run like the Echo destination plate (the file name or the Result name) so it is found; a plate with no viability reading is left out." tabindex="0" role="img" aria-label="Explanation">?</span><span class="sx-hint">Divide each well’s signal by its own fluorescence reading first (GloMax double read, or GloMax viability files)</span></div>
               </div>
               <div class="sx-row sx-row-2">
                 <input type="checkbox" id="p-skip-norm" onchange="var e=document.getElementById('p-ctrl');e.disabled=this.checked;e.style.opacity=this.checked?'0.35':'1';var r=document.getElementById('p-row-norm');r.disabled=this.checked;if(this.checked)r.checked=false;">
@@ -2525,6 +2530,10 @@ setupDrop('reader-zone','reader-input', async files => {
   renderReaderList();
   checkReady();
 });
+// Reader files that are the viability of a plate rather than its signal (a GloMax file with fluorescence only, while
+// "Normalise to viability" is ticked); the Review works this out. They are not plates: no group, no row of their own.
+function _viabFileNames() { return (window._rv && window._rv.viabFiles) || []; }
+function _signalFileNames() { const v = _viabFileNames(); return Object.keys(readerFiles).filter(n => !v.includes(n)); }
 function renderReaderList() {
   const list = document.getElementById('rlist');
   list.innerHTML = '';
@@ -2532,7 +2541,7 @@ function renderReaderList() {
     const d = document.createElement('div');
     d.className = 'ritem';
     // The name travels as data, not inside an inline JS string: "Mike's plate.xlsx" could not be removed.
-    d.innerHTML = '<div class="rdot"></div><span style="flex:1;overflow:hidden;text-overflow:ellipsis;">' + esc(name) + '</span><button class="rrm" aria-label="Remove ' + esc(name) + '">×</button>';
+    d.innerHTML = '<div class="rdot"></div><span style="flex:1;overflow:hidden;text-overflow:ellipsis;">' + esc(name) + '</span>' + (_viabFileNames().includes(name) ? '<span class="rtag" title="Fluorescence only: read as the viability of the plate it is named for">viability</span>' : '') + '<button class="rrm" aria-label="Remove ' + esc(name) + '">×</button>';
     d.querySelector('.rrm').onclick = () => rmReader(name);
     list.appendChild(d);
   });
@@ -2814,6 +2823,8 @@ async function runPipeline() {
   const absdc50Enabled = !!document.querySelector('.csv-col-cb[data-col="AbsDC50_nM"]')?.checked;
   const skipNorm = document.getElementById('p-skip-norm')?.checked || false;
   const rowNorm = !skipNorm && (document.getElementById('p-row-norm')?.checked || false);
+  // Divide each well's signal by its own viability reading first (single-assay form only: with several assay types each panel has its own settings).
+  const viabNorm = !document.getElementById('multi-assay-chk')?.checked && !!document.getElementById('p-viab')?.checked;
   window._smartInfo = {};
   window._normAudits = [];
   window._notFitted = [];
@@ -2825,7 +2836,7 @@ async function runPipeline() {
   const _now = new Date();
   const _tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const _tsLocal = _now.toLocaleString('en-GB', { timeZone: _tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).replace(',', '') + ' (' + _tz + ')';
-  window._lastAnalysisParams = { assayId, assayType, ctrlRange, skipRows, hookThr, hookEnabled, minR2, r2Enabled, maxSd, sdEnabled, topConstrain, topEnabled, fixBot, botVal, fixHill, hillVal, minBotEnabled, minBotVal, dmaxCapEnabled, dmaxCapVal, absdc50Enabled, skipNorm, rowNorm, ndNoEffect: document.getElementById('p-nd')?.checked !== false, groupMode: document.getElementById('p-group-mode')?.value || 'first', groupMap: (document.getElementById('p-group-mode')?.value === 'custom' ? (document.getElementById('p-group-map')?.value || '').trim() : ''), echoFileName: echoFile?.name, readerFileNames: Object.keys(readerFiles), timestamp: _now.toISOString(), timestampLocal: _tsLocal };
+  window._lastAnalysisParams = { assayId, assayType, ctrlRange, skipRows, hookThr, hookEnabled, minR2, r2Enabled, maxSd, sdEnabled, topConstrain, topEnabled, fixBot, botVal, fixHill, hillVal, minBotEnabled, minBotVal, dmaxCapEnabled, dmaxCapVal, absdc50Enabled, skipNorm, rowNorm, viabNorm, ndNoEffect: document.getElementById('p-nd')?.checked !== false, groupMode: document.getElementById('p-group-mode')?.value || 'first', groupMap: (document.getElementById('p-group-mode')?.value === 'custom' ? (document.getElementById('p-group-map')?.value || '').trim() : ''), echoFileName: echoFile?.name, readerFileNames: Object.keys(readerFiles), timestamp: _now.toISOString(), timestampLocal: _tsLocal };
   const csvCols = [...document.querySelectorAll('.csv-col-cb:checked')].map(el=>el.dataset.col);
 
     // (The barcode pre-flight that lived here split every line on commas, so it was blind to semicolon and
@@ -2884,7 +2895,7 @@ async function runPipeline() {
       window._lastAssayType = 'multi';
       window._lastAnalysisParams = {...window._lastAnalysisParams, assayType:'multi', multiAssay:true, matConfigs};
     } else {
-      results = await runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled, minR2, r2Enabled, maxSd, sdEnabled, topConstrain, topEnabled, fixBot, botVal, fixHill, hillVal, absdc50Enabled, skipNorm, csvCols, assayType, zeroPctCtrl, dmaxCapEnabled, dmaxCapVal, qcOverridesJSON, minBotEnabled, minBotVal, (document.getElementById('p-a1-loc')?.value||'').trim(), rowNorm);
+      results = await runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled, minR2, r2Enabled, maxSd, sdEnabled, topConstrain, topEnabled, fixBot, botVal, fixHill, hillVal, absdc50Enabled, skipNorm, csvCols, assayType, zeroPctCtrl, dmaxCapEnabled, dmaxCapVal, qcOverridesJSON, minBotEnabled, minBotVal, (document.getElementById('p-a1-loc')?.value||'').trim(), rowNorm, viabNorm);
       results.forEach(r => { r._panel = 0; });
       (window._notFitted || []).forEach(n => { if (n.panel == null) n.panel = 0; });
       window._runScreens = [_screenMeta(0, assayType, document.getElementById('p-role')?.value, document.getElementById('p-target')?.value, document.getElementById('p-cell')?.value, document.getElementById('p-time')?.value, '')];
@@ -3256,14 +3267,15 @@ function _normAuditBuild(o) {
   const worst = rows.filter(r => r.Norm_Check && r.Norm_Check !== 'Same').sort((a, b) => {
     const s = r => r.Norm_Check === 'Method-dependent' ? 2 : r.Norm_Check === 'No plain fit' ? 2 : 1, f = r => r.Norm_Ratio ? Math.abs(Math.log(r.Norm_Ratio)) : 0;
     return s(b) - s(a) || f(b) - f(a); }).slice(0, 8).map(r => ({ sample: r.Sample_ID, protein: r.Protein, check: r.Norm_Check, ratio: r.Norm_Ratio, why: r.Norm_Why }));
-  return { v: 1, assayId: o.assayId, assayType: o.assayType, smart: !!o.smartOn, none: !!o.skipNorm, ctrlRange: o.ctrlRange || '', plates, n: rows.length, byMethod: by,
+  return { v: 1, viab: !!o.viab, assayId: o.assayId, assayType: o.assayType, smart: !!o.smartOn, none: !!o.skipNorm, ctrlRange: o.ctrlRange || '', plates, n: rows.length, byMethod: by,
     mixed: rows.filter(r => /mixed/.test(r.Norm_Method || '')).length, check: chk, compared: o.smartOn ? rows.filter(r => r.Norm_Check).length : 0,
     moved5: sh.filter(v => v > 5).length, moved10: sh.filter(v => v > 10).length, maxShift: sh.length ? +Math.max(...sh).toFixed(1) : 0, worst, thr: NORM_THR };
 }
 function _normAuditLines(a) {
   if (!a) return [];
   const L = [];
-  if (a.none) return [['Normalisation', 'None — the raw signal was fitted.']];
+  if (a.viab) L.push(['Viability', 'Each well’s signal was divided by the viability reading of the same well (fluorescence) before anything else, so every figure below — control wells, reference, the 100 % — is a ratio, not a count.']);
+  if (a.none) return L.concat([['Normalisation', a.viab ? 'None — the raw signal ÷ viability ratio was fitted.' : 'None — the raw signal was fitted.']]);
   if (!a.smart) {
     L.push(['Procedure', 'Each plate’s 100 % reference is the plain mean of every control well (' + a.ctrlRange + ') on that plate, applied to every well and every curve alike.']);
     const sus = a.plates.filter(p => p.suspect.length);
@@ -3525,7 +3537,7 @@ function onGroupModeChange() {
 function _plateNameOfFile(n) { const p = window._rv && window._rv.plates && window._rv.plates.find(x => x.file === n); return p ? p.plate : n.replace(/\.[^.]+$/, ''); }
 function updateGroupPreview() {
   const el = document.getElementById('p-group-preview'); if (!el) return;
-  const names = Object.keys(readerFiles).map(_plateNameOfFile);
+  const names = _signalFileNames().map(_plateNameOfFile);
   if (!names.length) { el.textContent = 'Shown here once the reader files are loaded.'; return; }
   const g = _groupCfg(), by = {};
   names.forEach(n => { const k = _groupOf(n, g.mode, g.map); (by[k] = by[k] || []).push(n); });
@@ -3577,7 +3589,7 @@ var RDR = (function () {
         var t = (rows[u] || []).map(str).filter(function (x) { return x; });
         if (t.length) { label = t[0]; break; }
       }
-      if (got) out.push({ label: label, rows: h > 8 ? 16 : 8, cols: n > 12 ? 24 : 12, n: got, vals: vals });
+      if (got) out.push({ r: r, label: label, rows: h > 8 ? 16 : 8, cols: n > 12 ? 24 : 12, n: got, vals: vals });
       lastEnd = r + h; r += h + 1;
     }
     return out;
@@ -3622,6 +3634,29 @@ var RDR = (function () {
     });
     return found;
   }
+  // A GloMax export (GloMax Discover / Explorer, "Export to Excel"): one workbook per run. The first sheet holds the
+  // protocol's settings, "Results" holds one lettered grid per reading — each under its own heading in column A
+  // ("Luminescence", "Fluorescence") — with "Protocol: …" and "Result: <the run's name>" at the top, and "Results By
+  // Well" repeats them well by well. A double read (HiBiT luminescence, then CellTiter-Fluor fluorescence, on the
+  // same plate) is two grids on that one sheet. null when the workbook is not one.
+  function glomax(wb) {
+    var sn = null;
+    wb.SheetNames.forEach(function (n) { if (!sn && /^results$/i.test(n)) sn = n; });
+    if (!sn) return null;
+    var rows = aoa(wb.Sheets[sn]), top = rows.slice(0, 6).map(function (r) { return r.map(str).join('|'); }).join('|');
+    var rm = /Result:\s*([^|]*)/.exec(top), pm = /Protocol:\s*([^|]*)/.exec(top);
+    if (!rm || !pm) return null;
+    var bl = blocks(rows), prev = -1, ch = [];
+    bl.forEach(function (b) {
+      var head = '';
+      for (var u = b.r - 1; u > prev && u >= b.r - 6 && !head; u--) { var t = str((rows[u] || [])[0]); if (t && !/:$/.test(t)) head = t; }
+      prev = b.r + (b.rows || 0);
+      var kind = /lumin/i.test(head) ? 'lum' : /fluor/i.test(head) ? 'fluor' : /absorb|\bOD\b/i.test(head) ? 'abs' : 'other';
+      ch.push({ kind: kind, label: head || b.label, rows: b.rows, cols: b.cols, n: b.n, vals: b.vals });
+    });
+    if (!ch.length) return null;
+    return { name: rm[1].trim(), protocol: pm[1].trim(), sheet: sn, channels: ch };
+  }
   // One plate as a workbook of its own — its grid sheet and its settings sheet, under the plain names — so
   // code that reads one reader file per plate reads it unchanged.
   function plateBook(wb, p) {
@@ -3655,7 +3690,7 @@ var RDR = (function () {
     }
     return out;
   }
-  return { plates: plates, blocks: blocks, expand: expand, plateBook: plateBook };
+  return { plates: plates, blocks: blocks, expand: expand, plateBook: plateBook, glomax: glomax };
 })();
 // ═══ READER PLATES — END ═══
 // ═══ SCREEN ENGINE — BEGIN (canonical in Echo; tools/sync_screen_engine.py copies it into Hit Finder) ═══
@@ -4017,8 +4052,27 @@ function _readerNum(v) {
   else if (/^-?\d+,\d+$/.test(t)) t = t.replace(',', '.');
   return /^-?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i.test(t) ? parseFloat(t) : NaN;
 }
+// A GloMax export (see RDR.glomax): the plate's signal is its luminescence grid (else its first non-fluorescence grid), and a
+// fluorescence grid read from the same plate is the viability of those same wells (w.viab). A file with nothing but
+// fluorescence has no signal of its own — .glomax.viabOnly — so it is a viability file when "Normalise to viability" is on,
+// and an ordinary reading when it is off.
+function _glomaxWells(G, barcode) {
+  const sig = G.channels.find(c => c.kind === 'lum') || G.channels.find(c => c.kind !== 'fluor') || G.channels[0];
+  const via = sig.kind === 'fluor' ? null : G.channels.find(c => c.kind === 'fluor');
+  const L = 'ABCDEFGHIJKLMNOP', wells = [];
+  for (let ri = 0; ri < 16; ri++) for (let ci = 0; ci < 24; ci++) {
+    const k = L[ri] + (ci + 1), sv = sig.vals[k];
+    const w = { barcode, barcodeKey: barcode.toLowerCase(), well: L[ri] + String(ci + 1).padStart(2, '0'), measurement: sv === undefined ? null : sv };
+    if (via) { const vv = via.vals[k]; w.viab = vv === undefined ? null : vv; }
+    wells.push(w);
+  }
+  if (!wells.some(w => w.measurement !== null)) throw new Error('no plate readings found in the sheet');
+  wells.glomax = { name: G.name, protocol: G.protocol, signal: sig.label || sig.kind, viability: via ? (via.label || 'Fluorescence') : '', viabOnly: sig.kind === 'fluor' };
+  return wells;
+}
 function _parsePHERAstarXLS(ab, barcode, a1CellRef) {
   const wb = XLSX.read(ab, { type: 'array', cellDates: false, raw: true });
+  { const G = typeof RDR !== 'undefined' ? RDR.glomax(wb) : null; if (G) return _glomaxWells(G, barcode); }
   const ws = wb.Sheets[wb.SheetNames[0]];
   const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
   const _sheetRange = XLSX.utils.decode_range(ws['!ref'] || 'A1');
@@ -4333,7 +4387,8 @@ function _fitBest(xArr, yArr, pBase, loBound, hiBound, valFn, jacFn, maxIter) {
   return best;
 }
 
-async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled, minR2, r2Enabled, maxSd, sdEnabled, topConstrain, topEnabled, fixBot, botVal, fixHill, hillVal, absdc50Enabled, skipNorm, csvCols, assayType, zeroPctCtrl, dmaxCapEnabled, dmaxCapVal, qcOverridesJSON, minBotEnabled, minBotVal, a1Loc, rowNorm) {
+async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled, minR2, r2Enabled, maxSd, sdEnabled, topConstrain, topEnabled, fixBot, botVal, fixHill, hillVal, absdc50Enabled, skipNorm, csvCols, assayType, zeroPctCtrl, dmaxCapEnabled, dmaxCapVal, qcOverridesJSON, minBotEnabled, minBotVal, a1Loc, rowNorm, viabNorm) {
+  viabNorm = !!viabNorm;
   minBotEnabled = minBotEnabled !== false;
   minBotVal = isNaN(minBotVal) ? 0 : minBotVal;
   // The multi-assay panels reach this function without the Setup form's checks.
@@ -4360,12 +4415,18 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
   log('Parsing PHERAstar files…');
   let readerRaw = [];
   window._pheraProtocol = null;
-  const _readerBuf = {}, _readerOk = [];
+  const _readerBuf = {}, _readerOk = [], viabRaw = [], _viabOk = [];
   for (const [fname, file] of Object.entries(readerFiles)) {
     const bytes = await toBytes(file);
     const barcode = fname.replace(/\.[^.]+$/, '');
     try {
       const wells = _parsePHERAstarXLS(bytes.buffer, barcode, a1Loc||'');
+      // A GloMax file that holds nothing but fluorescence is the viability of a plate whose signal is read elsewhere.
+      if (viabNorm && wells.glomax && wells.glomax.viabOnly) {
+        viabRaw.push(...wells); _readerBuf[fname] = bytes.buffer; _viabOk.push({ file: fname, stem: barcode });
+        log('  ' + fname + ' → viability readings (' + wells.glomax.signal + ')', 'ok');
+        continue;
+      }
       readerRaw.push(...wells);
       _readerBuf[fname] = bytes.buffer; _readerOk.push({ file: fname, stem: barcode });
       log('  ' + fname + ' → ' + barcode, 'ok');
@@ -4377,7 +4438,7 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
       log('  Error ' + fname + ': ' + e.message, 'err');
     }
   }
-  if (!readerRaw.length) throw new Error('No PHERAstar data parsed. Check XLS structure.');
+  if (!readerRaw.length) throw new Error(viabRaw.length ? 'Only viability files (fluorescence on its own) were loaded, so there is no signal to divide. Add the luminescence files, or untick “Normalise to viability”.' : 'No PHERAstar data parsed. Check XLS structure.');
   log('Reader: ' + readerRaw.length + ' wells, ' + new Set(readerRaw.map(r => r.barcode)).size + ' plates', 'ok');
 
   // 2b. Which reader file reads which Echo plate. The file name identifies the plate; it need not equal the
@@ -4387,6 +4448,41 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
     _applyPlateNames(readerRaw, R.byPlate);
     R.pairs.forEach((v, file) => { if (v.how !== 'exact') log('  ' + file + ' → plate “' + v.name + '” (' + _PL_HOW[v.how] + ')', 'ok'); });
     R.ambiguous.forEach(a => log('⚠ ' + (a.files.length > 1 ? 'Files ' + a.files.join(', ') + ' all look like' : '“' + a.files[0] + '” looks like') + ' plate' + (a.plates.length > 1 ? 's ' + a.plates.join(', ') : ' ' + a.plates[0]) + ' — not paired, because a guess would put one plate’s readings under another’s compounds. Choose the file for each plate in Setup › Review.', 'warn')); }
+
+  // 2c. Normalise to viability. Each well's signal (luminescence) is divided by the viability reading of the same well
+  // (fluorescence, e.g. CellTiter-Fluor), and that ratio is what the DMSO wells then normalise, plate by plate. The reading
+  // comes from the same GloMax file when it read both, or from a file holding only fluorescence for that plate, which is
+  // paired with the plate by its name exactly as a reader file is. A plate with no usable viability reading is left out and
+  // said so: its raw counts would otherwise sit beside other plates' ratios.
+  window._viabInfo = null;
+  if (viabNorm) {
+    const vmap = new Map(), vsrc = {}, vpl = {};
+    if (viabRaw.length) {
+      const RV = await _resolvePlatesAsync(_echoPlates(echoData), _viabOk, window._viabAssign, async f => _sheetTexts(_readerBuf[f.file]));
+      _applyPlateNames(viabRaw, RV.byPlate);
+      RV.pairs.forEach((v, file) => { vsrc[v.key] = file; log('  ' + file + ' → viability of plate “' + v.name + '”' + (v.how !== 'exact' ? ' (' + _PL_HOW[v.how] + ')' : ''), 'ok'); });
+      RV.ambiguous.forEach(a => log('⚠ Viability file' + (a.files.length > 1 ? 's ' + a.files.join(', ') + ' all look like' : ' “' + a.files[0] + '” looks like') + ' plate' + (a.plates.length > 1 ? 's ' + a.plates.join(', ') : ' ' + a.plates[0]) + ' — not paired.', 'warn'));
+      RV.leftFiles.forEach(f => { if (!RV.ambiguous.some(a => a.files.includes(f.file))) log('⚠ Viability file “' + f.file + '” matches no plate of the Echo file — not used. Name it like the destination plate.', 'warn'); });
+      viabRaw.forEach(w => { if (RV.byPlate.has(w.barcodeKey) && w.measurement !== null) vmap.set(w.barcodeKey + '|' + w.well, w.measurement); });
+    }
+    for (const w of readerRaw) {
+      const p = vpl[w.barcodeKey] = vpl[w.barcodeKey] || { plate: w.barcode, key: w.barcodeKey, wells: 0, used: 0, unusable: 0, from: '' };
+      let v = w.viab;
+      if (v === undefined) { v = vmap.get(w.barcodeKey + '|' + w.well); if (v !== undefined && !p.from) p.from = vsrc[w.barcodeKey] || ''; }
+      else if (!p.from) p.from = 'same file';
+      const s0 = w.measurement;
+      w.signalRaw = s0; w.viab = (v === undefined || v === null || !isFinite(v)) ? null : v;
+      if (s0 !== null) { p.wells++; if (w.viab > 0) p.used++; else if (w.viab !== null) p.unusable++; }
+      w.measurement = (s0 !== null && w.viab > 0) ? s0 / w.viab : null;
+    }
+    const infos = Object.values(vpl);
+    const none = infos.filter(p => !p.used), part = infos.filter(p => p.used && p.used < p.wells);
+    if (none.length) log('⚠ No viability reading for plate' + (none.length > 1 ? 's' : '') + ' ' + none.map(p => p.plate).join(', ') + ' — left out of the analysis. Add the plate’s fluorescence (a GloMax file named like the plate), or untick “Normalise to viability”.', 'warn');
+    part.forEach(p => log('⚠ ' + p.plate + ': ' + (p.wells - p.used) + ' of ' + p.wells + ' wells have no usable viability reading (empty or zero) — they have no ratio.', 'warn'));
+    const okp = infos.filter(p => p.used);
+    if (okp.length) log('Normalise to viability: signal ÷ viability on ' + okp.length + ' plate' + (okp.length === 1 ? '' : 's') + ' (' + okp.map(p => p.plate + ' ← ' + (p.from || '?')).slice(0, 4).join(', ') + (okp.length > 4 ? ', …' : '') + ')', 'ok');
+    window._viabInfo = infos;
+  }
 
   // 3. Normalize
   const _ctrlList = _parseCtrlRange(ctrlRange), _zeroList = _parseCtrlRange(zeroPctCtrl);
@@ -4547,7 +4643,7 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
     merged.push({
       sampleId: e.sampleId, barcode: rw.barcode, barcodeKey: e.barcodeKey,
       well: e.well, conc: e.conc, log10Conc: e.log10Conc,
-      measurement: rw.measurementNorm, measurementRaw: rw.measurement,
+      measurement: rw.measurementNorm, measurementRaw: rw.measurement, sigRaw: rw.signalRaw, viab: rw.viab,
       ref: rw.refUsed, refPlain: rw.refPlain, measurementPlain: rw.measurementPlain,
       isCtrl: ctrlWells.has(e.well), proteinRaw: _groupOf(e.barcode, (window._lastAnalysisParams || {}).groupMode, (window._lastAnalysisParams || {}).groupMap)
     });
@@ -4604,7 +4700,8 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
   const rawCsvName = 'Results_' + assayId + '_Raw_Data.csv';
   // Measurement is the NORMALISED value (% of control); the last three columns are what it was made
   // from, so anyone can recompute it: Measurement = Raw_Signal / Reference_Signal × 100.
-  const rawHeader = 'Protein,Sample_ID,Plate_Barcode,Well,Log10_Conc,Measurement,Concentration_nM,Raw_Signal,Reference_Signal,Normalisation\r\n';
+  // With Normalise to viability, Raw_Signal is the ratio signal ÷ viability, and the two readings it was made from follow.
+  const rawHeader = 'Protein,Sample_ID,Plate_Barcode,Well,Log10_Conc,Measurement,Concentration_nM,Raw_Signal,Reference_Signal,Normalisation' + (viabNorm ? ',Signal,Viability_Reading' : '') + '\r\n';
   const rawRows = merged.map(r => {
     // Six significant figures: toFixed(4) printed a 50 fM point as 0 nM.
     const concNM = +(Math.pow(10, r.log10Conc) * 1e9).toPrecision(6);
@@ -4612,13 +4709,13 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
       r.log10Conc.toFixed(4), r.measurement !== null && isFinite(r.measurement) ? r.measurement.toFixed(4) : '', concNM,
       r.measurementRaw !== null && isFinite(r.measurementRaw) ? +r.measurementRaw.toFixed(2) : '', r.ref && isFinite(r.ref) ? +r.ref.toFixed(2) : '',
       !doNormalize ? 'none' : (normPlates[r.barcodeKey] ? normPlates[r.barcodeKey].mode : 'plate mean')
-    ].map(_csvCell).join(',');
+    ].concat(viabNorm ? [r.sigRaw != null && isFinite(r.sigRaw) ? +r.sigRaw.toFixed(2) : '', r.viab != null && isFinite(r.viab) ? +r.viab.toFixed(2) : ''] : []).map(_csvCell).join(',');
   });
   // The same table, as cells, for the workbook's "Raw data" sheet (the CSV is no longer a button of its own).
   const rawAoa = merged.map(r => [r.protein || '', r.sampleId || '', r.barcode || '', r.well || '',
     +r.log10Conc.toFixed(4), r.measurement !== null && isFinite(r.measurement) ? +r.measurement.toFixed(4) : '', +(Math.pow(10, r.log10Conc) * 1e9).toPrecision(6),
     r.measurementRaw !== null && isFinite(r.measurementRaw) ? +r.measurementRaw.toFixed(2) : '', r.ref && isFinite(r.ref) ? +r.ref.toFixed(2) : '',
-    !doNormalize ? 'none' : (normPlates[r.barcodeKey] ? normPlates[r.barcodeKey].mode : 'plate mean')]);
+    !doNormalize ? 'none' : (normPlates[r.barcodeKey] ? normPlates[r.barcodeKey].mode : 'plate mean')].concat(viabNorm ? [r.sigRaw != null && isFinite(r.sigRaw) ? +r.sigRaw.toFixed(2) : '', r.viab != null && isFinite(r.viab) ? +r.viab.toFixed(2) : ''] : []));
   downloadBlobs.push({ name: rawCsvName, bytes: _buildCsvBytes(rawHeader, rawRows), type: 'text/csv', kind: 'csv', aoa: rawAoa, assay: assayId });
   log('Raw data CSV: ' + rawRows.length + ' rows', 'ok');
 
@@ -4915,7 +5012,7 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
     log('  ' + protein + ': ' + nFit + ' fitted', 'ok');
   }
   // The account of how this analysis normalised, and how far its answers depend on that.
-  { const aud = _normAuditBuild({ assayId, assayType, smartOn: !!(doNormalize && rowNorm), skipNorm: !doNormalize, ctrlRange, plates: normPlates, summary });
+  { const aud = _normAuditBuild({ viab: viabNorm, assayId, assayType, smartOn: !!(doNormalize && rowNorm), skipNorm: !doNormalize, ctrlRange, plates: normPlates, summary });
     (window._normAudits = window._normAudits || []).push(aud);
     if (aud.smart) {
       const c = aud.check, dep = c['Method-dependent'] + c['No plain fit'];
@@ -5794,7 +5891,7 @@ function generateOutputXLSX() {
     [],
     ['─── CURVE FITTING ───────────────────────────', ''],
     ['Model', '4-Parameter Logistic (4PL)'],
-    ['Normalisation', params.skipNorm ? 'None (raw signal)' : (params.ctrlRange ? (params.rowNorm ? 'Smart DMSO control (outlier control wells excluded; row, odd/even-row and column-drift corrections applied only where significant) — controls: ' : 'DMSO mean per plate — controls: ') + '' + params.ctrlRange : 'No control wells') + (window._normAudits && window._normAudits.length ? '   → see the "Normalisation" sheet for what each plate and curve received' : '')],
+    ['Normalisation', params.skipNorm ? 'None (raw signal)' : (params.ctrlRange ? (params.rowNorm ? 'Smart DMSO control (outlier control wells excluded; row, odd/even-row and column-drift corrections applied only where significant) — controls: ' : 'DMSO mean per plate — controls: ') + '' + params.ctrlRange : 'No control wells') + (params.viabNorm ? ' — after dividing each well’s signal by its viability reading' : '') + (window._normAudits && window._normAudits.length ? '   → see the "Normalisation" sheet for what each plate and curve received' : '')],
     ['Top constraint (%)', params.topEnabled !== false ? params.topConstrain : 'Free (unconstrained)'],
     ['Bottom (%)', params.fixBot ? ('Fixed at ' + params.botVal) : ('Free' + (params.minBotEnabled !== false ? ' (≥ ' + (params.minBotVal ?? 0) + '%)' : ''))],
     ['Hill slope', params.fixHill ? ('Fixed at ' + params.hillVal) : 'Free'],
@@ -5934,6 +6031,7 @@ function renderProtocol() {
   html += row('Plates grouped by', esc(_GROUP_LABELS[params.groupMode || 'first'].replace(/\s{2,}.*/, '')) + (params.groupMode === 'custom' ? ' <span style="color:var(--text3)">— ' + esc(String(params.groupMap || '').split(/\r?\n/).filter(Boolean).join('; ')) + '</span>' : ''));
   html += row('Curve fitting', '4-Parameter Logistic (4PL)');
   html += row('Normalisation', params.skipNorm ? '<span style="color:var(--text3)">None — raw signal</span>' : (params.ctrlRange ? (params.rowNorm ? 'Smart DMSO control (outlier controls excluded; row / odd-even / drift corrected only where significant) · control wells: <strong>' : 'DMSO mean per plate · control wells: <strong>') + params.ctrlRange + '</strong>' : '<span style="color:var(--text3)">No control wells defined</span>'));
+  if (params.viabNorm) html += row('Viability', 'Each well’s signal ÷ the viability reading (fluorescence) of the same well, before normalising to the control wells');
   html += _normAuditHtml(window._normAudits);
   html += row('Hook effect threshold', on(params.hookEnabled, params.hookThr, '%'));
   html += row('Min R²', on(params.r2Enabled, params.minR2, ''));
@@ -10493,7 +10591,7 @@ function _hxFp(data) { return _hxHashStr((data || []).map(r => [r.Protein, r.Sam
 // What a person would call a setting, and how to say it. An "enabled" box and its value read as one thing.
 const HX_PAIRS = [['hookEnabled', 'hookThr', 'Hook test', '%'], ['r2Enabled', 'minR2', 'Min R²', ''], ['sdEnabled', 'maxSd', 'Max replicate SD', '%'], ['topEnabled', 'topConstrain', 'Fixed top', '%'],
   ['fixBot', 'botVal', 'Fixed bottom', '%'], ['fixHill', 'hillVal', 'Fixed Hill', ''], ['minBotEnabled', 'minBotVal', 'Bottom floor', '%'], ['dmaxCapEnabled', 'dmaxCapVal', 'Dmax cap', '%']];
-const HX_PLAIN = [['ctrlRange', 'Control wells'], ['zeroPctCtrl', '0 % wells'], ['assayType', 'Assay type'], ['skipNorm', 'No normalisation'], ['rowNorm', 'Smart DMSO control'], ['groupMode', 'Plates grouped by'], ['groupMap', 'Group table'], ['ndNoEffect', '“n.d.” for flat curves'], ['absdc50', 'Abs DC50'], ['a1Loc', 'A01 cell']];
+const HX_PLAIN = [['ctrlRange', 'Control wells'], ['zeroPctCtrl', '0 % wells'], ['assayType', 'Assay type'], ['skipNorm', 'No normalisation'], ['viabNorm', 'Normalise to viability'], ['rowNorm', 'Smart DMSO control'], ['groupMode', 'Plates grouped by'], ['groupMap', 'Group table'], ['ndNoEffect', '“n.d.” for flat curves'], ['absdc50', 'Abs DC50'], ['a1Loc', 'A01 cell']];
 function _hxShow(v) { return v === true ? 'on' : v === false ? 'off' : (v === undefined || v === null || v === '') ? '—' : String(v); }
 function _hxDiff(a, b) {
   const out = [];
@@ -14689,7 +14787,7 @@ function clearSetup() {
   var pa = document.getElementById('p-assay'); if(pa) pa.value='';
   var al = document.getElementById('p-a1-loc'); if(al) al.value='';
   var pc = document.getElementById('p-ctrl'); if(pc){pc.value='B22:O23';pc.disabled=false;pc.style.opacity='1';}
-  var sn2 = document.getElementById('p-skip-norm'); if(sn2) sn2.checked=false; var rn2 = document.getElementById('p-row-norm'); if(rn2){rn2.checked=false;rn2.disabled=false;}
+  var sn2 = document.getElementById('p-skip-norm'); if(sn2) sn2.checked=false; var pv2 = document.getElementById('p-viab'); if(pv2) pv2.checked=false; var rn2 = document.getElementById('p-row-norm'); if(rn2){rn2.checked=false;rn2.disabled=false;}
   var zp = document.getElementById('p-zero-pct'); if(zp) zp.value='';
   // Reset test-data button so it can be loaded again after a clear
   var tb = document.getElementById('test-btn');
@@ -14791,6 +14889,7 @@ async function echoReview() {
   if (seq !== _rvSeq) return null;
   // reader plates
   const rd = {};   // barcodeKey → {name, wells: Map(well → value|null)}
+  const viabOn = !!document.getElementById('p-viab')?.checked && !document.getElementById('multi-assay-chk')?.checked, vrd = {};   // vrd: files that are only the viability of a plate
   for (const n of rNames) {
     const f = readerFiles[n], k = _rvKey(f) + '|' + a1;
     let wells = _rvCache.get(k);
@@ -14803,7 +14902,9 @@ async function echoReview() {
     }
     const bc = n.replace(/\.[^.]+$/, '');
     if (wells.error) { add('error', 'Reader file “' + n + '”: ' + wells.error + '.'); continue; }
-    rd[bc.toLowerCase()] = { name: bc, file: n, wells: new Map(wells.map(w => [w.well, w.measurement])) };
+    const gm = wells.glomax;
+    if (viabOn && gm && gm.viabOnly) { vrd[bc.toLowerCase()] = { name: bc, file: n, wells: new Map(wells.map(w => [w.well, w.measurement])) }; continue; }
+    rd[bc.toLowerCase()] = { name: bc, file: n, wells: new Map(wells.map(w => [w.well, w.measurement])), viab: gm && gm.viability ? new Map(wells.map(w => [w.well, w.viab])) : null };
   }
   // controls
   const skipNorm = !!document.getElementById('p-skip-norm')?.checked;
@@ -14821,8 +14922,19 @@ async function echoReview() {
   // Which reader file reads which Echo plate — the file name identifies the plate and need not equal the
   // Echo barcode letter for letter (_resolvePlates). Same answer the run will use.
   const _txtOf = async f => { const fl = readerFiles[f.file], ck = _rvKey(fl) + '|txt'; let t = _rvCache.get(ck); if (!t) { t = _sheetTexts((await toBytes(fl)).buffer); _rvCache.set(ck, t); } return t; };
-  const RES = await _resolvePlatesAsync([...byBc].map(([k, p]) => ({ key: k, name: p.name, inter: interRe.test(p.name) })), Object.keys(rd).map(k => ({ file: rd[k].file, stem: rd[k].name })), window._plateAssign, _txtOf);
+  const PLS = [...byBc].map(([k, p]) => ({ key: k, name: p.name, inter: interRe.test(p.name) }));
+  const RES = await _resolvePlatesAsync(PLS, Object.keys(rd).map(k => ({ file: rd[k].file, stem: rd[k].name })), window._plateAssign, _txtOf);
   if (seq !== _rvSeq) return null;
+  // Viability files are paired with plates the same way, among themselves: a plate has its signal file and its viability file,
+  // and the two must not be taken for rivals for the one plate.
+  R.viabFiles = Object.keys(vrd).map(k => vrd[k].file);
+  const VRES = Object.keys(vrd).length ? await _resolvePlatesAsync(PLS, Object.keys(vrd).map(k => ({ file: vrd[k].file, stem: vrd[k].name })), {}, _txtOf) : null;
+  if (seq !== _rvSeq) return null;
+  if (VRES) {
+    VRES.ambiguous.forEach(a => add('warn', 'Viability file' + (a.files.length > 1 ? 's ' + a.files.join(', ') + ' all look like' : ' “' + a.files[0] + '” looks like') + ' plate' + (a.plates.length > 1 ? 's ' + a.plates.join(', ') : ' ' + a.plates[0]) + ' — not paired.'));
+    const lost = VRES.leftFiles.filter(f => !VRES.ambiguous.some(a => a.files.includes(f.file))).map(f => f.file);
+    if (lost.length) add('warn', 'Viability file' + (lost.length > 1 ? 's' : '') + ' the Echo file does not mention: ' + lost.join(', ') + ' — not used. Name ' + (lost.length > 1 ? 'them' : 'it') + ' like the destination plate.');
+  }
   R.freeFiles = RES.leftFiles.map(f => f.file);
   RES.ambiguous.forEach(a => add('warn', (a.files.length > 1 ? 'Files ' + a.files.join(', ') + ' all look like' : '“' + a.files[0] + '” looks like') + ' plate' + (a.plates.length > 1 ? 's ' + a.plates.join(', ') : ' ' + a.plates[0]) + ' — not paired, because a guess would put one plate’s readings under another’s compounds. Choose the file for each plate below.'));
   let ctrlOnCpd = 0;
@@ -14836,6 +14948,16 @@ async function echoReview() {
       if (rec.inter) { rec.status = 'skip'; rec.notes.push('intermediate plate — not read'); }
       else { rec.status = 'error'; rec.notes.push('no reader file'); add('error', 'The Echo file has transfers onto plate “' + p.name + '” but no reader file could be matched to it. Put the plate’s barcode in the name of its reader file, or choose the file for it.', { tab: 'files', label: 'Back to files' }, { pick: bk }); }
       R.plates.push(rec); return;
+    }
+    // Normalise to viability: the plate's wells are signal ÷ viability, from the same file or from the plate's viability file.
+    if (viabOn) {
+      const vp = VRES && VRES.byPlate.get(bk);
+      const vm = r.viab || (vp && vrd[vp.stem.toLowerCase()] ? vrd[vp.stem.toLowerCase()].wells : null);
+      if (!vm) { rec.status = 'error'; rec.notes.push('no viability reading'); add('error', 'Plate “' + p.name + '” has no viability reading: its file holds only one reading and no viability file is named for it. It would be left out of the analysis.', { tab: 'files', label: 'Back to files' }); }
+      else {
+        r.wells = new Map([...r.wells].map(([w, sv]) => { const vv = vm.get(w); return [w, sv !== null && sv !== undefined && vv > 0 ? sv / vv : null]; }));
+        rec.notes.push(r.viab ? 'signal ÷ viability, one file' : 'signal ÷ viability · viability from “' + vp.file + '”');
+      }
     }
     const seen = new Set();
     p.rows.forEach(x => {
@@ -14890,6 +15012,7 @@ async function renderReview(force) {
   if (R === null) return;
   window._rv = R;
   host.setAttribute('aria-busy', 'false');
+  try { renderReaderList(); } catch (e) {}   // the list tags the files that are only a plate's viability
   const tab = document.querySelector('.setup-stab[data-tab="review"]');
   if (tab) { tab.dataset.level = R.empty ? '' : R.level; const n = R.issues.filter(i => i.level !== 'info').length; tab.querySelector('.rv-n') && (tab.querySelector('.rv-n').textContent = n && !R.empty ? n : ''); }
   const st = document.getElementById('setup-fstatus');
@@ -14915,7 +15038,7 @@ async function renderReview(force) {
     tb += '<tr class="rv-r ' + p.status + '"><td class="pl" title="' + (p.file ? 'Reader file: ' + esc(p.file) + '' : 'No reader file') + '"><span class="rv-dot ' + p.status + '" role="img" aria-label="' + p.status + '"></span>' + esc(p.plate) + '</td>'
       + '<td>' + (p.file ? '<input class="rv-g" value="' + esc(p.group) + '" data-bc="' + esc(p.plate) + '" aria-label="Group of plate ' + esc(p.plate) + '" onchange="rvSetGroup(this)">' : '<span class="rv-na">—</span>') + '</td>'
       + '<td class="n">' + p.dosed + '</td><td class="n">' + p.compounds + '</td>'
-      + '<td class="n">' + (p.ctrlRead === null ? '—' : p.ctrlRead + ' / ' + p.ctrlN) + '</td><td class="n">' + (p.ctrlMean === null ? '—' : Math.round(p.ctrlMean).toLocaleString() + (p.ctrlCV != null ? ' <span class="rv-cv">± ' + p.ctrlCV.toFixed(0) + ' %</span>' : '')) + '</td>'
+      + '<td class="n">' + (p.ctrlRead === null ? '—' : p.ctrlRead + ' / ' + p.ctrlN) + '</td><td class="n">' + (p.ctrlMean === null ? '—' : (Math.abs(p.ctrlMean) >= 100 ? Math.round(p.ctrlMean).toLocaleString() : +p.ctrlMean.toPrecision(3)) + (p.ctrlCV != null ? ' <span class="rv-cv">± ' + p.ctrlCV.toFixed(0) + ' %</span>' : '')) + '</td>'
       + '<td class="rv-nt">' + esc(p.notes.join(' · ')) + '</td></tr>';
   });
   tb += '</tbody></table></div><div class="rv-cap">A plate is found by its barcode being in its reader file’s name, and keeps the Echo file’s barcode as its name. The group of a plate is editable here: typing one writes a line of “My own table” in Setup › Assay.</div>';
@@ -14944,7 +15067,7 @@ function rvSetGroup(inp) {
   const lines = (cur.mode === 'custom' ? map.value : '').split(/\r?\n/).filter(l => l.trim() && l.split('=')[0].trim().toLowerCase() !== bc.toLowerCase());
   if (cur.mode !== 'custom') {
     // freeze the current rule for the other plates so switching to a table does not regroup them
-    Object.keys(readerFiles).map(_plateNameOfFile).forEach(n => { if (n.toLowerCase() !== bc.toLowerCase()) lines.push(n + ' = ' + _groupOf(n, cur.mode, cur.map)); });
+    _signalFileNames().map(_plateNameOfFile).forEach(n => { if (n.toLowerCase() !== bc.toLowerCase()) lines.push(n + ' = ' + _groupOf(n, cur.mode, cur.map)); });
   }
   lines.push(bc + ' = ' + grp);
   map.value = lines.join('\n'); sel.value = 'custom'; onGroupModeChange();

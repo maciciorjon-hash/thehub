@@ -2959,7 +2959,7 @@ var RDR = (function () {
         var t = (rows[u] || []).map(str).filter(function (x) { return x; });
         if (t.length) { label = t[0]; break; }
       }
-      if (got) out.push({ label: label, rows: h > 8 ? 16 : 8, cols: n > 12 ? 24 : 12, n: got, vals: vals });
+      if (got) out.push({ r: r, label: label, rows: h > 8 ? 16 : 8, cols: n > 12 ? 24 : 12, n: got, vals: vals });
       lastEnd = r + h; r += h + 1;
     }
     return out;
@@ -3004,6 +3004,29 @@ var RDR = (function () {
     });
     return found;
   }
+  // A GloMax export (GloMax Discover / Explorer, "Export to Excel"): one workbook per run. The first sheet holds the
+  // protocol's settings, "Results" holds one lettered grid per reading — each under its own heading in column A
+  // ("Luminescence", "Fluorescence") — with "Protocol: …" and "Result: <the run's name>" at the top, and "Results By
+  // Well" repeats them well by well. A double read (HiBiT luminescence, then CellTiter-Fluor fluorescence, on the
+  // same plate) is two grids on that one sheet. null when the workbook is not one.
+  function glomax(wb) {
+    var sn = null;
+    wb.SheetNames.forEach(function (n) { if (!sn && /^results$/i.test(n)) sn = n; });
+    if (!sn) return null;
+    var rows = aoa(wb.Sheets[sn]), top = rows.slice(0, 6).map(function (r) { return r.map(str).join('|'); }).join('|');
+    var rm = /Result:\s*([^|]*)/.exec(top), pm = /Protocol:\s*([^|]*)/.exec(top);
+    if (!rm || !pm) return null;
+    var bl = blocks(rows), prev = -1, ch = [];
+    bl.forEach(function (b) {
+      var head = '';
+      for (var u = b.r - 1; u > prev && u >= b.r - 6 && !head; u--) { var t = str((rows[u] || [])[0]); if (t && !/:$/.test(t)) head = t; }
+      prev = b.r + (b.rows || 0);
+      var kind = /lumin/i.test(head) ? 'lum' : /fluor/i.test(head) ? 'fluor' : /absorb|\bOD\b/i.test(head) ? 'abs' : 'other';
+      ch.push({ kind: kind, label: head || b.label, rows: b.rows, cols: b.cols, n: b.n, vals: b.vals });
+    });
+    if (!ch.length) return null;
+    return { name: rm[1].trim(), protocol: pm[1].trim(), sheet: sn, channels: ch };
+  }
   // One plate as a workbook of its own — its grid sheet and its settings sheet, under the plain names — so
   // code that reads one reader file per plate reads it unchanged.
   function plateBook(wb, p) {
@@ -3037,7 +3060,7 @@ var RDR = (function () {
     }
     return out;
   }
-  return { plates: plates, blocks: blocks, expand: expand, plateBook: plateBook };
+  return { plates: plates, blocks: blocks, expand: expand, plateBook: plateBook, glomax: glomax };
 })();
 // ═══ READER PLATES — END ═══
 // ══════════════════════════════════════════════════════════════

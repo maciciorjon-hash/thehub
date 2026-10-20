@@ -161,6 +161,12 @@
 //                             as the kit's buttons, Run Analysis in the same row, the Files tab green once both kinds of file are in, no copy
 //                             of the card / tab / footer CSS in Echo's own style, no backdrop blur, and a press that starts inside the card and
 //                             ends on the backdrop (selecting text) does not close it.
+//   E63 normalise to          A GloMax export is read (Results sheet, a grid per reading, the run's name at the top). With "Normalise to
+//       viability             viability" each well's luminescence is divided by the same well's fluorescence BEFORE the DMSO wells normalise
+//                             it: from one GloMax file that holds both, or from a fluorescence-only file named for the plate (beside PHERAstar
+//                             luminescence). Readings distorted well by well and divided back give exactly the curves of the undistorted plate;
+//                             off, the distortion shows; a viability file is not a plate (no group, tagged in the list); a plate with no viability
+//                             reading is an error in Review and left out of the run; the Raw CSV carries both readings.
 //
 // Usage (repo root):  node tools/echo_invariants.mjs [--only=E1,E7] [--file=path/to/echo.html] [--verbose]
 import { chromium } from 'playwright';
@@ -2434,6 +2440,102 @@ if (run('E62')) await guard('E62', async () => {
   await q.evaluate(() => openSetupModal()); await q.keyboard.press('Escape');
   check('E62', 'Esc closes it', !(await open()));
   check('E62', 'no page errors', !errs.length, errs);
+  await c.close();
+});
+
+// E63 — Normalise to viability. A GloMax export reads a plate twice (HiBiT luminescence, CellTiter-Fluor fluorescence): two grids on its
+// Results sheet. With the option on, each well's luminescence is divided by the fluorescence of the SAME well, and that ratio is what the
+// DMSO wells of the plate normalise. The test distorts every well of a bundled plate by a factor that changes from well to well (0.6–1.6),
+// puts the same factor in the fluorescence, and checks that dividing gives back exactly the curves of the plate that was never distorted.
+// A per-plate (or no) division could not: the factor differs inside a plate and inside the control wells.
+if (run('E63')) await guard('E63', async () => {
+  const c = await browser.newContext({ viewport: { width: 1440, height: 900 } }); const q = await c.newPage(); const errs = []; q.on('pageerror', e => errs.push(e.message));
+  await q.goto('file://' + FILE); await q.waitForTimeout(1200);
+  await q.evaluate(() => { loadTestData(); }); await q.waitForTimeout(900);
+  const R = await q.evaluate(async () => {
+    const mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', LET = 'ABCDEFGHIJKLMNOP';
+    const fac = (ri, ci) => 0.6 + ((ri * 7 + ci * 3) % 11) / 10;
+    const plates = _TEST_READERS.map(r => { const bc = r.name.replace(/\.[^.]+$/, ''); return { bc, w: _parsePHERAstarXLS(Uint8Array.from(atob(r.b64), c => c.charCodeAt(0)).buffer, bc, '') }; });
+    const val = (pl, ri, ci) => pl.w[ri * 24 + ci].measurement;
+    // a GloMax-shaped workbook: settings sheet, Results (one headed grid per reading, in the order given), Results By Well
+    const glo = (fname, name, chans) => {
+      const aoa = [[], [, , , 'Protocol: CellTiter-Fluor'], [, , , 'Result: ' + name], [], [], []];
+      chans.forEach(ch => {
+        aoa.push([ch.label]); aoa.push(['', 'Emission Filter:', '', '495-505']); aoa.push(['', 'Excitation Filter:', '', 'AFC 405 nm']);
+        aoa.push(['', 'Reading:', '', 1, '', ...Array.from({ length: 24 }, (_, i) => i + 1)]);
+        for (let ri = 0; ri < 16; ri++) aoa.push(['', '', '', '', LET[ri], ...Array.from({ length: 24 }, (_, ci) => { const v = ch.fn(ri, ci); return v === null ? '' : v; })]);
+        aoa.push([]);
+      });
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([[], [, , , 'CellTiter-Fluor'], [], [], [], [], ['Executed by:', , , 'PC\\user'], [, 'Instrument Name:', , 'Test GloMax'], [], [], [], [], [], [], [], [], ['Parameters:'], [, 'Plate Type:', , '384 well']]), 'CellTiter-Fluor');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Results');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([[], [, , , 'Protocol: CellTiter-Fluor'], [, , , 'Result: ' + name]]), 'Results By Well');
+      return new File([XLSX.write(wb, { type: 'array', bookType: 'xlsx' })], fname, { type: mime });
+    };
+    const bare = (fname, fn) => {   // a PHERAstar-like grid with no ID anywhere: letters down, numbers across
+      const aoa = [['', ...Array.from({ length: 24 }, (_, i) => i + 1)]];
+      for (let ri = 0; ri < 16; ri++) aoa.push([LET[ri], ...Array.from({ length: 24 }, (_, ci) => { const v = fn(ri, ci); return v === null ? '' : v; })]);
+      const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Data');
+      return new File([XLSX.write(wb, { type: 'array', bookType: 'xlsx' })], fname, { type: mime });
+    };
+    const lumD = pl => (ri, ci) => { const v = val(pl, ri, ci); return v === null ? null : v * fac(ri, ci); };
+    const fluD = (ri, ci) => 20000 * fac(ri, ci);
+    const q3 = v => { const n = Number(v); return isFinite(n) ? n.toPrecision(3) : String(v); };
+    const snap = () => Object.fromEntries((_lastResultsData || []).map(r => [r.Protein + '|' + r.Sample_ID, q3(r.DC50_nM) + '|' + q3(r.Dmax_pct)]));
+    const run1 = async (files, viab, name) => {
+      readerFiles = files; window._plateAssign = {};
+      document.getElementById('p-viab').checked = !!viab; document.getElementById('p-assay').value = name; document.getElementById('p-ctrl').value = 'B12-O12';
+      document.getElementById('log-panel').innerHTML = '';
+      _lastResultsData = null; try { await runPipeline(); } catch (e) {}
+      const raw = downloadBlobs.find(b => /Raw_Data/.test(b.name));
+      return { snap: snap(), n: (_lastResultsData || []).length, log: document.getElementById('log-panel').innerText, hdr: raw ? new TextDecoder().decode(raw.bytes).split(/\r?\n/)[0] : '', p: window._lastAnalysisParams, aud: (window._normAudits || [])[0] || null };
+    };
+    const review = async (files, viab) => {
+      readerFiles = files; window._plateAssign = {}; document.getElementById('p-viab').checked = !!viab;
+      document.getElementById('setup-modal')?.classList.remove('hidden'); await renderReview();
+      const o = { issues: window._rv.issues.map(i => i.level + ': ' + i.msg), viabFiles: window._rv.viabFiles, plates: window._rv.plates.map(p => p.plate + '|' + p.status + '|' + p.notes.join(';')), gp: document.getElementById('p-group-preview').innerText, tags: document.querySelectorAll('#rlist .rtag').length };
+      document.getElementById('setup-modal')?.classList.add('hidden'); return o;
+    };
+    const out = {};
+    // the reader
+    const g0 = glo('t.xlsx', 'BRD2-01', [{ label: 'Fluorescence', fn: fluD }, { label: 'Luminescence', fn: lumD(plates[0]) }]);
+    const w0 = _parsePHERAstarXLS(await g0.arrayBuffer(), 'BRD2-01', ''), wf = _parsePHERAstarXLS(await glo('f.xlsx', 'x', [{ label: 'Fluorescence', fn: fluD }]).arrayBuffer(), 'x', ''), wl = _parsePHERAstarXLS(await glo('l.xlsx', 'x', [{ label: 'Luminescence', fn: lumD(plates[0]) }]).arrayBuffer(), 'x', '');
+    out.read = { sig: w0[0].measurement, expect: val(plates[0], 0, 0) * fac(0, 0), via: w0[0].viab, viabOnly: w0.glomax.viabOnly, n: w0.length, last: w0[383].well, fOnly: wf.glomax.viabOnly, fSig: wf[0].measurement, lOnly: wl.glomax.viabOnly, lHasViab: wl[0].viab !== undefined, phera: _parsePHERAstarXLS(Uint8Array.from(atob(_TEST_READERS[0].b64), c => c.charCodeAt(0)).buffer, 'p', '').glomax === undefined };
+    // A: the plates as they are, untouched
+    const plain = {}; _TEST_READERS.forEach(r => { plain[r.name] = _b64toFile(r.b64, r.name, mime); });
+    out.A = await run1(plain, false, 'E63-plain');
+    // B: one GloMax file per plate holding both readings (fluorescence first, as the instrument writes them), option on
+    const both = {}; plates.forEach(p => { both[p.bc + '.xlsx'] = glo(p.bc + '.xlsx', p.bc, [{ label: 'Fluorescence', fn: fluD }, { label: 'Luminescence', fn: lumD(p) }]); });
+    out.B = await run1(both, true, 'E63-both');
+    out.Brv = await review(both, true);
+    // C: the same files with the option off: the distortion is in the numbers
+    out.C = await run1(both, false, 'E63-off');
+    // D: the luminescence from another reader (no GloMax marker), the viability from GloMax files named for the plates
+    const split = {}; plates.forEach(p => { split[p.bc + '.xlsx'] = bare(p.bc + '.xlsx', lumD(p)); split[p.bc + ' viability.xlsx'] = glo(p.bc + ' viability.xlsx', p.bc + ' viability', [{ label: 'Fluorescence', fn: fluD }]); });
+    out.D = await run1(split, true, 'E63-split');
+    out.Drv = await review(split, true);
+    // E: one plate's viability file missing
+    const lack = Object.assign({}, split); delete lack['BRD2-02 viability.xlsx'];
+    out.Erv = await review(lack, true); out.E = await run1(lack, true, 'E63-lack');
+    // F: option off, a fluorescence-only file is an ordinary reading and nothing is a viability file
+    out.Frv = await review(split, false);
+    return out;
+  });
+  const same = (a, b) => { const ka = Object.keys(a), kb = Object.keys(b); return ka.length > 0 && ka.length === kb.length && ka.every(k => a[k] === b[k]); };
+  check('E63', 'the reader takes the luminescence grid as the signal and the fluorescence grid of the same file as that well\'s viability (fluorescence written first)', R.read.n === 384 && R.read.last === 'P24' && Math.abs(R.read.sig / R.read.expect - 1) < 1e-9 && R.read.via === 20000 * (0.6) && R.read.viabOnly === false, R.read);
+  check('E63', 'a file with fluorescence only is a viability file; luminescence only has no viability; a PHERAstar file is not mistaken for a GloMax one', R.read.fOnly === true && R.read.lOnly === false && R.read.lHasViab === false && R.read.phera, R.read);
+  check('E63', 'the bundled plates give curves (the reference of this test)', R.A.n > 10, R.A.n);
+  check('E63', 'one GloMax file per plate with both readings, option on: exactly the curves of the plates that were never distorted', same(R.B.snap, R.A.snap), { a: Object.entries(R.A.snap).slice(0, 2), b: Object.entries(R.B.snap).slice(0, 2), n: [R.A.n, R.B.n] });
+  check('E63', 'the same files with the option off fit the distorted numbers: the option is what removes the distortion', !same(R.C.snap, R.A.snap), { n: R.C.n });
+  check('E63', 'luminescence from another reader plus GloMax fluorescence files named for the plates, option on: the same curves again', same(R.D.snap, R.A.snap), { a: Object.entries(R.A.snap).slice(0, 2), d: Object.entries(R.D.snap).slice(0, 2), n: [R.A.n, R.D.n] });
+  check('E63', 'the run says where each plate\'s viability came from', /Normalise to viability: signal ÷ viability on 6 plates/.test(R.B.log) && /Normalise to viability: signal ÷ viability on 6 plates/.test(R.D.log) && /BRD2-01 viability\.xlsx → viability of plate “BRD2-01”/.test(R.D.log), { b: R.B.log.slice(-400), d: R.D.log.slice(-500) });
+  check('E63', 'Review: no problems, the six viability files are named, tagged in the list, and are not plates (3 groups, not 6 or 12)', !R.Drv.issues.some(i => /^error/.test(i)) && R.Drv.viabFiles.length === 6 && R.Drv.tags === 6 && /3 groups/.test(R.Drv.gp) && R.Drv.plates.filter(p => !/^INTER/.test(p)).length === 6 && R.Drv.plates.filter(p => !/^INTER/.test(p)).every(p => /viability/.test(p)), R.Drv);
+  check('E63', 'Review of the double-read files: no viability files (they are the plates), every plate says signal ÷ viability', !R.Brv.issues.some(i => /^error/.test(i)) && R.Brv.viabFiles.length === 0 && R.Brv.plates.filter(p => !/^INTER/.test(p)).every(p => /signal ÷ viability, one file/.test(p)), R.Brv);
+  check('E63', 'a plate with no viability reading is an error in Review and is left out of the run, with the reason in the log', R.Erv.issues.some(i => /^error: Plate “BRD2-02” has no viability reading/.test(i)) && /No viability reading for plate BRD2-02/.test(R.E.log), { rv: R.Erv.issues.slice(0, 3), log: R.E.log.slice(-500) });
+  check('E63', 'with the option off nothing is a viability file: no tags, no viability notes', R.Frv.viabFiles.length === 0 && R.Frv.tags === 0, R.Frv);
+  check('E63', 'the Raw CSV carries Signal and Viability_Reading only when the option is on', /Viability_Reading/.test(R.B.hdr) && /Viability_Reading/.test(R.D.hdr) && !/Viability_Reading/.test(R.A.hdr) && !/Viability_Reading/.test(R.C.hdr), { b: R.B.hdr, a: R.A.hdr });
+  check('E63', 'the run records the option and the normalisation audit says the figures are ratios', R.B.p && R.B.p.viabNorm === true && R.A.p.viabNorm === false && R.B.aud && R.B.aud.viab === true, { p: R.B.p && R.B.p.viabNorm, aud: R.B.aud && R.B.aud.viab });
+  check('E63', 'no page errors', !errs.length, errs);
   await c.close();
 });
 
