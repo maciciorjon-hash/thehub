@@ -3392,7 +3392,7 @@ function libDetailHtml(kind, id){
   if (kind === 'plasmids') h += plasmidPaneHtml(id, r);
 
   h += '<div class="lib-dsec">Notes</div>'
-    + '<textarea class="lib-notes" placeholder="Anything worth remembering about this one…" '
+    + '<textarea class="lib-notes" aria-label="Notes" placeholder="Anything worth remembering about this one…" '
     + 'onchange="libEdit(\'' + kind + '\',\'' + id + '\',\'notes\',this.value)">' + esc(libPlainNotes(r.notes)) + '</textarea>';
 
   var used = (r.usedIn||[]).length;
@@ -3888,7 +3888,7 @@ function buildClassicNoteEl(note) {
 
   var body = document.createElement('textarea');
   body.className = 'sticky-note-body';
-  body.placeholder = 'Write a note…';
+  body.placeholder = 'Write a note…'; body.setAttribute('aria-label', 'Sticky note');
   body.value = note.text || '';
   var saveText = debounce(function() { updateStickyNoteText(note.id, body.value); }, 300);
   body.addEventListener('input', saveText);
@@ -3924,7 +3924,7 @@ function buildModernNoteEl(note, data) {
 
   var body = document.createElement('textarea');
   body.className = 'sticky-note-body';
-  body.placeholder = 'Write a note…';
+  body.placeholder = 'Write a note…'; body.setAttribute('aria-label', 'Sticky note');
   body.value = note.text || '';
   body.addEventListener('input', debounce(function() { updateStickyNoteText(note.id, body.value); }, 300));
 
@@ -4080,7 +4080,7 @@ function assignStepNoteKeys(pid) {
     box.className = 'step-note-box';
     box.dataset.noteKey = key;
     var ta = document.createElement('textarea');
-    ta.placeholder = 'Note for this step…';
+    ta.placeholder = 'Note for this step…'; ta.setAttribute('aria-label', 'Note for this step');
     ta.addEventListener('input', debounce(function() { saveStepNote(pid, key, ta.value); }, 300));
     box.appendChild(ta);
     li.appendChild(box);
@@ -4529,8 +4529,8 @@ function generateGibsonSteps() {
   var pol = PCR_POL[polKey] || PCR_POL.q5;
   var vName = gdv('pcr-vec-name') || 'Vector template', vConc = gdn('pcr-vec-conc'), vProd = gdn('pcr-vec-prod');
   var vFw = gdv('pcr-vec-fw') || 'Fwd primer', vFwtm = gdn('pcr-vec-fwtm'), vRv = gdv('pcr-vec-rv') || 'Rev primer', vRvtm = gdn('pcr-vec-rvtm');
-  var vTplVol = vConc ? fmt(Math.min(10/vConc,5),2) : '1';
-  var vWater = vConc ? fmt(Math.max(0,20-Math.min(10/vConc,5)),2) : '~19';
+  var vTplVol = vConc ? fmt(Math.min(10/vConc,5),3) : '1';
+  var vWater = vConc ? fmt(Math.max(0,20-Math.min(10/vConc,5)),3) : '~19';
   var vAnneal = (vFwtm&&vRvtm) ? (Math.min(vFwtm,vRvtm)+pol.taOffset)+'°C' : '—';
   var vExt = vProd ? (function(){ var s=Math.ceil((vProd/1000)*pol.extRate); return s>=60?Math.floor(s/60)+'m'+(s%60?' '+Math.ceil(s%60)+'s':''):s+'s'; })() : '—';
   var vBullets = ['H₂O: '+vWater+' uL', pol.name+': 25 uL', vFw+' (10 µM): 2.5 uL', vRv+' (10 µM): 2.5 uL', vName+': '+vTplVol+' uL'+(vConc?' (≤10 ng)':''), 'Total: 50 uL', 'Cycling: 98°C 30s → [98°C 10s → '+vAnneal+' 30s → 72°C '+vExt+'] ×30 → 72°C 2min → 4°C'];
@@ -4547,8 +4547,8 @@ function generateGibsonSteps() {
 
   if (hasInsertPCR) {
     var iName = iNameRaw || 'Insert template', iFw = iFwRaw || 'Fwd primer', iRv = iRvRaw || 'Rev primer';
-    var iTplVol = iConc ? fmt(Math.min(10/iConc,5),2) : '1';
-    var iWater = iConc ? fmt(Math.max(0,20-Math.min(10/iConc,5)),2) : '~19';
+    var iTplVol = iConc ? fmt(Math.min(10/iConc,5),3) : '1';
+    var iWater = iConc ? fmt(Math.max(0,20-Math.min(10/iConc,5)),3) : '~19';
     var iAnneal = (iFwtm&&iRvtm) ? (Math.min(iFwtm,iRvtm)+pol.taOffset)+'°C' : '—';
     var iExt = iProd ? (function(){ var s=Math.ceil((iProd/1000)*pol.extRate); return s>=60?Math.floor(s/60)+'m'+(s%60?' '+Math.ceil(s%60)+'s':''):s+'s'; })() : '—';
     var iBullets = ['H₂O: '+iWater+' uL', pol.name+': 25 uL', iFw+' (10 µM): 2.5 uL', iRv+' (10 µM): 2.5 uL', iName+': '+iTplVol+' uL'+(iConc?' (≤10 ng)':''), 'Total: 50 uL', 'Cycling: 98°C 30s → [98°C 10s → '+iAnneal+' 30s → 72°C '+iExt+'] ×30 → 72°C 2min → 4°C'];
@@ -5978,9 +5978,12 @@ var _arcFid = 0;
 function arcBindLabels(root){
   (root || document).querySelectorAll('.field').forEach(function(f){
     var lab = f.querySelector('label'), c = f.querySelector('input:not([type=hidden]),select,textarea');
-    if (!lab || !c || lab.htmlFor || lab.contains(c) || c.getAttribute('aria-label')) return;
-    if (!c.id) c.id = 'arc-f' + (++_arcFid);
-    lab.htmlFor = c.id;
+    if (!lab || !c || lab.htmlFor || lab.contains(c) || c.getAttribute('aria-label') || c.getAttribute('aria-labelledby')) return;
+    // A control with an id is bound with for=. One without (the gel insert rows) is NOT given one: ids
+    // are what ARCHIVE_CALC_SCHEMA hands to Labbook as the calculator's inputs, so minting them here
+    // would change what Labbook stores. It is named by aria-labelledby instead.
+    if (c.id) lab.htmlFor = c.id;
+    else { if (!lab.id) lab.id = 'arc-l' + (++_arcFid); c.setAttribute('aria-labelledby', lab.id); }
   });
   (root || document).querySelectorAll('.dtabs').forEach(function(t){
     if (t.getAttribute('role')) return;
@@ -6108,10 +6111,17 @@ document.addEventListener('DOMContentLoaded', function() {
       try{
         var p=PROTOCOLS.filter(function(x){ return x.id===pid; })[0]; if(!p) return null;
         var snap={};
-        if(inputMap){ Object.keys(inputMap).forEach(function(id){ var el=document.getElementById(id); if(el){ snap[id]=el.value; el.value=inputMap[id]; el.dispatchEvent(new Event('input',{bubbles:true})); el.dispatchEvent(new Event('change',{bubbles:true})); } }); }
+        // Snapshot EVERY input before the first one is set: setting the Gibson reaction volume rescales
+        // the vector amount, so a snapshot taken field by field recorded the rescaled 38.5 ng and
+        // "restored" it, leaving Archive's own calculator on a number nobody typed.
+        if(inputMap){ Object.keys(inputMap).forEach(function(id){ var el=document.getElementById(id); if(el) snap[id]=el.value; });
+          Object.keys(inputMap).forEach(function(id){ var el=document.getElementById(id); if(el){ el.value=inputMap[id]; el.dispatchEvent(new Event('input',{bubbles:true})); el.dispatchEvent(new Event('change',{bubbles:true})); } }); }
         var steps=(p.genSteps)?p.genSteps():null;
         var table=_lastCalcTable[pid]||null;
-        Object.keys(snap).forEach(function(id){ var el=document.getElementById(id); if(el){ el.value=snap[id]; el.dispatchEvent(new Event('input',{bubbles:true})); } });
+        // restore in reverse so a field that rescales another (volume -> vector ng) is put back first
+        // and the other's own saved value is the one that stays
+        Object.keys(snap).reverse().forEach(function(id){ var el=document.getElementById(id); if(el){ el.value=snap[id]; el.dispatchEvent(new Event('input',{bubbles:true})); } });
+        Object.keys(snap).forEach(function(id){ var el=document.getElementById(id); if(el&&el.value!==snap[id]){ el.value=snap[id]; el.dispatchEvent(new Event('input',{bubbles:true})); } });
         return {hasCalc:!!p.hasCalc, name:p.name, steps:steps, table:table};
       }catch(e){ return null; }
     };
