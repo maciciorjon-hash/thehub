@@ -157,6 +157,10 @@
 //                             step, Run Analysis only on the last (Next is gone there). Every setting sits on the step that decides it, every field
 //                             has a visible caption, the boxes and numbers of a card line up on one column, and a Review "Fix" button lands on the
 //                             step that holds the setting.
+//   E62 Setup is the kit's    The dialog is SetupKit's (tools/setupkit, the one Beacon and Lumina run on): numbered tabs in step order, Back / Next
+//                             as the kit's buttons, Run Analysis in the same row, the Files tab green once both kinds of file are in, no copy
+//                             of the card / tab / footer CSS in Echo's own style, no backdrop blur, and a press that starts inside the card and
+//                             ends on the backdrop (selecting text) does not close it.
 //
 // Usage (repo root):  node tools/echo_invariants.mjs [--only=E1,E7] [--file=path/to/echo.html] [--verbose]
 import { chromium } from 'playwright';
@@ -2397,6 +2401,40 @@ if (run('E61')) await guard('E61', async () => {
     check('E61', tag + 'a Fix button goes to the step that has the control', fix[0] === 'analysis' && fix[1] === 'assay', fix);
     await c.close();
   }
+});
+
+if (run('E62')) await guard('E62', async () => {
+  const src = fs.readFileSync(FILE, 'utf8'), own = src.replace(/\/\* setup-kit:begin[\s\S]*?setup-kit:end \*\//, '').replace(/\/\* setup-kit-js:begin[\s\S]*?setup-kit-js:end \*\//, '');
+  const dup = ['.setup-overlay{', '.setup-card{', '.setup-hdr{', '.setup-stabs{', '.setup-stab{', '.setup-sbody{', '.setup-foot{', '.sx-group{', '.sx-ghd{', '.sx-f{'].filter(x => own.includes('\n' + x));
+  check('E62', 'Echo carries no second copy of the dialog CSS', !dup.length, dup);
+  check('E62', 'no backdrop-filter on the Setup overlay', !/\.setup-overlay[^{]*\{[^}]*backdrop-filter/.test(own));
+  const c = await browser.newContext({ viewport: { width: 1440, height: 900 } }); const q = await c.newPage(); const errs = []; q.on('pageerror', e => errs.push(e.message));
+  await q.goto('file://' + FILE); await q.waitForTimeout(1200);
+  await q.evaluate(() => { loadTestData(); }); await q.waitForTimeout(900);
+  await q.evaluate(() => { openSetupModal(); switchSetupTab('assay'); }); await q.waitForTimeout(300);
+  const r = await q.evaluate(() => {
+    const m = document.getElementById('setup-modal'), nav = m.querySelector('.sx-nav');
+    return { kit: typeof SetupKit === 'object' && !!window.EchoSetup && EchoSetup.el === m,
+      tabs: [...m.querySelectorAll('.setup-stab')].map(t => t.dataset.tab).join(), btn: [...m.querySelectorAll('.setup-stab')].every(t => t.tagName === 'BUTTON'),
+      back: document.getElementById('setup-back').classList.contains('sx-sec'), next: document.getElementById('setup-next').classList.contains('sx-pri'),
+      run: document.getElementById('run-btn').parentElement === nav, filesDone: m.querySelector('.setup-stab[data-tab="files"]').classList.contains('done'),
+      blur: getComputedStyle(m).backdropFilter, panes: [...m.querySelectorAll('.setup-sbody > .setup-pane')].map(p => p.id).join() };
+  });
+  check('E62', 'the dialog is built by SetupKit', r.kit, r);
+  check('E62', 'five tabs in step order, each a button', r.tabs === 'files,assay,analysis,output,review' && r.btn, r);
+  check('E62', 'Back and Next are the kit\'s buttons and Run Analysis is in their row', r.back && r.next && r.run, r);
+  check('E62', 'Files is green once the Echo and reader files are in', r.filesDone, r);
+  check('E62', 'the panes are inside the card, in step order, with their ids', r.panes === 'setup-pane-files,setup-pane-assay,setup-pane-analysis,setup-pane-output,setup-pane-review', r.panes);
+  check('E62', 'the overlay is not blurred', r.blur === 'none' || r.blur === '', r.blur);
+  const open = () => q.evaluate(() => EchoSetup.isOpen());
+  await q.evaluate(() => { const i = document.getElementById('p-assay') || document.querySelector('#setup-pane-assay input'); i.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); document.getElementById('setup-modal').click(); });
+  check('E62', 'a press that began inside the card does not close it on the backdrop', await open());
+  await q.evaluate(() => { const m = document.getElementById('setup-modal'); m.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); m.click(); });
+  check('E62', 'a click on the backdrop closes it', !(await open()));
+  await q.evaluate(() => openSetupModal()); await q.keyboard.press('Escape');
+  check('E62', 'Esc closes it', !(await open()));
+  check('E62', 'no page errors', !errs.length, errs);
+  await c.close();
 });
 
 await browser.close();

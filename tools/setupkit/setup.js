@@ -5,6 +5,9 @@
 // the plate drawn small, a control row, a review list).
 //   var K = SetupKit.create({ id:'bs', title:'Beacon', sub:'Set up your analysis', steps:[{key:'assay', label:'Assay', render:fn, live:fn, done:fn, focus:false}],
 //                              foot:[{label:'Clear all', title:'…', quiet:false, fn:fn}], nextLabel:fn(i, last), finish:fn, onOpen:fn, onClose:fn, wire:fn(dialog) });
+//   An app whose steps are already in its page keeps them: a pane whose id exists is moved into the dialog, not made (ids.pane says what its id is).
+//   Optional: cardClass (a class on the card), ids {close, sub, back, next, body, pane:fn(key)} (an app that already has ids for them),
+//   status (id of a quiet line above the footer), navExtra (html after Next — a Run button), steps[].attrs / .extra (on / inside a tab), K.build().
 //   K.open(step) · K.close() · K.go(i) · K.next() · K.back() · K.refresh() · K.tabs() · K.isOpen() · K.step · K.pane(key) · K.body · K.el
 var SetupKit = (function(){
   function esc(s){ return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
@@ -119,24 +122,31 @@ var SetupKit = (function(){
 
   // ── the dialog ──────────────────────────────────────────────────────────────────────────────
   function create(o){
-    var id = o.id, steps = o.steps, K = { step: 0, from: null, built: false };
+    var id = o.id, steps = o.steps, ids = o.ids || {}, K = { step: 0, from: null, built: false };
     function el(x){ return document.getElementById(x); }
+    function paneId(key){ return ids.pane ? ids.pane(key) : id + '-p-' + key; }
+    var idClose = ids.close || id + '-close', idBack = ids.back || id + '-back', idNext = ids.next || id + '-next', idBody = ids.body || id + '-body';
     function build(){
       var d = document.createElement('div'); d.id = id; d.className = 'setup-overlay hidden';
-      d.innerHTML = '<div class="setup-card" role="dialog" aria-modal="true" aria-labelledby="' + id + '-title" data-step="' + steps[0].key + '">' +
-        '<div class="setup-hdr"><div><div class="setup-htitle" id="' + id + '-title">' + esc(o.title) + '</div><div class="setup-hsub">' + esc(o.sub || '') + '</div></div><button class="setup-hclose" id="' + id + '-close" aria-label="Close setup" title="Close (Esc)">' + X + '</button></div>' +
-        '<div class="setup-stabs" role="tablist">' + steps.map(function(s, i){ return '<button class="setup-stab" role="tab" data-i="' + i + '"><span class="sx-n">' + (i + 1) + '</span>' + esc(s.label) + '</button>'; }).join('') + '</div>' +
-        '<div class="setup-sbody" id="' + id + '-body">' + steps.map(function(s){ return '<div class="setup-pane" id="' + id + '-p-' + s.key + '"></div>'; }).join('') + '</div>' +
-        '<div class="setup-foot"><div class="sx-proj">' + (o.foot || []).map(function(b, i){ return '<button class="sx-ghost' + (b.quiet ? ' q' : '') + '" data-foot="' + i + '"' + (b.title ? ' title="' + esc(b.title) + '"' : '') + '>' + esc(b.label) + '</button>'; }).join('') + '</div>' +
-        '<div class="sx-nav"><button class="sx-sec" id="' + id + '-back">&#8249; Back</button><button class="sx-pri" id="' + id + '-next">Next &#8250;</button></div></div></div>';
+      var have = {}; steps.forEach(function(s){ var e = el(paneId(s.key)); if (e) have[s.key] = e; });
+      d.innerHTML = '<div class="setup-card' + (o.cardClass ? ' ' + o.cardClass : '') + '" role="dialog" aria-modal="true" aria-labelledby="' + id + '-title" data-step="' + steps[0].key + '">' +
+        '<div class="setup-hdr"><div><div class="setup-htitle" id="' + id + '-title">' + esc(o.title) + '</div><div class="setup-hsub"' + (ids.sub ? ' id="' + ids.sub + '"' : '') + '>' + esc(o.sub || '') + '</div></div><button class="setup-hclose" id="' + idClose + '" aria-label="Close setup" title="Close (Esc)">' + X + '</button></div>' +
+        '<div class="setup-stabs" role="tablist">' + steps.map(function(s, i){ return '<button class="setup-stab" role="tab" data-i="' + i + '" data-tab="' + esc(s.key) + '"' + (s.attrs ? ' ' + s.attrs : '') + '><span class="sx-n">' + (i + 1) + '</span>' + esc(s.label) + (s.extra || '') + '</button>'; }).join('') + '</div>' +
+        '<div class="setup-sbody" id="' + idBody + '">' + steps.map(function(s){ return have[s.key] ? '<div data-adopt="' + esc(s.key) + '"></div>' : '<div class="setup-pane" id="' + paneId(s.key) + '"></div>'; }).join('') + '</div>' +
+        '<div class="setup-foot">' + (o.status ? '<div class="setup-fstatus" id="' + o.status + '"></div>' : '') + '<div class="sx-proj">' + (o.foot || []).map(function(b, i){ return '<button class="sx-ghost' + (b.quiet ? ' q' : '') + '" data-foot="' + i + '"' + (b.title ? ' title="' + esc(b.title) + '"' : '') + '>' + esc(b.label) + '</button>'; }).join('') + '</div>' +
+        '<div class="sx-nav"><button class="sx-sec" id="' + idBack + '">&#8249; Back</button><button class="sx-pri" id="' + idNext + '">Next &#8250;</button>' + (o.navExtra || '') + '</div></div></div>';
       document.body.appendChild(d);
-      K.el = d; K.body = el(id + '-body');
+      steps.forEach(function(s){ var h = have[s.key], at = h && d.querySelector('[data-adopt="' + s.key + '"]'); if (h && at) { h.classList.add('setup-pane'); at.replaceWith(h); } });
+      K.el = d; K.body = el(idBody);
+      var down = null;   // a press that began inside the card and ended on the backdrop (selecting text) is not a click on the backdrop
+      d.addEventListener('mousedown', function(e){ down = e.target; });
       d.addEventListener('click', function(e){
-        if (e.target === d) { K.close(); return; }
+        var from = down; down = null;
+        if (e.target === d) { if (from === null || from === d) K.close(); return; }
         var t = e.target.closest && e.target.closest('button'); if (!t) return;
-        if (t.id === id + '-close') K.close();
-        else if (t.id === id + '-back') K.back();
-        else if (t.id === id + '-next') K.next();
+        if (t.id === idClose) K.close();
+        else if (t.id === idBack) K.back();
+        else if (t.id === idNext) K.next();
         else if (t.classList.contains('setup-stab')) K.go(+t.dataset.i);
         else if (t.dataset.foot !== undefined) o.foot[+t.dataset.foot].fn(K);
       });
@@ -152,7 +162,8 @@ var SetupKit = (function(){
       K.built = true;
     }
     K.isOpen = function(){ return !!K.el && !K.el.classList.contains('hidden'); };
-    K.pane = function(key){ return el(id + '-p-' + key); };
+    K.build = function(){ if (!K.built) build(); return K; };
+    K.pane = function(key){ return el(paneId(key)); };
     K.open = function(step){
       if (!K.built) build();
       K.from = document.activeElement;
@@ -173,8 +184,8 @@ var SetupKit = (function(){
       K.el.querySelector('.setup-card').dataset.step = steps[i].key;
       K.el.querySelectorAll('.setup-stab').forEach(function(t, k){ t.classList.toggle('active', k === i); t.setAttribute('aria-selected', k === i); });
       K.el.querySelectorAll('.setup-pane').forEach(function(p, k){ p.classList.toggle('active', k === i); });
-      el(id + '-back').style.visibility = i === 0 ? 'hidden' : '';
-      el(id + '-next').innerHTML = (o.nextLabel ? o.nextLabel(i, i === steps.length - 1) : (i === steps.length - 1 ? 'Done' : 'Next')) + ' &#8250;';
+      el(idBack).style.visibility = i === 0 ? 'hidden' : '';
+      el(idNext).innerHTML = (o.nextLabel ? o.nextLabel(i, i === steps.length - 1) : (i === steps.length - 1 ? 'Done' : 'Next')) + ' &#8250;';
       steps[i].render(K);
       K.tabs();
       K.body.scrollTop = 0;
