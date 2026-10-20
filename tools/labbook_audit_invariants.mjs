@@ -12,6 +12,9 @@
 //                           sideways at 1024 (the biosensor's step ran 49 px out of the pane)
 //   L4 focus is seen        The plate rail (tabindex 0, outline none) and the search box show where the keyboard is
 //   L5 every field has a name  Every visible input / select / textarea of the screens reached has a label, aria-label or title
+//   L6 the bin never overwrites  Restoring from Deleted items puts a record back under its own id, but when a different record already lives
+//                           there (a version restored from Recover > Versions) the live one is kept and the bin's comes back beside it as a copy.
+//   L7 an import is one undo step  Importing one experiment from a file is undone by one ⌘Z (the bundle had it; the single import did not)
 //
 //   node tools/labbook_audit_invariants.mjs [--url=URL] [--only=L1,L3]
 import { chromium } from 'playwright';
@@ -146,8 +149,48 @@ try {
     }
     await ctx.close();
   }
+  // ── L6 ──
+  if (run('L6')) {
+    counts.L6 = 1;
+    const ctx = await newCtx(); const { page, errs } = await open(ctx);
+    const ids = await page.evaluate(`${SEED}`);
+    const r = await page.evaluate((id) => {
+      const live = LB.data.experiments[id]; const orig = JSON.stringify(live);
+      // the bin holds an older copy of the same id; the live one was edited since
+      const old = JSON.parse(orig); old.title = 'OLD-FROM-BIN';
+      LB.data.trash = LB.data.trash || {}; LB.data.trash.t_test = { id: 't_test', kind: 'experiment', label: 'bin', at: Date.now(), payload: { exp: old } };
+      live.title = 'LIVE-NEWER';
+      lbTrashRestore('t_test');
+      const all = Object.values(LB.data.experiments);
+      return { liveTitle: LB.data.experiments[id].title, copies: all.filter(e => e.title === 'OLD-FROM-BIN (restored)').length, gone: !LB.data.trash.t_test };
+    }, ids.bio);
+    if (r.liveTitle !== 'LIVE-NEWER') bad('L6', 'the live record was overwritten by the bin (' + r.liveTitle + ')');
+    if (r.copies !== 1) bad('L6', 'the bin\'s record did not come back as a copy (' + r.copies + ')');
+    if (!r.gone) bad('L6', 'the bin entry stayed after the restore');
+    errs.forEach(m => bad('L6', 'page error: ' + m)); await ctx.close();
+  }
+  // ── L7 ──
+  if (run('L7')) {
+    counts.L7 = 1;
+    const ctx = await newCtx(); const { page, errs } = await open(ctx);
+    const ids = await page.evaluate(`${SEED}`);
+    const f = path.join(os.tmpdir(), 'lb-audit-import-' + process.pid + '.json');
+    const json = await page.evaluate((id) => JSON.stringify({ _lbExperiment: 1, app: 'Labbook', exported: '2026-10-20', project: 'P', folder: 'F', experiment: LB.data.experiments[id] }), ids.wb);
+    fs.writeFileSync(f, json);
+    const n0 = await page.evaluate(() => Object.keys(LB.data.experiments).length);
+    await page.evaluate(() => { const p = LB.data.projects.filter(x => (x.sections || []).length)[0]; selectNode('expsec', p.id, p.sections[0].id); });
+    await page.evaluate(() => importExpJSON());
+    await page.setInputFiles('#lb-impexp-input', f);
+    await page.waitForSelector('#lb-dialog.open', { timeout: 5000 }); await page.click('#lb-dlg-ok'); await page.waitForTimeout(600);
+    const n1 = await page.evaluate(() => Object.keys(LB.data.experiments).length);
+    if (n1 !== n0 + 1) bad('L7', `the import did not add one experiment (${n0} -> ${n1})`);
+    await page.evaluate(() => lbUndo()); await page.waitForTimeout(300);
+    const n2 = await page.evaluate(() => Object.keys(LB.data.experiments).length);
+    if (n2 !== n0) bad('L7', `one undo did not take the import back (${n0} -> ${n1} -> ${n2})`);
+    errs.forEach(m => bad('L7', 'page error: ' + m)); await ctx.close(); fs.rmSync(f, { force: true });
+  }
 } finally { await browser.close(); if (srv) srv.kill(); }
-for (const id of ['L1', 'L2', 'L3', 'L4', 'L5']) { if (ONLY && !ONLY.includes(id)) continue; const fs_ = findings.filter(f => f.id === id); process.stdout.write(`  ${fs_.length ? '✗' : '✓'} ${id}${fs_.length ? '  — ' + fs_.length + ' finding(s)' : ''}\n`); }
+for (const id of ['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7']) { if (ONLY && !ONLY.includes(id)) continue; const fs_ = findings.filter(f => f.id === id); process.stdout.write(`  ${fs_.length ? '✗' : '✓'} ${id}${fs_.length ? '  — ' + fs_.length + ' finding(s)' : ''}\n`); }
 const seen = new Set(); findings.forEach(f => { const k = f.id + f.m; if (seen.has(k)) return; seen.add(k); process.stdout.write(`     [${f.id}] ${f.m}\n`); });
 if (!findings.length) process.stdout.write('\nLabbook audit invariants hold.\n');
 process.exit(findings.length ? 1 : 0);

@@ -13699,20 +13699,30 @@ function _trashRehome(e){
   var p=projById(e.projectId);
   if(!p){ p=_recoveredProject(); e.projectId=p.id; e.sectionId=null; }
 }
+// A record from the bin lands under its own id unless something else already lives there (a version restored from
+// Recover > Versions, an import that kept an id): then the live one is never written over — the bin's comes back
+// beside it as a copy and the restore says so.
+function _binPut(coll,rec,k,say){
+  var cur=LB.data[coll]&&LB.data[coll][k];
+  if(cur===undefined||cur===null||_canonJSON(cur)===_canonJSON(rec)){ (LB.data[coll]||(LB.data[coll]={}))[k]=rec; return k; }
+  var nid=uid(); rec.id=nid; if(coll==='experiments'&&rec.code) rec.code=rec.code+'-restored';
+  if(rec.title) rec.title=rec.title+' (restored)';
+  LB.data[coll][nid]=rec; if(say) say.push((rec.title||rec.code||'An entry')+' — the one already there was kept'); return nid;
+}
 function lbTrashRestore(tid){
   var t=(LB.data.trash||{})[tid]; if(!t) return;
-  var p=t.payload||{}, note='';
+  var p=t.payload||{}, note='', _said=[];
   switch(t.kind){
     case 'experiment': {
       var e=p.exp; if(!e) return;
-      _trashRehome(e); LB.data.experiments[e.id]=e; break; }
+      _trashRehome(e); _binPut('experiments',e,e.id,_said); break; }
     case 'project': {
       var pr=p.project; if(!pr) return;
       if(!projById(pr.id)){
         var at=(t.meta&&t.meta.index!=null)?Math.min(t.meta.index,LB.data.projects.length):LB.data.projects.length;
         LB.data.projects.splice(at,0,pr);
       }
-      Object.keys(p.experiments||{}).forEach(function(k){ LB.data.experiments[k]=p.experiments[k]; });
+      Object.keys(p.experiments||{}).forEach(function(k){ _binPut('experiments',p.experiments[k],k,_said); });
       (p.nbSections||[]).forEach(function(s){ if(!genSecById(s.id)) LB.data.generalSections.push(s); });
       Object.keys(p.pages||{}).forEach(function(k){ LB.data.pages[k]=p.pages[k]; });
       break; }
@@ -13729,7 +13739,7 @@ function lbTrashRestore(tid){
       host.sections=host.sections||[];
       if(!host.sections.filter(function(s){ return s.id===sec.id; }).length) host.sections.push(sec);
       Object.keys(p.experiments||{}).forEach(function(k){
-        var x=p.experiments[k]; x.projectId=host.id; x.sectionId=sec.id; LB.data.experiments[k]=x; });
+        var x=p.experiments[k]; x.projectId=host.id; x.sectionId=sec.id; _binPut('experiments',x,k,_said); });
       break; }
     // A section from the old Notebook: its pages come back and the Journal migration files
     // each into the day it was written — there are no sections to put them under any more.
@@ -13745,7 +13755,7 @@ function lbTrashRestore(tid){
       // At the end of its section, top level: its old slot has been renumbered since, and a
       // page dropped into the middle of someone else's subpages would adopt them.
       var tail=_nbPagesOf(pg.sectionId); pg.order=tail.length?(tail[tail.length-1].order||0)+1:0; pg.level=0;
-      LB.data.pages[pg.id]=pg; break; }
+      _binPut('pages',pg,pg.id,_said); break; }
     case 'day': {
       if(!p.date||!p.entry) return;
       var cur=LB.data.notebook[p.date];
@@ -13777,6 +13787,7 @@ function lbTrashRestore(tid){
       o.exp.updated=Date.now(); break; }
     default: return;
   }
+  if(_said.length) note=(note?note+' ':'')+_said.join('; ')+'.';
   delete LB.data.trash[tid];
   save(); renderAll();
   if(_recoverOpen()) _recoverRender();
@@ -22689,6 +22700,7 @@ function _pickImportFolder(title,then,onCancel){
 }
 function _placeImported(e,parsed){
   _pickImportFolder('Import "'+(e.title||e.code||'experiment')+'" into…', function(pid,sid){
+    undoMark('Import experiment',['experiments']);
     _landImported(e,parsed,pid,sid);
     save(); selectNode('expsec',pid,sid); openExp(e.id);
     toast('Imported'+(e.code?(' as '+e.code):''));
