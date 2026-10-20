@@ -1425,6 +1425,7 @@ var state = {
   // The layout every plate shares: gradients [{id,top,unitMul,fac,dir,idx:{pos:pointIndex}}]
   // and compound zones [[pos,…]] in reading order. Zone z on plate p is compound p*S+z+1.
   layout: { grads: [], zones: [] },
+  viabNorm: false,          // Normalise to viability: each reading is divided by the fluorescence of the same well (plate.viab) before the controls are applied
   plates: [{ signal: {}, file: '', name: '' }],   // what each plate owns: its reader values, and its name (empty = "Plate N"; nameSrc 'file' = taken from the reader file, 'user' = typed)
   plate: 0,                 // the plate on screen
   names: [],                // names[n-1] = what compound n is called; empty = "Compound n"
@@ -1520,7 +1521,8 @@ function lmSession(){
   return {
     v: 1, assay: document.getElementById('assay-type').value, format: state.format,
     layout: JSON.parse(JSON.stringify(state.layout)),
-    plates: state.plates.map(function(p){ return { signal: Object.assign({}, p.signal), file: p.file || '', name: p.name || '', nameSrc: p.nameSrc || '' }; }),
+    plates: state.plates.map(function(p){ var o = { signal: Object.assign({}, p.signal), file: p.file || '', name: p.name || '', nameSrc: p.nameSrc || '' }; if (p.viab) { o.viab = Object.assign({}, p.viab); o.viabFile = p.viabFile || ''; } return o; }),
+    viabNorm: !!state.viabNorm,
     names: state.names.map(function(n){ return n == null ? '' : String(n); }),
     ctrl: Array.from(state.ctrlWells), zero: Array.from(state.zeroCtrlWells), excluded: Array.from(state.excluded),
     settings: _rsVals(), units: { u: state.units.u, log: !!state.units.log }
@@ -1530,7 +1532,7 @@ function lmSession(){
 // moving a fit setting is still the same analysis, so sending again updates it in Labbook instead of
 // adding a second copy; a different plate is a different result.
 function lmDataId(){
-  var str = JSON.stringify([state.format, state.layout, state.plates.map(function(p){ var k = Object.keys(p.signal).sort(); return k.map(function(q){ return q + '=' + p.signal[q]; }); }), Array.from(state.ctrlWells).sort(), Array.from(state.zeroCtrlWells).sort()]);
+  var str = JSON.stringify([state.format, state.layout, state.plates.map(function(p){ var k = Object.keys(p.signal).sort(); return k.map(function(q){ return q + '=' + p.signal[q]; }); }), (state.viabNorm ? state.plates.map(function(p){ var v = p.viab || {}; return Object.keys(v).sort().map(function(q){ return q + '=' + v[q]; }); }) : 0), Array.from(state.ctrlWells).sort(), Array.from(state.zeroCtrlWells).sort()]);
   var h = 5381; for (var i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0;
   return 'lumina-' + (h >>> 0).toString(36);
 }
@@ -1545,8 +1547,9 @@ function lmLoadSession(sess, link){
     grads: _lmArr(lay.grads).map(function(g){ g = Object.assign({}, g); g.idx = g.idx || {}; return g; }),
     zones: _lmArr(lay.zones).map(function(z){ return _lmArr(z).map(String); })
   };
-  var pls = _lmArr(sess.plates).map(function(p){ return { signal: Object.assign({}, p && p.signal), file: (p && p.file) || '', name: (p && p.name) || '', nameSrc: (p && p.nameSrc) || undefined }; });
+  var pls = _lmArr(sess.plates).map(function(p){ var o = { signal: Object.assign({}, p && p.signal), file: (p && p.file) || '', name: (p && p.name) || '', nameSrc: (p && p.nameSrc) || undefined }; if (p && p.viab) { o.viab = Object.assign({}, p.viab); o.viabFile = p.viabFile || ''; } return o; });
   state.plates = pls.length ? pls : [_lmNewPlate()];
+  state.viabNorm = !!sess.viabNorm;
   state.plate = 0;
   state.names = _lmArr(sess.names).map(function(n){ return n == null ? '' : String(n); });
   state.ctrlWells = new Set(_lmArr(sess.ctrl).map(String)); state.zeroCtrlWells = new Set(_lmArr(sess.zero).map(String));
@@ -1578,7 +1581,7 @@ function lgGraphDoc(){
     var pts = Object.keys(by).map(function(k){ return by[k]; }).sort(function(a, b){ return b.x - a.x; }).map(function(g){ var x = Math.pow(10, g.x) / u[1]; return { x: x, label: String(+x.toPrecision(3)), reps: g.reps }; });
     return { id: r.sampleId, name: r.sampleId, points: pts, fit: fnOf([r.bottom, r.logEC50, r.hill, r.top]), _p: [r.bottom, r.logEC50, r.hill, r.top] };
   });
-  return { sig: state.plates.map(function(p){ return (p.file || '') + ':' + Object.keys(p.signal).length; }).join('|') + '|' + t + '|' + state.names.join(','),
+  return { sig: state.plates.map(function(p){ return (p.file || '') + ':' + Object.keys(p.signal).length + (state.viabNorm ? 'v' + Object.keys(p.viab || {}).length : ''); }).join('|') + '|' + t + '|' + state.names.join(','),
     title: [ASSAY_NAMES[t] || 'Dose\u2013response', '', ''], xTitle: '[compound] (' + u[0] + ')', yTitle: lab.yAxis, refLine: state.normalised ? { y: 100 } : null, items: items,
     refit: function(it, pts){
       var xs = [], ys = []; pts.forEach(function(p){ p.reps.forEach(function(v){ xs.push(Math.log10(p.x * u[1])); ys.push(v); }); });
@@ -1727,7 +1730,7 @@ function _snapshotState(){
   return {
     format: state.format, rows: state.rows, cols: state.cols,
     layout: JSON.parse(JSON.stringify(state.layout)),
-    plates: JSON.parse(JSON.stringify(state.plates)),
+    plates: JSON.parse(JSON.stringify(state.plates)), viabNorm: !!state.viabNorm,
     names: state.names.slice(), plate: state.plate,
     ctrlWells: new Set(state.ctrlWells),
     zeroCtrlWells: new Set(state.zeroCtrlWells),
@@ -1736,7 +1739,7 @@ function _snapshotState(){
 }
 function _restoreSnapshot(snap){
   state.format = snap.format; state.rows = snap.rows; state.cols = snap.cols;
-  state.layout = snap.layout; state.plates = snap.plates; state.names = snap.names; state.plate = snap.plate;
+  state.layout = snap.layout; state.plates = snap.plates; state.names = snap.names; state.plate = snap.plate; state.viabNorm = !!snap.viabNorm;
   state.ctrlWells = snap.ctrlWells;
   state.zeroCtrlWells = snap.zeroCtrlWells;
   state.excluded = snap.excluded || new Set();
@@ -1992,10 +1995,29 @@ function lmCpdNamed(n){ var v = state.names[n - 1]; return !!(v && String(v).tri
 // What plate p actually holds, well by well — the shape the analysis, the popup and the plate
 // view have always read.
 function lmPlateWellData(p){
-  var out = {}, pl = state.plates[p] || { signal: {} }, zm = _lmZoneMap();
+  var out = {}, pl = state.plates[p] || { signal: {} }, zm = _lmZoneMap(), vb = pl.viab || {};
   Object.keys(zm).forEach(function(pos){ out[pos] = { sampleId: lmCpdName(lmCpdNo(p, zm[pos])), conc: lmConcAt(pos) }; });
-  Object.keys(pl.signal).forEach(function(pos){ (out[pos] = out[pos] || {}).measurement = pl.signal[pos]; });
+  Object.keys(pl.signal).forEach(function(pos){
+    var v = pl.signal[pos];
+    // Normalise to viability: the reading is signal ÷ the fluorescence of the same well, before any control is applied.
+    // A well with no usable fluorescence has no ratio (it is not read as 0).
+    if (state.viabNorm) { var f = vb[pos]; if (!(f > 0)) return; out[pos] = out[pos] || {}; out[pos].signalRaw = v; out[pos].viab = f; v = v / f; }
+    (out[pos] = out[pos] || {}).measurement = v;
+  });
   return out;
+}
+// Plates that hold readings but no viability while "Normalise to viability" is on — the analysis leaves them out and says so.
+function lmViabMissing(){
+  if (!state.viabNorm) return [];
+  var m = [];
+  state.plates.forEach(function(pl, i){ if (Object.keys(pl.signal).length && !Object.keys(pl.viab || {}).some(function(k){ return pl.viab[k] > 0; })) m.push(lmPlateName(i)); });
+  return m;
+}
+// Switch the option; ⌘Z puts it back. The fit is remade from what the plates now say.
+function lmSetViab(on){
+  on = !!on; if (on === !!state.viabNorm) return;
+  lmMark(); state.viabNorm = on; lmAfterChange();
+  toast(on ? 'Each reading is divided by the viability (fluorescence) of the same well before the controls are applied.' + (lmViabMissing().length ? ' ' + lmViabMissing().join(', ') + ' has no viability yet — drop its fluorescence file.' : '') : 'Readings are used as they are.');
 }
 function lmMaterialize(){ state.wellData = lmPlateWellData(state.plate); }
 
@@ -3257,15 +3279,57 @@ function lmPasteButton(){
 // wherever it sits; a GloMax export (RDR.glomax: a "Results" sheet with one headed grid per reading) gives the
 // plate's luminescence, else its first grid that is not fluorescence. A second reading in the same file (the
 // fluorescence of a double read) is not a second plate: the toast says it was left alone.
-function lmGlomaxSignal(G){
-  var pk = RDR.glomaxSignal(G), ch = pk.sig, sig = {}, n = 0;
+function _lmCut(vals){
+  var o = {}, n = 0;
   for (var ri = 0; ri < state.rows; ri++) for (var ci = 0; ci < state.cols; ci++) {
-    var w = 'ABCDEFGHIJKLMNOP'.charAt(ri) + (ci + 1), v = ch.vals[w];
-    if (v !== undefined && v !== null) { sig[w] = v; n++; }
+    var w = 'ABCDEFGHIJKLMNOP'.charAt(ri) + (ci + 1), v = vals[w];
+    if (v !== undefined && v !== null) { o[w] = v; n++; }
   }
-  var skipped = G.channels.filter(function(c){ return c !== ch; }).map(function(c){ return (c.label || c.kind).toLowerCase(); });
-  return { sig: sig, n: n, shape: ch.rows > state.rows ? 'bigger' : (ch.rows < state.rows ? 'smaller' : ''),
-    note: 'GloMax ' + (ch.label || ch.kind).toLowerCase() + ' read' + (skipped.length ? '; the ' + skipped.join(' and ') + ' in the file was not used.' : '.') };
+  return { vals: o, n: n };
+}
+function lmGlomaxSignal(G){
+  var pk = RDR.glomaxSignal(G), ch = pk.sig, c = _lmCut(ch.vals), vb = pk.via ? _lmCut(pk.via.vals) : null;
+  var skipped = G.channels.filter(function(x){ return x !== ch && x !== pk.via; }).map(function(x){ return (x.label || x.kind).toLowerCase(); });
+  // The fluorescence of a double read is kept with the plate (pl.viab): it is what "Normalise to viability" divides by.
+  return { sig: c.vals, n: c.n, viab: vb && vb.n ? vb.vals : null, viabOnly: G.channels.every(function(x){ return x.kind === 'fluor'; }),
+    shape: ch.rows > state.rows ? 'bigger' : (ch.rows < state.rows ? 'smaller' : ''),
+    note: 'GloMax ' + (ch.label || ch.kind).toLowerCase() + ' read' + (vb && vb.n ? ', with its ' + (pk.via.label || 'fluorescence').toLowerCase() + ' kept as the viability' : '') + (skipped.length ? '; the ' + skipped.join(' and ') + ' in the file was not used' : '') + '.' };
+}
+// A GloMax file holding nothing but fluorescence is the viability of a plate whose signal is read elsewhere — when
+// "Normalise to viability" is on. Off, it is an ordinary reading.
+async function lmIsViabFile(f){
+  if (!state.viabNorm || !/\.xlsx?$/i.test(f.name) || !window.XLSX) return false;
+  try { var G = RDR.glomax(XLSX.read(await f.arrayBuffer(), { type: 'array', cellDates: false, raw: true })); return !!G && G.channels.every(function(x){ return x.kind === 'fluor'; }); } catch (e) { return false; }
+}
+function _lmNameKey(s){ return String(s || '').toLowerCase().replace(/\.(xlsx?|csv|tsv|txt)$/i, '').replace(/[^a-z0-9]+/g, ''); }
+// Fluorescence files go to the plates they are named for (the plate's name or file name is in theirs, or the other way
+// round — if exactly one plate fits), else to the next plate that has readings and no viability yet, in order.
+async function lmAttachViab(files, plateIdx){
+  var done = [], bad = [], taken = {};
+  lmMark();
+  for (var i = 0; i < files.length; i++) {
+    var f = files[i], k = -1, how = '';
+    try {
+      var G = RDR.glomax(XLSX.read(await f.arrayBuffer(), { type: 'array', cellDates: false, raw: true })), cut = G ? _lmCut(G.channels[0].vals) : { n: 0 };
+      if (!cut.n) { bad.push(f.name); continue; }
+      if (plateIdx !== undefined && files.length === 1) { k = plateIdx; how = 'chosen'; }
+      else {
+        var fk = _lmNameKey(f.name), fits = [];
+        state.plates.forEach(function(pl, j){
+          if (taken[j]) return;
+          [lmPlateName(j), _lmBaseName(pl.file)].forEach(function(nm){ var nk = _lmNameKey(nm); if (nk.length >= 3 && fk.length >= 3 && (fk === nk || fk.indexOf(nk) >= 0 || nk.indexOf(fk) >= 0) && fits.indexOf(j) < 0) fits.push(j); });
+        });
+        if (fits.length === 1) { k = fits[0]; how = 'by name'; }
+        else if (!fits.length) { for (var j = 0; j < state.plates.length; j++) if (!taken[j] && Object.keys(state.plates[j].signal).length && !state.plates[j].viab) { k = j; how = 'in order'; break; } }
+      }
+      if (k < 0) { bad.push(f.name); continue; }
+      taken[k] = 1; state.plates[k].viab = cut.vals; state.plates[k].viabFile = f.name;
+      done.push(f.name + ' → ' + lmPlateName(k) + (how === 'in order' ? ' (in order — check)' : ''));
+    } catch (e) { bad.push(f.name); }
+  }
+  if (!done.length) { lmDropMark(); toast('No plate could take ' + (bad.length === 1 ? bad[0] : 'those files') + ' as its viability — read the luminescence first, and name the fluorescence like its plate.'); return; }
+  lmAfterChange();
+  toast('Viability: ' + done.join('; ') + '.' + (bad.length ? ' Not placed: ' + bad.join(', ') + '.' : ''));
 }
 async function handleReaderFile(file, plateIdx, quiet){
   var target = plateIdx === undefined ? state.plate : plateIdx;
@@ -3314,6 +3378,7 @@ async function handleReaderFile(file, plateIdx, quiet){
     while (state.plates.length <= target) state.plates.push(_lmNewPlate());
     if (!quiet) lmMark();
     state.plates[target].signal = sig; _lmExclDrop(target);
+    if (gm) { if (gm.viab) { state.plates[target].viab = gm.viab; state.plates[target].viabFile = file.name; } else { delete state.plates[target].viab; delete state.plates[target].viabFile; } }
     state.plates[target].file = file.name;
     _lmNameFromFile(state.plates[target], file.name);
     if (!quiet) {
@@ -3349,7 +3414,8 @@ function lmRenderRead(){
     '<span class="cnt">' + n + ' readings</span>' +
     '<span class="fn" title="' + esc(pl.file || '') + '">' + (pl.file ? esc(pl.file) : 'typed by hand') + '</span>' +
     '<button class="lm-link" onclick="lmPickFiles(' + state.plate + ')">Replace</button>' +
-    '<button class="lm-link" onclick="lmPasteButton()" title="Paste values copied from Excel over these readings — select a well first to paste a block from there">Paste values</button>';
+    '<button class="lm-link" onclick="lmPasteButton()" title="Paste values copied from Excel over these readings — select a well first to paste a block from there">Paste values</button>' +
+    (pl.viab || state.viabNorm ? '<button class="lm-link" id="lm-viab" aria-pressed="' + (state.viabNorm ? 'true' : 'false') + '" onclick="lmSetViab(!state.viabNorm)" title="Divide each reading by the fluorescence (viability) of the same well before the controls are applied">' + (state.viabNorm ? '÷ viability: on' : '÷ viability: off') + '</button>' : '');
 }
 (function wirePlateName(){
   var strip = document.getElementById('lm-read');
@@ -3383,6 +3449,13 @@ async function handleReaderFiles(list, plateIdx){
   files.sort(function(a, b){ return a.name.localeCompare(b.name, undefined, { numeric: true }); });
   // A workbook holding several plates (a PHERAstar run exported whole) is one file per plate, in the order they were read.
   files = await RDR.expand(files);
+  // Normalise to viability: files that are only fluorescence are plates' viability, placed after the signal files.
+  var vf = [];
+  if (state.viabNorm) { var sf = []; for (var q = 0; q < files.length; q++) (await lmIsViabFile(files[q]) ? vf : sf).push(files[q]); files = sf; }
+  if (files.length) await lmPlaceSignalFiles(files, plateIdx);
+  if (vf.length) await lmAttachViab(vf, files.length ? undefined : plateIdx);
+}
+async function lmPlaceSignalFiles(files, plateIdx){
   if (files.length === 1) { await handleReaderFile(files[0], plateIdx); return; }
   var snap = _snapshotState(); lmMark();
   var used = {}, targets = files.map(function(){ return -1; });
@@ -3477,6 +3550,8 @@ function lsReadings(){
     SetupKit.group('Reader files', '<button class="sx-link" id="ls-demo">Load an example plate</button>',
       SetupKit.drop('ls-drop', 'Drop the reader files or click to choose them', 'One file per plate (.xlsx, .xls, .csv, .txt); a workbook with several plates is read as several. Several files fill Plate 1, 2, 3… in name order.') +
       '<div class="sx-plates" id="ls-plates"></div>') +
+    SetupKit.group('Viability', '<span class="sx-opt">optional</span>', SetupKit.field('', '', SetupKit.seg('ls-viab', [['off', 'Use the readings as they are'], ['on', 'Divide by viability first']], state.viabNorm ? 'on' : 'off', 'v', 'Normalise to viability'),
+      'For a double read — luminescence and fluorescence (CellTiter-Fluor) of the same plate. Each reading is divided by the fluorescence of the same well, and that ratio is what the controls normalise. A GloMax file with both readings is used as it is; a GloMax file with only fluorescence is added as the viability of the plate it is named for (drop it with the others).')) +
     SetupKit.group('Paste from Excel', '<span id="ls-paste-for"></span>', SetupKit.field('', '', '<textarea id="ls-paste" rows="3" spellcheck="false" placeholder="Copy the grid of values in Excel, click here and paste (⌘V). With or without the row letters."></textarea>', 'A block that is smaller than the plate goes where the first well of a selection on the Plate tab is, else at A1.')) +
     SetupKit.group('Or type the values', '<button class="sx-link" id="ls-hand-tog">' + (LS.hand ? 'Hide the grid' : 'Show the grid') + '</button>', '<div class="sx-hand' + (LS.hand ? ' open' : '') + '" id="ls-hand"></div>');
   lsPlatesList(); if (LS.hand) lsHand();
@@ -3487,7 +3562,7 @@ function lsPlatesList(){
   var P = state.plates.length;
   el.innerHTML = state.plates.map(function(pl, i){
     var n = Object.keys(pl.signal).length;
-    return SetupKit.plateRow(i, i === state.plate, lmPlateName(i), (state.format + '-well') + (pl.file ? ' · ' + pl.file : (n ? ' · typed or pasted' : ' · empty')), [['Readings', n]], P > 1 ? 'Remove' : (n ? 'Empty' : ''));
+    return SetupKit.plateRow(i, i === state.plate, lmPlateName(i), (state.format + '-well') + (pl.file ? ' · ' + pl.file : (n ? ' · typed or pasted' : ' · empty')), [['Readings', n]].concat(state.viabNorm || pl.viab ? [['Viability', Object.keys(pl.viab || {}).length]] : []), P > 1 ? 'Remove' : (n ? 'Empty' : ''));
   }).join('') + '<div><button class="sx-btn" data-addplate="1">+ Add a plate</button></div>';
 }
 function lsHand(){
@@ -3651,6 +3726,7 @@ function lsReview(){
     if (!n) issues.push([1, '<b>' + esc(nm) + '</b> has no readings yet.']);
     return '<tr><td><b>' + esc(nm) + '</b><div class="sx-hint">' + state.format + '-well' + (pl.file ? ' · ' + esc(pl.file) : '') + '</div></td><td>' + (n ? '<span class="sx-ok">&#10003;</span> ' + n + ' wells' : '–') + '</td><td>' + (S ? S + (S === 1 ? ' compound' : ' compounds') + ' (' + (lmCpdNo(i, 0) === lmCpdNo(i, S - 1) ? '#' + lmCpdNo(i, 0) : '#' + lmCpdNo(i, 0) + '–' + lmCpdNo(i, S - 1)) + ')' : '–') + '</td></tr>';
   }).join('');
+  lmViabMissing().forEach(function(nm){ issues.push([1, '<b>' + esc(nm) + '</b> has no <b>viability</b> reading: Normalise to viability is on, so it would be left out. Drop its fluorescence file in Readings.']); });
   if (!state.layout.grads.length) issues.push([1, 'No <b>dilution series</b> yet — compounds sit on a gradient. Place them in Compounds, or drag one on the plate.']);
   else if (!S) issues.push([1, 'The gradient has no <b>compounds</b> on it yet — make them in Compounds.']);
   if (!state.ctrlWells.size) issues.push([2, 'No <b>' + esc(lsCtlTexts().c[0].toLowerCase()) + '</b> wells: the readings stay raw counts, and the % settings of the fit stand aside.']);
@@ -3704,6 +3780,7 @@ function lsWire(d){
     }
     if (t.id === 'ls-hand-tog') { LS.hand = !LS.hand; lsReadings(); return; }
     if (t.closest('#ls-fmt') && t.dataset.f) { setPlateFormat(+t.dataset.f); lsAssay(); return; }
+    if (t.closest('#ls-viab') && t.dataset.v) { lmSetViab(t.dataset.v === 'on'); lsK.render(); return; }
     if (t.closest('#ls-same')) { LS.same = t.dataset.g === 'same'; lsCompounds(); return; }
     if (t.closest('#ls-reps')) { f.reps = +t.dataset.n; lsCompounds(); return; }
     if (t.closest('#ls-dir')) { f.dir = t.dataset.d; lsCompounds(); return; }
@@ -3943,7 +4020,7 @@ function _numFieldOr(id, fallback){
 // are refitted the moment Results is opened — there is no button to remember to press.
 function _lmFitSig(){
   var qc = Array.prototype.map.call(document.querySelectorAll('#rs-set input'), function(el){ return el.type === 'checkbox' ? el.checked : el.value; });
-  return JSON.stringify([document.getElementById('assay-type').value, state.format, state.layout, state.plates.map(function(p, i){ return [lmPlateName(i), p.signal]; }),
+  return JSON.stringify([document.getElementById('assay-type').value, state.format, state.layout, state.plates.map(function(p, i){ return [lmPlateName(i), p.signal, state.viabNorm ? (p.viab || null) : 0]; }),
     state.names, Array.from(state.ctrlWells), Array.from(state.zeroCtrlWells), Array.from(state.excluded).sort(), qc]);
 }
 function _lmFitFail(msg, quiet){
@@ -3985,7 +4062,7 @@ function runLuminaAnalysis(opts){
       var d = wd[pos];
       if (!d.sampleId || d.conc === undefined || d.conc === null || isNaN(d.conc) || d.conc <= 0) return;
       if (d.measurement === undefined || d.measurement === null || isNaN(d.measurement)) return;
-      prow.push({ plate: p + 1, plateName: lmPlateName(p), well: pos, sampleId: d.sampleId, conc: d.conc, log10Conc: Math.log10(d.conc), measurement: d.measurement, measurementRaw: d.measurement, isCtrl: ctrlWells.has(pos), excl: state.excluded.has(p + ':' + pos) });
+      prow.push({ sigRaw: d.signalRaw, viab: d.viab, plate: p + 1, plateName: lmPlateName(p), well: pos, sampleId: d.sampleId, conc: d.conc, log10Conc: Math.log10(d.conc), measurement: d.measurement, measurementRaw: d.measurement, isCtrl: ctrlWells.has(pos), excl: state.excluded.has(p + ':' + pos) });
     });
     // 2. Control normalization (mirrors Echo's runAnalysisJS control-normalization branch)
     var ctrlSum=0, ctrlN=0, zpSum=0, zpN=0;
@@ -4009,7 +4086,10 @@ function runLuminaAnalysis(opts){
     }); }
     rows = rows.concat(prow);
   });
-  if (!rows.length) return _lmFitFail('No well holds a compound, a concentration and a reading yet.', quiet);
+  var noViab = lmViabMissing();
+  if (!rows.length) return _lmFitFail(noViab.length ? 'Normalise to viability is on, but ' + noViab.join(', ') + (noViab.length > 1 ? ' have' : ' has') + ' no viability reading. Drop the fluorescence (a GloMax file named like the plate), or switch it off.' : 'No well holds a compound, a concentration and a reading yet.', quiet);
+  if (noViab.length && !quiet) toast('Left out — no viability reading: ' + noViab.join(', ') + '.');
+  state.rawViab = !!state.viabNorm;
   var doNormalize = anyCtrl;
   state.normalised = doNormalize;
   // Without a control the readings are raw counts. The percentage settings (fixed top and bottom, the
@@ -4574,11 +4654,11 @@ function exportResultsCSV(){
 // ══════════════════════════════════════════════════════════════
 function _rawHeader(){
   var u = state.units, hu = UNITS[lmUnit()].hdr;
-  return ['Sample_ID', 'Plate', 'Well', u.log ? 'Log10_Conc_' + hu : 'Concentration_' + hu].concat(u.log ? [] : ['Log10_Conc_M']).concat(['Measurement_normalised', 'Measurement_raw', 'Is_Control', 'Excluded_from_fit']);
+  return ['Sample_ID', 'Plate', 'Well', u.log ? 'Log10_Conc_' + hu : 'Concentration_' + hu].concat(u.log ? [] : ['Log10_Conc_M']).concat(['Measurement_normalised', 'Measurement_raw', 'Is_Control', 'Excluded_from_fit']).concat(state.rawViab ? ['Signal', 'Viability_Reading'] : []);
 }
 function _rawRow(r){
   var u = state.units;
-  return [r.sampleId, r.plateName, r.well, _concNum(r.conc)].concat(u.log ? [] : [+r.log10Conc.toFixed(4)]).concat([r.measurement, r.measurementRaw, r.isCtrl ? 'Yes' : 'No', r.excl ? 'Yes' : '']);
+  return [r.sampleId, r.plateName, r.well, _concNum(r.conc)].concat(u.log ? [] : [+r.log10Conc.toFixed(4)]).concat([r.measurement, r.measurementRaw, r.isCtrl ? 'Yes' : 'No', r.excl ? 'Yes' : '']).concat(state.rawViab ? [r.sigRaw === undefined ? '' : r.sigRaw, r.viab === undefined ? '' : r.viab] : []);
 }
 function exportXLSX(){
   if (!state.fitResults.length) { toast('Run an analysis first.'); return; }
@@ -4601,6 +4681,7 @@ function exportXLSX(){
     ['Fit model', '4-parameter logistic (Levenberg-Marquardt, 6-seed multi-start)'],
     ['Generated', new Date().toISOString()]
   ];
+  if (state.rawViab) protoAoA.splice(4, 0, ['Viability', 'Each reading divided by the fluorescence of the same well (Measurement_raw is that ratio; Signal and Viability_Reading are what it was made from), then normalised to the controls']);
   var wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(resultsAoA), 'Results');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rawAoA), 'Raw Data');

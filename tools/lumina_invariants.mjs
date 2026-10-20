@@ -19,6 +19,10 @@
 //       the plate crosses it, and ⌘Z brings the fit back exactly (the click / right-click / undo gestures are in tools/transfer_invariants.mjs)
 //   L13 Setup is the same walk as Beacon's (tools/setupkit): five steps with Back / Next, typed control ranges mark exactly those wells,
 //       placing the names makes the compounds, the series and the plates they need, Escape closes, and ⌘Z undoes it all
+//   L14 normalise to viability   Optional. Each reading is divided by the fluorescence of the same well before the controls: readings distorted well by well
+//                                 and divided back give exactly the undistorted curves, from a GloMax double read stored with the plate and from
+//                                 fluorescence-only files named for their plates; off, the distortion shows; a plate without viability is left out
+//                                 and said; the session, the raw export and ⌘Z carry it.
 //   L10 the potency and the effect are called what the selected assay calls them — DC50/Dmax, IC50/Span,
 //       IC50, EC50/Emax — in the table, the curve, the Plot, every export and what goes to Labbook
 //
@@ -387,6 +391,67 @@ try {
   check('L13 a value typed into the grid is a reading (decimal comma kept as a decimal)', r.typed === 12.5, r.typed);
   check('L13 Review says what is missing, the last button says what comes next, and Escape closes', /no readings|No dilution|no name|Before you fit/.test(r.review) && /Open the plate|Fit curves/.test(r.next) && r.closed, JSON.stringify([r.next, r.closed]));
 } catch (e) { findings.push('✗ L13 the run stopped: ' + e.message.split('\n')[0]); }
+
+// L14 — Normalise to viability (optional).
+try {
+  const r = await ev(async () => {
+    const mime = 'application/octet-stream', LET = 'ABCDEFGHIJKLMNOP', fac = (ri, ci) => 0.6 + ((ri * 7 + ci * 3) % 11) / 10;
+    const glo = (fname, chans) => {
+      const aoa = [[], [,,,'Protocol: T'], [,,,'Result: ' + fname], [], [], []];
+      chans.forEach(ch => { aoa.push([ch.head]); aoa.push(['', 'Reading:', '', 1, '', ...Array.from({ length: 12 }, (_, i) => i + 1)]);
+        for (let r = 0; r < 8; r++) aoa.push(['', '', '', '', LET[r], ...Array.from({ length: 12 }, (_, c) => ch.fn(r, c))]); aoa.push([]); });
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([[], [,,,'T']]), 'T'); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Results');
+      return new File([XLSX.write(wb, { type: 'array', bookType: 'xlsx' })], fname, { type: mime });
+    };
+    const q3 = v => Number(v).toPrecision(3);
+    const fit = () => { state.fitSig = null; const ok = runLuminaAnalysis({ quiet: true }); return { ok, snap: Object.fromEntries((state.fitResults || []).map(x => [x.sampleId, q3(x.logEC50) + '|' + q3(x.hill) + '|' + q3(x.top)])) }; };
+    const same = (a, b) => { const ka = Object.keys(a); return ka.length > 0 && ka.length === Object.keys(b).length && ka.every(k => a[k] === b[k]); };
+    const o = {};
+    loadLuminaTestData(); state.viabNorm = false;
+    const orig = state.plates.map(p => Object.assign({}, p.signal));
+    o.base = fit(); o.nBase = Object.keys(o.base.snap).length;
+    // distort every reading well by well and keep the same factor as the fluorescence
+    const posOf = (ri, ci) => LET[ri] + (ci + 1);
+    state.plates.forEach((pl, i) => { pl.viab = {}; pl.viabFile = 'x'; for (let ri = 0; ri < 8; ri++) for (let ci = 0; ci < 12; ci++) { const k = posOf(ri, ci); if (orig[i][k] !== undefined) pl.signal[k] = orig[i][k] * fac(ri, ci); pl.viab[k] = 20000 * fac(ri, ci); } });
+    o.off = fit();
+    lmSetViab(true); o.on = fit(); o.exportHdr = _rawHeader(); o.protoRow = !!state.rawViab;
+    o.sessV = lmSession(); const sv = JSON.parse(JSON.stringify(o.sessV)); o.sessKeys = Object.keys(sv.plates[0].viab || {}).length; o.sessOn = sv.viabNorm;
+    lmUndo(); o.undoOff = !state.viabNorm; lmRedo(); o.redoOn = state.viabNorm;
+    // switching the option with a fit on screen must refit by itself (the fit's signature includes it)
+    { const sn = () => JSON.stringify(Object.fromEntries((state.fitResults || []).map(x => [x.sampleId, q3(x.logEC50)])));
+      state.fitSig = null; _lmEnsureFit(true); const a1 = sn(); lmSetViab(false); _lmEnsureFit(true); const b1 = sn(); lmSetViab(true); _lmEnsureFit(true); const c1 = sn();
+      o.stale = { moved: a1 !== b1, back: a1 === c1 }; }
+    // viability from fluorescence-only files named for the plates
+    state.plates.forEach(pl => { delete pl.viab; delete pl.viabFile; });
+    o.noneFit = fit(); o.noneMissing = lmViabMissing(); o.noneMsg = state.fitMsg;
+    await handleReaderFiles([glo('Plate 2 viability.xlsx', [{ head: 'Fluorescence', fn: (r, c) => 20000 * fac(r, c) }]), glo('Plate 1 viability.xlsx', [{ head: 'Fluorescence', fn: (r, c) => 20000 * fac(r, c) }])]);
+    o.files = state.plates.map(p => [Object.keys(p.viab || {}).length, p.viabFile]);
+    o.sep = fit();
+    // a plate with no viability is left out and said
+    delete state.plates[1].viab; o.partMissing = lmViabMissing(); o.part = fit();
+    // option off: a fluorescence-only file is an ordinary reading; with it on, a double read keeps the fluorescence with its plate
+    state.viabNorm = false; state.plates[0] = _lmNewPlate(); state.plate = 0;
+    await handleReaderFiles([glo('fl.xlsx', [{ head: 'Fluorescence', fn: () => 7 }])], 0);
+    o.flOff = Object.keys(state.plates[0].signal).length + '/' + Object.keys(state.plates[0].viab || {}).length;
+    state.plates[0] = _lmNewPlate();
+    await handleReaderFiles([glo('dbl.xlsx', [{ head: 'Fluorescence', fn: (r, c) => 20000 * fac(r, c) }, { head: 'Luminescence', fn: (r, c) => 1000 * fac(r, c) }])], 0);
+    o.dbl = { sig: state.plates[0].signal.A1, via: state.plates[0].viab && state.plates[0].viab.A1, nVia: Object.keys(state.plates[0].viab || {}).length };
+    return o;
+  });
+  check('L14 the layout gives curves to compare against', r.nBase >= 4, r.nBase);
+  check('L14 off, the distorted readings give different curves', !(JSON.stringify(r.off.snap) === JSON.stringify(r.base.snap)), 'identical with the distortion in');
+  check('L14 on, dividing by the same well\'s fluorescence gives exactly the undistorted curves', r.on.ok && JSON.stringify(r.on.snap) === JSON.stringify(r.base.snap), { b: Object.entries(r.base.snap).slice(0, 2), o: Object.entries(r.on.snap).slice(0, 2) });
+  check('L14 switching the option with a fit on screen refits by itself, and switching back restores the same curves', r.stale.moved && r.stale.back, r.stale);
+  check('L14 the raw export carries Signal and Viability_Reading only when it is on', r.exportHdr.indexOf('Viability_Reading') >= 0 && r.protoRow, r.exportHdr);
+  check('L14 the session keeps the option and every well of the viability; ⌘Z and redo move it', r.sessOn === true && r.sessKeys === 96 && r.undoOff && r.redoOn, { on: r.sessOn, keys: r.sessKeys, u: r.undoOff, r: r.redoOn });
+  check('L14 with no viability anywhere the fit says why instead of fitting raw counts', r.noneFit.ok === false && r.noneMissing.length === 2 && /viability/i.test(r.noneMsg), { ok: r.noneFit.ok, m: r.noneMissing, msg: r.noneMsg });
+  check('L14 two fluorescence-only files dropped out of order go to the plates they are named for', r.files[0][1] === 'Plate 1 viability.xlsx' && r.files[1][1] === 'Plate 2 viability.xlsx' && r.files[0][0] === 96, r.files);
+  check('L14 …and give exactly the undistorted curves', r.sep.ok && JSON.stringify(r.sep.snap) === JSON.stringify(r.base.snap), { b: Object.entries(r.base.snap).slice(0, 2), s: Object.entries(r.sep.snap).slice(0, 2) });
+  check('L14 a plate without viability is named and left out, the others are still fitted', r.partMissing.length === 1 && r.partMissing[0] === 'Plate 2' && Object.keys(r.part.snap).length > 0 && Object.keys(r.part.snap).length < r.nBase, { m: r.partMissing, n: Object.keys(r.part.snap).length, of: r.nBase });
+  check('L14 option off: a fluorescence-only file is an ordinary reading (no viability)', r.flOff === '96/0', r.flOff);
+  check('L14 a double read keeps its fluorescence with the plate whether or not the option is on', r.dbl.sig === 1000 * 0.6 && r.dbl.via === 20000 * 0.6 && r.dbl.nVia === 96, r.dbl);
+} catch (e) { findings.push('✗ L14 the run stopped: ' + e.message.split('\n')[0]); }
 // _lmReadFmt is arithmetic and needs no file
 {
   const r = await ev(() => [[3237970, 5], [9100, 5], [76190, 5], [1274665, 4], [-2500000, 5], [0.00123, 5]].map(([v, f]) => _lmReadFmt(v, f).length <= Math.max(f, 3)));
