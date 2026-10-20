@@ -13960,7 +13960,10 @@ function _unhideAllResultsCols() {
         var adjNL=Math.round(idealNL/DROP)*DROP;
         if(adjNL<DROP) ok=false;
         if(!ok) r.prepOk=false;
-        prepRows.push({label:s.label,parent:parentLabel,adjNL:adjNL,ok:ok,
+        // What the snapped transfer really makes: the Echo moves whole 2.5 nL drops, so an intermediate whose ideal transfer is
+        // 3 nL is made with 2.5 and comes out 17 % weaker than listed (and the points drawn from it with it).
+        var makes=ok?parentC*adjNL/(Vpre_nL+adjNL):0;
+        prepRows.push({label:s.label,parent:parentLabel,adjNL:adjNL,ok:ok,makes:makes,snapErr:ok&&Ctarget>0?makes/Ctarget-1:0,
                        split:ok&&adjNL>10000, over:ok&&(interVol+adjNL/1000)>wellMax});
       }
       r.prepRows=prepRows;
@@ -14017,11 +14020,14 @@ function _unhideAllResultsCols() {
     if(bf.interVol>bf.wellMax) b1+=msg('err','⚠ A '+bf.interVol+' µL pre-fill is more than '+bf.plateName+' well holds (~'+bf.wellMax+' µL).');
     if(bf.interVol>0) b1+='<div style="margin-bottom:8px">Pre-fill <strong>every</strong> well you plan to use — the ones becoming an intermediate <em>and</em> the ones held back for backfill — with <strong>'+bf.interVol+' µL</strong> of neat DMSO before the Echo run.</div>';
     if(bf.prepRows){
-      b1+='<div class="eg-scroll"><table class="eg-mini"><tr><th>Well</th><th>From</th><th>Echo transfer (nL)</th></tr>';
+      b1+='<div class="eg-scroll"><table class="eg-mini"><tr><th>Well</th><th>From</th><th>Echo transfer (nL)</th><th title="The concentration this transfer really makes, after the 2.5 nL step">Makes</th></tr>';
+      var _fc=function(c){ return c>=1e-3?+((c*1e3).toPrecision(3))+' mM':c>=1e-6?+((c*1e6).toPrecision(3))+' µM':+((c*1e9).toPrecision(3))+' nM'; };
       bf.prepRows.forEach(function(r){
-        b1+='<tr class="'+(r.ok?'':'eg-bad')+'"><td>'+r.label+'</td><td>'+r.parent+'</td><td>'+(r.ok?fmtVol(r.adjNL):'infeasible ⚠')+'</td></tr>';
+        b1+='<tr class="'+(r.ok?'':'eg-bad')+'"><td>'+r.label+'</td><td>'+r.parent+'</td><td>'+(r.ok?fmtVol(r.adjNL):'infeasible ⚠')+'</td><td>'+(r.ok?_fc(r.makes)+(Math.abs(r.snapErr)>=0.005?' <span style="color:var(--text3)">('+(r.snapErr>0?'+':'')+(r.snapErr*100).toFixed(Math.abs(r.snapErr)<0.1?1:0)+'%)</span>':''):'—')+'</td></tr>';
       });
       b1+='</table></div>';
+      var _snap=bf.prepRows.filter(function(r){return r.ok&&Math.abs(r.snapErr)>0.02;});
+      if(_snap.length) b1+=msg('warn','⚠ '+_snap.map(function(r){return r.label+' comes out '+(r.snapErr>0?'+':'')+(r.snapErr*100).toFixed(0)+'% from the listed concentration';}).join('; ')+' — the Echo moves whole 2.5 nL drops, and these transfers are only a few drops. The points dispensed from '+(_snap.length===1?'it':'them')+' carry the same error; a larger pre-fill, or an intermediate that needs a larger transfer, makes it exactly.');
       var _split=bf.prepRows.filter(function(r){return r.split;}), _over=bf.prepRows.filter(function(r){return r.over;});
       if(_split.length) b1+=msg('warn','⚠ '+_split.map(function(r){return r.label;}).join(', ')+' need'+(_split.length===1?'s':'')+' more than 10 µL, the largest single Echo transfer — it will run as several transfers.');
       if(_over.length) b1+=msg('err','⚠ '+_over.map(function(r){return r.label;}).join(', ')+': the pre-fill plus the transfer is more than '+bf.plateName+' well holds (~'+bf.wellMax+' µL). Lower the pre-fill or use a less concentrated Source.');

@@ -188,6 +188,9 @@
 //                              form box is 32px with --r-1 (small icon buttons, table-cell inputs and tabs apart); the tabs are <button role=tab aria-selected>, never
 //                              a div; no typed check mark (a drawn one) on screen; a Tab-reachable close button on Setup is 28px.
 //
+//   E70 an intermediate is   The Planner's prep table says what the snapped transfer REALLY makes: the Echo moves whole 2.5 nL drops, so 1 uM from a 10 mM Source over a
+//       what its drops make  30 uL pre-fill (ideal 3.0 nL) is made with 2.5 nL and comes out 0.83 uM (-17 %), warned about; 10 uM (30.03 nL -> 30 nL) is exact and is not.
+//
 // Usage (repo root):  node tools/echo_invariants.mjs [--only=E1,E7] [--file=path/to/echo.html] [--verbose]
 import { chromium } from 'playwright';
 import path from 'node:path';
@@ -2670,6 +2673,26 @@ if (run('E69')) await guard('E69', async () => {
   await q.evaluate(() => closeSetupModal());
   for (const t of ['results', 'curves', 'scatter', 'plate', 'props', 'history', 'protocol', 'survey']) { await q.evaluate(t => document.querySelector(`.tab[data-tab="${t}"]`).click(), t); await q.waitForTimeout(400); await probe('tab ' + t); }
   await q.evaluate(() => { [...document.querySelectorAll('.outer-tab')].find(b => /Gradient/.test(b.textContent)).click(); }); await q.waitForTimeout(600); await probe('gradient planner');
+  await c.close();
+});
+
+if (run('E70')) await guard('E70', async () => {
+  const c = await browser.newContext({ viewport: { width: 1440, height: 900 } }); const q = await c.newPage();
+  await q.goto('file://' + FILE); await q.waitForTimeout(1200);
+  await q.evaluate(() => { [...document.querySelectorAll('.outer-tab')].find(b => /Gradient/.test(b.textContent)).click(); }); await q.waitForTimeout(500);
+  const out = async (val) => q.evaluate(async v => {
+    const set = (id, x) => { const e = document.getElementById(id); e.value = x; e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); };
+    set('eg-inter-vol', 30);
+    window._egS.length = 1; window._egS[0].val = 10; window._egS[0].unit = '1e-3'; _egAddStock(); _egSVal(1, v); _egSUnit(1, '1e-6');
+    await new Promise(r => setTimeout(r, 700));
+    const rows = [...document.querySelectorAll('#eg-bf-out table.eg-mini')][0]; const tr = rows && rows.querySelectorAll('tr')[1];
+    return { cells: tr ? [...tr.querySelectorAll('td')].map(t => t.innerText.trim()) : null, text: document.getElementById('eg-bf-out').innerText };
+  }, val);
+  let r = await out(1);
+  check('E70', '1 uM: the table says the 2.5 nL step makes 833 nM (-17 %)', r.cells && /833 nM/.test(r.cells[3]) && /-17%/.test(r.cells[3]), r.cells);
+  check('E70', '1 uM: a warning says the intermediate is off the listed concentration', /comes out -17% from the listed concentration/.test(r.text), r.text.slice(0, 300));
+  r = await out(10);
+  check('E70', '10 uM: made as listed (30 nL, 9.99 uM), no warning', r.cells && /^9\.99 µM$/.test(r.cells[3]) && !/from the listed concentration/.test(r.text), r.cells);
   await c.close();
 });
 
