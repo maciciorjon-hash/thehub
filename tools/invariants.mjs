@@ -3222,10 +3222,20 @@ async function suite(opts) {
         const [series, mix] = tbls(CALC_KINDS.nbtx.compute(v, {}));
         if (!series || !mix || series.length !== n) { bad('B10', tag, 'no series table with one row per tube'); continue; }
         const need = tubeUL * 3 * 1.2, cell = (tr, i) => { const b = tr.children[i].querySelector('b'); return b ? num(b.textContent) : 0; };
-        series.forEach((tr, i) => { const from = cell(tr, 2), car = cell(tr, 3), tot = cell(tr, 4);
-          if (Math.abs(from + car - tot) > Math.max(0.05, tot * 0.003)) bad('B10', tag + ' · tube ' + (i + 1), `${from} + ${car} ≠ ${tot} µL`);
-          const next = series[i + 1], took = next ? cell(next, 2) : 0;
-          if (Math.abs(tot - took - need) > Math.max(0.05, need * 0.01)) bad('B10', tag + ' · tube ' + (i + 1), `${tot} µL made, ${took} taken on, ${need} µL needed for its wells`); });
+        const c1 = top / tubeUL, cStock = v.carrierStock;
+        series.forEach((tr, i) => { const from = cell(tr, 2), car = cell(tr, 3), om = cell(tr, 4), tot = cell(tr, 5);
+          if (Math.abs(from + car + om - tot) > Math.max(0.05, tot * 0.003)) bad('B10', tag + ' · tube ' + (i + 1), `${from} + ${car} + ${om} ≠ ${tot} µL`);
+          // the carrier is what is pipetted from its stock to bring the filler to the tube's DNA: its ng are the filler's
+          if (i > 0 && Math.abs(car * cStock - (tot - from) * c1 * (car ? 1 : 0)) > Math.max(0.05, tot * c1 * 0.003)) bad('B10', tag + ' · tube ' + (i + 1), `${car} µL of ${cStock} ng/µL is not the ${((tot - from) * c1).toFixed(1)} ng the filler holds`);
+          // a serial dilution is the same step every time: every tube the same volume, every transfer the same
+          const next = series[i + 1], took = next ? cell(next, 2) : tot / df;
+          if (Math.abs(tot - took - need) > Math.max(0.05, need * 0.01)) bad('B10', tag + ' · tube ' + (i + 1), `${tot} µL made, ${took} taken on, ${need} µL needed for its wells`);
+          if (Math.abs(tot - cell(series[0], 5)) > 0.011) bad('B10', tag + ' · tube ' + (i + 1), `${tot} µL, tube 1 is ${cell(series[0], 5)} µL: a serial dilution makes every tube the same`);
+          if (i > 1 && Math.abs(from - cell(series[1], 2)) > 0.011) bad('B10', tag + ' · tube ' + (i + 1), `takes ${from} µL from the tube before, tube 2 takes ${cell(series[1], 2)} µL`); });
+        // the carrier stock is an input: a stock twice as strong pipettes half the carrier and takes more Opti-MEM down
+        const v2 = Object.assign({}, v, { carrierStock: v.carrierStock * 2 }), s2 = tbls(CALC_KINDS.nbtx.compute(v2, {}))[0];
+        if (s2 && s2.length > 1) { const c0 = cell(series[1], 3), c2 = cell(s2[1], 3), o0 = cell(series[1], 4), o2 = cell(s2[1], 4);
+          if (!(c0 > 0) || Math.abs(c2 * 2 - c0) > Math.max(0.05, c0 * 0.02) || !(o2 > o0)) bad('B10', tag, `doubling the carrier stock moved tube 2's carrier from ${c0} to ${c2} µL and its Opti-MEM from ${o0} to ${o2} µL`); }
         mix.forEach(tr => { const td = [...tr.children]; if (/no complex|short by/.test(tr.textContent)) return;
           const m = td.length, tot = num(td[m - 1].querySelector('b').textContent), om = num(td[m - 2].textContent), fu = num(td[m - 3].textContent);
           let dna = 0; td.slice(2, m - 3).forEach(c => { const x = /→\s*([\d.,]+)\s*µL/.exec(c.textContent); const b = c.querySelector('b'); dna += x ? num(x[1]) : (b ? num(b.textContent) : 0); });

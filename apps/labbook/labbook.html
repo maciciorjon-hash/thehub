@@ -4831,7 +4831,7 @@ function _nbtxConditions(v,counts){
         // is the number on the tube.
         if(comp) comp.doses.forEach(function(dose,k){
           out.push({key:'comp', tid:'p:'+D+'+'+A+'+'+comp.name+'#'+(k+1)+rt, slot:'comp:'+ri+':'+di+':'+ai+':'+k,
-                    name:'Tube '+(k+1)+' · '+comp.name+' '+nfmt(dose)+' ng'+((donors.length*accs.length*ratios.length>1)?(' · '+D+' + '+A+tag(R)):''),
+                    name:'Tube '+(k+1)+' · '+nfmt(dose)+' ng'+((donors.length*accs.length*ratios.length>1)?(' · '+D+' + '+A+tag(R)):''),
                     n:comp.reps, d:dNg, a:aNg, c:dose, tube:k+1, dName:D, aName:A,
                     dStock:dStock(di), aStock:P.aStock(ai), ng:ng+comp.top});
         });
@@ -4943,21 +4943,33 @@ function _nbtxSeriesHtml(v,cs){
   var ex=+v.excess||1, minUL=+v.minVolUL||0.25, cS=+v.carrierStock||0, N=comp.n, df=comp.df;
   var need=[]; for(var k=1;k<=N;k++) need[k]=0;
   cs.forEach(function(c){ if(c.key==='comp'&&need[c.tube]!=null) need[c.tube]+=comp.tubeUL*c.n*ex; });
-  var vol=[]; vol[N]=need[N]; for(var k2=N-1;k2>=1;k2--) vol[k2]=need[k2]+vol[k2+1]/df;
-  var c1=comp.top/comp.tubeUL, warn=[];
+  // A serial dilution is the same step every time: each tube is the same volume, made from 1/X of
+  // that volume taken from the tube before, and holds what its wells take plus what the next tube
+  // takes — so the volume is the wells' need × X/(X−1) in every tube, the last one included (its
+  // surplus is the same 1/X, left over).
+  var nMax=0; for(var k0=1;k0<=N;k0++) nMax=Math.max(nMax,need[k0]);
+  var vol=[]; for(var k2=1;k2<=N;k2++) vol[k2]=nMax*df/(df-1);
+  // Every tube holds c1 ng/µL of DNA in all, so a well takes the same DNA whatever its dose is:
+  // tube 1 is the competitor alone, every later tube is 1/X of the one before made up with
+  // carrier DNA brought to c1 — from the carrier stock, so that stock is what sets how much
+  // carrier is pipetted and how much Opti-MEM takes it down.
+  var c1=comp.top/comp.tubeUL, warn=[], dash='<span class="cc-dim">—</span>';
   var rows='';
+  if(!(cS>0)) warn.push('Set the carrier DNA stock: the tubes are made up with carrier at '+nfmt(c1)+' ng/µL.');
+  else if(cS<c1-1e-9) warn.push('The carrier DNA stock ('+nfmt(cS)+' ng/µL) is more dilute than the tubes ('+nfmt(c1)+' ng/µL), so it cannot make them up.');
   for(var t=1;t<=N;t++){
-    var conc=c1/Math.pow(df,t-1), src, car;
-    if(t===1){ var su=vol[1]*c1/comp.stock; src=_amt(su, esc(comp.name)+' stock'+(comp.stock===c1?', undiluted':'')); car=su<vol[1]-1e-9?_amt(vol[1]-su,'carrier DNA'):'<span class="cc-dim">—</span>';
+    var conc=c1/Math.pow(df,t-1), src, car, om, fill, dil;
+    if(t===1){ var su=vol[1]*c1/comp.stock; src=_amt(su, esc(comp.name)+' stock'+(comp.stock===c1?', undiluted':'')); car=dash; fill=vol[1]-su; om=fill>1e-9?_amt(fill,'Opti-MEM'):dash;
       if(comp.stock<c1-1e-9) warn.push('The stock ('+nfmt(comp.stock)+' ng/µL) is more dilute than tube 1 ('+nfmt(c1)+' ng/µL) — raise the stock, or take more per well.');
-    } else { var tk=vol[t]/df; src=_amt(tk,'of tube '+(t-1)); car=_amt(vol[t]-tk,'carrier DNA');
+    } else { var tk=vol[t]/df; src=_amt(tk,'of tube '+(t-1)); dil=vol[t]-tk;
+      var cu=(cS>0)?Math.min(dil,dil*c1/cS):0; fill=dil-cu;
+      car=cu>0?_amt(cu,nfmt(cu*cS)+' ng'):dash; om=fill>1e-9?_amt(fill,'Opti-MEM'):dash;
       if(tk<minUL-1e-9) warn.push('Tube '+t+' takes '+nfmt(tk)+' µL from tube '+(t-1)+', under your smallest volume ('+nfmt(minUL)+' µL).'); }
     rows+='<tr><td class="cc-no">'+t+'</td><td><b>Tube '+t+'</b><br><span class="cc-dim">'+nfmt(comp.doses[t-1])+' ng in '+nfmt(comp.tubeUL)+' µL · '+nfmt(+conc.toPrecision(3))+' ng/µL</span></td>'
-      +'<td>'+src+'</td><td>'+car+'</td><td><b class="cc-amt">'+nfmt(vol[t])+' µL</b><br><span class="cc-dim">'+nfmt(need[t])+' µL for its wells'+(t<N?' + '+nfmt(vol[t+1]/df)+' µL on':'')+'</span></td></tr>';
+      +'<td>'+src+'</td><td>'+car+'</td><td>'+om+'</td><td><b class="cc-amt">'+nfmt(vol[t])+' µL</b><br><span class="cc-dim">'+nfmt(need[t])+' µL for its wells + '+nfmt(vol[t]-need[t])+' µL '+(t<N?'on':'spare')+'</span></td></tr>';
   }
-  if(cS>0 && Math.abs(cS-c1)>1e-9) warn.push('The carrier DNA ('+nfmt(cS)+' ng/µL) is not the concentration of tube 1 ('+nfmt(c1)+' ng/µL), so the total DNA in a well changes with the dose.');
   return '<b>'+esc(comp.name)+' series — '+nfmt(N)+' tubes, 1:'+nfmt(df)+'</b>'
-    +'<div class="cc-tblwrap"><table class="cc-tbl cc-mix"><tr><th class="cc-no">#</th><th>Tube</th><th>From</th><th>Carrier DNA</th><th>Total</th></tr>'+rows+'</table></div>'
+    +'<div class="cc-tblwrap"><table class="cc-tbl cc-mix"><tr><th class="cc-no">#</th><th>Tube</th><th>From</th><th>Carrier DNA</th><th>Opti-MEM</th><th>Total</th></tr>'+rows+'</table></div>'
     +(warn.length?('<div class="cc-warn">'+warn.join('<br>')+'</div>'):'');
 }
 function nbtxRecipe(v,counts,nos){
