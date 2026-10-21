@@ -293,6 +293,9 @@ for (const name of Object.keys(APPS)) {
     await E(k => { const s = window[k].spec(); s.w = 6.5; s.h = 4.2; window[k].draw(); }, a.kit);
     check('K17 ' + name + ' ' + w + '×' + h + ': the whole figure and panel are inside the window, and the figure is as large as the room allows (4 page shapes)', bad.length === 0, bad.slice(0, 2).join(' | '));
   }
+  // K19 — a dose label wider than its column wraps; it never sticks out of its box (CI's font draws 0.0000693 wider than 54px)
+  { const r = await E(() => { const tb = document.querySelector('.ck-tabs button[data-tab="data"]'); if (tb) tb.click(); const xs = [...document.querySelectorAll('.ck-dx')].filter(e => e.getBoundingClientRect().width > 0); xs.forEach(e => { e.textContent = '0.000000069300'; }); return { n: xs.length, wide: xs.filter(e => e.scrollWidth > e.clientWidth + 0.5).length }; });
+    check('K19 ' + name + ': a long dose label stays inside its box (' + r.n + ' labels)', r.n > 0 && r.wide === 0, JSON.stringify(r)); }
   await pg.setViewportSize({ width: 1280, height: 800 });
   // K15 — narrow windows
   for (const [w, h] of [[900, 700], [700, 900]]) { await pg.setViewportSize({ width: w, height: h }); await pg.waitForTimeout(450); const ov = await E(() => [document.documentElement.scrollWidth, innerWidth]); check('K15 ' + name + ' at ' + w + ' px nothing scrolls sideways', ov[0] <= ov[1], JSON.stringify(ov)); }
