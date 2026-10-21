@@ -4135,6 +4135,23 @@ Four things changed:
   only…** (`restoreProjectsFrom`) puts a project list back by id without replacing the notebook;
   it drops a seed placeholder only when nothing at all is filed under it.
 
+- **Projects, folders and the Notebook's sections/notebooks are merged by id, never written over
+  (2026-10-21, L12).** They were one cloud value each, last writer wins: a device that had not
+  heard of a folder (open tab, phone) read "changed here" against the cloud on refresh and wrote its
+  older list over it — Jon's *Time Course* folder in SPARK NS vanished, its experiment (a record of
+  its own) became an orphan, and every re-made folder (new id) went the same way. Evidence: the
+  20→21 Oct backups, the folder gone with nothing in the bin, ten remote-conflict versions from a
+  second writer. Now `_rootPush` is a transaction on the list: `_lstMerge(base, local, remote)`
+  three ways, `base` = the list as this device last agreed it with the cloud, kept in
+  `LB.data._rootBase` (inside the tree, so a stale tree carries a stale base; skipped by the
+  cross-window merge). Only here + not in base → added; only there + not in base → kept and
+  received; in base but missing on a side → deleted there; no base (first run, restore) → union,
+  nothing dropped; a cloud list that is empty while ours is not is never read as "all deleted".
+  Adoption merges the same way (a pristine seed device still takes the cloud's lists as they are),
+  `_cloudDelta` skips these roots. `tools/labbook_audit_invariants.mjs` L12 drives a mock cloud
+  (6 cases) and fails 6/6 on the old build. **Same class still open**: `tags`, `presets`,
+  `myModules`, `antibodies`, `protoDays` are single cloud values too.
+
 **Recovery for the real notebook** is the *Projects only…* door on the laptop, from yesterday's
 snapshot or backup file (`_snapRecords` counts projects, and six seed projects count the same
 as six real ones, so today's snapshot may already hold the seed — take the day before). The
