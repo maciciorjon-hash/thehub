@@ -10135,14 +10135,20 @@ function _stepSplits(){
 // takes and the overage it was worked out from, and a compound series that was made before the
 // calculator knew about dose series becomes one. A value a person typed is the run's: nothing that
 // is already there is rewritten, and a finished step is a record.
+// A finished step is a record, and so is a finished run, but the words that name what went into it are not a number: for those
+// (Jon, 2026-10-21: "cambia los protocolos que ya están escritos así, experimentos ya hechos y en marcha") only the two labels of
+// the LgBiT transfection, a diluent that is just "medium", and the structure keys the new wording reads (the buffer, its multiples,
+// the cell line that names the medium) are brought up. Plate count, volume, overage, every typed value stay. _calcKeysFin counts them.
+var _calcKeysFin=0, _FIN_KEYS={preBuffer:1,preFold:1,premixPct:1,cellLine:1};
 function _calcKeysFromPresets(){
-  var ex=(LB.data&&LB.data.experiments)||{}, made=[];
+  var ex=(LB.data&&LB.data.experiments)||{}, made=[]; _calcKeysFin=0;
   Object.keys(ex).forEach(function(id){ var e=ex[id];
-    if(!e||!e.blocks||!e.presetKey||e.status==='done'||e.status==='archived') return;
+    if(!e||!e.blocks||!e.presetKey) return;
     var tpl=LB.data.presets[e.presetKey]; if(!tpl||!tpl.blocks) return;
-    var ch=false;
+    var ch=false, chFin=false, chNon=false, runFin=(e.status==='done'||e.status==='archived');
     e.blocks.forEach(function(b){
-      if(!b.calc||!b.calc.inputs||b.done||b.proto) return;
+      if(!b.calc||!b.calc.inputs||b.proto) return;
+      var fin=runFin||!!b.done, sig0=JSON.stringify(b.calc.inputs);
       var t=(tpl.blocks||[]).filter(function(x){ return x.calc&&x.calc.kind===b.calc.kind&&((b.tpl&&_tplTitleIs(x,b.tpl.title))||_tplTitleIs(x,b.title)); })[0];
       if(!t) return;
       // The two labels the LgBiT transfection step shipped with said "transfection medium" and "medium", which name nothing.
@@ -10155,8 +10161,14 @@ function _calcKeysFromPresets(){
       if(t.calc.kind===b.calc.kind&&I0.diluent!==undefined&&_gen(I0.diluent)&&t.calc.inputs.diluent&&!_gen(t.calc.inputs.diluent)){ I0.diluent=t.calc.inputs.diluent; ch=true; }
       Object.keys(t.calc.inputs||{}).forEach(function(k){
         if(b.calc.inputs[k]!==undefined) return;
-        var v=t.calc.inputs[k]; b.calc.inputs[k]=v; if(b.calcSeed) b.calcSeed[k]=v; ch=true; }); });
-    if(ch){ try{ syncChainedInputs(e); }catch(_e){} e.updated=Date.now(); made.push(e.code||e.title||'an experiment'); } });
+        if(fin&&!_FIN_KEYS[k]) return;
+        var v=t.calc.inputs[k]; if(k==='cellLine'&&e.setup&&e.setup.cellLine) v=e.setup.cellLine;
+        b.calc.inputs[k]=v; if(b.calcSeed) b.calcSeed[k]=v; ch=true; });
+      if(JSON.stringify(b.calc.inputs)!==sig0){ if(fin) chFin=true; else chNon=true; } });
+    if(ch){ if(chNon){ try{ syncChainedInputs(e); }catch(_e){} }   // a finished step's volumes are not re-chained
+      e.updated=Date.now();
+      if(chFin) _calcKeysFin++;
+      if(chNon) made.push(e.code||e.title||'an experiment'); } });
   return made; }
 function seedPresets(){
   // What the presets said before this refresh: the wording pass below needs it to prove that
@@ -10164,6 +10176,7 @@ function seedPresets(){
   var _before={}; try{ _before=JSON.parse(JSON.stringify(LB.data.presets||{})); }catch(e){}
   _seedPresetsInner();
   var _sp=[]; try{ _sp=_stepSplits().concat(_calcKeysFromPresets()); }catch(_e){}
+  if(_calcKeysFin&&!_sp.length) setTimeout(function(){ try{ save(); }catch(e){} },0);
   if(_sp.length){ setTimeout(function(){ try{ save(); }catch(e){} },0);
     setTimeout(function(){ try{ toast('Brought the steps of '+_sp.filter(function(x,i,a){ return a.indexOf(x)===i; }).join(', ')+' up to the preset — nothing in it had been started. The numbers are the run\u2019s own.'); }catch(e){} },1800); }
   _rewordFromPresets(_before);

@@ -2870,6 +2870,15 @@ async function suite(opts) {
       if (!tx.calc.inputs.preBuffer || tx.calc.inputs.name === 'transfection medium') bad('B56', 'migration', 'a run made with the old labels did not take the new ones: ' + JSON.stringify(tx.calc.inputs));
       if (!/to 79\.87 µL of ViaScript buffer/.test(say(tx))) bad('B56', 'wording', 'a run made with the old wording was not brought up: ' + say(tx).slice(0, 120));
       if (en && en.calc && !/^CO₂-independent medium \+ 10% FBS$/.test(en.calc.inputs.diluent)) bad('B56', 'diluent', 'a run whose diluent read "assay medium" now reads "' + en.calc.inputs.diluent + '"');
+      // a finished step in a finished run is a record, and still gets the words (Jon: "experimentos ya hechos y en marcha"), never the numbers
+      tx.calc.inputs = { name: 'transfection medium', parts: 'LgBiT mRNA 1, ViaScript 1', diluent: 'medium', volPerWell: 100, format: '96', nPlates: 3, excess: 1.04, replace: true };
+      tx.html = oldHtml; tx.tpl = { title: tx.title, html: oldHtml, pub: '' }; tx.done = true; e.status = 'done';
+      if (en && en.calc) en.calc.inputs.diluent = 'assay medium';
+      _calcKeysFromPresets(); _rewordFromPresets({});
+      if (tx.calc.inputs.nPlates !== 3 || tx.calc.inputs.volPerWell !== 100 || tx.calc.inputs.excess !== 1.04) bad('B56', 'finished numbers', 'a finished run\'s numbers changed: ' + JSON.stringify(tx.calc.inputs));
+      if (!/to 240 µL of ViaScript buffer/.test(say(tx))) bad('B56', 'finished wording', 'a finished run was not brought up to the new wording: ' + say(tx).slice(0, 120));
+      if (en && en.calc && /assay medium/i.test(en.calc.inputs.diluent)) bad('B56', 'finished diluent', 'a finished run still reads "assay medium"');
+      e.status = 'ongoing';
     });
 
     // B55 — SPARK NS time course: OA at t = 0, a PROTAC series at 3 h, read to 18 h, on one 96-well plate.
