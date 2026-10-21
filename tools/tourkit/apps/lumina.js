@@ -97,7 +97,7 @@
           ['Fit settings', 'Two groups: **Flag a curve when…** (QC limits) and **Constrain the fit** (fix top, bottom or Hill). A dot on the button means something differs from the defaults. Rows that do not apply are dimmed, never hidden.'],
           ['Units', 'Auto, or M to pM, linear or log₁₀ — it drives the table, the plot, copies and every export, so they always agree.'],
           ['Export', '**Excel** (results, raw data, Prism tables and the fit settings) · **Results (.csv)** · **Copy table** · **Raw data (.csv)** · **Plot as image (.png)**. Inside dHUB, **Send to Labbook** attaches the potencies to an experiment.'],
-          ['Plot', 'Default is potency against Dmax. Hollow red points are flagged; colour can follow the plate; search a compound to dim the rest. Click a point to select it, double-click for its curve. **Save PNG** always uses a light background.']],
+          ['Plot', 'Default is potency against Dmax. Hollow red points are flagged; colour can follow the plate; search a compound to dim the rest. Click a point to select it, double-click for its curve. **Export PNG** always uses a light background.']],
         watch: [{ k: 'tip', t: '`⌘Z` on Results undoes curve edits only — layout edits are undone on the Plate tab, and the toast says so. A curve is never left with fewer than three points.' }],
         steps: [
           { sel: '#results-table-wrap', t: 'One row per compound', place: 'right', miss: MISS,
