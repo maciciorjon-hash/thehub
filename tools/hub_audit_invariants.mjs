@@ -13,6 +13,7 @@
 //   H7  backup                     Export with the cloud unreadable still writes what this browser holds (named local); an automatic backup never downloads
 //   H8  Lab panel                  no inline hex / px sizes, every switch has a name, a failed save is said and put back
 //   H9  contrast                   the announcement bar's text is >= 4.5:1 in both themes
+//   H11 stored text stays text    markup in a task, culture, antibody, announcement, toast or question is printed, never run, on every landing, the nav note and the search
 //   H10 contrast, the whole shell  every text run the shell draws (landings, Settings tabs, search, toast, bar) is >= 4.5:1 in both themes
 //                                  (ink on a solid accent fill is held at 3:1, docs/UI.md)
 //
@@ -315,6 +316,24 @@ if (run('H10')) {
     if (vs.length) bad('H10', 'visitor ' + theme + ': ' + vs.join(' | ')); else ok();
     await v.context.close();
   }
+}
+
+if (run('H11')) {
+  const X = '<img src=x onerror="window.__xss=(window.__xss||0)+1">';
+  const init = `localStorage.setItem('hub_journal_cache', JSON.stringify({tasks:{a:{t:${JSON.stringify(X)}}},incubator:{c1:{line:${JSON.stringify(X)},baseLine:${JSON.stringify(X)},passage:5,seeded:1,intervalDays:3,issue:{note:${JSON.stringify(X)}}}},antibodies:{a:{name:${JSON.stringify(X)}}},primers:{},plasmids:{},cellArchive:[{id:'z',name:${JSON.stringify(X)}}]}));`;
+  const { context, page } = await open({ init });
+  const r = await page.evaluate(async () => {
+    const w = ms => new Promise(r => setTimeout(r, ms));
+    for (const l of ['planner', 'cells', 'archive', 'analysis', 'more']) { wsGo(l); await w(250); }
+    applyAnnouncement({ enabled: true, text: '<img src=x onerror="window.__xss=(window.__xss||0)+1">' });
+    hubToast('<img src=x onerror="window.__xss=(window.__xss||0)+1">');
+    hubAsk('<b>t</b>', '<img src=x onerror="window.__xss=(window.__xss||0)+1">', {}, () => {});
+    window.hubSpot.open(); const i = document.getElementById('hub-spot-in'); i.value = '<img'; i.dispatchEvent(new Event('input', { bubbles: true }));
+    hubDlgClose(false); window.hubSpot.close(); _navPop = 'note'; renderNavChips(); await w(200);
+    return { xss: window.__xss || 0, imgs: document.querySelectorAll('#hub-suites img,#nav-chips img,#hub-announce img,#hub-toast img,#hub-dlg img,#hub-spot-res img').length };
+  });
+  if (r.xss || r.imgs) bad('H11', 'stored or typed markup was run or became an element: ' + JSON.stringify(r)); else ok();
+  await context.close();
 }
 
 await browser.close();
