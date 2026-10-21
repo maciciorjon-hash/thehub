@@ -133,14 +133,18 @@ if (run('S4')) {
     isAdmin = true; _preloadDone = {}; _preloadApps(); const adm = (window._preloadList || []).slice();
     const t0 = performance.now();
     while (adm.some(id => !loaded[id]) && performance.now() - t0 < 20000) await new Promise(r => setTimeout(r, 100));
-    // Hit Finder and Tempo are Jon's alone: a visitor who has typed every code (suite words included) still cannot open them
+    // Tempo is Jon's alone: a visitor who has typed every code still cannot open it. Hit Finder opens only with its own
+    // suite word (tryUnlock), never with the Data Analysis word or any per-app word.
     isAdmin = false; _unlockedApps.clear(); Object.keys(APP_UNLOCK_WORDS).forEach(id => _unlockedApps.add(id));
-    Object.values(SUITE_UNLOCK_WORDS).forEach(su => su.apps.forEach(id => _unlockedApps.add(id)));
+    tryUnlock(SUITE_UNLOCK_WORDS.analysis.word);
     const adminLeak = ['hitfinder', 'tempo'].filter(id => _isAppAccessible(id));
+    _unlockedApps.clear(); tryUnlock(SUITE_UNLOCK_WORDS.hitfinder.word);
+    const hfByCode = _isAppAccessible('hitfinder') && !_isAppAccessible('tempo');
     _unlockedApps.clear(); isAdmin = true;
-    return { adminLeak, vis, adm, loaded: adm.filter(id => loaded[id]), five: ['protocols', 'echo', 'hitfinder', 'lumina', 'tempo'].filter(id => loaded[id]), admOnly: Object.keys(ADMIN_ONLY_APPS) };
+    return { adminLeak, hfByCode, vis, adm, loaded: adm.filter(id => loaded[id]), five: ['protocols', 'echo', 'hitfinder', 'lumina', 'tempo'].filter(id => loaded[id]), admOnly: Object.keys(ADMIN_ONLY_APPS) };
   });
-  if (r.adminLeak.length) bad('S4', 'a visitor with every code can open ' + r.adminLeak.join(', ')); else ok();
+  if (r.adminLeak.length) bad('S4', 'a visitor with every public code can open ' + r.adminLeak.join(', ')); else ok();
+  if (!r.hfByCode) bad('S4', "Hit Finder's own code does not open it (or opens Tempo)"); else ok();
   if (r.vis.some(id => r.admOnly.includes(id))) bad('S4', 'a visitor preloads an admin app: ' + r.vis.join(', ')); else ok();
   if (r.five.length !== 5) bad('S4', 'after the admin preload only these are loaded: ' + r.five.join(', ')); else ok();
   if (r.loaded.length !== r.adm.length) bad('S4', 'not every preloaded app finished loading: ' + r.loaded.join(', ') + ' of ' + r.adm.join(', ')); else ok();
