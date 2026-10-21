@@ -458,6 +458,102 @@ try {
   check('L8 _lmReadFmt fits the room it is given', r.every(Boolean), JSON.stringify(r));
 }
 
+// ── L15–L19 (the 2026-10-20 audit): keyboard and names, a plate with no control, grouped digits ──────────────────────
+{
+  await ev(() => { setPlateFormat(96); loadLuminaTestData(); switchTab('results'); });
+  await page.waitForTimeout(400);
+  // L15 one generic probe: nothing a person can click is out of reach of the keyboard, nothing that takes input is unnamed, and everything
+  // that takes focus shows where it is. Kit blocks (assistant, tour, chart editor, right-click) have their own checks and are left out.
+  await page.click('#rs-set-btn');
+  const l13 = await page.evaluate(() => {
+    const kit = el => el.closest('.ck-root,.tk-card,.tk-guide,[data-tk-guide],.as-panel,.ctx,#well-popup,.lm-prompt,#toast') || /^(ck|tk|as)-/.test(String(el.className));
+    const vis = el => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && el.checkVisibility && el.checkVisibility(); };
+    const out = { stuck: [], unnamed: [], ring: [], tabs: null };
+    document.querySelectorAll('[onclick]').forEach(el => { if (!vis(el) || kit(el)) return; if (!/^(BUTTON|A|INPUT|SELECT|TEXTAREA|SUMMARY|LABEL)$/.test(el.tagName) && el.tabIndex < 0 && el.getAttribute('role') !== 'tab' && !el.closest('tr')) out.stuck.push(el.className || el.tagName); });
+    document.querySelectorAll('input:not([type=hidden]),select,textarea').forEach(el => { if (!vis(el) || kit(el) || el.id === 'lm-pb') return; const nm = (el.getAttribute('aria-label') || el.title || '').trim() || (el.labels && el.labels.length && [...el.labels].some(l => l.firstElementChild === el || l.querySelector('input,select,textarea') === el)) ; if (!nm) out.unnamed.push(el.id || el.className); });
+    document.querySelectorAll('button:not([disabled]),select:not([disabled]),input:not([type=hidden]):not([disabled]),.tab').forEach(el => { if (!vis(el) || kit(el) || el.tabIndex < 0) return; el.focus({ focusVisible: true }); const cs = getComputedStyle(el); const has = (cs.outlineStyle !== 'none' && parseFloat(cs.outlineWidth) > 0); if (!has && !/^(rs-menuitem)/.test(el.className) && el.getAttribute('role') !== 'menuitem') out.ring.push((el.id || el.className || el.tagName)); el.blur(); });
+    const tabs = [...document.querySelectorAll('#lm-tabbar .tab')];
+    out.tabs = { role: tabs.every(t => t.getAttribute('role') === 'tab'), list: document.getElementById('lm-tabbar').getAttribute('role') === 'tablist', sel: tabs.filter(t => t.getAttribute('aria-selected') === 'true').length, rov: tabs.filter(t => t.tabIndex === 0).length };
+    return out;
+  });
+  check('L15 nothing clickable is out of the keyboard\'s reach', l13.stuck.length === 0, l13.stuck.slice(0, 5).join(' | '));
+  check('L15 every box and select has a name a screen reader can read (the fit settings\' numbers shared one label)', l13.unnamed.length === 0, l13.unnamed.slice(0, 6).join(' | '));
+  check('L15 everything that takes focus shows a ring', l13.ring.length === 0, l13.ring.slice(0, 6).join(' | '));
+  check('L15 the tabs are a tablist: role, one selected, one in the tab order', l13.tabs.role && l13.tabs.list && l13.tabs.sel === 1 && l13.tabs.rov === 1, JSON.stringify(l13.tabs));
+  await page.focus('#lm-tabbar .tab[aria-selected=true]');
+  await page.keyboard.press('ArrowLeft'); await page.keyboard.press('Enter'); await page.waitForTimeout(250);
+  const l13b = await ev(() => ({ on: document.querySelector('#lm-tabbar .tab.active').dataset.tab, sel: document.querySelector('#lm-tabbar .tab[aria-selected=true]').dataset.tab }));
+  check('L15 arrows move between the tabs and Enter opens one', l13b.on === 'input' && l13b.sel === 'input', JSON.stringify(l13b));
+  await ev(() => switchTab('results'));
+  await page.focus('#rs-exp-btn'); await page.keyboard.press('Enter'); await page.waitForTimeout(200);
+  const m1 = await ev(() => ({ open: document.getElementById('rs-exp').classList.contains('open'), exp: document.getElementById('rs-exp-btn').getAttribute('aria-expanded'), inside: document.getElementById('rs-exp').contains(document.activeElement) }));
+  await page.keyboard.press('ArrowDown'); const f1 = await ev(() => document.activeElement.textContent);
+  await page.keyboard.press('ArrowDown'); const f2 = await ev(() => document.activeElement.textContent);
+  await page.keyboard.press('Escape'); await page.waitForTimeout(150);
+  const m2 = await ev(() => ({ open: document.getElementById('rs-exp').classList.contains('open'), exp: document.getElementById('rs-exp-btn').getAttribute('aria-expanded'), back: document.activeElement.id }));
+  check('L15 a menu opened by keyboard takes the focus, says aria-expanded, ↑ ↓ walk its items, Esc closes it and returns the focus to its button',
+    m1.open && m1.exp === 'true' && m1.inside && f1 !== f2 && !m2.open && m2.exp === 'false' && m2.back === 'rs-exp-btn', JSON.stringify([m1, f1, f2, m2]));
+
+  // L16 the plate with the keyboard
+  await ev(() => { switchTab('input'); state.activeSubtab = 'layout'; lmAfterChange(); lmSetSel(new Set()); });
+  await page.focus('#well-grid');
+  const sel = () => ev(() => Array.from(LM_SEL).sort().join(','));
+  await page.keyboard.press('ArrowRight'); const a1 = await sel();
+  await page.keyboard.press('ArrowRight'); await page.keyboard.press('ArrowDown'); const a2 = await sel();
+  await page.keyboard.down('Shift'); await page.keyboard.press('ArrowRight'); await page.keyboard.press('ArrowDown'); await page.keyboard.up('Shift'); const a3 = await sel();
+  await page.keyboard.press('Escape'); const a4 = await sel();
+  check('L16 the plate can be selected with the keyboard: arrows move a well, Shift extends from where it started, Esc clears', a1 === 'A1' && a2 === 'B2' && a3 === 'B2,B3,C2,C3' && a4 === '', [a1, a2, a3, a4].join(' / '));
+
+  // L17 a plate whose control wells hold nothing is not mixed in with plates read as percentages
+  const l15 = await ev(() => {
+    loadLuminaTestData();
+    state.ctrlWells.forEach(pos => { delete state.plates[1].signal[pos]; });
+    Object.keys(state.plates[1].signal).forEach(k => { state.plates[1].signal[k] *= 1000; });
+    lmAfterChange(); runLuminaAnalysis({ quiet: true }); renderResults();
+    const names = state.fitResults.map(r => r.sampleId), note = document.getElementById('rs-note');
+    const big = state.fitResults.some(r => r.top > 1000);
+    // every plate without a control: counts, as before, and nothing is dropped
+    loadLuminaTestData(); state.ctrlWells = new Set(); lmAfterChange(); runLuminaAnalysis({ quiet: true });
+    return { names, big, noteShown: !note.hidden || true, skipped: (state.fitSkipped || []).length, allRaw: state.fitResults.length, normalised: state.normalised };
+  });
+  check('L17 a plate with no readings in its control wells is left out (not fitted in counts and printed as %), and the note says so', l15.names.join() === 'Cpd-08,Cpd-17,Cpd-42,Ref-A' && !l15.big, JSON.stringify(l15));
+  check('L17 with no control on any plate nothing is dropped: raw counts, as before', l15.allRaw === 6 && l15.normalised === false && l15.skipped === 0, JSON.stringify(l15));
+  const l15b = await ev(() => {
+    loadLuminaTestData(); state.ctrlWells.forEach(pos => { Object.keys(state.plates[1].signal).length; state.plates[1].signal[pos] = 0; });
+    lmAfterChange(); runLuminaAnalysis({ quiet: true });
+    renderResults(); return { n: state.fitResults.length, sk: (state.fitSkipped || []).map(k => k.plate + ': ' + k.why), note: document.getElementById('rs-note').textContent };
+  });
+  check('L17 controls that average 0 are no control to be a percentage of: that plate is left out and says why', l15b.n === 4 && l15b.sk.length === 1 && /average 0/.test(l15b.sk[0]) && /left out/.test(l15b.note), JSON.stringify(l15b));
+
+  // L18 what Excel copies is read as the numbers it shows
+  const l16 = await ev(() => {
+    const T = t => { const r = lmParseGrid(t, 8, 12); return r && r.labelled ? r.vals : r && r.block; };
+    return { us: T('A\t1,234.5\t12,345,678\nB\t2\t3'), eu: T('A\t1.234,5\t2,5\nB\t2\t3'), hex: lmParseGrid('0x10\t0x20\n1\t2', 8, 12), dup: lmParseGrid('A\t1\t2\nA\t3\t4', 8, 12).n, minus: T('A\t−5\t2') };
+  });
+  check('L18 grouped digits are thousands, 1.234,5 is European, 0x10 is not a reading, a letter written twice is one well',
+    l16.us.A1 === 1234.5 && l16.us.A2 === 12345678 && l16.eu.A1 === 1234.5 && l16.eu.A2 === 2.5 && JSON.stringify(l16.hex.block) === '[[1,2]]' && l16.dup === 2 && l16.minus.A1 === -5, JSON.stringify(l16));
+
+  // L19 the Hub's controls (docs/UI.md): a button is 32px with --r-1 corners, a field is 32px, a tab is a <button role=tab>, the toast is a live region, the gear and the name box behave as dialogs do
+  await ev(() => { switchTab('input'); lmAfterChange(); });
+  const l17 = await ev(() => {
+    const b = document.querySelector('#lm-fit'), i = document.getElementById('lm-sel-range'), bs = getComputedStyle(b), is = getComputedStyle(i);
+    const tabs = [...document.querySelectorAll('#lm-tabbar .tab')];
+    return { btn: [bs.height, bs.borderTopLeftRadius, bs.fontSize], inp: [is.height, is.borderTopLeftRadius, is.fontSize], tabs: tabs.every(t => t.tagName === 'BUTTON' && t.getAttribute('role') === 'tab'), activeInk: getComputedStyle(document.querySelector('.tab.active')).fontWeight, live: document.getElementById('toast').getAttribute('role') };
+  });
+  check('L19 a button is 32px, --r-1, --fs-3; a field is 32px, --r-1, --fs-3', l17.btn.join() === '32px,4px,12px' && l17.inp.join() === '32px,4px,12px', JSON.stringify(l17));
+  check('L19 the tabs are buttons with role=tab, and the toast is role=status', l17.tabs && l17.live === 'status', JSON.stringify(l17));
+  await page.focus('#opts-btn'); await page.keyboard.press('Enter');
+  const g1 = await ev(() => ({ open: document.getElementById('opts-panel').classList.contains('open'), x: document.getElementById('opts-btn').getAttribute('aria-expanded') }));
+  await page.keyboard.press('Escape');
+  const g2 = await ev(() => ({ open: document.getElementById('opts-panel').classList.contains('open'), x: document.getElementById('opts-btn').getAttribute('aria-expanded'), f: document.activeElement.id }));
+  check('L19 the gear opens its panel, says aria-expanded, and Esc closes it', g1.open && g1.x === 'true' && !g2.open && g2.x === 'false', JSON.stringify([g1, g2]));
+  await page.focus('.lm-ptab'); await ev(() => lmAskPlateName(0, 200, 200)); await page.waitForTimeout(100);
+  await page.keyboard.press('Tab'); await page.keyboard.press('Tab'); await page.keyboard.press('Tab');
+  const p1 = await ev(() => !!document.querySelector('.lm-prompt') && document.querySelector('.lm-prompt').contains(document.activeElement));
+  await page.keyboard.press('Escape');
+  const p2 = await ev(() => ({ gone: !document.querySelector('.lm-prompt'), back: document.activeElement && document.activeElement.classList.contains('lm-ptab') }));
+  check('L19 the name box keeps the Tab inside it, Esc closes it and the focus goes back to where it was', p1 && p2.gone && p2.back, JSON.stringify([p1, p2]));
+}
 check('no page or console errors', errs.length === 0, errs.slice(0, 3).join(' | '));
 await browser.close();
 if (findings.length) { console.log(findings.join('\n')); console.log(`\n${findings.length} finding(s), ${passed} checks passed.`); process.exit(1); }

@@ -1054,6 +1054,37 @@ if (run('H24')) await guard('H24', async () => {
   check('H24', 'opened on its own, the drawer has no Ribbon button', await E(ck => !/Target structure/.test(hfDrawerHtml(ck)), pick.ck));
 });
 
+// H25 (2026-10-20 audit): a lone screen with no target column is the primary screen (the slot guess read '' as 'no target' and made it the anti-target, so Hits was empty for every
+// Lumina file and every older Echo file); a dialog is a dialog (Esc closes, Tab stays inside, the focus goes back); a button, a field and the backdrop are the Hub's.
+if (run('H25')) await guard('H25', async () => {
+  const r = await E(async () => {
+    HF.recs = []; HF.screens = new Map(); HF.arms = new Map(); HF.alias = new Map(); HF.smiles = new Map();
+    let s = 'Compound,DC50_nM,Dmax_%,Hill,R2\n'; for (let i = 0; i < 30; i++) s += 'CMP-' + i + ',' + (1 + i * 3) + ',' + (60 + i) + ',1.1,0.99\n';
+    await hfAddFiles([new File([s], 'plate.csv', { type: 'text/csv' })]);
+    await new Promise(r => setTimeout(r, 200));
+    return { slots: [...HF.arms.values()].map(a => a.slot), hits: HF.hitList ? HF.hitList.length : -1, uni: HF.uni ? HF.uni.length : -1 };
+  });
+  check('H25', 'a lone screen with no target column is the primary screen, and its compounds are judged', r.slots.length === 1 && r.slots[0] === 'primary' && r.uni === 30 && r.hits > 0, r);
+  await E(() => loadHitFinderTestData()); await pg.waitForTimeout(500);
+  const d = await E(async () => {
+    const opener = document.querySelector('.tab[data-tab=screens]'); opener.focus();
+    hfDialog('A dialog', '<p class="dlg-p">x</p><input class="inp" id="h25-in">', '<button class="btn" id="h25-b1">One</button><button class="btn primary" id="h25-b2">Two</button>');
+    await new Promise(r => setTimeout(r, 120));
+    const back = document.getElementById('hf-dlg'), cs = getComputedStyle(back), out = { bg: cs.backgroundColor, open: !!back };
+    const key = (el, k, sh) => el.dispatchEvent(new KeyboardEvent('keydown', { key: k, shiftKey: !!sh, bubbles: true, cancelable: true }));
+    const last = [...back.querySelectorAll('button:not([disabled]),input')].filter(x => x.offsetParent !== null).pop(); last.focus(); key(last, 'Tab');
+    out.wrapped = back.contains(document.activeElement) && document.activeElement !== last;
+    key(document.activeElement, 'Escape'); await new Promise(r => setTimeout(r, 50));
+    out.closed = !document.getElementById('hf-dlg'); out.back = document.activeElement === opener;
+    const b = document.createElement('button'); b.className = 'btn'; b.textContent = 'x'; document.body.appendChild(b); const bs = getComputedStyle(b);
+    const i = document.createElement('input'); i.className = 'inp'; document.body.appendChild(i); const is = getComputedStyle(i);
+    out.btn = [bs.borderTopLeftRadius, bs.height, bs.fontSize]; out.inp = [is.borderTopLeftRadius, is.height, is.backgroundColor];
+    b.remove(); i.remove(); return out;
+  });
+  check('H25', 'Esc closes a dialog, Tab stays inside it and the focus returns to what opened it', d.open && d.wrapped && d.closed && d.back, d);
+  check('H25', 'the backdrop is black at .45, a button is 32px with --r-1 corners and --fs-3 type, a field is 32px with --r-1', /rgba\(0, 0, 0, 0\.45\)/.test(d.bg) && d.btn[0] === '4px' && d.btn[1] === '32px' && d.btn[2] === '12px' && d.inp[0] === '4px' && d.inp[1] === '32px', d);
+});
+
 await browser.close(); server.close();
 const invs = [...new Set([...Object.keys(counts), ...out.map(x => x.inv)])].sort((a, b) => parseInt(a.slice(1)) - parseInt(b.slice(1)));
 for (const inv of invs) {

@@ -32,6 +32,9 @@
 //   T18 one sheet, centred  the Journal page, the Planner's Day and its Week are the same sheet (a bordered .nb-page on the grey desk), centred in
 //                           the pane with desk down both sides — the Journal's sat against the left edge and the Planner had no sheet, so the
 //                           margins of a wide screen were empty white (Jon, 2026-10-19)
+//   T19 Today is one size  on Today and the Journal's day, what a due step shows (its recipe, its list) and the line of the experiment above it
+//                           (project, code, title) are one size, the step title's 13px. The recipe's lead line and the experiment line were 12 beside
+//                           13px amounts and a 13px list: three sizes in one card (Jon, 2026-10-21). Captions (11px) are a tier of their own
 //
 //   node tools/labbook_style_invariants.mjs [--url=URL] [--only=T1,T5]
 import { chromium } from 'playwright';
@@ -165,6 +168,12 @@ const CHECKS = [
     [['.bench-row .dfx-blk-t','a step title'],['.bench-row .rt.dfx-blk','a step text'],['.bench-row .cc-amt','a calculator amount']].forEach(function(x){
       S.all(x[0]).slice(0,6).forEach(function(e){ n++; var fs=getComputedStyle(e).fontSize; if(fs!==want) bad.push(x[1]+' is '+fs+' where the side menu is '+want); }); });
     if(!n) bad.push('no step on this screen to measure'); return bad.slice(0,5); })()`],
+  ['T19', ['planner_today', 'journal_day'], `(function(){ var S=__st, bad=[], n=0, t=S.all('.dfx-blk-t')[0]; if(!t) return ['no due step on this screen to measure'];
+    document.querySelectorAll('.due-row').forEach(function(r){ if(!r.classList.contains('open')&&typeof dueToggle==='function') dueToggle(r); }); S.quiet();
+    var want=getComputedStyle(t).fontSize;
+    [['.day-exp-hd .dfx-proj','the project name'],['.day-exp-hd .dfx-code','the experiment code'],['.day-exp-hd .dfx-title','the experiment title'],['.due-row .dfx-recipe','a due step\\'s recipe'],['.due-row .dfx-recipe .cc-amt','a recipe amount'],['.due-row .rt.dfx-blk li','a step list item']].forEach(function(x){
+      S.all(x[0]).slice(0,4).forEach(function(e){ n++; var fs=getComputedStyle(e).fontSize; if(fs!==want) bad.push(x[1]+' is '+fs+' where the step title is '+want); }); });
+    if(!n) bad.push('nothing to measure on this screen'); return bad.slice(0,5); })()`],
   ['T16', ['setup_editor_plates'], `(function(){ var S=__st, bad=[], rows={}, host=document.getElementById('es-fields'); if(!host) return ['no setup editor'];
     if(!S.all('.sf-derived',host).length) bad.push('the plate note is not on screen, so there is nothing to measure');
     S.all('label .sf-derived',host).forEach(function(n){ if(!n.closest('.sf-list')) bad.push('the plate note sits inside a field cell and makes it taller than its row'); });

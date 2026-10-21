@@ -192,7 +192,7 @@
 //                            is typed, edited, removed and undone; a wider one stacks outside a narrower one; nothing written round the plate sits on a well, a header or
 //                            another label; the card, the PNG, the print table and a copied layout all carry it. (the plate map could not say what a column was)
 //   B53 time course       Time Course is Kinetic degradation with the compound left open: type KD (Tempo still takes it), code tag TC, the same steps, waits and measures,
-//                            no compound of the lab's own named in the prose, and an experiment from it keeps the 900 min / 5 min run and its plate.
+//                            no compound of the lab's own named in the prose, and an experiment from it keeps the 900 min / 5 min run and its plate The kinetic assay medium is named in full (CO2-independent medium + 10% FBS) in every step of KD, Time Course and the SPARK NS preset.
 //   B55 spark ns tc      The SPARK NS Time Course: one 96-well plate, six pairs of columns (no OA, OA high, OA low, then the same three with a PROTAC series, 7 pts + DMSO), OA on every well at t = 0
 //                            and the PROTAC at 3 h, read to 18 h (1080 min); drawn from the setup with its words round the plate; every calculator on the wells the map says.
 //   B52 one list of         The Compounds step has ONE box for every compound to test, a line each (a column from Excel). The names flow onto the compound
@@ -2805,6 +2805,12 @@ async function suite(opts) {
         if (cx.kind !== cy.kind) bad('B53', 'calc ' + x.title, 'calculator ' + cx.kind + ' vs ' + cy.kind);
         const ix = Object.assign({}, cx.inputs), iy = Object.assign({}, cy.inputs); delete ix.name; delete iy.name; delete ix.minVolUL; delete iy.minVolUL;
         if (_canonJSON(ix) !== _canonJSON(iy)) bad('B53', 'measures ' + x.title, 'inputs ' + _canonJSON(ix) + ' differ from ' + _canonJSON(iy)); });
+      // the kinetic assay medium is named in full, CO2-independent medium + 10% FBS, wherever a step uses it (not "assay medium")
+      ['KD', 'KD_TIMECOURSE', 'KD_TC_SPARKNS'].forEach(k => { const p = LB.data.presets[k]; if (!p) return;
+        const en = (p.blocks || []).find(x => /Endurazine/.test(x.title || '')); if (!en) { bad('B53', 'medium ' + k, 'no Endurazine step'); return; }
+        if (!/independent \+ 10% FBS/.test(en.html || '') || !/independent medium containing 10% FBS/.test(en.pub || '')) bad('B53', 'medium ' + k, 'the Endurazine step does not name "CO2-independent + 10% FBS": ' + (en.html || '').slice(0, 90));
+        (p.blocks || []).forEach(x => { const d = x.calc && x.calc.inputs && x.calc.inputs.diluent;
+          if ((x.calc || {}).kind === 'reagent' || (x.calc || {}).kind === 'spike') if (!/^CO\u2082-independent medium \+ 10% FBS$/.test(d || '')) bad('B53', 'medium ' + k + ' / ' + x.title, 'the diluent reads "' + d + '", not the full medium name'); }); });
       // generic: no compound of the lab's own in the steps
       const text = a.map(x => [x.title, x.html, x.pub].join(' ')).join(' ') + ' ' + tpl.title;
       if (/\bOA\b|oligomycin|antimycin/i.test(text)) bad('B53', 'generic', 'the preset names a compound: ' + (text.match(/\bOA\b|oligomycin|antimycin/i) || [])[0]);
