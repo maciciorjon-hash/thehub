@@ -10,6 +10,11 @@
 //                                  shaded column and the owing list follow the month chosen
 //   CU5  search filters            a part of a name keeps its row and drops the rest; nothing matching says so
 //   CU6  no emoji in the UI        the interface draws its icons; only the Slack message (content) may carry emoji
+//   CU8  a write that fails says so      offline or refused by the server: the header says NOT SAVED, the toast offers Retry, a retry that
+//                                        works clears it; a price of 0, a minus or a word is refused with a message and nothing changes
+//   CU9  dialogs keep focus              each dialog takes focus, keeps Tab inside, closes on Esc and returns focus to what opened it;
+//                                        a member cannot be added twice
+//   CU10 text reaches 4.5:1              the quiet text and the accent as text, in both themes
 //   CU7  everything in its box     escape, runtime and alignment audits at 1440, 1024 and 390 in both themes
 //
 //   node tools/cuppa_invariants.mjs [--only=CU1,CU2] [--file=apps/cuppa/cuppa.html]      exit 1 on any finding
@@ -182,6 +187,72 @@ if (run('CU6')) await guard('CU6', async () => {
   });
   r.length ? bad('CU6', 'emoji in the interface: ' + r.slice(0, 5).join(' · ')) : ok();
   await p.context().close();
+});
+
+if (run('CU8')) await guard('CU8', async () => {
+  // the page is offline (no Firebase SDK): toggling must not pretend
+  const q = await browser.newContext({ viewport: { width: 1440, height: 900 } }); const pg = await q.newPage(); pg.errs = [];
+  pg.on('pageerror', e => pg.errs.push(e.message)); await pg.route(/^https?:/, r => r.abort()); await pg.goto('file://' + FILE); await pg.waitForTimeout(500);
+  await pg.evaluate(() => { isAdmin = true; document.body.classList.add('admin'); render(); });
+  const off = await pg.evaluate(async () => { const b = document.querySelector('button.pay'); b.click(); await new Promise(r => setTimeout(r, 200));
+    return { toast: document.getElementById('toast').textContent, hdr: document.getElementById('lastupd-value').textContent }; });
+  /not saved/i.test(off.toast) && /NOT SAVED/.test(off.hdr) ? ok() : bad('CU8', `offline: toast "${off.toast}", header "${off.hdr}"`);
+  const refused = await pg.evaluate(async () => { window.firebase = { database: () => ({ ref: () => ({ set: () => Promise.reject({ code: 'PERMISSION_DENIED' }) }) }) };
+    saveToFirebase('x'); await new Promise(r => setTimeout(r, 200)); return document.getElementById('toast').textContent; });
+  /refused/i.test(refused) ? ok() : bad('CU8', `refused by the server: "${refused}"`);
+  const fixed = await pg.evaluate(async () => { window.firebase = { database: () => ({ ref: () => ({ set: () => Promise.resolve() }) }) };
+    const rb = document.querySelector('#toast button'); if (rb) rb.click(); await new Promise(r => setTimeout(r, 300)); return { hdr: document.getElementById('lastupd-value').textContent, retry: !!rb }; });
+  fixed.retry && !/NOT SAVED/.test(fixed.hdr) ? ok() : bad('CU8', `after a good retry: retry=${fixed.retry}, header "${fixed.hdr}"`);
+  // prices
+  const pr = await pg.evaluate(async () => { window.saveToFirebase = function(){ return Promise.resolve(); }; openSettings(); const out = {}, c = document.getElementById('sf-coffee'), t = document.getElementById('sf-tea'), before = state.prices.coffee;
+    for (const v of ['0', '-3', 'abc', '', '1e999', '5000']) { c.value = v; saveSettings(); out[v] = { price: state.prices.coffee === before, open: document.getElementById('settings-modal').classList.contains('open'), toast: /number above 0/.test(document.getElementById('toast').textContent) }; document.getElementById('toast').textContent = ''; }
+    c.value = '8.25'; t.value = '5'; saveSettings(); out.good = state.prices.coffee; return out; });
+  const badP = Object.entries(pr).filter(([k, v]) => k !== 'good' && !(v.price && v.open && v.toast)).map(([k]) => k);
+  badP.length ? bad('CU8', 'prices accepted or not explained: ' + badP.join(', ')) : ok();
+  pr.good === 8.25 ? ok() : bad('CU8', 'a good price was not saved');
+  await q.close();
+});
+
+if (run('CU9')) await guard('CU9', async () => {
+  const p = await open(); await admin(p);
+  for (const [name, openFn, id, closeFn] of [['member', "editMember(state.members[0].id)", 'member-modal', 'closeMemberModal'], ['settings', 'openSettings()', 'settings-modal', 'closeSettings']]) {
+    await p.evaluate(() => { const b = document.getElementById('hdr-settings-btn') || document.querySelector('button.btn'); b.focus(); document.activeElement.setAttribute('data-opener', '1'); });
+    await p.evaluate(openFn); await p.waitForTimeout(300);
+    const r = await p.evaluate(id => { const b = document.getElementById(id), c = b.querySelector('[role=dialog]'), x = b.querySelector('.modal-close'); return { role: c.getAttribute('role'), named: !!(c.getAttribute('aria-labelledby') || c.getAttribute('aria-label')), closeName: x.getAttribute('aria-label'), inside: b.contains(document.activeElement) }; }, id);
+    r.role === 'dialog' && r.named && r.closeName ? ok() : bad('CU9', `${name}: ${JSON.stringify(r)}`);
+    r.inside ? ok() : bad('CU9', `${name}: focus did not move in`);
+    await p.evaluate(id => { const b = document.getElementById(id), f = [...b.querySelectorAll('button,input,select,textarea')].filter(e => e.getClientRects().length && !e.disabled); f[f.length - 1].focus(); }, id);
+    await p.keyboard.press('Tab'); const stay = await p.evaluate(id => document.getElementById(id).contains(document.activeElement), id);
+    stay ? ok() : bad('CU9', `${name}: Tab leaves the dialog`);
+    await p.keyboard.press('Escape'); await p.waitForTimeout(250);
+    const back = await p.evaluate(id => ({ closed: !document.getElementById(id).classList.contains('open'), opener: document.activeElement && document.activeElement.getAttribute('data-opener') === '1' }), id);
+    back.closed && back.opener ? ok() : bad('CU9', `${name}: Esc / focus return: ${JSON.stringify(back)}`);
+    await p.evaluate(() => document.querySelectorAll('[data-opener]').forEach(e => e.removeAttribute('data-opener')));
+  }
+  const dup = await p.evaluate(() => { const n = state.members.length, nm = state.members[0].name; openAddMember(); document.getElementById('mf-name').value = nm.toUpperCase(); saveMember(); const out = { same: state.members.length === n, toast: document.getElementById('toast').textContent }; closeMemberModal(); return out; });
+  dup.same && /already a member/.test(dup.toast) ? ok() : bad('CU9', 'the same name can be added twice: ' + JSON.stringify(dup));
+  await p.context().close();
+});
+
+if (run('CU10')) await guard('CU10', async () => {
+  const CONTRAST = () => {
+    const cv = document.createElement('canvas'); cv.width = cv.height = 1; const cx = cv.getContext('2d', { willReadFrequently: true });
+    const rgba = c => { cx.clearRect(0, 0, 1, 1); cx.fillStyle = '#000'; cx.fillStyle = c; cx.fillRect(0, 0, 1, 1); const d = cx.getImageData(0, 0, 1, 1).data; return [d[0], d[1], d[2], d[3] / 255]; };
+    const lum = c => { const f = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
+    const over = (t, b) => [t[0] * t[3] + b[0] * (1 - t[3]), t[1] * t[3] + b[1] * (1 - t[3]), t[2] * t[3] + b[2] * (1 - t[3]), 1];
+    const bgOf = el => { const st = []; for (let e = el; e && e.nodeType === 1; e = e.parentElement) { if (/gradient|url/.test(getComputedStyle(e).backgroundImage)) return null; const b = rgba(getComputedStyle(e).backgroundColor); if (b[3] > 0) { st.push(b); if (b[3] >= 0.999) break; } } let cur = (st.length && st[st.length - 1][3] >= 0.999) ? st.pop() : [255, 255, 255, 1]; while (st.length) cur = over(st.pop(), cur); return cur; };
+    const out = [], w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT); let n;
+    while ((n = w.nextNode())) { const t = n.textContent.trim(); const el = n.parentElement; if (!t || !el || /^(SCRIPT|STYLE|OPTION)$/.test(el.tagName)) continue; const r = el.getBoundingClientRect(); if (r.width < 1 || r.height < 1 || el.closest('.ctx,#toast')) continue; if (el.closest('button:disabled')) continue;
+      const bg = bgOf(el); if (!bg) continue; const cs = getComputedStyle(el), fg = over(rgba(el.closest('svg') ? cs.fill : cs.color), bg), a = lum(fg), b = lum(bg), ratio = (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+      const big = parseFloat(cs.fontSize) >= 24 || (parseFloat(cs.fontSize) >= 18.66 && +cs.fontWeight >= 700); if (ratio < (big ? 3 : 4.5) - 0.01) out.push(`${el.className || el.tagName} "${t.slice(0, 14)}" ${ratio.toFixed(2)}`); }
+    return [...new Set(out)].slice(0, 6);
+  };
+  for (const theme of ['light', 'dark']) {
+    const p = await open({ theme }); await admin(p);
+    const f = await p.evaluate(`(${CONTRAST.toString()})()`);
+    f.length ? bad('CU10', `${theme}: ${f.join('; ')}`) : ok();
+    await p.context().close();
+  }
 });
 
 if (run('CU7')) await guard('CU7', async () => {
