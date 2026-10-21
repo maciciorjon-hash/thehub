@@ -1030,6 +1030,9 @@ th[tabindex]:focus-visible{outline-offset:-2px;}
 #mat-type-list > div > div{flex-wrap:wrap;min-width:0;}
 #mat-type-list select,#mat-type-list input{min-width:0;}
 @media (max-width:560px){#mat-type-list [id^="mat-type-"],#mat-type-list [id^="mat-prefix-"]{flex:1 1 100% !important;}}
+/* a panel's head row: the type (its names are long) · the file prefix · remove, on one line, not an 84px select above a full-width input */
+#mat-type-list .sx-inline > select[id^="mat-type-"]{flex:0 1 290px;width:auto !important;}
+#mat-type-list .sx-inline > input[id^="mat-prefix-"]{flex:1 1 150px;width:auto !important;}
 /* ── One button, one input (docs/UI.md, 2026-10-21): 32px, --r-1, --fs-3. Held to the desktop widths; the phone rules above keep their own sizes. ── */
 @media (min-width:641px){
   .scatter-toolbar,.cv-toolbar,.plate-toolbar{--st-h:32px;}
@@ -1969,7 +1972,7 @@ var SetupKit = (function(){
               <div class="sx-f"><label for="p-assay-type">Assay type</label>
                 <select id="p-assay-type" onchange="onAssayTypeChange()">
                   <option value="hibit">HiBiT Degradation</option>
-                  <option value="ctg">CellTiter-Glo / Viability</option>
+                  <option value="ctg">Viability</option>
                   <option value="displacement">Displacement Assay</option>
                   <option value="gain">Gain-of-Signal Assay</option>
                 </select>
@@ -2864,6 +2867,7 @@ async function _runPipeline() {
   // Divide each well's signal by its own viability reading first (single-assay form only: with several assay types each panel has its own settings).
   const viabNorm = !document.getElementById('multi-assay-chk')?.checked && !!document.getElementById('p-viab')?.checked;
   window._smartInfo = {};
+  window._plateAssay = null;
   window._normAudits = [];
   window._notFitted = [];
   const qcOverridesJSON = window._pendingQcOverrides || '{}';
@@ -2882,7 +2886,6 @@ async function _runPipeline() {
     // every run. The merge step below says it once, from the parsed rows, and tells the two apart.)
 
     let results;
-  window._plateAssay = null;
     if (document.getElementById('multi-assay-chk')?.checked) {
       // ── Multi-assay mode: run once per assay type, merge results ──
       const matConfigs = collectMultiAssayConfigs();
@@ -2892,8 +2895,8 @@ async function _runPipeline() {
       // pivot, which is keyed by compound and assay type, kept only the last of each.
       { const seen = new Set();
         for (const mc of matConfigs) {
-          const k = mc.type + '|' + (mc.prefix || '').toLowerCase() + '|' + (mc.reading || '');
-          if (seen.has(k)) throw new Error('Two assay panels both analyse ' + mc.type + (mc.prefix ? ' for the files starting “' + mc.prefix + '”' : ' for all the plate files') + (mc.reading ? ' (' + _READ_NAME[mc.reading] + ')' : '') + ', so every compound would appear twice. Give each panel its own assay type, file prefix or reading, or remove one.');
+          const k = mc.type + '|' + (mc.prefix || '').toLowerCase();
+          if (seen.has(k)) throw new Error('Two assay panels both analyse ' + mc.type + (mc.prefix ? ' for the files starting “' + mc.prefix + '”' : ' for all the plate files') + ', so every compound would appear twice. Give each panel its own assay type or file prefix, or remove one.');
           seen.add(k);
         } }
       const mergedResults = [];
@@ -2936,7 +2939,7 @@ async function _runPipeline() {
         panelPlates.forEach(pp => Object.keys(pp.plates).forEach(k => { seenBy[k] = (seenBy[k] || 0) + 1; }));
         const aname = { hibit: 'HiBiT', displacement: 'Displacement', gain: 'Gain-of-Signal', ctg: 'Viability' };
         panelPlates.forEach(pp => {
-          const mc = matConfigs[pp.panel], tag = ' · ' + (aname[mc.type] || mc.type) + (matConfigs.filter(m => m.type === mc.type).length > 1 ? ' ' + (pp.panel + 1) : '');
+          const mc = matConfigs[pp.panel], tag = ' · ' + (aname[mc.type] || mc.type) + (mc.type === 'ctg' && mc.reading === 'fluor' ? ' fluorescence' : '') + (matConfigs.filter(m => m.type === mc.type).length > 1 ? ' ' + (pp.panel + 1) : '');
           Object.keys(pp.plates).forEach(k => {
             const nk = seenBy[k] > 1 ? k + tag : k;
             allPlateData[nk] = pp.plates[k]; owner[nk] = pp.panel;
@@ -4119,6 +4122,10 @@ function _readerNum(v) {
 // fluorescence grid read from the same plate is the viability of those same wells (w.viab). A file with nothing but
 // fluorescence has no signal of its own — .glomax.viabOnly — so it is a viability file when "Normalise to viability" is on,
 // and an ordinary reading when it is off.
+// A multi-assay panel can name the reading it analyses ('lum' | 'fluor'; '' = automatic, as above), so one GloMax file with
+// both feeds a HiBiT panel with its luminescence and a viability panel with its fluorescence, each as an assay of its own.
+let _readChannel = '';
+const _READ_NAME = { lum: 'luminescence', fluor: 'fluorescence' };
 function _glomaxWells(G, barcode) {
   let { sig, via } = RDR.glomaxSignal(G);
   if (_readChannel) {
@@ -4142,10 +4149,6 @@ function _parsePHERAstarXLS(ab, barcode, a1CellRef) {
   { const G = typeof RDR !== 'undefined' ? RDR.glomax(wb) : null; if (G) return _glomaxWells(G, barcode); }
   const ws = wb.Sheets[wb.SheetNames[0]];
   const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
-// A multi-assay panel can name the reading it analyses ('lum' | 'fluor'; '' = automatic, as above), so one GloMax file with
-// both feeds a HiBiT panel with its luminescence and a viability panel with its fluorescence, each as an assay of its own.
-let _readChannel = '';
-const _READ_NAME = { lum: 'luminescence', fluor: 'fluorescence' };
   const _sheetRange = XLSX.utils.decode_range(ws['!ref'] || 'A1');
   const _sheetR0 = _sheetRange.s.r; // 0-based Excel row where sheet used-range starts
   const _sheetC0 = _sheetRange.s.c; // 0-based Excel col where sheet used-range starts
@@ -4509,6 +4512,7 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
       log('  Error ' + fname + ': ' + e.message, 'err');
     }
   }
+  if (!readerRaw.length && _readChannel) throw new Error('None of the reader files has a ' + _READ_NAME[_readChannel] + ' reading (a GloMax export with that reading is needed).');
   if (!readerRaw.length) throw new Error(viabRaw.length ? 'Only viability files (fluorescence on its own) were loaded, so there is no signal to divide. Add the luminescence files, or untick “Normalise to viability”.' : 'No PHERAstar data parsed. Check XLS structure.');
   log('Reader: ' + readerRaw.length + ' wells, ' + new Set(readerRaw.map(r => r.barcode)).size + ' plates', 'ok');
 
@@ -4527,7 +4531,6 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
   // said so: its raw counts would otherwise sit beside other plates' ratios.
   window._viabInfo = null;
   if (viabNorm) {
-  if (!readerRaw.length && _readChannel) throw new Error('None of the reader files has a ' + _READ_NAME[_readChannel] + ' reading (a GloMax export with that reading is needed).');
     const vmap = new Map(), vsrc = {}, vpl = {};
     if (viabRaw.length) {
       const RV = await _resolvePlatesAsync(_echoPlates(echoData), _viabOk, window._viabAssign, async f => _sheetTexts(_readerBuf[f.file]));
@@ -5245,7 +5248,7 @@ function _echoSession(){
 // A multi-assay run is several result sets, one per assay type: a DC50 from HiBiT and an IC50 from CTG are
 // different numbers with different names, and one set stamped "multi" / "Potency" lost both the name and the
 // type. Each set has its own id (the analysis's id plus the type), so Update replaces each one in place.
-const _ECHO_TYPE_NAMES = { hibit: 'HiBiT', ctg: 'CTG', displacement: 'Displacement', gain: 'Gain of signal' };
+const _ECHO_TYPE_NAMES = { hibit: 'HiBiT', ctg: 'Viability', displacement: 'Displacement', gain: 'Gain of signal' };
 function _echoLabbookSets() {
   var lk = window._lbLink || null;
   var base = ((lk && lk.setId) || window._lbSetId || (window._lbSetId = 'echo-' + Date.now().toString(36))).replace(/-(hibit|ctg|displacement|gain)$/, '');
@@ -5420,7 +5423,7 @@ function renderResults(data) {
 // alone, so a compound fitted against three groups of one assay showed only the LAST group's result (the
 // others were silently overwritten), and two panels of the same type collided the same way. A second result
 // for the same compound in the same block opens another block ("(2)") rather than replacing the first.
-const _MA_NAMES = { hibit:'HiBiT', displacement:'Displacement', gain:'Gain-of-Signal', ctg:'CTG/Viability' };
+const _MA_NAMES = { hibit:'HiBiT', displacement:'Displacement', gain:'Gain-of-Signal', ctg:'Viability' };
 // A panel of a multi-assay run is analysed as "<assay id>_<type>"; people read it as the assay type.
 function _maRunName(id) { const m = /_(hibit|ctg|displacement|gain)$/.exec(String(id || '')); return m ? (_MA_NAMES[m[1]] || m[1]) : String(id || ''); }
 function _maPivot(data) {
@@ -5467,7 +5470,7 @@ function renderMultiAssayResults(data) {
     hibit:       {name:'HiBiT',         color:'#ffbf7b', dc50:'DC50 (nM)',  logdc50:'LogDC50 (M)', pdc50:'pDC50 (M)', dmax:'Dmax (%)', ki:null},
     displacement:{name:'Displacement',  color:'#5e87c5', dc50:'IC50 (nM)',  logdc50:'LogIC50 (M)', pdc50:'pIC50 (M)', dmax:null,        ki:_kiParamsM?'Ki (nM)':null},
     gain:        {name:'Gain-of-Signal',color:'#51c3ce', dc50:'EC50 (nM)',  logdc50:'LogEC50 (M)', pdc50:'pEC50 (M)', dmax:'Emax',      ki:null},
-    ctg:         {name:'CTG/Viability', color:'#816baf', dc50:'IC50 (nM)',  logdc50:'LogIC50 (M)', pdc50:'pIC50 (M)', dmax:'Span (%)',  ki:null},
+    ctg:         {name:'Viability', color:'#816baf', dc50:'IC50 (nM)',  logdc50:'LogIC50 (M)', pdc50:'pIC50 (M)', dmax:'Span (%)',  ki:null},
   };
 
   const _selCols = new Set([...document.querySelectorAll('.csv-col-cb:checked')].map(el=>el.dataset.col));
@@ -5917,7 +5920,7 @@ function generateOutputXLSX() {
       hibit:       {name:'HiBiT',          dc50:'DC50 (nM)', logdc50:'LogDC50 (M)', pdc50:'pDC50 (M)', dmax:'Dmax (%)'},
       displacement:{name:'Displacement',   dc50:'IC50 (nM)', logdc50:'LogIC50 (M)', pdc50:'pIC50 (M)', dmax:null},
       gain:        {name:'Gain-of-Signal', dc50:'EC50 (nM)', logdc50:'LogEC50 (M)', pdc50:'pEC50 (M)', dmax:'Emax'},
-      ctg:         {name:'CTG/Viability',  dc50:'IC50 (nM)', logdc50:'LogIC50 (M)', pdc50:'pIC50 (M)', dmax:'Span (%)'},
+      ctg:         {name:'Viability',  dc50:'IC50 (nM)', logdc50:'LogIC50 (M)', pdc50:'pIC50 (M)', dmax:'Span (%)'},
     };
     var _ciOnX  = _selXlsxCols.has('CI_DC50');
     var _activeKeysX = ['DC50_nM','Dmax_pct','LogIC50_M','pDC50','HillSlope','R2','Flag']
@@ -5973,7 +5976,7 @@ function generateOutputXLSX() {
 
   var params = window._lastAnalysisParams || {};
   var echo = window._echoSummary || {};
-  var atLabels = { hibit:'HiBiT Degradation', ctg:'CellTiter-Glo / Viability', displacement:'Displacement Assay', gain:'Gain-of-Signal Assay' };
+  var atLabels = { hibit:'HiBiT Degradation', ctg:'Viability', displacement:'Displacement Assay', gain:'Gain-of-Signal Assay' };
   var fmtConc = function(v) { if (v == null) return ''; return v < 1 ? v.toFixed(2) + ' nM' : Math.round(v) + ' nM'; };
   var ts = params.timestampLocal || (params.timestamp ? params.timestamp.replace('T',' ').slice(0,19) + ' UTC' : '');
   var protocolRows = [
@@ -6114,7 +6117,7 @@ function renderProtocol() {
   var params = window._lastAnalysisParams || {};
   var echo = window._echoSummary || {};
   var phera = window._pheraProtocol;
-  var atLabels = { hibit:'HiBiT Degradation', ctg:'CellTiter-Glo / Viability', displacement:'Displacement Assay', gain:'Gain-of-Signal Assay' };
+  var atLabels = { hibit:'HiBiT Degradation', ctg:'Viability', displacement:'Displacement Assay', gain:'Gain-of-Signal Assay' };
   var ts = params.timestampLocal || (params.timestamp ? params.timestamp.replace('T',' ').slice(0,19) + ' UTC' : '—');
   var fmtConc = function(v) { if (v == null) return '—'; return v < 1 ? v.toFixed(2) + ' nM' : Math.round(v) + ' nM'; };
   var row = function(lbl, val) { return '<div class="proto-row"><span class="proto-k">' + lbl + '</span><span class="proto-v">' + val + '</span></div>'; };
@@ -6885,7 +6888,7 @@ function renderScatter(data) {
       hibit:       {name:'HiBiT',         color:'#ffbf7b', dc50:'DC50 (nM)',  logdc50:'LogDC50', pdc50:'pDC50', dmax:'Dmax (%)'},
       displacement:{name:'Displacement',  color:'#5e87c5', dc50:'IC50 (nM)',  logdc50:'LogIC50', pdc50:'pIC50', dmax:null},
       gain:        {name:'Gain-of-Signal',color:'#51c3ce', dc50:'EC50 (nM)',  logdc50:'LogEC50', pdc50:'pEC50', dmax:'Emax'},
-      ctg:         {name:'CTG/Viability', color:'#816baf', dc50:'IC50 (nM)',  logdc50:'LogIC50', pdc50:'pIC50', dmax:'Span (%)'},
+      ctg:         {name:'Viability', color:'#816baf', dc50:'IC50 (nM)',  logdc50:'LogIC50', pdc50:'pIC50', dmax:'Span (%)'},
     };
     if (_isMultiAssay) {
       const types = [...new Set(data.map(r=>r._assayType).filter(Boolean))];
@@ -7854,7 +7857,7 @@ var SEL = { hi: null, hover: null, last: null };
 const _SEL_X = [232, 132, 108], _SEL_Y = [96, 170, 132], _SEL_N = [184, 188, 200];   // coral · sage · grey (pastel)
 
 function _selKeyOf(r) { return (window._lastAnalysisParams && window._lastAnalysisParams.multiAssay && r._assayType ? r._assayType + '::' : '') + r.Protein; }
-const _SEL_TYPES = { hibit: 'HiBiT', ctg: 'CTG', displacement: 'Displacement', gain: 'Gain' };
+const _SEL_TYPES = { hibit: 'HiBiT', ctg: 'Viability', displacement: 'Displacement', gain: 'Gain' };
 function _selKeyLabel(k) { const i = String(k).indexOf('::'); if (i < 0) return k; const t = k.slice(0, i); return (_SEL_TYPES[t] || t) + ' · ' + k.slice(i + 2); }
 function _initSelectivity() {
   if (!window._resultsData || !window._resultsData.length) return;
@@ -11157,6 +11160,7 @@ async function loadHistoryEntry(id) {
   setTimeout(() => {
     renderScatter(data);
     if (blob.plateData) window._plateData = blob.plateData;
+    window._plateAssay = blob.plateAssay || null;
     window._smartInfo = blob.smart || {};
     window._normAudits = blob.normAudits || [];
     window._notFitted = blob.notFitted || [];
@@ -11175,7 +11179,6 @@ async function hxReanalyse(id) {
     echoToast('Fetching the input files of ' + run.assayId + ' from the cloud…');
     try { f = await ehDownloadFiles(set); renderHistoryTab(); } catch (e) { echoToast('Could not fetch the input files from the cloud: ' + ((e && (e.code || e.message)) || e), 'err'); return; }
   }
-    window._plateAssay = blob.plateAssay || null;
   if (!f) { echoToast('The input files of this dataset were not kept (too large, or dropped to make room).', 'warn'); return; }
   const ok = await echoRestore({ v: ECHO_SESSION_V, savedAt: new Date(run.ts).toISOString(), matPanels: run.matPanels || 0, files: { echo: f.echo, readers: f.readers, smiles: f.smiles }, form: run.form || {}, qc: {}, view: {}, hadResults: false }, { run: false });
   if (ok) { openSetupModal(); switchSetupTab('analysis'); echoToast('Input files and settings of ' + run.assayId + ' v' + run.ver + ' are in Setup. Change what you want and press Run.'); }
@@ -12396,6 +12399,8 @@ function _plFit(sid, prot, bc) {
   }
   const rows = window._plateFitMap.get((sid || '') + '||' + (prot || '')) || [];
   if (rows.length <= 1) return rows[0] || null;
+  const pa = window._plateAssay && window._plateAssay[bc];
+  if (pa != null) { const r = rows.find(x => x._panel === pa); if (r) return r; }
   const cfgs = window._lastAnalysisParams?.matConfigs, low = String(bc || '').toLowerCase();
   if (cfgs) for (const mc of cfgs) if (mc.prefix && low.startsWith(String(mc.prefix).toLowerCase())) { const r = rows.find(x => x._assayType === mc.type); if (r) return r; }
   return rows[0];
@@ -12414,8 +12419,6 @@ function plateMouseMove(e) {
   if (w) {
     inner += `<div style="font-size:11px;margin-top:3px;line-height:1.7;">`;
     if (w.ctrl) inner += `<span style="color:var(--accent3);">Control well</span><br>`;
-  const pa = window._plateAssay && window._plateAssay[bc];
-  if (pa != null) { const r = rows.find(x => x._panel === pa); if (r) return r; }
     if (_plIsCpd(w)) inner += row('Compound', `<b>${esc(w.s)}</b>`);
     if (w.p) inner += row('Group', esc(w.p));
     if (w.c != null) inner += row('Concentration', _cvFmtConc(Math.pow(10, w.c + 9)));
@@ -13014,12 +13017,15 @@ function addAssayType() {
         <option value="hibit">HiBiT Degradation</option>
         <option value="displacement">Displacement Assay</option>
         <option value="gain">Gain-of-Signal Assay</option>
-        <option value="ctg">CellTiter-Glo / Viability</option>
+        <option value="ctg">Viability luminescence (CellTiter-Glo)</option>
+        <option value="ctg:fluor">Viability fluorescence</option>
       </select>
       <input type="text" id="mat-prefix-${idx}" placeholder="Reader file prefix (e.g. HIBIT)" aria-label="Reader file prefix of this panel">
       <button class="sx-btn" aria-label="Remove this assay type" onclick="removeAssayType(${idx})">✕</button>
     </div>
     <div class="setup-2col">
+      <div class="sx-f"><label for="mat-read-${idx}">GloMax reading <span class="pinfo" data-tip="For a GloMax file that holds two readings of the same plate (luminescence and fluorescence). Choose which one this panel analyses, so one file can feed a HiBiT degradation panel (luminescence) and a viability panel (fluorescence), each with its own controls, fit and results. Automatic reads the luminescence." tabindex="0" role="img" aria-label="Explanation">?</span></label>
+        <select id="mat-read-${idx}"><option value="">Automatic (luminescence)</option><option value="lum">Luminescence</option><option value="fluor">Fluorescence</option></select></div>
       <div class="sx-f"><label for="mat-ctrl-${idx}">Control (vehicle) wells</label>
         <div class="sx-inline"><input type="text" id="mat-ctrl-${idx}" placeholder="e.g. B22:O23"><button class="sx-btn" onclick="openMatCtrlPicker(${idx})">⊞ Grid</button></div></div>
       <div class="sx-f" id="mat-zero-wrap-${idx}" style="display:none;"><label for="mat-zero-${idx}">0% signal wells</label>
@@ -13038,8 +13044,6 @@ function addAssayType() {
       <div class="sx-lbl">Binding parameters <span class="sx-opt">optional · enables Ki</span></div>
       <div class="setup-2col">
         <div class="sx-f"><label for="mat-tracer-conc-${idx}">Tracer [L]</label>
-      <div class="sx-f"><label for="mat-read-${idx}">GloMax reading <span class="pinfo" data-tip="For a GloMax file that holds two readings of the same plate (luminescence and fluorescence). Choose which one this panel analyses, so one file can feed a HiBiT degradation panel (luminescence) and a viability panel (fluorescence), each with its own controls, fit and results. Automatic reads the luminescence." tabindex="0" role="img" aria-label="Explanation">?</span></label>
-        <select id="mat-read-${idx}"><option value="">Automatic (luminescence)</option><option value="lum">Luminescence</option><option value="fluor">Fluorescence</option></select></div>
           <div class="sx-inline"><input type="number" id="mat-tracer-conc-${idx}" placeholder="e.g. 5" step="any" oninput="updateMatKiPreview(${idx})"><select id="mat-tracer-unit-${idx}" class="sx-unit" aria-label="Tracer unit" oninput="updateMatKiPreview(${idx})"><option>nM</option><option>µM</option></select></div></div>
         <div class="sx-f"><label for="mat-tracer-kd-${idx}">Tracer Kd</label>
           <div class="sx-inline"><input type="number" id="mat-tracer-kd-${idx}" placeholder="e.g. 50" step="any" oninput="updateMatKiPreview(${idx})"><select id="mat-kd-unit-${idx}" class="sx-unit" aria-label="Tracer Kd unit" oninput="updateMatKiPreview(${idx})"><option>nM</option><option>µM</option></select></div></div>
@@ -13050,8 +13054,11 @@ function addAssayType() {
   syncMatAnalysisParams();
 }
 
+// A panel's type select also carries the reading of a viability panel ('ctg:fluor' = viability read as fluorescence).
+const _matBase = v => String(v || 'hibit').split(':')[0];
 function updateMatPanel(idx) {
-  const t=(document.getElementById(`mat-type-${idx}`)||{}).value||'hibit';
+  const tv=(document.getElementById(`mat-type-${idx}`)||{}).value||'hibit', t=_matBase(tv);
+  if(/:fluor$/.test(tv)){ const rd=document.getElementById(`mat-read-${idx}`); if(rd) rd.value='fluor'; }
   const zw=document.getElementById(`mat-zero-wrap-${idx}`);
   if(zw) zw.style.display=(t==='displacement')?'':'none';
   const fpc=document.getElementById(`mat-fp-card-${idx}`);
@@ -13102,7 +13109,7 @@ function syncMatAnalysisParams() {
     ctg:         {sd:'Max replicate SD (%)',top:'Top constrain (%)',dmax:'Span cap (%)', bot:'Fix bottom (%)',minbot:'Bottom ≥ (%)'},
   };
   const _assayColors = {hibit:'#ffbf7b',displacement:'#5e87c5',gain:'#51c3ce',ctg:'#816baf'};
-  const _assayNames = {hibit:'HiBiT',displacement:'Displacement',gain:'Gain-of-Signal',ctg:'CTG/Viability'};
+  const _assayNames = {hibit:'HiBiT',displacement:'Displacement',gain:'Gain-of-Signal',ctg:'Viability'};
 
   const list = document.getElementById('mat-type-list');
   const panels = list ? [...list.querySelectorAll('[id^="mat-panel-"]')] : [];
@@ -13114,10 +13121,10 @@ function syncMatAnalysisParams() {
   const _row = (idx, key, label, attrs, off) => `<div class="sx-row"><input type="checkbox" id="mat-${key}-en-${idx}"${off ? '' : ' checked'} onchange="var el=document.getElementById('mat-${key}-${idx}');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"><div class="sx-txt"><label for="mat-${key}-en-${idx}" class="flbl">${label}</label></div><input type="number" id="mat-${key}-${idx}" aria-label="${label}" ${attrs}${off ? ' disabled style="opacity:0.35;"' : ''}></div>`;
   container.innerHTML = panels.map(panel => {
     const idx = parseInt(panel.id.replace('mat-panel-',''));
-    const type = document.getElementById(`mat-type-${idx}`)?.value || 'hibit';
+    const typeVal = document.getElementById(`mat-type-${idx}`)?.value || 'hibit', type = _matBase(typeVal);
     const lbl = _assayLabels[type] || _assayLabels.hibit;
     const color = _assayColors[type] || '#8b90a8';
-    const name = _assayNames[type] || type;
+    const name = typeVal === 'ctg:fluor' ? 'Viability fluorescence' : (_assayNames[type] || type);
     return `<section class="sx-group sx-mat" style="border-left:3px solid ${color};">
       <div class="sx-ghd"><span class="sx-gt" style="color:${color};">${name}</span><span class="sx-gs">Panel ${panels.indexOf(panel) + 1}</span></div>
       <div class="sx-gb">
@@ -13150,13 +13157,14 @@ function collectMultiAssayConfigs() {
     const gv=k=>{const el=document.getElementById(`mat-${k}-${idx}`);return el?el.value:null;};
     const gc=k=>{const el=document.getElementById(`mat-${k}-${idx}`);return el?el.checked:false;};
     const gn=(k,def)=>{const v=parseFloat(gv(k));return isNaN(v)?def:v;};
-    const type=gv('type')||'hibit';
+    const typeVal=gv('type')||'hibit', type=_matBase(typeVal);
     configs.push({
       type,
       prefix:(gv('prefix')||'').trim(),
       ctrl:(gv('ctrl')||'').trim(),
       zero:(gv('zero')||'').trim(),
       a1Loc:(gv('a1')||'').trim(),
+      reading:(gv('read')||(/:fluor$/.test(typeVal)?'fluor':'')).trim(),
       idx,
       hookEnabled:gc('hook-en'), hookThr:gn('hook',10),
       r2Enabled:gc('r2-en'),    minR2:gn('r2',0.8),
@@ -13175,7 +13183,6 @@ function collectMultiAssayConfigs() {
   return configs;
 }
 
-      reading:(gv('read')||'').trim(),
 // A vertical wheel over a wide results table scrolls it sideways. Two things were wrong with
 // this, and they compounded:
 //   · it was reading and writing .tbl-wrap, which has no overflow of its own — the scroller is
@@ -13549,7 +13556,7 @@ function egGraphDoc(){
   });
   var gain0 = rows.length ? gainOf(rows[0]) : t === 'gain', one = types.size <= 1;
   return { sig: egSig() + '|' + t,
-    title: [one ? ({ hibit: 'HiBiT degradation', ctg: 'CTG viability', displacement: 'Displacement', gain: 'Gain of signal' }[t] || 'Dose–response') : 'Dose–response', '', ''], xTitle: '[compound] (' + u[0] + ')',
+    title: [one ? ({ hibit: 'HiBiT degradation', ctg: 'Viability', displacement: 'Displacement', gain: 'Gain of signal' }[t] || 'Dose–response') : 'Dose–response', '', ''], xTitle: '[compound] (' + u[0] + ')',
     yTitle: one ? ({ hibit: '% Signal (norm. to ctrl)', ctg: '% Viability', displacement: '% Displacement', gain: 'Signal (gain over ctrl)' }[t] || 'Response') : 'Response', refLine: gain0 ? null : { y: 100 }, items: items,
     refit: function(it, pts){
       var gain = !!it._gain, valFn = gain ? _4plVal4_gain : _4plVal4, xs = [], ys = []; pts.forEach(function(p){ p.reps.forEach(function(v){ xs.push(Math.log10(p.x * u[1])); ys.push(v); }); });

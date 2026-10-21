@@ -142,7 +142,7 @@
 //   E57 Setup lines up         Every Setup tab, with one assay and with three assay panels, at 1440 and 390 px: the alignment audit (one control
 //                             height a row, centres on one line, a checkbox on its label's first line) and the escape audit find nothing.
 //
-//   E58 a multi-assay run      Two panels (HiBiT on one prefix, CTG on another): a fit setting typed on one panel survives another being added
+//   E58 a multi-assay run      Two panels (HiBiT on one prefix, Viability on another): a fit setting typed on one panel survives another being added
 //       keeps its names         and removed; every column block names its assay AND its group; the normalisation banners name the assay type,
 //                               not "<id>_hibit"; Labbook gets one result set per assay, each with its own potency name and its own id;
 //                               the Raw data sheet says which assay each row is; no tab prints NaN or undefined.
@@ -170,7 +170,8 @@
 //   E64 one file, two assays  A GloMax file with luminescence and fluorescence feeds a HiBiT panel (reading: luminescence) and a viability panel (reading:
 //                             fluorescence) of one multi-assay run, as two independent assays on the same files: each panel gets exactly the curves of a
 //                             plain run on that reading alone, the plate view keeps both (named for the assay, never one overwriting the other) and finds
-//                             each plate's own fit, a panel asking for a reading the file lacks says so, two panels on the same reading are still refused.
+//                             each plate's own fit, a panel asking for a reading the file lacks says so, two panels of one type are refused. The type list says
+//                             "Viability fluorescence" (CellTiter-Glo, the other viability type, is luminescence).
 //
 //   E71 one run, one answer   Run Analysis pressed twice in one tick (or while a run is fitting) runs ONCE: every output file and every normalisation audit
 //                             once, not twice. Two Echo files whose columns differ stop the run on screen — "The analysis stopped" with the reason — instead of
@@ -1610,10 +1611,10 @@ if (run('E44')) await guard('E44', async () => {
     return { heads, rows, xlsx: caps[0] };
   }, '(' + MA_ROWS + ')');
   const x1 = r.rows.find(t => t[0] === 'X-1') || [];
-  check('E44', 'the table has a block per assay and group: HiBiT · BRD2, HiBiT · BRD4, CTG/Viability · HEK', ['HiBiT · BRD2', 'HiBiT · BRD4', 'CTG/Viability · HEK'].every(h => r.heads.includes(h)), r.heads);
+  check('E44', 'the table has a block per assay and group: HiBiT · BRD2, HiBiT · BRD4, Viability · HEK', ['HiBiT · BRD2', 'HiBiT · BRD4', 'Viability · HEK'].every(h => r.heads.includes(h)), r.heads);
   check('E44', 'compound X-1 shows BOTH HiBiT results (11.1 and 222) and the viability one', ['11.1', '222', '3333'].every(v => x1.includes(v)), x1);
   const hx = r.xlsx || [], hrow = hx[0] || [], x1x = (hx.find(t => t[0] === 'X-1') || []);
-  check('E44', 'the workbook has the same blocks and the same numbers', ['HiBiT · BRD2', 'HiBiT · BRD4', 'CTG/Viability · HEK'].every(h => hrow.includes(h)) && ['11.1', '222', '3333'].every(v => x1x.map(String).includes(v)), { hrow, x1x });
+  check('E44', 'the workbook has the same blocks and the same numbers', ['HiBiT · BRD2', 'HiBiT · BRD4', 'Viability · HEK'].every(h => hrow.includes(h)) && ['11.1', '222', '3333'].every(v => x1x.map(String).includes(v)), { hrow, x1x });
   check('E44', 'a compound only fitted in one group leaves the other block empty, not copied', (r.rows.find(t => t[0] === 'X-2') || []).includes('44.4') && !(r.rows.find(t => t[0] === 'X-2') || []).includes('222'), r.rows);
 });
 
@@ -1632,7 +1633,7 @@ if (run('E45')) await guard('E45', async () => {
     return { multi, single };
   }, '(' + MA_ROWS + ')');
   check('E45', 'a multi-assay Copy TSV starts with an Assay column', r.multi[0] && r.multi[0][0] === 'Assay', r.multi[0]);
-  check('E45', 'every row names its assay (HiBiT / CTG/Viability)', r.multi.slice(1).every(l => /^(HiBiT|CTG\/Viability)$/.test(l[0])) && r.multi.slice(1).some(l => l[0] === 'CTG/Viability'), r.multi.slice(1).map(l => l[0]));
+  check('E45', 'every row names its assay (HiBiT / Viability)', r.multi.slice(1).every(l => /^(HiBiT|Viability)$/.test(l[0])) && r.multi.slice(1).some(l => l[0] === 'Viability'), r.multi.slice(1).map(l => l[0]));
   check('E45', 'the potency column is called a potency, not DC50, when viability rows share it', (r.multi[0] || []).some(h => /^Potency/.test(h)), r.multi[0]);
   check('E45', 'a single-assay Copy TSV has no Assay column', r.single[0] && r.single[0][0] !== 'Assay' && !r.single[0].includes('Assay'), r.single[0]);
 });
@@ -2272,7 +2273,7 @@ if (run('E58')) await guard('E58', async () => {
   await q.evaluate(() => { document.getElementById('p-assay').value = 'E58MULTI'; return runPipeline(); });
   await q.waitForFunction(() => typeof _lastResultsData !== 'undefined' && _lastResultsData && _lastResultsData.length > 0, null, { timeout: 120000 }); await q.waitForTimeout(800);
   const r = await q.evaluate(() => {
-    const heads = [...document.querySelectorAll('#results-panel th')].map(t => t.textContent.trim()).filter(t => /HiBiT|CTG/.test(t));
+    const heads = [...document.querySelectorAll('#results-panel th')].map(t => t.textContent.trim()).filter(t => /HiBiT|Viability/.test(t));
     const banners = [...document.querySelectorAll('#results-panel .na-id')].map(e => e.textContent.trim());
     const sets = _echoLabbookSets().map(s => ({ id: s.id, assay: s.assay, pot: s.potencyLabel, n: s.rows.length, label: s.label }));
     let wb = null; const w0 = XLSX.write; XLSX.write = (w, o) => { wb = w; return w0.call(XLSX, w, o); }; const a0 = HTMLAnchorElement.prototype.click; HTMLAnchorElement.prototype.click = function () {};
@@ -2282,10 +2283,10 @@ if (run('E58')) await guard('E58', async () => {
     for (const t of ['results', 'curves', 'scatter', 'plate', 'props']) { const b = document.querySelector('[data-tab="' + t + '"]'); if (b) b.click(); const m = document.body.innerText.match(/\bNaN\b|\bundefined\b|\[object Object\]/); if (m) bad.push(t + ': ' + m[0]); }
     return { heads, banners, sets, rawA: [...new Set(raw.slice(1).map(x => x[0]))], bad };
   });
-  check('E58', 'each column block names its assay and its group', r.heads.some(h => /HiBiT · BRD2/.test(h)) && r.heads.some(h => /CTG\/Viability · BRD3/.test(h)), r.heads);
-  check('E58', 'the normalisation banners name the assay type', r.banners.length === 2 && r.banners.every(b => /^(HiBiT|CTG\/Viability)$/.test(b)), r.banners);
+  check('E58', 'each column block names its assay and its group', r.heads.some(h => /HiBiT · BRD2/.test(h)) && r.heads.some(h => /Viability · BRD3/.test(h)), r.heads);
+  check('E58', 'the normalisation banners name the assay type', r.banners.length === 2 && r.banners.every(b => /^(HiBiT|Viability)$/.test(b)), r.banners);
   check('E58', 'Labbook gets one set per assay, each with its own potency name and id', r.sets.length === 2 && r.sets.some(s => s.assay === 'hibit' && /DC50/.test(s.pot)) && r.sets.some(s => s.assay === 'ctg' && /IC50/.test(s.pot)) && new Set(r.sets.map(s => s.id)).size === 2 && r.sets.every(s => s.n > 0), r.sets);
-  check('E58', 'the Raw data sheet says which assay each row is', r.rawA.length === 2 && r.rawA.every(a => /^(HiBiT|CTG\/Viability)$/.test(a)), r.rawA);
+  check('E58', 'the Raw data sheet says which assay each row is', r.rawA.length === 2 && r.rawA.every(a => /^(HiBiT|Viability)$/.test(a)), r.rawA);
   check('E58', 'no tab prints NaN or undefined, and nothing throws', !r.bad.length && !errs.length, { bad: r.bad, errs });
   await c.close();
 });
@@ -2618,7 +2619,7 @@ if (run('E64')) await guard('E64', async () => {
     openSetupModal(); const cb = document.getElementById('multi-assay-chk'); cb.checked = true; toggleMultiAssay();
     const setv = (id, v) => { const e = document.getElementById(id); e.value = v; e.dispatchEvent(new Event('change')); };
     setv('mat-type-0', 'hibit'); setv('mat-read-0', 'lum'); setv('mat-ctrl-0', 'B12-O12'); updateMatPanel(0);
-    setv('mat-type-1', 'ctg'); setv('mat-read-1', 'fluor'); setv('mat-ctrl-1', 'B12-O12'); updateMatPanel(1);
+    setv('mat-type-1', 'ctg:fluor'); setv('mat-ctrl-1', 'B12-O12'); updateMatPanel(1);
     const multi = async (files, name) => { readerFiles = files; window._plateAssay = null; window._plateAssign = {}; document.getElementById('p-assay').value = name; document.getElementById('log-panel').innerHTML = ''; _lastResultsData = null; try { await runPipeline(); } catch (e) {} return _lastResultsData || []; };
     // references: the same two panels over plain grids (no GloMax marker, so the reading choice is moot): HiBiT on the luminescence values,
     // viability on the fluorescence values, and viability on the luminescence values
@@ -2636,16 +2637,18 @@ if (run('E64')) await guard('E64', async () => {
     try { await runPipeline(); } catch (e) {}
     out.noFlu = { log: document.getElementById('log-panel').innerText, ui: (document.getElementById('results-panel')?.innerText || '').replace(/\s+/g, ' ').slice(0, 300) };
     // automatic reads the luminescence: panel 1 back to automatic gives the HiBiT curves on the viability panel too
-    setv('mat-read-1', ''); setv('mat-type-1', 'ctg'); updateMatPanel(1);
+    setv('mat-type-1', 'ctg'); setv('mat-read-1', ''); updateMatPanel(1);
     out.auto = snap(await multi(both, 'E64-auto'), 'ctg');
     // the same type and reading twice is still refused; the same type with two readings is not
     setv('mat-type-1', 'hibit'); setv('mat-read-1', 'lum'); updateMatPanel(1);
     readerFiles = both; _lastResultsData = null; document.getElementById('log-panel').innerHTML = '';
     try { await runPipeline(); } catch (e) {}
     out.dup = (document.getElementById('results-panel')?.innerText || '').replace(/\s+/g, ' ').slice(0, 300);
-    setv('mat-read-1', 'fluor');
-    _lastResultsData = null; try { await runPipeline(); } catch (e) {}
-    out.twoReads = { n: (_lastResultsData || []).length, keys: Object.keys(window._plateData || {}).slice(0, 3) };
+    setv('mat-read-1', 'fluor'); out.dupRead = '';
+    _lastResultsData = null; document.getElementById('log-panel').innerHTML = ''; try { await runPipeline(); } catch (e) {}
+    out.dupRead = (document.getElementById('results-panel')?.innerText || '').replace(/\s+/g, ' ').slice(0, 300);
+    out.panelNames = (()=>{ setv('mat-type-1', 'ctg:fluor'); updateMatPanel(1); syncMatAnalysisParams(); return [...document.querySelectorAll('#mat-analysis-container .sx-gt')].map(e => e.textContent.trim()); })();
+    out.cfg2 = collectMultiAssayConfigs().map(m => m.type + '/' + m.reading);
     cb.checked = false; toggleMultiAssay();
     return out;
   });
@@ -2655,12 +2658,12 @@ if (run('E64')) await guard('E64', async () => {
   check('E64', 'the HiBiT panel (reading: luminescence) gives exactly the curves of a plain run on the luminescence alone', same(R.hibit, R.refLum), { n: [Object.keys(R.hibit).length, Object.keys(R.refLum).length], diff: diff(R.hibit, R.refLum) });
   check('E64', 'the viability panel (reading: fluorescence) gives exactly the curves of a plain run on the fluorescence alone, from the same files', same(R.ctg, R.refFlu), { n: [Object.keys(R.ctg).length, Object.keys(R.refFlu).length], diff: diff(R.ctg, R.refFlu) });
   check('E64', 'the panels record their reading and the log says which one each reads', R.cfg[0] === 'lum' && R.cfg[1] === 'fluor' && /luminescence reading/.test(R.log) && /fluorescence reading/.test(R.log), { cfg: R.cfg });
-  check('E64', 'the plate view keeps every plate once per assay, named for it, instead of one overwriting the other', R.keys.length === 12 && R.keys.filter(k => / · HiBiT$/.test(k)).length === 6 && R.keys.filter(k => / · Viability$/.test(k)).length === 6, R.keys);
+  check('E64', 'the plate view keeps every plate once per assay, named for it, instead of one overwriting the other', R.keys.length === 12 && R.keys.filter(k => / · HiBiT$/.test(k)).length === 6 && R.keys.filter(k => / · Viability fluorescence$/.test(k)).length === 6, R.keys);
   check('E64', 'each plate of the plate view finds the fit of its own assay', R.fits.length === 12 && R.fits.every(f => (/ · HiBiT$/.test(f.k) ? f.type === 'hibit' : f.type === 'ctg')), R.fits);
   check('E64', 'a panel that reads a reading the files do not have says so, and the run stops with that reason', /None of the reader files has a fluorescence reading|no fluorescence reading in this GloMax file/.test(R.noFlu.log), { log: R.noFlu.log.split(/\n/).filter(l => /rror|reading|None/.test(l)).slice(-6), ui: R.noFlu.ui });
   check('E64', 'automatic reads the luminescence of a file that holds both', same(R.auto, R.refLumCtg), { n: [Object.keys(R.auto).length, Object.keys(R.refLumCtg).length], diff: diff(R.auto, R.refLumCtg) });
-  check('E64', 'two panels of one type and one reading are still refused, and the message names the reading', /Two assay panels both analyse hibit/.test(R.dup) && /luminescence/.test(R.dup), R.dup);
-  check('E64', 'two panels of one type with different readings are allowed (12 plates in the view)', R.twoReads.n > 10 && R.twoReads.keys.length === 3, R.twoReads);
+  check('E64', 'two panels of one type are refused, with the same reading or another (the results are keyed by assay type)', /Two assay panels both analyse hibit/.test(R.dup) && /Two assay panels both analyse hibit/.test(R.dupRead), { dup: R.dup, dupRead: R.dupRead });
+  check('E64', 'the panel type list says Viability fluorescence (CellTiter-Glo is luminescence), picking it reads the fluorescence, and the panel is named for it', R.cfg2.join() === 'hibit/lum,ctg/fluor' && R.panelNames.join() === 'HiBiT,Viability fluorescence', { cfg: R.cfg2, names: R.panelNames });
   check('E64', 'no page errors', !errs.length, errs);
   await c.close();
 });
