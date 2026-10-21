@@ -916,8 +916,8 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
         <div class="chips" id="recentChips" hidden></div>
         <div class="row">
           <button type="button" class="btn sm" id="openFileBtn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Open file…</button>
-          <span class="hint">.pdb · .cif · .gz, or drop one on the viewer</span>
-          <input type="file" id="fileInput" hidden accept=".pdb,.ent,.cif,.mmcif,.pqr,.gz">
+          <span class="hint">.pdb · .cif · .sdf · .mol2 · .gz, or drop one on the viewer</span>
+          <input type="file" id="fileInput" hidden accept=".pdb,.ent,.cif,.mmcif,.pqr,.sdf,.mol,.mol2,.xyz,.gz">
         </div>
         <div class="err-text" id="errText" role="alert"></div>
         <div class="search-results" id="searchResults" aria-live="polite"></div>
@@ -1683,15 +1683,15 @@ function readFileText(file){
 function rbOpenFilePicker(){ $('fileInput').click(); }
 function openFile(file){
   if(!file) return;
-  var name=file.name.replace(/\.gz$/i,''), ext=(/\.([a-z]+)$/i.exec(name)||[])[1]||'';
+  var name=file.name.replace(/\.gz$/i,''), ext=(/\.([a-z0-9]+)$/i.exec(name)||[])[1]||'';
   var label=file.name.length>28?file.name.slice(0,25)+'…':file.name;
   if(file.size>250e6){ setError('That file is larger than 250 MB. Ribbon cannot draw it.'); return; }
   var tk=beginLoad(label);
   rbWhenViewer(function(){
     readFileText(file).then(function(text){
       if(tk.req!==_reqSeq) return;
-      var fmt=/^(cif|mmcif)$/i.test(ext)?'cif':/^pqr$/i.test(ext)?'pqr':'pdb';
-      if(!/^(cif|mmcif|pdb|ent|pqr)$/i.test(ext)) fmt=/_atom_site\./.test(text.slice(0,200000))?'cif':'pdb';
+      var fmt=/^(cif|mmcif)$/i.test(ext)?'cif':/^pqr$/i.test(ext)?'pqr':/^(sdf|mol)$/i.test(ext)?'sdf':/^mol2$/i.test(ext)?'mol2':/^xyz$/i.test(ext)?'xyz':'pdb';
+      if(!/^(cif|mmcif|pdb|ent|pqr|sdf|mol|mol2|xyz)$/i.test(ext)) fmt=/_atom_site\./.test(text.slice(0,200000))?'cif':/@<TRIPOS>ATOM/.test(text.slice(0,200000))?'mol2':/V[23]000|^M  END/m.test(text.slice(0,200000))?'sdf':'pdb';
       finishRender(tk,text,fmt,{kind:'file',id:label,rid:file.name});
     },function(e){ failLoad(tk,e&&e.kind==='gz'?'This browser cannot open .gz files. Unzip it first.':'Could not read that file.'); });
   },tk);
@@ -1699,7 +1699,7 @@ function openFile(file){
 function finishRender(tk,text,fmt,meta){
   try{ renderStructure(text,fmt,meta); }
   catch(e){
-    failLoad(tk,e&&e.kind==='parse'?'That does not look like a structure file (no atoms found).':'Could not draw that structure.');
+    failLoad(tk,e&&e.kind==='parse'?'That does not look like a structure file (no atoms found). Ribbon opens .pdb, .cif, .pqr, .sdf, .mol2 and .xyz, and the same gzipped.':'Could not draw that structure.');
     return;
   }
   setLoading(false); $('fetchBtn').disabled=false;
@@ -1708,11 +1708,21 @@ function finishRender(tk,text,fmt,meta){
   loadInfo(meta);
   rbApplyOpen(meta);
 }
-function modelCount(text,fmt){ if(fmt==='cif') return 0; var m=text.match(/^MODEL\s/mg); return m?m.length:0; }
+function modelCount(text,fmt){
+  if(fmt==='cif'||fmt==='xyz') return 0;
+  var m=text.match(fmt==='sdf'?/^\$\$\$\$/mg:fmt==='mol2'?/^@<TRIPOS>MOLECULE/mg:/^MODEL\s/mg); return m?m.length:0;   // an SDF or a MOL2 holding several molecules is several frames, like an NMR ensemble
+}
+// A small-molecule file (SDF, MOL2, XYZ) has no residues, chains or atom names; Ribbon is made of those. Each molecule becomes one ligand, LIG on chain A,
+// its atoms named by element and number, so the ligand list, the pocket, the 2D diagram and the selection language see what they see in a PDB file.
+function rbSmallFmt(fmt){ return fmt==='sdf'||fmt==='mol2'||fmt==='xyz'; }
+function rbNormSmall(model){
+  var lists=[model.selectedAtoms({})]; if(model.frames&&model.frames.length) model.frames.forEach(function(f){ if(f&&f.length) lists.push(f); });
+  lists.forEach(function(L){ var cnt={}; L.forEach(function(a){ var e=(a.elem||'C'); cnt[e]=(cnt[e]||0)+1; a.atom=e+cnt[e]; a.resn='LIG'; a.chain='A'; a.resi=1; a.icode=''; a.hetflag=true; }); });
+}
 function renderStructure(text,fmt,meta){
   // Anything that is not a structure is refused BEFORE the current one is cleared.
   var sniff=text.length>400000?text.slice(0,400000):text;
-  if(!/^(ATOM  |HETATM)/m.test(sniff)&&!/_atom_site\./.test(sniff)) throw {kind:'parse'};
+  if(!/^(ATOM  |HETATM)/m.test(sniff)&&!/_atom_site\./.test(sniff)&&!(fmt==='sdf'&&/V[23]000|^M  END/m.test(sniff))&&!(fmt==='mol2'&&/@<TRIPOS>ATOM/.test(sniff))&&!(fmt==='xyz'&&/^\s*\d+\s*\n[^\n]*\n\s*[A-Za-z]{1,2}\s+-?[\d.]+\s+-?[\d.]+\s+-?[\d.]+/.test(sniff))) throw {kind:'parse'};
   var nm=modelCount(text,fmt), prev=_cur;
   _cur={text:text,fmt:fmt,meta:meta};
   try{ buildModel(text,fmt,meta,nm); }
@@ -1731,6 +1741,7 @@ function buildModel(text,fmt,meta,nm){
   closeChainPopup();
   var model=viewer.addModel(text,fmt,nm>1?{multimodel:true,frames:true}:{});
   if(!model||!model.selectedAtoms({}).length){ try{viewer.clear();}catch(e){} throw {kind:'parse'}; }
+  if(rbSmallFmt(fmt)) rbNormSmall(model);
   currentModel=model; currentSource=meta; currentInfo=null;
   currentPdbId=meta.id;
   _nFrames=nm>1?Math.max(1,viewer.getNumFrames()):1;
@@ -8376,7 +8387,7 @@ var assistRegister, assistOpen, assistClose, assistAsk, assistToggle;
         show: [{ sel: '.example-chip[data-pdb="P04637"]', say: 'The AF p53 example opens one.' }] },
       { id: 'file', t: 'Open your own file', group: 'Structures', on: ['empty', 'viewer'],
         q: ['file', 'open file', 'drop', 'drag and drop', 'my structure', 'local file', 'docking', 'cif', 'gz', 'archivo', 'abrir archivo', 'arrastrar', 'mi estructura'],
-        a: 'Press **Open file…** or drop a file anywhere on the page: `.pdb`, `.ent`, `.cif`, `.mmcif`, `.pqr`, and the same gzipped (`.gz`).',
+        a: 'Press **Open file…** or drop a file anywhere on the page: `.pdb`, `.ent`, `.cif`, `.mmcif`, `.pqr`, and the same gzipped (`.gz`). A small molecule opens too: `.sdf` (several molecules are frames, step through them with the slider), `.mol2` and `.xyz` open as one ligand.',
         tip: 'A file that is not a structure is refused and the one on screen stays. A design saved on a file is applied when you open that file again.',
         show: [{ sel: '#openFileBtn', say: 'Press here, or drop a file on the viewer.' }] },
       { id: 'move', t: 'Rotate, zoom and fit', group: 'The view', on: ['viewer'],

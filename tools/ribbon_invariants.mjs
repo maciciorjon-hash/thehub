@@ -77,6 +77,8 @@
 //                           no live control is drawn faded; the sequence works without a pointer (caret, Shift, Space, Home, Ctrl+A, Escape, Down a chain, Enter).
 //   RB45 one standard  Every control shows when it has the keyboard (the command line included); text has 4.5:1 on what is behind it on every tab in both themes (white on the
 //                           light accent fill is the Hub's held decision); buttons and fields are 32px with the one small radius; forced-colours mode keeps an edge on icon buttons.
+//   RB46 small molecules  An SDF (several molecules are frames), a MOL2 and an XYZ open as one ligand, atoms named by element and number, LIG on chain A in every frame; selection,
+//                           measurement and Analyse read it; an empty or wrong file is refused with the formats named and the structure on screen kept.
 //
 // 3Dmol comes from its CDN (pinned); every other network call is stubbed. If the CDN is unreachable the
 // checks that need the viewer are reported as skipped, not passed.
@@ -2933,7 +2935,50 @@ async function rb45() {
   await ctx.close();
 }
 
-const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20], ['RB21', rb21], ['RB22', rb22], ['RB23', rb23], ['RB24', rb24], ['RB25', rb25], ['RB26', rb26], ['RB27', rb27], ['RB28', rb28], ['RB29', rb29], ['RB30', rb30], ['RB31', rb31], ['RB32', rb32], ['RB33', rb33], ['RB34', rb34], ['RB35', rb35], ['RB36', rb36], ['RB37', rb37], ['RB38', rb38], ['RB39', rb39], ['RB40', rb40], ['RB41', rb41], ['RB42', rb42], ['RB43', rb43], ['RB44', rb44], ['RB45', rb45]];
+// ── RB46 a small molecule file opens ────────────────────────────────────────────────────────
+async function rb46() {
+  const { ctx, pg, E } = await open({ tag: 'RB46 ' });
+  if (!(await has3d(pg))) { skipped.push('RB46 (3Dmol could not load from its CDN)'); await ctx.close(); return; }
+  const f4 = v => v.toFixed(4).padStart(10);
+  const benz = (dx, dz) => {   // benzene with its hydrogens, as an MDL molfile
+    const at = [], bonds = []; for (let k = 0; k < 6; k++) at.push(['C', 1.39 * Math.cos(k * Math.PI / 3) + dx, 1.39 * Math.sin(k * Math.PI / 3), dz]);
+    for (let k = 0; k < 6; k++) at.push(['H', 2.47 * Math.cos(k * Math.PI / 3) + dx, 2.47 * Math.sin(k * Math.PI / 3), dz]);
+    for (let k = 0; k < 6; k++) { bonds.push([k + 1, (k + 1) % 6 + 1, k % 2 ? 2 : 1]); bonds.push([k + 1, k + 7, 1]); }
+    return 'benzene\n  test\n\n' + String(at.length).padStart(3) + String(bonds.length).padStart(3) + '  0  0  0  0  0  0  0  0999 V2000\n' + at.map(a => f4(a[1]) + f4(a[2]) + f4(a[3]) + ' ' + a[0].padEnd(3) + ' 0  0  0  0  0  0  0  0  0  0  0  0').join('\n') + '\n' + bonds.map(b => String(b[0]).padStart(3) + String(b[1]).padStart(3) + String(b[2]).padStart(3) + '  0').join('\n') + '\nM  END\n$$$$\n';
+  };
+  const mol2 = '@<TRIPOS>MOLECULE\nfoo\n 4 3 1 0 0\nSMALL\nNO_CHARGES\n\n@<TRIPOS>ATOM\n      1 C1          0.0000    0.0000    0.0000 C.3     1  LIG1        0.0000\n      2 C2          1.5000    0.0000    0.0000 C.3     1  LIG1        0.0000\n      3 O1          2.1000    1.2000    0.0000 O.3     1  LIG1        0.0000\n      4 N1         -0.7000   -1.2000    0.0000 N.3     1  LIG1        0.0000\n@<TRIPOS>BOND\n     1     1     2    1\n     2     2     3    1\n     3     1     4    1\n';
+  const xyz = '4\nwater dimer\nO 0 0 0\nH 0.96 0 0\nH -0.24 0.93 0\nO 2.9 0 0\n';
+  const up = async (name, text) => { await E(() => { window.__e0 = document.getElementById('errText').textContent; }); await pg.setInputFiles('#fileInput', { name, mimeType: 'text/plain', buffer: Buffer.from(text) }); await sleep(200); await E(() => new Promise(res => { const t0 = Date.now(), t = setInterval(() => { if (!document.getElementById('fetchBtn').disabled || Date.now() - t0 > 20000) { clearInterval(t); res(); } }, 60); })); await sleep(900); };
+  const S = () => E(() => ({ id: currentPdbId, n: currentModel ? currentModel.selectedAtoms({}).length : 0, frames: _nFrames, ligs: ligands.map(l => l.key + ':' + l.n), chains: chainList.join(), err: document.getElementById('errText').textContent, accept: document.getElementById('fileInput').accept }));
+  await up('poses.sdf', benz(0, 0) + benz(1, 0.5) + benz(2, 1));
+  let s = await S();
+  check('RB46', 'an SDF of three molecules opens as one ligand with three frames', s.id === 'poses.sdf' && s.n === 12 && s.frames === 3 && s.ligs.join() === 'LIG:A:1:12' && s.chains === 'A' && s.err === '', s);
+  check('RB46', 'the picker offers the small-molecule formats', /\.sdf/.test(s.accept) && /\.mol2/.test(s.accept) && /\.xyz/.test(s.accept), s.accept);
+  // each frame is a molecule, named like a PDB ligand so the rest of Ribbon can read it
+  const fr = await E(() => { const out = []; for (const f of [0, 1, 2]) { viewer.setFrame(f); _frame = f; const A = currentModel.selectedAtoms({}); out.push({ x: +A[0].x.toFixed(2), name: A[0].atom, resn: A[0].resn, chain: A[0].chain, resi: A[0].resi, het: A[0].hetflag, nm: A.map(a => a.atom).join() }); } viewer.setFrame(0); _frame = 0; return out; });
+  check('RB46', 'every frame has its atoms named by element and number, residue LIG on chain A, and its own coordinates', fr.map(f => f.x).join() === '1.39,2.39,3.39' && fr.every(f => f.name === 'C1' && f.resn === 'LIG' && f.chain === 'A' && f.resi === 1 && f.het === true && f.nm === 'C1,C2,C3,C4,C5,C6,H1,H2,H3,H4,H5,H6'), fr);
+  const cmd = await E(() => ({ sel: runCommand('select ligand'), n: _selN, d: runCommand('distance A:1@C1 A:1@C4') }));
+  const d0 = await E(() => state.measures.length && measureValue(state.measures[0]));
+  check('RB46', 'the selection language and a measurement work on it (C1 to C4 across the ring is 2 × 1.39 Å)', cmd.n === 1 && cmd.d.ok && Math.abs(d0 - 2.78) < 0.01, { cmd, d0 });
+  await E(() => { rbTab('analyse'); }); await sleep(600);
+  const an = await E(() => ({ chip: document.querySelectorAll('#siteLigs .it-chip').length, none: document.getElementById('siteBody').textContent.slice(0, 40) }));
+  check('RB46', 'Analyse reads the ligand and says there is no protein round it, without an error', an.chip === 1, an);
+  await up('lig.mol2', mol2);
+  s = await S();
+  check('RB46', 'a MOL2 opens the same way', s.id === 'lig.mol2' && s.n === 4 && s.ligs.length === 1 && s.err === '', s);
+  await up('dimer.xyz', xyz);
+  s = await S();
+  check('RB46', 'an XYZ opens the same way', s.id === 'dimer.xyz' && s.n === 4 && s.ligs.length === 1 && s.err === '', s);
+  await up('empty.sdf', '\n\n\n  0  0  0  0  0  0  0  0  0  0999 V2000\nM  END\n$$$$\n');
+  s = await S();
+  check('RB46', 'an empty SDF is refused, the structure on screen stays, and the message names the formats that open', s.id === 'dimer.xyz' && /\.sdf, \.mol2 and \.xyz/.test(s.err), s);
+  await up('notes.txt', 'just some words\nnothing else\n');
+  s = await S();
+  check('RB46', 'a text file is refused the same way', s.id === 'dimer.xyz' && /does not look like a structure/.test(s.err), s);
+  await ctx.close();
+}
+
+const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20], ['RB21', rb21], ['RB22', rb22], ['RB23', rb23], ['RB24', rb24], ['RB25', rb25], ['RB26', rb26], ['RB27', rb27], ['RB28', rb28], ['RB29', rb29], ['RB30', rb30], ['RB31', rb31], ['RB32', rb32], ['RB33', rb33], ['RB34', rb34], ['RB35', rb35], ['RB36', rb36], ['RB37', rb37], ['RB38', rb38], ['RB39', rb39], ['RB40', rb40], ['RB41', rb41], ['RB42', rb42], ['RB43', rb43], ['RB44', rb44], ['RB45', rb45], ['RB46', rb46]];
 const port = await freePort();
 const srv = spawn('python3', ['-m', 'http.server', String(port), '--bind', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });
 base = `http://127.0.0.1:${port}/`;
