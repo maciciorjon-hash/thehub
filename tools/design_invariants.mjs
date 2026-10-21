@@ -244,6 +244,27 @@ async function blueprint(pg) {
     check('B14', 'a big export stays inside the canvas Safari can hold', ex.px > 0 && ex.px <= 12.5e6, ex);
     check('B14', 'the image is saved although the History write throws', ex.n === 1 && ex.thrown === true, ex);
   }
+  if (run('B15')) {
+    // concentrations: the unit is chosen after rounding, an mM step exists, and a start that is not a concentration is refused
+    await fresh();
+    const r = await E(() => {
+      const out = {};
+      out.round = [fmtConc(999.7, 'nM'), fmtConcAuto(999.7), fmtConcAuto(999600), fmtConc(1000, 'nM')].join('|');
+      out.mM = [fmtConcAuto(1e7), fmtConcAuto(1e6), fmtConcAuto(2.5e9), fmtConcAuto(0.5), fmtConc(0.333, 'nM'), fmtConc(3333.3, 'nM')].join('|');
+      out.bad = [fmtConc(Infinity, 'nM'), fmtConc(-5, 'nM'), fmtConcAuto(NaN)].join('|');
+      const ids = ['C1', 'C2', 'C3', 'C4'];
+      const run = start => { wellState = {}; selection = new Set(ids); updateSelToolbar(); document.getElementById('dil-start').value = start; document.getElementById('dil-factor').value = '3'; document.getElementById('dil-unit').value = 'nM'; applyDilution('row'); return ids.map(i => wellState[i] && wellState[i].label).join(','); };
+      out.neg = run('-10'); out.zero = run('0'); out.inf = run('1e999'); out.good = run('1000');
+      const p = pdParseValues('1\t2e999\t3\n4\t5\t6'); out.vals = p ? Object.keys(p).join() : 'none';
+      return out;
+    });
+    check('B15', '999.7 nM is 1µM, 999.6 µM-range rounds up a unit', r.round === '1µM|1µM|1mM|1µM', r.round);
+    check('B15', '10 mM reads 10mM (it read 10000µM), 2.5 M, 0.5 nM is 500pM', r.mM === '10mM|1mM|2.5M|500pM|0.33nM|3.33µM', r.mM);
+    check('B15', 'a non-finite or negative concentration is 0, never a label', r.bad === '0nM|0nM|0', r.bad);
+    check('B15', 'a start of -10, 0 or 1e999 labels no well', /^(,|undefined)*$/.test(r.neg.replace(/undefined/g, '')) && /^,*$/.test(r.zero.replace(/undefined/g, '')) && /^,*$/.test(r.inf.replace(/undefined/g, '')), [r.neg, r.zero, r.inf]);
+    check('B15', 'a good start still labels', r.good === '1µM,333nM,111nM,37nM', r.good);
+    check('B15', 'an Infinity in pasted values is not a value', r.vals === 'A1,A3,B1,B2,B3', r.vals);
+  }
   if (run('B7')) {
     const T = `5" insert <b>x</b> & 'y'`;
     const r = await E(T => {
@@ -330,7 +351,7 @@ async function blueprint(pg) {
       const ind = document.querySelector('.tab-indicator'), act = document.querySelector('.tab.active');
       return { tabs, tf: ind.style.transform, left: act.offsetLeft, w: act.offsetWidth, modal: !!document.getElementById('pd-guide-modal'), qbtn: !!document.getElementById('guide-btn') };
     });
-    check('B11', 'four tabs, in order', t.tabs.join('|') === 'Plate Designer|Gel Designer|History|Guide', t.tabs);
+    check('B11', 'four tabs, in order', t.tabs.join('|') === 'Plate designer|Gel designer|History|Guide', t.tabs);
     check('B11', 'the underline sits under the active tab', t.tf === 'translateX(' + t.left + 'px) scaleX(' + t.w + ')', t);
     check('B11', 'the guide is a tab, not a modal behind a ?', !t.modal && !t.qbtn, t);
     const g = await E(() => { switchTab('guide', document.querySelector(`.tab[onclick*="'guide'"]`)); const p = document.getElementById('panel-guide'); return { shown: p.classList.contains('active') && p.offsetHeight > 0, gel: /Gel Designer/.test(p.textContent) && /Fold|fold/.test(p.textContent) }; });
