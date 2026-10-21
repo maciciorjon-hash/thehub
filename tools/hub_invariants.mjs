@@ -131,8 +131,14 @@ if (run('S4')) {
     isAdmin = true; _preloadDone = {}; _preloadApps(); const adm = (window._preloadList || []).slice();
     const t0 = performance.now();
     while (adm.some(id => !loaded[id]) && performance.now() - t0 < 20000) await new Promise(r => setTimeout(r, 100));
-    return { vis, adm, loaded: adm.filter(id => loaded[id]), five: ['protocols', 'echo', 'hitfinder', 'lumina', 'tempo'].filter(id => loaded[id]), admOnly: Object.keys(ADMIN_ONLY_APPS) };
+    // Hit Finder and Tempo are Jon's alone: a visitor who has typed every code (suite words included) still cannot open them
+    isAdmin = false; _unlockedApps.clear(); Object.keys(APP_UNLOCK_WORDS).forEach(id => _unlockedApps.add(id));
+    Object.values(SUITE_UNLOCK_WORDS).forEach(su => su.apps.forEach(id => _unlockedApps.add(id)));
+    const adminLeak = ['hitfinder', 'tempo'].filter(id => _isAppAccessible(id));
+    _unlockedApps.clear(); isAdmin = true;
+    return { adminLeak, vis, adm, loaded: adm.filter(id => loaded[id]), five: ['protocols', 'echo', 'hitfinder', 'lumina', 'tempo'].filter(id => loaded[id]), admOnly: Object.keys(ADMIN_ONLY_APPS) };
   });
+  if (r.adminLeak.length) bad('S4', 'a visitor with every code can open ' + r.adminLeak.join(', ')); else ok();
   if (r.vis.some(id => r.admOnly.includes(id))) bad('S4', 'a visitor preloads an admin app: ' + r.vis.join(', ')); else ok();
   if (r.five.length !== 5) bad('S4', 'after the admin preload only these are loaded: ' + r.five.join(', ')); else ok();
   if (r.loaded.length !== r.adm.length) bad('S4', 'not every preloaded app finished loading: ' + r.loaded.join(', ') + ' of ' + r.adm.join(', ')); else ok();
