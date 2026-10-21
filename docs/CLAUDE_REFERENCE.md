@@ -397,7 +397,7 @@ checklists (which is what drives the existing carry-over logic). The seed versio
 bumped `_presetV2` → `_presetV3` → `_presetV4` → `_presetV5` → `_presetV6` → **`_presetV7`** (2026-08-28, the SPARK preset's `ctrlRatio`), so `seedPresets()` re-seeds all built-in presets once
 per browser. Custom/user-added presets are untouched; hand-edits to built-in presets made
 before this change are overwritten. The flag is at **`_presetV17`** as of 2026-09-25 (the NanoBRET 6-well seed's `fmtOwn`); **bump it if you edit `PRESET_SEED` or `EXTRA_PRESET_SEED` again.**
-**2026-10-21: `_presetV21`.** The kinetic / time-course HiBiT medium (GloMax) is CO₂-independent medium + **5% FBS** (Jon; it said 10%) in KD, Time Course and SPARK NS Time Course; B53 checks all three. Untouched experiments pick it up through the reword pass.
+**2026-10-21: `_presetV22`.** The kinetic / time-course HiBiT medium (GloMax) is CO₂-independent medium + **10% FBS**, and every step that uses it (Endurazine, compound / OA / PROTAC dilutions, their Methods sentences) says so in full instead of "assay medium" / "medium" (Jon). KD, Time Course and SPARK NS Time Course; B53 checks it. Untouched experiments get the wording through the reword pass; their stored calculator diluent is a recorded input and stays.
 
 **Snooze** — `snoozeBlock(expId, blockId, n)` pushes a step **and every later-dated step in the
 same experiment** forward n days, then `recomputeDayOffsets`. Buttons in `blkCardHtml` (needs
