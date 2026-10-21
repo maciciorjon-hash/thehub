@@ -55,6 +55,7 @@ async function open(url, opts) {
 const APPS = [
   { id: 'spectra', file: 'apps/bca/bca.html', loaded: () => { loadTestData(); } },
   { id: 'lumina', file: 'apps/lumina/lumina.html', loaded: () => { loadLuminaTestData(); } },
+  { id: 'hitfinder', file: 'apps/hitfinder/hitfinder.html', loaded: () => { loadHitFinderTestData(); } },
   { id: 'labbook', file: 'apps/labbook/labbook.html', loaded: async () => {
       const P = LB.data.projects[0], f = (P.sections || [])[0];
       openNew(P.id, f && f.id); document.getElementById('nm-type').value = 'CTG'; nmUpdateCode(); nmResetSetup(); nmProtos();

@@ -554,6 +554,21 @@ try {
   const p2 = await ev(() => ({ gone: !document.querySelector('.lm-prompt'), back: document.activeElement && document.activeElement.classList.contains('lm-ptab') }));
   check('L19 the name box keeps the Tab inside it, Esc closes it and the focus goes back to where it was', p1 && p2.gone && p2.back, JSON.stringify([p1, p2]));
 }
+// L20 — Send to Hit Finder: the table is nM and linear whatever Units says, and Hit Finder reads it back as the same potencies.
+{
+  await ev(o => rsSetUnits(o), { u: 'uM', log: true });
+  const t = await ev(() => ({ table: lmHitFinderTable(), ec: state.fitResults.map(r => r.ec50M * 1e9), ids: state.fitResults.map(r => r.sampleId), btn: document.getElementById('rs-hf') && getComputedStyle(document.getElementById('rs-hf')).display, ok: lmHitFinderOk(), multi: state.plates.length > 1 }));
+  await ev(() => rsSetUnits({ u: 'auto', log: false }));
+  const head = t.table[0], pot = head.findIndex(h => /^(DC|IC|EC)50_nM$/.test(h)), id = head.indexOf('Sample_ID');
+  check('L20 the table to Hit Finder is nM and linear even with Units on µM and log: a potency column named _nM that equals the fit, one row per compound', pot > 0 && t.table.length === t.ec.length + 1 && t.table.slice(1).every((r, i) => Math.abs(r[pot] - t.ec[i]) / t.ec[i] < 1e-3 && r[id] === t.ids[i]), JSON.stringify({ head, n: t.table.length, ec: t.ec.slice(0, 3), got: t.table.slice(1, 4).map(r => r[pot]) }));
+  check('L20 it carries the columns Hit Finder reads: CI, Hill, R2, flag text', ['HillSlope', 'R2', 'Flag', 'Flag_Reason'].every(h => head.includes(h)) && head.some(h => /CI_lower_nM$/.test(h)) && head.some(h => /CI_upper_nM$/.test(h)), head.join('|'));
+  check('L20 outside the Hub there is no Hit Finder to send to, so the button stays hidden', t.btn === 'none' && t.ok === false, JSON.stringify([t.btn, t.ok]));
+  const hp = await ctx.newPage(); await hp.goto('file://' + path.resolve(HERE, '../apps/hitfinder/hitfinder.html')); await hp.waitForTimeout(800);
+  const back = await hp.evaluate(tb => { const recs = hfParseSent(tb, 'LM'); return { n: recs.length, pot: recs.map(r => [r.Compound, r.Potency_nM, r.Potency_Qualifier]), assay: [...new Set(recs.map(r => r.Assay))] }; }, t.table);
+  const mism = back.pot.filter((p, i) => p[2] === 'exact' && Math.abs(p[1] - t.ec[i]) / t.ec[i] > 1e-3);
+  check('L20 Hit Finder reads that table back as the same compounds with the same potencies (a bounded fit keeps its bound)', back.n === t.ec.length && mism.length === 0 && back.pot.every(p => p[2] === 'exact' || p[2] === '>' || p[2] === '<' || p[2] === 'n.d.'), JSON.stringify({ n: back.n, mism: mism.slice(0, 3), assay: back.assay }));
+  await hp.close();
+}
 check('no page or console errors', errs.length === 0, errs.slice(0, 3).join(' | '));
 await browser.close();
 if (findings.length) { console.log(findings.join('\n')); console.log(`\n${findings.length} finding(s), ${passed} checks passed.`); process.exit(1); }
