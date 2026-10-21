@@ -416,6 +416,27 @@ try { if (hasX) {
   });
   check('L16 grouped digits are thousands, 1.234,5 is European, 0x10 is not a reading, a letter written twice is one well',
     l16.us.A1 === 1234.5 && l16.us.A2 === 12345678 && l16.eu.A1 === 1234.5 && l16.eu.A2 === 2.5 && JSON.stringify(l16.hex.block) === '[[1,2]]' && l16.dup === 2 && l16.minus.A1 === -5, JSON.stringify(l16));
+
+  // L17 the Hub's controls (docs/UI.md): a button is 32px with --r-1 corners, a field is 32px, a tab is a <button role=tab>, the toast is a live region, the gear and the name box behave as dialogs do
+  await ev(() => { switchTab('input'); lmAfterChange(); });
+  const l17 = await ev(() => {
+    const b = document.querySelector('#lm-fit'), i = document.getElementById('lm-sel-range'), bs = getComputedStyle(b), is = getComputedStyle(i);
+    const tabs = [...document.querySelectorAll('#lm-tabbar .tab')];
+    return { btn: [bs.height, bs.borderTopLeftRadius, bs.fontSize], inp: [is.height, is.borderTopLeftRadius, is.fontSize], tabs: tabs.every(t => t.tagName === 'BUTTON' && t.getAttribute('role') === 'tab'), activeInk: getComputedStyle(document.querySelector('.tab.active')).fontWeight, live: document.getElementById('toast').getAttribute('role') };
+  });
+  check('L17 a button is 32px, --r-1, --fs-3; a field is 32px, --r-1, --fs-3', l17.btn.join() === '32px,4px,12px' && l17.inp.join() === '32px,4px,12px', JSON.stringify(l17));
+  check('L17 the tabs are buttons with role=tab, and the toast is role=status', l17.tabs && l17.live === 'status', JSON.stringify(l17));
+  await page.focus('#opts-btn'); await page.keyboard.press('Enter');
+  const g1 = await ev(() => ({ open: document.getElementById('opts-panel').classList.contains('open'), x: document.getElementById('opts-btn').getAttribute('aria-expanded') }));
+  await page.keyboard.press('Escape');
+  const g2 = await ev(() => ({ open: document.getElementById('opts-panel').classList.contains('open'), x: document.getElementById('opts-btn').getAttribute('aria-expanded'), f: document.activeElement.id }));
+  check('L17 the gear opens its panel, says aria-expanded, and Esc closes it', g1.open && g1.x === 'true' && !g2.open && g2.x === 'false', JSON.stringify([g1, g2]));
+  await page.focus('.lm-ptab'); await ev(() => lmAskPlateName(0, 200, 200)); await page.waitForTimeout(100);
+  await page.keyboard.press('Tab'); await page.keyboard.press('Tab'); await page.keyboard.press('Tab');
+  const p1 = await ev(() => !!document.querySelector('.lm-prompt') && document.querySelector('.lm-prompt').contains(document.activeElement));
+  await page.keyboard.press('Escape');
+  const p2 = await ev(() => ({ gone: !document.querySelector('.lm-prompt'), back: document.activeElement && document.activeElement.classList.contains('lm-ptab') }));
+  check('L17 the name box keeps the Tab inside it, Esc closes it and the focus goes back to where it was', p1 && p2.gone && p2.back, JSON.stringify([p1, p2]));
 }
 check('no page or console errors', errs.length === 0, errs.slice(0, 3).join(' | '));
 await browser.close();
