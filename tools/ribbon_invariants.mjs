@@ -75,6 +75,8 @@
 //                           colours, labels and the camera kept, the pointer working, a second loss recovered; if the browser never gives it back a new canvas is made.
 //   RB44 keyboard and landmarks  One h1 and one main landmark; on every tab each scrolling region is reachable by keyboard, nothing interactive sits inside an image or a button,
 //                           no live control is drawn faded; the sequence works without a pointer (caret, Shift, Space, Home, Ctrl+A, Escape, Down a chain, Enter).
+//   RB45 one standard  Every control shows when it has the keyboard (the command line included); text has 4.5:1 on what is behind it on every tab in both themes (white on the
+//                           light accent fill is the Hub's held decision); buttons and fields are 32px with the one small radius; forced-colours mode keeps an edge on icon buttons.
 //
 // 3Dmol comes from its CDN (pinned); every other network call is stubbed. If the CDN is unreachable the
 // checks that need the viewer are reported as skipped, not passed.
@@ -2745,9 +2747,9 @@ async function rb42() {
   // the file
   const sv = await E(() => { window.__saved = []; const o = window._saveBlob; window.__saveO = o; window._saveBlob = function (b, n) { window.__saved.push({ b, n }); }; diagSvg(); window._saveBlob = o; const s = window.__saved[0]; return s.b.text().then(t => ({ name: s.n, text: t })); });
   const xml = await E((t) => { const doc = new DOMParser().parseFromString(t, 'image/svg+xml'); return { err: !!doc.querySelector('parsererror'), boxes: doc.querySelectorAll('.dg-res').length, hl: doc.querySelectorAll('.hl').length, w: doc.documentElement.getAttribute('width') }; }, sv.text);
-  check('RB42', 'Save SVG writes a valid, self-contained vector figure named for the structure and the ligand', /_LIG_interactions\.svg$/.test(sv.name) && !xml.err && xml.boxes >= 14 && xml.hl === 0 && /<rect width="\d+" height="\d+" fill="#ffffff"\/>/.test(sv.text), { name: sv.name, xml });
+  check('RB42', 'Export SVG writes a valid, self-contained vector figure named for the structure and the ligand', /_LIG_interactions\.svg$/.test(sv.name) && !xml.err && xml.boxes >= 14 && xml.hl === 0 && /<rect width="\d+" height="\d+" fill="#ffffff"\/>/.test(sv.text), { name: sv.name, xml });
   const png = await E(() => new Promise(res => diagCanvas(cv => { if (!cv) return res(null); const x = cv.getContext('2d'), im = x.getImageData(0, 0, cv.width, cv.height).data; let ink = 0; for (let i = 0; i < im.length; i += 4) if (im[i] < 200 || im[i + 1] < 200 || im[i + 2] < 200) ink++; res({ w: cv.width, h: cv.height, ink: ink / (cv.width * cv.height), ratio: cv.height / cv.width, want: _diagLast.h / _diagLast.w }); }, 1500)));
-  check('RB42', 'Save PNG renders that picture at the width asked, not blank', !!png && png.w === 1500 && png.ink > 0.02 && Math.abs(png.ratio - png.want) < 0.01, png);
+  check('RB42', 'Export PNG renders that picture at the width asked, not blank', !!png && png.w === 1500 && png.ink > 0.02 && Math.abs(png.ratio - png.want) < 0.01, png);
   // enlarged
   await pg.click('#diagBig'); await sleep(300);
   const md = await E(() => ({ open: document.getElementById('diag-modal').classList.contains('open'), same: document.querySelector('#diagBig2 svg').innerHTML === document.querySelector('#diagBox svg').innerHTML, focus: document.activeElement && document.activeElement.id }));
@@ -2856,7 +2858,82 @@ async function rb44() {
   await ctx.close();
 }
 
-const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20], ['RB21', rb21], ['RB22', rb22], ['RB23', rb23], ['RB24', rb24], ['RB25', rb25], ['RB26', rb26], ['RB27', rb27], ['RB28', rb28], ['RB29', rb29], ['RB30', rb30], ['RB31', rb31], ['RB32', rb32], ['RB33', rb33], ['RB34', rb34], ['RB35', rb35], ['RB36', rb36], ['RB37', rb37], ['RB38', rb38], ['RB39', rb39], ['RB40', rb40], ['RB41', rb41], ['RB42', rb42], ['RB43', rb43], ['RB44', rb44]];
+// ── RB45 one standard: focus, shape, ink ────────────────────────────────────────────────────
+async function rb45() {
+  const { ctx, pg, E, go } = await open({ tag: 'RB45 ' });
+  if (!(await has3d(pg))) { skipped.push('RB45 (3Dmol could not load from its CDN)'); await ctx.close(); return; }
+  for (const theme of ['light', 'dark']) {
+    await E(t => { document.documentElement.dataset.theme = t; }, theme);
+    await go('8POC'); await sleep(200);
+    for (const tab of ['open', 'models', 'colour', 'analyse', 'figure', 'designs']) {
+      await E(t => rbTab(t), tab); await sleep(250);
+      if (tab === 'analyse') await E(() => { try { if (ligands.length) siteSet(ligands[0].key); } catch (e) {} });
+      await E(() => document.querySelectorAll('details.rb-sec').forEach(d => { d.open = true; })); await sleep(300);
+      // 1. a control that takes the keyboard shows it: something about it changes (outline, shadow, border or fill) when it is focused
+      await pg.keyboard.press('Shift');
+      const nof = await E(() => {
+        const vis = e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(e).visibility !== 'hidden' && !e.closest('[hidden],[inert],details:not([open])'); };
+        const sig = e => { const c = getComputedStyle(e); return [c.outlineStyle, c.outlineWidth, c.outlineColor, c.boxShadow, c.borderTopColor, c.backgroundColor, c.color].join('|'); };
+        const bad = [];
+        document.querySelectorAll('button:not(:disabled),input:not(:disabled):not([type=hidden]),select:not(:disabled),textarea:not(:disabled),[tabindex="0"],a[href],summary').forEach(e => {
+          if (!vis(e) || e.closest('#as-panel,.as-bubble')) return;   // the help assistant is a generated kit with its own check
+          if (e.type === 'range' || e.type === 'checkbox' || e.type === 'radio' || e.type === 'file') return;   // the browser's own ring
+          const a = sig(e); try { e.focus({ focusVisible: true }); } catch (x) { e.focus(); }
+          const b = sig(e); e.blur();
+          if (a === b) bad.push((e.id ? '#' + e.id : e.tagName.toLowerCase()) + (e.className && typeof e.className === 'string' ? '.' + e.className.split(' ')[0] : ''));
+        });
+        return bad;
+      });
+      check('RB45', `${theme} ${tab}: every control shows when it has the keyboard`, nof.length === 0, nof.slice(0, 8));
+      // 2. text is readable: 4.5:1 (3:1 large), measured on the colour behind it; white on the light accent fill is the held Hub decision
+      const low = await E(() => {
+        const parse = c => { const m = /rgba?\(([^)]+)\)/.exec(c); if (!m) return null; const p = m[1].split(/[ ,\/]+/).filter(Boolean).map(Number); return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 }; };
+        const lin = v => { v /= 255; return v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); };
+        const L = c => .2126 * lin(c.r) + .7152 * lin(c.g) + .0722 * lin(c.b);
+        const over = (f, b) => ({ r: f.r * f.a + b.r * (1 - f.a), g: f.g * f.a + b.g * (1 - f.a), b: f.b * f.a + b.b * (1 - f.a), a: 1 });
+        const backOf = e => { const stack = []; for (let n = e; n; n = n.parentElement) { const cs = getComputedStyle(n); if (cs.backgroundImage !== 'none') return null; const c = parse(cs.backgroundColor); if (c && c.a > 0) { stack.push(c); if (c.a >= 1) break; } } let b = { r: 255, g: 255, b: 255, a: 1 }; stack.reverse().forEach(c => { b = over(c, b); }); return b; };
+        const accent = parse(getComputedStyle(document.documentElement).getPropertyValue('--accent').trim().length ? (() => { const d = document.createElement('i'); d.style.color = getComputedStyle(document.documentElement).getPropertyValue('--accent'); document.body.appendChild(d); const c = getComputedStyle(d).color; d.remove(); return c; })() : 'rgb(0,0,0)');
+        const out = [], seen = new Set();
+        const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+        for (let t; (t = w.nextNode());) {
+          if (!t.nodeValue.trim()) continue; const e = t.parentElement; if (!e || seen.has(e)) continue; seen.add(e);
+          if (e.closest('details:not([open]),#as-panel,.as-bubble,#viewport,svg,.diag-box,.diag-big,.toast,.preset-grid .pv,.sq-r,[hidden],script,style,.ctx,.chain-tag')) continue;
+          const r = e.getBoundingClientRect(); if (r.width < 1 || r.height < 1) continue;
+          const cs = getComputedStyle(e); if (cs.visibility === 'hidden') continue;
+          let op = 1; for (let n = e; n && n !== document.body; n = n.parentElement) op *= +getComputedStyle(n).opacity; if (op < .99) continue;
+          const bg = backOf(e); if (!bg) continue; let fg = parse(cs.color); if (!fg) continue; fg = over(fg, bg);
+          const l1 = L(fg), l2 = L(bg), ratio = (Math.max(l1, l2) + .05) / (Math.min(l1, l2) + .05);
+          const px = parseFloat(cs.fontSize), big = px >= 24 || (px >= 18.66 && +cs.fontWeight >= 700);
+          const held = Math.abs(bg.r - accent.r) + Math.abs(bg.g - accent.g) + Math.abs(bg.b - accent.b) < 6 && document.documentElement.dataset.theme === 'light';   // white on #5e87c5 (3.65): Hub-wide, docs/UI.md
+          if (ratio < (big ? 3 : 4.5) && !held) out.push((e.id ? '#' + e.id : e.tagName.toLowerCase() + '.' + String(e.className).split(' ')[0]) + ' ' + ratio.toFixed(2) + ' ' + t.nodeValue.trim().slice(0, 18));
+        }
+        return out;
+      });
+      check('RB45', `${theme} ${tab}: text has 4.5:1 against what is behind it`, low.length === 0, low.slice(0, 8));
+    }
+    // 3. one shape: buttons and fields are 32px and --r-1 (4px), a pill only for a chip
+    await E(() => rbTab('open'));
+    const shape = await E(() => {
+      const vis = e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+      const bad = [];
+      document.querySelectorAll('.btn:not(.sm),.inp:not(textarea),.tb-select').forEach(e => {
+        if (!vis(e) || e.closest('.li,.look-save,.design-item')) return; const cs = getComputedStyle(e), r = e.getBoundingClientRect();
+        if (cs.borderTopLeftRadius !== '4px' || Math.round(r.height) !== 32 && !e.matches('.tb-select')) bad.push((e.id || e.className) + ' ' + cs.borderTopLeftRadius + ' ' + Math.round(r.height));
+      });
+      return bad;
+    });
+    check('RB45', `${theme}: buttons and fields are 32px with the one small radius`, shape.length === 0, shape.slice(0, 8));
+  }
+  // 4. forced colours: an icon button keeps an edge
+  const fc = await ctx.newPage(); await fc.emulateMedia({ forcedColors: 'active' });
+  await fc.goto(base + (args.file || 'apps/ribbon/ribbon.html') + '?_ts=' + Date.now(), { waitUntil: 'load' }); await fc.waitForTimeout(1200);
+  const edge = await fc.evaluate(() => [...document.querySelectorAll('.tb-btn,.ibtn,.rb-tab')].filter(e => e.getBoundingClientRect().width > 0).filter(e => parseFloat(getComputedStyle(e).borderTopWidth) < 1).map(e => e.id || e.className));
+  check('RB45', 'in forced-colours mode every icon button and tab has an edge', edge.length === 0, edge.slice(0, 8));
+  await fc.close();
+  await ctx.close();
+}
+
+const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20], ['RB21', rb21], ['RB22', rb22], ['RB23', rb23], ['RB24', rb24], ['RB25', rb25], ['RB26', rb26], ['RB27', rb27], ['RB28', rb28], ['RB29', rb29], ['RB30', rb30], ['RB31', rb31], ['RB32', rb32], ['RB33', rb33], ['RB34', rb34], ['RB35', rb35], ['RB36', rb36], ['RB37', rb37], ['RB38', rb38], ['RB39', rb39], ['RB40', rb40], ['RB41', rb41], ['RB42', rb42], ['RB43', rb43], ['RB44', rb44], ['RB45', rb45]];
 const port = await freePort();
 const srv = spawn('python3', ['-m', 'http.server', String(port), '--bind', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });
 base = `http://127.0.0.1:${port}/`;
