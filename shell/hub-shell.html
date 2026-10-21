@@ -1934,8 +1934,8 @@ function openApp(id, tab, item, context) {
   // cannot get you out.
   try {
     _markOwnHash();
-    if (_wasIn === id) history.replaceState({_hubApp: id}, '', '#' + id);
-    else history.pushState({_hubApp: id}, '', '#' + id);
+    if (_wasIn === id) history.replaceState({_hubApp: id}, '', '#' + _hashFor(id));
+    else history.pushState({_hubApp: id}, '', '#' + _hashFor(id));
   } catch(e) {}
 }
 
@@ -1972,7 +1972,7 @@ function backToHub(opts) {
   setTimeout(function(){
     if (currentApp) return;
     var h = (location.hash || '').replace(/^#/, '');
-    if (h && (h === 'cells' || APP_INFO[h])) {
+    if (h && (h === 'cells' || APP_INFO[h] || _SLUG_APP[h])) {
       try { history.replaceState({}, '', location.pathname + location.search); } catch(e){}
     }
   }, 340);
@@ -2180,6 +2180,12 @@ function _openFromHash() {
   if (!id) return;
   if (_ownHash()) { try { history.replaceState({}, '', location.pathname + location.search); } catch(e){} return; }
   if (id === 'cells') { setTimeout(function(){ try { openCells(null); } catch(e) {} }, 60); return; }
+  if (_SLUG_APP[id]) id = _SLUG_APP[id];
+  else if (_nameLinkBlocked(id)) {
+    if (!_authResolved) { _pendingDeepLink = id; _pendingNameLink = true; }
+    else { try { history.replaceState({}, '', location.pathname + location.search); } catch(e){} }
+    return;
+  }
   if (!APP_INFO[id] || !document.getElementById('view-' + id)) return;
   setTimeout(function() { try { openApp(id); } catch(e) {} }, 60);
 }
@@ -2985,6 +2991,17 @@ var ADMIN_ONLY_APPS = { cellarchive:1, incubator:1, labbook:1, hitfinder:1, temp
 // Apps visitors can discover (the per-app unlock words and the suite codes, above).
 // Beacon has no word of its own: it appears only through the Data Analysis suite code. Hit Finder and Tempo are admin-only and in no suite.
 var PUBLIC_APPS = ['echo','lumina','spectra','deg','beacon','protocols','ribbon','pd','dna','pt','cryo','cuppa','blot'];
+// A public app's link is an opaque slug, not its name: #echo is the first thing anyone would try, and
+// openApp deliberately does not check the unlock words. The slug is a bearer link (anyone holding it
+// opens the app, like Archive's path); the plain name opens only for the admin or for a visitor who has
+// typed that app's word. Slugs are permanent once shared — never regenerate them.
+var APP_SLUG = { echo:'d94463f3cced', lumina:'8e1b54aefc2b', spectra:'34f0a5958cb2', deg:'89ad46e74c22', beacon:'eac81d6cf078',
+  protocols:'6cb5a6b0a6f8', ribbon:'3d64e7c7e170', pd:'a56f75da12a4', dna:'7317073076e6', pt:'1307a8c7da2a',
+  cryo:'028d3d6efff9', cuppa:'515b136c86d3', blot:'c4463fa0249e' };
+var _SLUG_APP = {}; Object.keys(APP_SLUG).forEach(function(k){ _SLUG_APP[APP_SLUG[k]] = k; });
+function _hashFor(id){ return APP_SLUG[id] || id; }
+function _nameLinkBlocked(id){ return !!APP_SLUG[id] && !isAdmin && !_unlockedApps.has(id); }
+var _pendingNameLink = false;
 function _suiteVisibleApps(s){ return s.apps.filter(function(id){ return (isAdmin || labConfig[id] !== false) && document.querySelector('#app-grid .card[data-app-id="'+id+'"]'); }); }
 // An admin-only app that an unlocked suite lists. The per-app set holds the id once a suite code
 // has been typed. No suite lists an admin-only app today (Hit Finder left Data Analysis 2026-10-21), so this is dormant.
@@ -3010,6 +3027,7 @@ function _adminOnlyBlocked(appId){
 function _replayDeepLink(){
   var id = _pendingDeepLink; if (!id) return;
   _pendingDeepLink = null;
+  if (_pendingNameLink) { _pendingNameLink = false; if (_nameLinkBlocked(id)) { try { location.hash = ''; } catch(e) {} return; } }
   try { (id === 'cells') ? openCells(null) : openApp(id); } catch(e) {}
 }
 
@@ -4278,7 +4296,7 @@ ctxBind(function(e){
       { hd: nm },
       { label: 'Open ' + nm, act: function(){ if (id === 'cells') openCells(null); else openApp(id); } },
       { label: 'Copy link to ' + nm, act: function(){
-          var url = location.href.split('#')[0] + '#' + id;
+          var url = location.href.split('#')[0] + '#' + _hashFor(id);
           if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(function(){ hubToast('Link copied.'); }).catch(function(){ hubToast('Could not copy the link: ' + url, 'err'); });
           else hubToast('Could not copy the link: ' + url, 'err');
         } },
