@@ -17,6 +17,7 @@
 //   AR10 the phone               375x812, light and dark: no sideways scroll, the number column of every result table is on screen,
 //                                every button is 44px
 //   AR12 one standard            docs/UI.md: buttons and fields 32px with --r-1, headings in sentence case, tabs ←/→, every dialog Escape/trap/focus-return, µ in the text a person reads
+//   AR13 named reagents          no protocol step or Methods sentence says "media" / "medium" / "buffer" without saying which: "in media + 1% FBS", "add to complete media", "into 99 uL buffer" (the cell steps name DMEM + 10% FBS or T-REx complete medium)
 //   AR11 offline                 the installable build, after one visit, reloads with the network gone and still lists 34 protocols
 //
 //   node tools/archive_audit_invariants.mjs [--only=AR3] [--url=http://127.0.0.1:8807]      exit 1 on any finding
@@ -448,6 +449,27 @@ if (run('AR12')) await guard('AR12', 'standard', async () => {
   const small = await tp.evaluate(() => [...document.querySelectorAll('#detail-trex input[type=number],#detail-trex select')].filter(e => e.offsetParent && e.getBoundingClientRect().height < 39.5).length);
   if (small) bad('AR12', small + ' fields are under 40px on touch'); else ok();
   await tp.context().close(); await p.context().close();
+});
+
+// ═════════ AR13 — a step names what it uses ═════════
+if (run('AR13')) await guard('AR13', 'named reagents', async () => {
+  const p = await open();
+  const r = await p.evaluate(() => {
+    const out = [], strip = h => String(h || '').replace(/<[^>]+>/g, ' ').replace(/&[a-z0-9#]+;/gi, ' ').replace(/\s+/g, ' ');
+    const BARE = [/\b(?:in|into|to|of|with|add|fresh|new|pre-warmed)\s+(?:medium|media|buffer|diluent)\b/i, /\b(?:medium|media)\s+only\b/i, /\bvirus\s*:\s*media\b/i,
+                  /\b(?:µL|mL|uL)\s+(?:of\s+)?(?:fresh\s+)?(?:medium|media|buffer|diluent)\b/i, /(?<!T-REx )\bcomplete\s+(?:growth\s+)?(?:medium|media)\b/i];
+    const look = (pid, where, h) => { const t = strip(String(h).replace(/\{\{p\.\w+\}\}/g, 'X'));
+      BARE.forEach(re => { const m = t.match(re); if (m) out.push(pid + ' ' + where + ': "' + t.slice(Math.max(0, m.index - 25), m.index + m[0].length + 25) + '"'); }); };
+    Object.keys(PROTOCOL_DATA).forEach(pid => { const d = PROTOCOL_DATA[pid];
+      const walk = (body, where) => (body || []).forEach(it => { if (it.t === 'steps') (it.items || []).forEach(x => look(pid, where + ' ' + x.id, x.html)); });
+      walk(d.preamble, 'preamble');
+      (d.stages || []).forEach(st => { walk(st.body, st.name); if (st.pub) look(pid, st.name + ' (Methods)', st.pub); }); });
+    return out;
+  });
+  // the protocols that are cell-line-agnostic by design (transfection, reverse transfection, CellTiter-Glo, seeding, the CRISPR RNP steps) may say "complete medium" / "culture medium"
+  const AGNOSTIC = /^(transfection|revtx|ctg2|seeding|crispr-ko|crispr-ki) /;
+  const hits = r.filter(x => !AGNOSTIC.test(x));
+  if (hits.length) bad('AR13', hits.length + ' step(s) name no medium or buffer: ' + hits.slice(0, 6).join(' | ') + (hits.length > 6 ? ' …' : '')); else ok();
 });
 
 // ═════════ AR11 — offline ═════════
