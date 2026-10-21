@@ -23,6 +23,9 @@
 //                                      line), where it used to keep 16 grey levels; WhiteIsZero is inverted; 8-bit is untouched
 //   BL14 densitometry is on the original  levels and invert set for the figure do not change the numbers: the relative signals of a
 //                                      levelled and inverted panel match the gel's, and a stored box from before is migrated
+//   BL15 keyboard and names            every dialog is role=dialog with its title as its name, takes focus, keeps Tab inside, closes on Esc
+//                                      and returns focus; close buttons are named; editable labels are textboxes with a name and a
+//                                      focus ring; the steppers are named and 24px wide; the toast is role=status; the state colours exist
 //   BL12 layout                        escape, runtime and alignment audits on the figure and every dialog, 1440/1024/390,
 //                                      both themes
 //
@@ -373,6 +376,48 @@ if (run('BL14')) await guard('BL14', async () => {
   const same = Math.max(...r.plain.map((v, i) => Math.abs(v - r.shown[i]) / Math.max(1, v)));
   same < 0.02 ? ok() : bad('BL14', `the same gel gives different signals with and without levels (${(same * 100).toFixed(1)}%)`);
   r.migrated.v === 2 && r.migrated.dark === true && r.migrated.y0 === 0.3 ? ok() : bad('BL14', 'a stored box from before was not migrated (polarity flipped, box kept): ' + JSON.stringify(r.migrated));
+  await p.context().close();
+});
+
+if (run('BL15')) await guard('BL15', async () => {
+  const p = await open();
+  await p.evaluate(GEL + `;(() => { var g = __gel([.2,.4,.6,.8,.2,.4,.6,.8,.2,.4,.6,.8]); FIG.panels[0].src = g; FIG.panels[0].cropped = g; FIG.panels[0].prot = 'BRD4'; FIG.panels[0].crop = { x: 0, y: 0, w: 600, h: 120 }; save(); render(); })()`);
+  await sleep(300);
+  const dialogs = [['crop-back', 'openCrop(0)', 'closeCrop'], ['dn-back', 'openQuant(0)', 'closeQuant'], ['mk-back', 'openMarkers(0)', 'closeMarkers'], ['hist-back', 'openHistoryModal()', 'closeHistoryModal'], ['preset-back', 'openPresetsModal()', 'closePresetsModal']];
+  for (const [id, open_, close_] of dialogs) {
+    await p.evaluate(() => { const b = document.getElementById('exp-labbook') || document.querySelector('.toolbar .btn'); b && b.focus(); });
+    const before = await p.evaluate(() => { const e = document.activeElement; e.setAttribute('data-opener', '1'); return e.tagName; });
+    await p.evaluate(open_); await sleep(500);
+    const r = await p.evaluate(id => { const b = document.getElementById(id), m = b.querySelector('.modal'), t = m.querySelector('h3'), c = b.querySelector('.iconbtn');
+      const f = [...b.querySelectorAll('button,input,select,textarea')].filter(e => e.getClientRects().length && !e.disabled);
+      return { role: m.getAttribute('role'), modal: m.getAttribute('aria-modal'), name: !!(t && m.getAttribute('aria-labelledby') === t.id), close: c && c.getAttribute('aria-label'), w: c && c.getBoundingClientRect().width, inside: b.contains(document.activeElement), n: f.length }; }, id);
+    if (r.role !== 'dialog' || r.modal !== 'true' || !r.name) bad('BL15', `${id}: role=${r.role} modal=${r.modal} named=${r.name}`); else ok();
+    if (r.close !== 'Close' || r.w < 28) bad('BL15', `${id}: the close button is "${r.close}" ${r.w}px`); else ok();
+    if (!r.inside) bad('BL15', `${id}: focus did not move into the dialog`); else ok();
+    // Tab from the last control stays inside
+    const stay = await p.evaluate(id => { const b = document.getElementById(id), f = [...b.querySelectorAll('button,input:not([type=hidden]),select,textarea,[tabindex]:not([tabindex="-1"])')].filter(e => e.getClientRects().length && !e.disabled); f[f.length - 1].focus(); document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true })); return b.contains(document.activeElement); }, id);
+    await p.keyboard.press('Tab'); const stay2 = await p.evaluate(id => document.getElementById(id).contains(document.activeElement), id);
+    if (!stay || !stay2) bad('BL15', `${id}: Tab leaves the dialog`); else ok();
+    await p.keyboard.press('Escape'); await sleep(350);
+    const back = await p.evaluate(id => ({ closed: !document.getElementById(id).classList.contains('open'), opener: document.activeElement && document.activeElement.getAttribute('data-opener') === '1' }), id);
+    if (!back.closed) bad('BL15', `${id}: Esc does not close it`); else ok();
+    if (!back.opener) bad('BL15', `${id}: focus did not go back to the control that opened it`); else ok();
+    await p.evaluate(() => document.querySelectorAll('[data-opener]').forEach(e => e.removeAttribute('data-opener')));
+    await p.evaluate(close_ + '()').catch(() => {});
+  }
+  const q = await p.evaluate(() => {
+    const labs = [...document.querySelectorAll('.lbl-in,.grp-lbl')];
+    const ring = (() => { const l = document.querySelector('.lane-cell .lbl-in'); l.focus(); const cs = getComputedStyle(l); return cs.outlineStyle !== 'none' && parseFloat(cs.outlineWidth) >= 2; })();
+    const st = [...document.querySelectorAll('.tb-step button')].map(b => ({ w: b.getBoundingClientRect().width, n: b.getAttribute('aria-label') }));
+    const inp = [...document.querySelectorAll('.tb-step input')].map(i => i.getAttribute('aria-label'));
+    const root = getComputedStyle(document.documentElement);
+    return { labs: labs.length, unnamed: labs.filter(l => l.getAttribute('role') !== 'textbox' || !l.getAttribute('aria-label')).length, ring, smallStep: st.filter(x => x.w < 24 || !x.n).length, inp: inp.filter(x => !x), toast: document.getElementById('toast').getAttribute('role'), tokens: ['--good', '--warn', '--danger', '--shadow-xs'].filter(t => !root.getPropertyValue(t).trim()) };
+  });
+  q.labs && !q.unnamed ? ok() : bad('BL15', `${q.unnamed} of ${q.labs} editable labels are not named textboxes`);
+  q.ring ? ok() : bad('BL15', 'an editable label shows no focus ring');
+  !q.smallStep && !q.inp.length ? ok() : bad('BL15', `${q.smallStep} stepper buttons are under 24px or unnamed, ${q.inp.length} unnamed number boxes`);
+  q.toast === 'status' ? ok() : bad('BL15', 'the toast is not role=status');
+  !q.tokens.length ? ok() : bad('BL15', 'tokens missing: ' + q.tokens.join(', '));
   await p.context().close();
 });
 
