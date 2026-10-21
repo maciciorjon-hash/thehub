@@ -19,8 +19,8 @@
   --fs-1:10px;--fs-2:11px;--fs-3:12px;--fs-4:13px;--fs-5:15px;--fs-6:17px;--fs-7:20px;--fs-8:26px;--fs-9:38px;
   --r-1:4px;--r-2:6px;--r-3:9px;--r-4:13px;--r-full:999px;--bg:#f4f5f8;--surface:#ffffff;--surface2:#f0f1f5;--surface3:#e4e6ee;
   --border:rgba(0,0,0,0.07);--border2:rgba(0,0,0,0.13);
-  --text:#1a1d2e;--text2:#5a5f7a;--text3:#7c8199;
-  --brand:#00acc1;--accent:#5e87c5;--on-accent:#ffffff;--accent2:#0079b9;--accent3:#51c3ce;--warn:#dda54e;--danger:#d9736f;
+  --text:#1a1d2e;--text2:#4f5470;--text3:#5f647e;--accent-ink:#36609f;--good-ink:#176c42;--warn-ink:#8a4f08;
+  --brand:#00acc1;--accent:#5e87c5;--on-accent:#ffffff;--accent2:#0079b9;--accent3:#51c3ce;--good:#2d9462;--warn:#c47818;--danger:#c04040;
   --accent-dim:rgba(94,135,197,0.12);--accent-soft:rgba(94,135,197,0.22);
   --sans:'IBM Plex Sans',system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;--mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   --shadow-xs:0 1px 4px rgba(0,0,0,.04);
@@ -34,8 +34,8 @@
   --accent:#8aaee0;--on-accent:#0d0f14;--accent-dim:rgba(138,174,224,0.16);--accent-soft:rgba(138,174,224,0.26);
   --bg:#0d0f14;--surface:#13161e;--surface2:#1c2030;--surface3:#252a3a;
   --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.13);
-  --text:#e8eaf2;--text2:#8b90a8;--text3:#7b8099;
-  --accent-dim:rgba(0,172,193,0.18);
+  --text:#e8eaf2;--text2:#8b90a8;--text3:#9096ad;
+  --good:#6ddca8;--warn:#f0b060;--danger:#f08a84;--accent-ink:var(--accent);--good-ink:var(--good);--warn-ink:var(--warn);
   --shadow-xs:0 1px 4px rgba(0,0,0,.30);
   --shadow-sm:0 2px 8px rgba(0,0,0,.40);
   --shadow-md:0 6px 24px rgba(0,0,0,.50);
@@ -132,7 +132,8 @@ main{flex:1;overflow:hidden;display:flex;flex-direction:column;min-height:0;}
 .box-card{background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-2);padding:12px;cursor:pointer;transition:border-color .18s,transform .12s,box-shadow .18s,background .18s;position:relative;overflow:hidden;}
 .box-card:hover{border-color:var(--accent);background:var(--surface);transform:translateY(-1px);box-shadow:var(--shadow-sm);}
 .box-card:active{transform:scale(.99);}
-.box-card.empty{opacity:.65;}
+.box-card.empty .box-preview,.box-card.empty .box-fill{opacity:.6;}   /* not the whole card: opacity on the text took "96 free" to 2:1 */
+.box-card.empty .box-name>span:first-child{color:var(--text2);}
 .box-name{font-size:var(--fs-4);font-weight:600;color:var(--text);margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;gap:6px;}
 .box-fill{height:6px;background:var(--surface3);border-radius:var(--r-1);overflow:hidden;margin-bottom:6px;}
 .box-fill-bar{height:100%;background:var(--accent);transition:width .4s ease,background-color .2s;border-radius:var(--r-1);}
@@ -212,7 +213,9 @@ table{width:100%;border-collapse:collapse;font-size:var(--fs-3);}
 thead{background:var(--surface2);position:sticky;top:0;z-index:2;}
 thead th{padding:8px 12px;text-align:left;font-size:var(--fs-2);font-weight:600;color:var(--text2);border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer;user-select:none;transition:color .15s;}
 thead th:hover{color:var(--text);}
-thead th.sorted{color:var(--accent);}
+thead th.sorted{color:var(--text);}   /* the arrow says which way; --accent text on --surface2 was 3.2:1 */
+thead th:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;}
+thead th.sortable{cursor:pointer;}
 tbody td{padding:7px 12px;border-bottom:1px solid var(--border);color:var(--text);}
 tbody tr{transition:background .12s;cursor:pointer;}
 tbody tr:hover{background:var(--surface2);}
@@ -352,6 +355,37 @@ tbody tr:hover{background:var(--surface2);}
     transition-duration:1ms!important;scroll-behavior:auto!important;}
 }
 
+.sr-only{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0;}
+/* One focus ring for everything a keyboard can reach (WCAG 2.4.7). Controls that already draw their own (a field's accent border and halo) keep it. */
+:is(button,[role=button],[role=tab],[tabindex],a[href],summary,select,input[type=checkbox],input[type=range]):focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+.box-card:focus-visible,tbody tr:focus-visible{outline-offset:-2px;}
+#bulk-text:focus{border-color:var(--accent)!important;box-shadow:0 0 0 2px var(--accent-dim);}
+.find-row:focus-visible{outline-offset:-2px;}
+.tb-search input:focus-visible,.tb-fit input:focus-visible{box-shadow:0 0 0 2px var(--accent-dim);}
+/* a rack's name is a control the size of its words, not a 900px strip that renames on any click beside it */
+.rack-name{display:flex;align-items:center;min-height:24px;}
+.rack-name .rn-t{cursor:text;min-height:24px;display:inline-flex;align-items:center;max-width:100%;overflow-wrap:anywhere;}
+.cell-actions button{min-height:24px;min-width:24px;}
+.detail-close{min-width:28px;min-height:28px;}
+/* ── UI.md alignment (2026-10-21): buttons and boxes 32px / --r-1 / --fs-3, hover by background and colour, tabs are text over an underline ── */
+.tb-btn,.modal-foot .tb-btn,.tb-btn.lg{height:32px;padding:0 14px;border-radius:var(--r-1);font-size:var(--fs-3);font-weight:500;}
+.tb-btn.primary,.modal-foot .tb-btn.primary{font-weight:600;}
+.tb-btn.primary:hover,.modal-foot .tb-btn.primary:hover{filter:none;opacity:1;background:color-mix(in srgb,var(--accent) 86%,var(--text));}
+.tb-btn,.modal-foot .tb-btn{transition:background-color var(--dur-1) var(--ease),color var(--dur-1) var(--ease),border-color var(--dur-1) var(--ease);}
+.tb-search input,.tb-fit input,.field input,.field select,.field textarea:not(#vf-notes){height:32px;border-radius:var(--r-1);background:var(--surface2);font-size:var(--fs-3);}
+.tb-search input{padding:0 12px 0 34px;}
+.field textarea{border-radius:var(--r-1);background:var(--surface2);font-size:var(--fs-3);}
+#bulk-text{border-radius:var(--r-1);}
+.modal-title{font-size:var(--fs-6);font-weight:700;}
+.tab.active{color:var(--text);font-weight:600;}
+.tab.active .tcount{color:var(--accent-ink);}
+.view-tabs{background:none;border:0;border-radius:0;gap:2px;overflow:visible;}
+.view-tab{height:32px;padding:0 12px;border-bottom:2px solid transparent;border-radius:0;font-weight:500;transition:color var(--dur-1) var(--ease),border-color var(--dur-1) var(--ease);}
+.view-tab:hover{background:none;color:var(--text);}
+.view-tab.active{background:none;color:var(--text);font-weight:600;border-bottom-color:var(--accent);}
+.boxview-seg{background:none;border:0;padding:0;gap:2px;border-radius:0;}
+.bvseg-btn{height:32px;padding:0 12px;border-radius:0;border-bottom:2px solid transparent;font-weight:500;}
+.bvseg-btn.on{background:none;color:var(--text);font-weight:600;border-bottom-color:var(--accent);}
 /* phone type scale (docs/UI.md): a 10px label is a desktop read. Portrait phones by width, landscape phones by height. */
 @media (max-width:760px), (hover:none) and (pointer:coarse) and (max-height:520px){
   :root{--fs-1:11px;--fs-2:12px;--fs-3:13px;--fs-4:14px;--fs-5:16px;}
@@ -380,7 +414,7 @@ tbody tr:hover{background:var(--surface2);}
 .find-none{font-size:var(--fs-3);color:var(--text3);padding:6px 0;}
 .find-list{display:flex;flex-direction:column;max-height:300px;overflow:auto;overscroll-behavior:contain;}
 .find-row{display:grid;grid-template-columns:14px minmax(0,1fr) auto;align-items:center;gap:10px;padding:7px 8px;border:none;background:none;border-radius:var(--r-2);text-align:left;cursor:pointer;font-family:var(--sans);color:var(--text);}
-.find-row:hover,.find-row:focus-visible{background:var(--surface2);outline:none;}
+.find-row:hover,.find-row:focus-visible{background:var(--surface2);}
 .find-sw{width:12px;height:12px;border-radius:var(--r-1);border:1px solid var(--border2);}
 .find-nm{font-size:var(--fs-4);font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .find-nm small{display:block;font-size:var(--fs-2);color:var(--text3);font-weight:400;}
@@ -486,14 +520,14 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
     <p id="hdr-sub">Cryostorage inventory &mdash; you only see the boxes, the data goes deeper</p>
   </div>
   <div class="hdr-right">
-    <button class="opts-btn" id="opts-btn" onclick="toggleOpts()" title="Options"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" shape-rendering="geometricPrecision"><circle cx="12" cy="12" r="3.1"/><path d="M12 2.6l1.5 2.6 3-.4.5 3 2.6 1.5-1.6 2.7 1.6 2.7-2.6 1.5-.5 3-3-.4L12 21.4l-1.5-2.6-3 .4-.5-3L4.4 14.7 6 12 4.4 9.3l2.6-1.5.5-3 3 .4z"/></svg></button>
+    <button class="opts-btn" id="opts-btn" onclick="toggleOpts()" title="Options" aria-label="Options" aria-expanded="false"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" shape-rendering="geometricPrecision"><circle cx="12" cy="12" r="3.1"/><path d="M12 2.6l1.5 2.6 3-.4.5 3 2.6 1.5-1.6 2.7 1.6 2.7-2.6 1.5-.5 3-3-.4L12 21.4l-1.5-2.6-3 .4-.5-3L4.4 14.7 6 12 4.4 9.3l2.6-1.5.5-3 3 .4z"/></svg></button>
   </div>
 </header>
 <div class="opts-panel" id="opts-panel">
   <div class="opts-row">
     <span class="opts-label">Theme</span>
     <label class="theme-switch">
-      <input type="checkbox" id="theme-toggle-chk" onchange="toggleTheme()">
+      <input type="checkbox" id="theme-toggle-chk" aria-label="Dark theme" onchange="toggleTheme()">
       <span class="theme-slider"></span>
     </label>
   </div>
@@ -509,15 +543,15 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
   <div class="opts-row" style="margin-top:8px;">
     <button class="tb-btn danger" style="width:100%;justify-content:center;" onclick="clearAllData()">Clear all data&hellip;</button>
   </div>
-  <input type="file" id="import-file" accept=".xlsx,.xls,.csv" style="display:none;" onchange="importXLSX(this.files[0])">
+  <input type="file" id="import-file" aria-label="Import a spreadsheet" accept=".xlsx,.xls,.csv" style="display:none;" onchange="importXLSX(this.files[0])">
 </div>
 
-<div class="tabs" id="storage-tabs"></div>
+<div class="tabs" id="storage-tabs" role="tablist" aria-label="Storage units"></div>
 
 <main id="storage-panes"></main>
 
 <!-- BOX DETAIL OVERLAY -->
-<div class="detail-overlay" id="detail-overlay" onclick="if(event.target===this)closeBoxDetail()">
+<div class="detail-overlay" id="detail-overlay" role="dialog" aria-modal="true" aria-labelledby="detail-box-name" onclick="if(event.target===this)closeBoxDetail()">
   <div class="detail-card">
     <div class="detail-hdr">
       <div class="detail-title">
@@ -525,9 +559,9 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
         <span class="detail-name" id="detail-box-name" contenteditable="false">Box</span>
         <span class="detail-sub" id="detail-box-meta"></span>
       </div>
-      <button class="icon-btn" onclick="renameBoxStart()" title="Rename">&#9998;</button>
-      <button class="icon-btn danger" onclick="deleteBoxFromDetail()" title="Delete box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;vertical-align:-2px;"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button>
-      <button class="detail-close" onclick="closeBoxDetail()">&times;</button>
+      <button class="icon-btn" onclick="renameBoxStart()" title="Rename the box" aria-label="Rename the box">&#9998;</button>
+      <button class="icon-btn danger" onclick="deleteBoxFromDetail()" title="Delete box" aria-label="Delete the box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;vertical-align:-2px;"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button>
+      <button class="detail-close" onclick="closeBoxDetail()" aria-label="Close the box">&times;</button>
     </div>
     <div class="detail-toolbar">
       <button class="tb-btn primary" onclick="openAddVial()">+ Add vial</button>
@@ -548,68 +582,68 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
 </div>
 
 <!-- ADD/EDIT VIAL MODAL -->
-<div class="modal-overlay" id="vial-modal" onclick="if(event.target===this)closeVialModal()">
+<div class="modal-overlay" id="vial-modal" role="dialog" aria-modal="true" aria-labelledby="vial-modal-title" onclick="if(event.target===this)closeVialModal()">
   <div class="modal-card">
     <div class="modal-hdr">
       <div class="modal-title" id="vial-modal-title">Add vial</div>
-      <button class="detail-close" onclick="closeVialModal()">&times;</button>
+      <button class="detail-close" onclick="closeVialModal()" aria-label="Close">&times;</button>
     </div>
     <div class="modal-body">
       <form id="vial-form" class="vial-form" onsubmit="event.preventDefault();saveVial();">
         <div class="field">
-          <label>Position</label>
+          <label for="vf-pos">Position</label>
           <input type="text" id="vf-pos" placeholder="A1" required pattern="[A-Z][0-9]{1,2}" style="text-transform:uppercase;font-family:var(--mono);">
           <span class="hint">Row letter + column number (e.g. A1, B12)</span>
         </div>
         <div class="field">
-          <label>What is it</label>
+          <label for="vf-kind">What is it</label>
           <select id="vf-kind" onchange="vfSyncKind()"></select>
         </div>
         <div class="field">
-          <label id="vf-cl-lbl">Cell line *</label>
+          <label id="vf-cl-lbl" for="vf-cl">Cell line *</label>
           <input type="text" id="vf-cl" list="cl-suggestions" placeholder="HeLa, U2OS, HEK293T&hellip;" required>
           <datalist id="cl-suggestions"></datalist>
         </div>
         <div class="field vf-cells">
-          <label>Passage number</label>
+          <label for="vf-passage">Passage number</label>
           <input type="text" id="vf-passage" placeholder="P12">
         </div>
         <div class="field">
-          <label>Freeze date</label>
+          <label for="vf-date">Freeze date</label>
           <input type="date" id="vf-date">
         </div>
         <div class="field span2 vf-cells">
-          <label>Freezing media</label>
+          <label for="vf-fmedia">Freezing media</label>
           <input type="text" id="vf-fmedia" placeholder="e.g. DMEM + 10% FBS + 10% DMSO">
         </div>
         <div class="field span2 vf-cells">
-          <label>Culture media / conditions</label>
+          <label for="vf-culture">Culture media / conditions</label>
           <input type="text" id="vf-culture" placeholder="e.g. DMEM + 10% FBS + 1% P/S, 37&deg;C 5% CO&#8322;">
         </div>
         <div class="field span2 vf-other" style="display:none;">
-          <label id="vf-conc-lbl">Concentration / details</label>
+          <label id="vf-conc-lbl" for="vf-conc">Concentration / details</label>
           <input type="text" id="vf-conc" placeholder="e.g. 1 mg/mL, 100 &micro;M stock">
         </div>
         <div class="field">
-          <label id="vf-by-lbl">Frozen by</label>
+          <label id="vf-by-lbl" for="vf-by">Frozen by</label>
           <input type="text" id="vf-by" placeholder="initials">
         </div>
         <div class="field" id="vf-fill-field">
-          <label>How many vials</label>
+          <label for="vf-count">How many vials</label>
           <input type="number" id="vf-count" value="1" min="1" max="200">
           <span class="hint" id="vf-fill-hint">One per position, filling forward from here</span>
         </div>
         <div class="field span2">
-          <label>Notes</label>
+          <label for="vf-notes">Notes</label>
           <textarea id="vf-notes" placeholder="Anything else&hellip;"></textarea>
         </div>
       </form>
     </div>
     <div class="modal-foot">
       <button class="tb-btn lg danger" id="vf-delete-btn" style="margin-right:auto;display:none;" onclick="deleteVial()">Delete</button>
-      <button class="tb-btn lg" id="vf-discard-btn" style="display:none;" onclick="discardVial()" title="Used up or failed \u2014 removed from the box but kept in its history">Discard</button>
+      <button class="tb-btn lg" id="vf-discard-btn" style="display:none;" onclick="discardVial()" title="Used up or failed, removed from the box but kept in its history">Discard</button>
       <button class="tb-btn lg" id="vf-dup-btn" style="display:none;" onclick="duplicateVial()" title="Same contents, next free position">Duplicate</button>
-      <button class="tb-btn lg" id="vf-thaw-btn" style="display:none;" onclick="thawVial()" title="Take this vial out and start a culture in Incubator">Thaw \u2192</button>
+      <button class="tb-btn lg" id="vf-thaw-btn" style="display:none;" onclick="thawVial()" title="Take this vial out and start a culture in Incubator">Thaw</button>
       <button class="tb-btn lg" onclick="closeVialModal()">Cancel</button>
       <button class="tb-btn lg primary" onclick="saveVial()">Save</button>
     </div>
@@ -617,11 +651,11 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
 </div>
 
 <!-- BULK ADD MODAL -->
-<div class="modal-overlay" id="bulk-modal" onclick="if(event.target===this)closeBulkAdd()">
+<div class="modal-overlay" id="bulk-modal" role="dialog" aria-modal="true" aria-labelledby="bulk-modal-title" onclick="if(event.target===this)closeBulkAdd()">
   <div class="modal-card">
     <div class="modal-hdr">
-      <div class="modal-title">Bulk add vials</div>
-      <button class="detail-close" onclick="closeBulkAdd()">&times;</button>
+      <div class="modal-title" id="bulk-modal-title">Bulk add vials</div>
+      <button class="detail-close" onclick="closeBulkAdd()" aria-label="Close">&times;</button>
     </div>
     <div class="modal-body">
       <p style="font-size:12px;color:var(--text2);line-height:1.55;margin-bottom:10px;">
@@ -637,7 +671,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
         <code style="font-family:var(--mono);font-size:11px;background:var(--surface2);padding:1px 6px;border-radius:3px;">Notes</code>
         — first line can be the header (auto-detected).
       </p>
-      <textarea id="bulk-text" placeholder="A1&#9;HeLa&#9;P12&#9;2026-01-15&#9;DMEM+10%FBS+10%DMSO&#9;DMEM+10%FBS&#9;JM&#9;2&#9;
+      <textarea id="bulk-text" aria-label="Vials to add, one per line" placeholder="A1&#9;HeLa&#9;P12&#9;2026-01-15&#9;DMEM+10%FBS+10%DMSO&#9;DMEM+10%FBS&#9;JM&#9;2&#9;
 A2&#9;HeLa&#9;P12&#9;2026-01-15&#9;DMEM+10%FBS+10%DMSO&#9;DMEM+10%FBS&#9;JM&#9;2&#9;
 B1&#9;U2OS&#9;P8&#9;2026-02-03&#9;DMEM+15%FBS+10%DMSO&#9;DMEM+10%FBS&#9;JM&#9;1&#9;" style="width:100%;min-height:200px;background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:10px 12px;color:var(--text);font-family:var(--mono);font-size:12px;line-height:1.6;outline:none;resize:vertical;"></textarea>
       <div id="bulk-preview" style="margin-top:10px;font-size:11px;color:var(--text3);font-family:var(--mono);"></div>
@@ -650,16 +684,16 @@ B1&#9;U2OS&#9;P8&#9;2026-02-03&#9;DMEM+15%FBS+10%DMSO&#9;DMEM+10%FBS&#9;JM&#9;1&
 </div>
 
 <!-- ADD RACK MODAL -->
-<div class="modal-overlay" id="rack-modal" onclick="if(event.target===this)closeRackModal()">
+<div class="modal-overlay" id="rack-modal" role="dialog" aria-modal="true" aria-labelledby="rack-modal-title" onclick="if(event.target===this)closeRackModal()">
   <div class="modal-card" style="max-width:420px;">
     <div class="modal-hdr">
       <div class="modal-title" id="rack-modal-title">Add rack</div>
-      <button class="detail-close" onclick="closeRackModal()">&times;</button>
+      <button class="detail-close" onclick="closeRackModal()" aria-label="Close">&times;</button>
     </div>
     <div class="modal-body">
       <div class="vial-form full">
         <div class="field">
-          <label>Rack name</label>
+          <label for="rf-name">Rack name</label>
           <input type="text" id="rf-name" placeholder="Shelf 1 / Tower A / Drawer 2" autocomplete="off">
         </div>
       </div>
@@ -672,24 +706,24 @@ B1&#9;U2OS&#9;P8&#9;2026-02-03&#9;DMEM+15%FBS+10%DMSO&#9;DMEM+10%FBS&#9;JM&#9;1&
 </div>
 
 <!-- ADD BOX MODAL -->
-<div class="modal-overlay" id="box-modal" onclick="if(event.target===this)closeBoxModal()">
+<div class="modal-overlay" id="box-modal" role="dialog" aria-modal="true" aria-labelledby="box-modal-title" onclick="if(event.target===this)closeBoxModal()">
   <div class="modal-card" style="max-width:460px;">
     <div class="modal-hdr">
-      <div class="modal-title">Add box</div>
-      <button class="detail-close" onclick="closeBoxModal()">&times;</button>
+      <div class="modal-title" id="box-modal-title">Add box</div>
+      <button class="detail-close" onclick="closeBoxModal()" aria-label="Close">&times;</button>
     </div>
     <div class="modal-body">
       <div class="vial-form">
         <div class="field span2">
-          <label>Box name</label>
+          <label for="bf-name">Box name</label>
           <input type="text" id="bf-name" placeholder="Box-001" autocomplete="off">
         </div>
         <div class="field">
-          <label>Rows</label>
+          <label for="bf-rows">Rows</label>
           <input type="number" id="bf-rows" value="8" min="1" max="16">
         </div>
         <div class="field">
-          <label>Columns</label>
+          <label for="bf-cols">Columns</label>
           <input type="number" id="bf-cols" value="12" min="1" max="24">
           <span class="hint">e.g. 9 &times; 9 = 81 (common); 10 &times; 10 = 100 (common)</span>
         </div>
@@ -703,7 +737,7 @@ B1&#9;U2OS&#9;P8&#9;2026-02-03&#9;DMEM+15%FBS+10%DMSO&#9;DMEM+10%FBS&#9;JM&#9;1&
 </div>
 
 <div class="tt-card" id="tt-card"></div>
-<div id="toast"></div>
+<div id="toast" role="status" aria-live="polite"></div>
 
 <script>
 // ═══════════════════════════════════════════════════════════════════════════
@@ -731,7 +765,7 @@ function toggleTheme(){
   clearColorCache();
   try { localStorage.setItem('hub_theme', next); } catch(e) {}
 }
-function toggleOpts(){ document.getElementById('opts-panel').classList.toggle('open'); }
+function toggleOpts(){ var o = document.getElementById('opts-panel').classList.toggle('open'), b = document.getElementById('opts-btn'); if (b) b.setAttribute('aria-expanded', String(o)); }
 
 // ─── STATE ────────────────────────────────────────────────────────────────
 var STORAGE_KEY = 'cryo_state_v1';
@@ -1005,7 +1039,7 @@ function _hash(s){ var h = 2166136261; s = String(s || ''); for (var i = 0; i < 
 function cellLineFamilyHue(name){ return _hash(_cellBase(name)) % 360; }
 function _pastel(hue, jitter){
   var dark = document.documentElement.getAttribute('data-theme') === 'dark';
-  return dark ? 'hsl(' + hue + ', 32%, ' + (40 + jitter) + '%)' : 'hsl(' + hue + ', 55%, ' + (80 + jitter) + '%)';
+  return dark ? 'hsl(' + hue + ', 30%, ' + (31 + jitter) + '%)' : 'hsl(' + hue + ', 55%, ' + (80 + jitter) + '%)';
 }
 function _lineHJ(name, kind){   // [hue, lightness jitter] — the one place a line's colour is decided
   if (kind === 'cells'){
@@ -1091,12 +1125,12 @@ function renderStorageTabs(){
   tabs.innerHTML = keys.map(function(k){
     // Rename and delete existed but nothing ever called them: you could add a storage unit and
     // then never fix a typo in its name. Right-click is the way in, as it is for a box.
-    return '<button class="tab' + (k === currentTab ? ' active' : '') + '" data-tab="' + esc(k) + '" onclick="switchTab(\'' + esc(k) + '\')"'
+    return '<button class="tab' + (k === currentTab ? ' active' : '') + '" role="tab" aria-selected="' + (k === currentTab) + '" data-tab="' + esc(k) + '" onclick="switchTab(\'' + esc(k) + '\')"'
       + ' oncontextmenu="event.preventDefault();storageMenu(\'' + esc(k) + '\',event)" title="Right-click to rename or delete">'
       + '<span class="ti">' + storageIcon(k) + '</span><span>' + esc(state.storages[k].label || k) + '</span>'
       + '<span class="tcount" id="tc-' + esc(k) + '">0</span>' + _storageFillHtml(k) + '</button>';
   }).join('')
-  + '<button class="tab tab-add" title="Add a storage unit" onclick="addStorage()">+</button>';
+  + '<button class="tab tab-add" title="Add a storage unit" aria-label="Add a storage unit" onclick="addStorage()">+</button>';
   // Panes are kept, not rebuilt, so a rendered box survives a tab bar repaint.
   keys.forEach(function(k){
     var pane = panes.querySelector('.tab-pane[data-store="' + k + '"]');
@@ -1207,10 +1241,10 @@ function renderTab(tab){
         +   '<button class="tb-btn" onclick="openAddRack()">+ Rack</button>'
         +   (s.racks.length ? '<button class="tb-btn" onclick="openAddBox()">+ Box</button>' : '')
         +   (s.racks.length ? '<button class="tb-btn" onclick="printStorageSheet(\'' + tab + '\')" title="Every box of this storage on one A4 sheet, for the freezer door">Print sheet</button>' : '')
-        +   '<div class="view-tabs" role="tablist">'
-        +     '<button class="view-tab ' + (UI.view === 'grid' ? 'active' : '') + '" onclick="setView(\'grid\')">Boxes</button>'
-        +     '<button class="view-tab ' + (UI.view === 'table' ? 'active' : '') + '" onclick="setView(\'table\')">Table</button>'
-        +     '<button class="view-tab ' + (UI.view === 'history' ? 'active' : '') + '" onclick="setView(\'history\')">History</button>'
+        +   '<div class="view-tabs" role="tablist" aria-label="View">'
+        +     '<button class="view-tab ' + (UI.view === 'grid' ? 'active' : '') + '" role="tab" aria-selected="' + (UI.view === 'grid') + '" onclick="setView(\'grid\')">Boxes</button>'
+        +     '<button class="view-tab ' + (UI.view === 'table' ? 'active' : '') + '" role="tab" aria-selected="' + (UI.view === 'table') + '" onclick="setView(\'table\')">Table</button>'
+        +     '<button class="view-tab ' + (UI.view === 'history' ? 'active' : '') + '" role="tab" aria-selected="' + (UI.view === 'history') + '" onclick="setView(\'history\')">History</button>'
         +   '</div>'
         + '</div>'
         + '</div>';
@@ -1265,7 +1299,7 @@ function renderRack(tab, rack){
   if (q && !visibleBoxes.length) return '';
   var html = '<div class="rack" data-rack-id="' + rack.id + '">'
     + '<div class="rack-hdr">'
-    +   '<span class="rack-name" onclick="renameRack(\'' + rack.id + '\')" title="Click to rename">' + esc(rack.name) + '</span>'
+    +   '<span class="rack-name"><span class="rn-t" onclick="renameRack(\'' + rack.id + '\')" title="Click to rename" aria-label="Rename rack ' + esc(rack.name) + '">' + esc(rack.name) + '</span></span>'
     +   '<span class="rack-meta">' + rack.boxes.length + ' box' + (rack.boxes.length === 1 ? '' : 'es') + ' · ' + (totalCap - totalFill) + ' free of ' + totalCap + '</span>'
     +   '<span class="rack-bar" title="' + totalFill + ' of ' + totalCap + ' positions used"><i style="width:' + (totalCap ? Math.min(100, totalFill / totalCap * 100) : 0) + '%"></i></span>'
     +   '<div class="rack-actions">'
@@ -1494,7 +1528,9 @@ function renderTableView(tab){
   rows.sort(function(a, b){
     var x = a[col] || '', y = b[col] || '';
     if (typeof x === 'number' && typeof y === 'number') return asc ? x - y : y - x;
-    return asc ? String(x).localeCompare(String(y)) : String(y).localeCompare(String(x));
+    // numeric: P9 before P10, A2 before A10
+    var c = String(x).localeCompare(String(y), undefined, { numeric: true });
+    return asc ? c : -c;
   });
   if (!rows.length) {
     return '<div class="empty-state">'
@@ -1506,7 +1542,7 @@ function renderTableView(tab){
   function hdr(key, label){
     var arr = tableSort.col === key ? (tableSort.asc ? ' ▲' : ' ▼') : '';
     var cls = tableSort.col === key ? 'sorted' : '';
-    return '<th class="' + cls + '" onclick="sortTable(\'' + key + '\')">' + label + arr + '</th>';
+    return '<th class="sortable ' + cls + '" tabindex="0" aria-sort="' + (cls ? (tableSort.asc ? 'ascending' : 'descending') : 'none') + '" onclick="sortTable(\'' + key + '\')">' + label + arr + '</th>';
   }
   var html = '<div class="table-wrap"><table><thead><tr>'
     + hdr('rack', 'Rack')
@@ -1519,7 +1555,7 @@ function renderTableView(tab){
     + hdr('culture', 'Culture')
     + hdr('by', 'By')
     + hdr('count', 'Vials')
-    + '<th></th></tr></thead><tbody>';
+    + '<th><span class="sr-only">Edit</span></th></tr></thead><tbody>';
   rows.forEach(function(r){
     var col = cellLineColor(r.cellLine, r.kind);
     html += '<tr onclick="editVialFromTable(\'' + r._rackId + '\',\'' + r._boxId + '\',\'' + r.pos + '\')">'
@@ -2004,7 +2040,7 @@ function moveSelection(){
   }); }); });
   if (!opts.length){ toast('There is no other box to move them to'); return; }
   var m = document.getElementById('move-modal');
-  if (!m){ m = document.createElement('div'); m.id = 'move-modal'; m.className = 'modal-overlay'; m.onclick = function(e){ if (e.target === m) closeMoveModal(); }; document.body.appendChild(m); }
+  if (!m){ m = document.createElement('div'); m.id = 'move-modal'; m.className = 'modal-overlay'; m.setAttribute('role','dialog'); m.setAttribute('aria-modal','true'); m.setAttribute('aria-label','Move vials'); m.onclick = function(e){ if (e.target === m) closeMoveModal(); }; document.body.appendChild(m); }
   m.innerHTML = '<div class="modal-card" style="max-width:520px;"><div class="modal-hdr"><div class="modal-title">Move ' + filled.length + ' vial' + (filled.length === 1 ? '' : 's') + '</div><button class="detail-close" onclick="closeMoveModal()" aria-label="Close">&times;</button></div>'
     + '<div class="modal-body"><div class="vial-form full"><div class="field"><label for="mv-dest">To which box</label><select id="mv-dest">'
     + opts.map(function(o, i){ return '<option value="' + i + '"' + (o.ok ? '' : ' disabled') + '>' + esc(o.label) + ' — ' + o.free + ' free' + (o.ok ? '' : ' (not enough)') + '</option>'; }).join('')
@@ -2106,6 +2142,9 @@ function openAddVial(){
   _vf('by').value = (last && last.frozenBy) || '';
   _vf('count').value = 1;
   _vf('notes').value = '';
+  // The position box keeps whatever was typed last; offer a free one instead of a taken one.
+  var _pp = normalisePos(_vf('pos').value);
+  if (box && (!_pp || (box.vials && box.vials[_pp]))) _vf('pos').value = _freeFrom(box, 'A1', 1)[0] || '';
   vfSyncKind();
   refreshCellLineSuggestions();
   document.getElementById('vial-modal').classList.add('open');
@@ -2199,6 +2238,13 @@ function saveVial(){
   if (!name) { toast((_vf('kind').value === 'cells' ? 'Cell line' : 'A name') + ' is required'); return; }
 
   if (!box.vials) box.vials = {};
+  // A position holds one vial. Typing the position of a vial that is already there (a new vial, or an
+  // edit that moves one) used to replace that record without a word; the one already there is kept
+  // and the person is told whose it is.
+  if (box.vials[pos] && pos !== editingVialPos) {
+    toast(pos + ' already holds ' + (vialLabel(box.vials[pos]) || 'a vial') + ' \u2014 pick a free position' );
+    return;
+  }
   // If editing and position changed, delete the old key first
   if (editingVialPos && editingVialPos !== pos) delete box.vials[editingVialPos];
 
@@ -2302,12 +2348,15 @@ function parseBulkText(text){
   var lines = text.split(/\r?\n/).map(function(l){ return l.trim(); }).filter(Boolean);
   if (!lines.length) return [];
   // Detect header
-  var firstCells = lines[0].split(/\t|,/).map(function(c){ return c.trim().toLowerCase(); });
+  // A line with a tab is a tab-separated line: its own commas ("HCT116, DCAF15 KO #15", which is how this
+  // app names a line) are part of the name. Only a line with no tab is split on commas.
+  var _split = function(l){ return (l.indexOf('\t') >= 0 ? l.split('\t') : l.split(',')).map(function(c){ return c.trim(); }); };
+  var firstCells = _split(lines[0]).map(function(c){ return c.toLowerCase(); });
   var hasHeader = firstCells.some(function(c){ return ['position', 'pos', 'cell line', 'cellline'].includes(c); });
   var start = hasHeader ? 1 : 0;
   var out = [];
   for (var i = start; i < lines.length; i++) {
-    var cols = lines[i].split(/\t|,/).map(function(c){ return c.trim(); });
+    var cols = _split(lines[i]);
     if (cols.length < 2) continue;
     var pos = normalisePos(cols[0]);
     if (!pos || !cols[1]) continue;
@@ -2330,11 +2379,13 @@ function bulkAddCommit(){
   var parsed = parseBulkText(document.getElementById('bulk-text').value);
   if (!parsed.length) { toast('No valid rows'); return; }
   if (!box.vials) box.vials = {};
-  var added = 0, skipped = 0;
+  var added = 0, skipped = 0, taken = 0;
   parsed.forEach(function(v){
     var rowIdx = v.pos.charCodeAt(0) - 65;
     var colIdx = parseInt(v.pos.slice(1), 10);
     if (rowIdx < 0 || rowIdx >= box.rows || colIdx < 1 || colIdx > box.cols) { skipped++; return; }
+    // A position holds one vial: one that is already there (or listed twice) is kept, not replaced.
+    if (box.vials[v.pos]) { taken++; return; }
     box.vials[v.pos] = {
       cellLine: v.cellLine, passage: v.passage, freezeDate: v.freezeDate,
       freezeMedia: v.freezeMedia, cultureMedia: v.cultureMedia,
@@ -2345,7 +2396,7 @@ function bulkAddCommit(){
   saveState();
   closeBulkAdd();
   renderBoxDetail();
-  toast('Added ' + added + ' vial' + (added === 1 ? '' : 's') + (skipped ? ' · ' + skipped + ' out of range' : ''));
+  toast('Added ' + added + ' vial' + (added === 1 ? '' : 's') + (taken ? ' · ' + taken + ' left out, the position already holds a vial' : '') + (skipped ? ' · ' + skipped + ' out of range' : ''));
 }
 
 // ─── RACK / BOX CRUD ───────────────────────────────────────────────────────
@@ -2627,15 +2678,46 @@ function _detectGridSheet(aoa){
   return { rows: maxLetterCode, cols: maxNum, vials: vials };
 }
 function importXLSXBtn(){ document.getElementById('import-file').click(); }
+// What an import does with one vial. A position holds one vial: a file that names a position another vial
+// already holds does not replace it (that is a recorded vial, and the file may be someone else's), and a
+// position outside a box that was already there is not written where nothing draws it. A box the import
+// itself creates grows to fit what the file puts in it.
+function _importPut(box, pos, v, st){
+  var held = box.vials[pos];
+  if (held){ if (JSON.stringify(held) === JSON.stringify(v)) st.same++; else st.taken++; return; }
+  var r = pos.charCodeAt(0) - 64, c = parseInt(pos.slice(1), 10);
+  if (r > box.rows || c > box.cols){
+    if (st.made.indexOf(box) >= 0 && r <= 26 && c <= 99){ box.rows = Math.max(box.rows, r); box.cols = Math.max(box.cols, c); }
+    else { st.outside++; return; }
+  }
+  box.vials[pos] = v; st.added++;
+}
+// The sheet a storage was exported as is its label with the characters a sheet name cannot hold replaced.
+function _storageForSheet(sheetName){
+  var ks = storageKeys(), nm = String(sheetName).toLowerCase().trim();
+  for (var i = 0; i < ks.length; i++){
+    var lb = String(state.storages[ks[i]].label || ks[i]).replace(/[°₂\/\\?*:|"<>]/g, '_').slice(0, 31).toLowerCase();
+    if (lb === nm || String(state.storages[ks[i]].label || '').toLowerCase() === nm) return ks[i];
+  }
+  var guess = /n2|nitrogen|liquid/.test(nm) ? 'n2' : 'minus80';
+  return state.storages[guess] ? guess : (state.storages[currentTab] ? currentTab : ks[0]);
+}
+// A date a spreadsheet stored as a date is a serial number; as text it is whatever was typed.
+function _importDate(v){
+  if (typeof v === 'number' && v > 20000 && v < 80000) return new Date(Math.round((v - 25569) * 86400000)).toISOString().slice(0, 10);
+  return String(v == null ? '' : v);
+}
 function importXLSX(file){
   if (!file) return;
   if (typeof XLSX === 'undefined') { toast('XLSX library not loaded'); return; }
   var reader = new FileReader();
   reader.onload = function(e){
+    var snap = JSON.stringify(state.storages);   // an import that fails half way must leave the inventory as it was
     try {
       var data = new Uint8Array(e.target.result);
       var wb = XLSX.read(data, { type: 'array' });
-      var added = 0;
+      var st = { added: 0, same: 0, taken: 0, outside: 0, made: [] };
+      if (!storageKeys().length) throw new Error('there is no storage to import into');
       wb.SheetNames.forEach(function(sheetName){
         if (sheetName === 'Overview') return;   // the export's own summary of every box, not a table of vials
         var ws = wb.Sheets[sheetName];
@@ -2660,9 +2742,7 @@ function importXLSX(file){
         if (idx.pos < 0 || idx.cellLine < 0) {
           var grid = _detectGridSheet(aoa);
           if (!grid) return;
-          var sname2 = sheetName.toLowerCase();
-          var tab2 = /n2|nitrogen|liquid/.test(sname2) ? 'n2' : 'minus80';
-          var storage2 = state.storages[tab2];
+          var storage2 = state.storages[_storageForSheet(sheetName)];
           var rackName2 = 'Imported';
           for (var hr = 0; hr < Math.min(aoa.length, 8); hr++) {
             var line = String((aoa[hr] && (aoa[hr][0] || aoa[hr][1])) || '');
@@ -2673,14 +2753,12 @@ function importXLSX(file){
           if (!rack2) { rack2 = { id: uid(), name: rackName2, boxes: [] }; storage2.racks.push(rack2); }
           var boxName2 = sheetName;
           var box2 = rack2.boxes.find(function(b){ return b.name === boxName2; });
-          if (!box2) { box2 = { id: uid(), name: boxName2, rows: grid.rows, cols: grid.cols, vials: {} }; rack2.boxes.push(box2); }
-          Object.keys(grid.vials).forEach(function(pos){ box2.vials[pos] = grid.vials[pos]; added++; });
+          if (!box2) { box2 = { id: uid(), name: boxName2, rows: grid.rows, cols: grid.cols, vials: {} }; rack2.boxes.push(box2); st.made.push(box2); }
+          Object.keys(grid.vials).forEach(function(pos){ _importPut(box2, pos, grid.vials[pos], st); });
           return;
         }
-        // Guess which storage tab this sheet belongs to
-        var sname = sheetName.toLowerCase();
-        var tab = /n2|nitrogen|liquid/.test(sname) ? 'n2' : 'minus80';
-        var storage = state.storages[tab];
+        // Which storage this sheet belongs to: the one it was exported as, else by its name
+        var storage = state.storages[_storageForSheet(sheetName)];
         aoa.slice(1).forEach(function(row){
           var pos = normalisePos(row[idx.pos]); if (!pos) return;
           var cellLine = String(row[idx.cellLine] || '').trim(); if (!cellLine) return;
@@ -2691,29 +2769,34 @@ function importXLSX(file){
           var box = rack.boxes.find(function(b){ return b.name === boxName; });
           if (!box) {
             var sz = idx.size >= 0 ? /(\d+)\s*[×x]\s*(\d+)/i.exec(String(row[idx.size] || '')) : null;
-            box = { id: uid(), name: boxName, rows: sz ? +sz[1] : 8, cols: sz ? +sz[2] : 12, vials: {} }; rack.boxes.push(box);
+            box = { id: uid(), name: boxName, rows: sz ? Math.min(26, +sz[1]) : 8, cols: sz ? Math.min(99, +sz[2]) : 12, vials: {} }; rack.boxes.push(box); st.made.push(box);
           }
           var kindId = null;
           if (idx.kind >= 0) { var kl = String(row[idx.kind] || '').trim().toLowerCase(); var km = VIAL_KINDS.filter(function(x){ return x.label.toLowerCase() === kl; })[0]; if (km && km.id !== 'cells') kindId = km.id; }
-          box.vials[pos] = Object.assign(kindId ? { kind: kindId, label: cellLine } : {}, {
+          var nv = Object.assign(kindId ? { kind: kindId, label: cellLine } : {}, {
             cellLine: cellLine,
             passage: idx.passage >= 0 ? String(row[idx.passage] || '') : '',
-            freezeDate: idx.freezeDate >= 0 ? String(row[idx.freezeDate] || '') : '',
+            freezeDate: idx.freezeDate >= 0 ? _importDate(row[idx.freezeDate]) : '',
             freezeMedia: idx.freezeMedia >= 0 ? String(row[idx.freezeMedia] || '') : '',
             cultureMedia: idx.culture >= 0 ? String(row[idx.culture] || '') : '',
             frozenBy: idx.by >= 0 ? String(row[idx.by] || '') : '',
             vialCount: idx.count >= 0 ? (parseInt(row[idx.count], 10) || 1) : 1,
             notes: idx.notes >= 0 ? String(row[idx.notes] || '') : ''
           });
-          if (kindId) delete box.vials[pos].cellLine;   // a plasmid is known by its label, as the app writes it
-          added++;
+          if (kindId) delete nv.cellLine;   // a plasmid is known by its label, as the app writes it
+          _importPut(box, pos, nv, st);
         });
       });
-      saveState();
+      if (st.added) saveState();
       renderTab(currentTab);
-      toast('Imported ' + added + ' vial' + (added === 1 ? '' : 's'));
+      toast((st.added ? 'Imported ' + st.added + ' vial' + (st.added === 1 ? '' : 's') : 'Nothing new to import')
+        + (st.same ? ' · ' + st.same + ' already there' : '')
+        + (st.taken ? ' · ' + st.taken + ' left out, their position already holds another vial' : '')
+        + (st.outside ? ' · ' + st.outside + ' left out, outside the box' : ''));
     } catch (err) {
-      toast('Import failed: ' + err.message);
+      try { state.storages = JSON.parse(snap); } catch (e2) {}
+      renderTab(currentTab);
+      toast('Import failed, nothing was changed: ' + err.message);
     }
   };
   reader.readAsArrayBuffer(file);
@@ -2767,7 +2850,7 @@ function icebergAsk(title, msg, opts, cb){
   var b = document.getElementById('ib-ask');
   if (!b){
     b = document.createElement('div');
-    b.id = 'ib-ask';
+    b.id = 'ib-ask'; b.setAttribute('role','alertdialog'); b.setAttribute('aria-modal','true'); b.setAttribute('aria-labelledby','ib-ask-t'); b.setAttribute('aria-describedby','ib-ask-m');
     b.style.cssText = 'position:fixed;inset:0;z-index:99998;display:none;align-items:center;'
       + 'justify-content:center;padding:20px;background:rgba(16,20,34,.45);';
     b.innerHTML = '<div style="width:100%;max-width:420px;background:var(--surface,#fff);color:var(--text,#111);'
@@ -2867,6 +2950,54 @@ document.addEventListener('keydown', function(e){
   }
 });
 
+// ── Keyboard reach, dialogs ──────────────────────────────────────────────────────────────────
+// Boxes, racks' names, table rows and column heads are drawn as elements with an onclick and no tabindex, so
+// Tab went straight past them. Anything clickable that is not already a control is made focusable as it is
+// drawn (a row and a column head keep their table role; the rest say 'button'), and Enter or Space presses it.
+var _KB_SEL = '[onclick]:not(button):not(a):not(input):not(select):not(textarea):not(label):not(option):not([tabindex]):not(.modal-overlay):not(.detail-overlay)';
+function _kbArm(root){
+  if (!root || root.nodeType !== 1) return;
+  var list = (root.matches && root.matches(_KB_SEL)) ? [root] : [];
+  list = list.concat([].slice.call(root.querySelectorAll(_KB_SEL)));
+  list.forEach(function(n){ n.tabIndex = 0; if (!/^(TR|TH|TD)$/.test(n.tagName) && !n.getAttribute('role')) n.setAttribute('role', 'button'); });
+}
+_kbArm(document.body);
+try { new MutationObserver(function(ms){ ms.forEach(function(m){ m.addedNodes.forEach(_kbArm); }); }).observe(document.body, { childList: true, subtree: true }); } catch(e){}
+document.addEventListener('keydown', function(e){
+  var t = e.target; if (!t || !t.hasAttribute) return;
+  if ((e.key === 'Enter' || e.key === ' ') && t.hasAttribute('onclick') && !/^(BUTTON|A|INPUT|SELECT|TEXTAREA|SUMMARY)$/.test(t.tagName) && !t.isContentEditable){ e.preventDefault(); t.click(); return; }
+  // arrows walk the tabs of a tab list
+  if ((e.key === 'ArrowRight' || e.key === 'ArrowLeft') && t.getAttribute('role') === 'tab'){
+    var tabs = [].slice.call(t.parentNode.querySelectorAll('[role=tab]')); var i = tabs.indexOf(t);
+    if (tabs.length > 1){ e.preventDefault(); tabs[(i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length].focus(); }
+  }
+  // a dialog keeps Tab inside itself
+  if (e.key === 'Tab'){
+    var open = [].slice.call(document.querySelectorAll('.modal-overlay.open,.detail-overlay.open,#ib-ask')).filter(function(d){ return d.id === 'ib-ask' ? d.style.display === 'flex' : true; }).pop();
+    if (!open) return;
+    var f = [].slice.call(open.querySelectorAll('button,a[href],input,select,textarea,summary,[tabindex]:not([tabindex="-1"])')).filter(function(x){ return !x.disabled && x.offsetParent !== null && getComputedStyle(x).visibility !== 'hidden'; });
+    if (!f.length) return;
+    if (!open.contains(document.activeElement)){ e.preventDefault(); f[0].focus(); }
+    else if (e.shiftKey && document.activeElement === f[0]){ e.preventDefault(); f[f.length - 1].focus(); }
+    else if (!e.shiftKey && document.activeElement === f[f.length - 1]){ e.preventDefault(); f[0].focus(); }
+  }
+});
+// Focus goes into a dialog when it opens and back to what opened it when it closes.
+(function(){
+  var back = new WeakMap();
+  function isOpen(d){ return d.id === 'ib-ask' ? d.style.display === 'flex' : d.classList.contains('open'); }
+  function watch(d){
+    var was = isOpen(d);
+    new MutationObserver(function(){
+      var now = isOpen(d); if (now === was) return; was = now;
+      if (now){ back.set(d, document.activeElement); setTimeout(function(){ if (!d.contains(document.activeElement)){ var f = d.querySelector('.modal-body input:not([type=hidden]),.modal-body select,.modal-body textarea,#ib-ask-in:not([style*=none]),.tb-btn.primary,#ib-ask-ok') || d.querySelector('button'); if (f) f.focus(); } }, 90); }
+      else { var o = back.get(d); if (o && document.contains(o) && o.focus) try { o.focus(); } catch(e){} }
+    }).observe(d, { attributes: true, attributeFilter: ['class', 'style'] });
+  }
+  document.querySelectorAll('.modal-overlay,.detail-overlay').forEach(watch);
+  new MutationObserver(function(ms){ ms.forEach(function(m){ m.addedNodes.forEach(function(n){ if (n.nodeType === 1 && (n.id === 'ib-ask' || n.id === 'move-modal')) watch(n); }); }); }).observe(document.body, { childList: true });
+})();
+
 // ─── INIT ──────────────────────────────────────────────────────────────────
 loadState();
 renderStorageTabs();
@@ -2887,10 +3018,10 @@ cryoInitSync(function(adopted){  // then reconcile with the cloud (admin, cross-
     var d=document.createElement('div');
     d.setAttribute('role','status');
     d.style.cssText='position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:99999;'
-      +'max-width:min(560px,92vw);background:#8a5a00;color:#fff;font:500 12.5px/1.5 system-ui,-apple-system,sans-serif;'
-      +'padding:10px 14px;border-radius:6px;box-shadow:0 8px 24px rgba(0,0,0,.28);display:flex;gap:10px;align-items:flex-start';
+      +'max-width:min(560px,92vw);background:var(--warn-ink);color:var(--on-accent);font:500 var(--fs-3)/1.5 var(--sans);'
+      +'padding:10px 14px;border-radius:var(--r-2);box-shadow:var(--shadow-lg);display:flex;gap:10px;align-items:flex-start';
     d.innerHTML='<span>No internet connection detected, so <b>Excel import and export</b> are unavailable. Your inventory still works normally.</span>'
-      +'<span style="cursor:pointer;opacity:.8;font-size:15px;line-height:1" title="Dismiss">&times;</span>';
+      +'<button type="button" aria-label="Dismiss" title="Dismiss" style="cursor:pointer;background:none;border:0;color:inherit;font-size:16px;line-height:1;padding:2px 6px;min-width:24px;min-height:24px">&times;</button>';
     d.lastChild.onclick=function(){ d.remove(); };
     document.body.appendChild(d);
   }

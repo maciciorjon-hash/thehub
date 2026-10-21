@@ -22,6 +22,10 @@
 //                           line's letter (the legend's key) when there are 26 lines or fewer
 //   F13 export reads back   the .xlsx export (Overview + one table per storage) imports into an empty freezer with every
 //                           vial, kind, box size and position intact, and the Overview sheet is not mistaken for vials
+//   F14 one position, one   a vial typed, moved, bulk-pasted or imported onto a position that holds another vial never replaces it;
+//       vial               the add dialog offers a free position; a comma inside a tab-separated name is the name; an import
+//                          writes nothing outside a box, grows a box it created, sends a custom storage's sheet to that
+//                          storage, reads a spreadsheet date, and leaves the inventory as it was when it fails half way
 //
 //   node tools/iceberg_invariants.mjs [--only=F1,F4] [--file=apps/iceberg/iceberg.html]      exit 1 on any finding
 import { chromium } from 'playwright';
@@ -304,6 +308,61 @@ if (run('F13')) await guard('F13', async () => {
   out.ov.length === 4 && out.ov[1][3] === '9 × 9' && out.ov[1][4] === 2 ? ok() : bad('F13', 'overview rows: ' + JSON.stringify(out.ov));
   Object.keys(out.a).length === 4 && JSON.stringify(out.a) === JSON.stringify(out.b) ? ok() : bad('F13', 'the export did not read back as it was:\n  ' + JSON.stringify(out.a) + '\n  ' + JSON.stringify(out.b));
   p.errs.length ? bad('F13', 'errors: ' + p.errs.join(' | ')) : ok();
+  await p.context().close();
+});
+
+if (run('F14')) await guard('F14', async () => {
+  const p = await open(OLD);
+  const r = await p.evaluate(async () => {
+    const out = {}; const box = () => state.storages.minus80.racks[0].boxes[0];
+    const snap = () => JSON.stringify(box().vials);
+    const q = (id, v) => { document.getElementById(id).value = v; };
+    openBoxDetail('minus80', 'r1', 'b1');
+    // (a) a new vial typed onto a position that holds one
+    let s0 = snap(); openAddVial(); q('vf-pos', 'A1'); q('vf-cl', 'Intruder'); q('vf-count', '1'); saveVial();
+    out.addKept = snap() === s0; document.getElementById('vial-modal').classList.remove('open');
+    // (b) an edit that moves a vial onto another one
+    openEditVial('A2'); q('vf-pos', 'A1'); saveVial();
+    out.moveKept = snap() === s0; document.getElementById('vial-modal').classList.remove('open'); editingVialPos = null;
+    // (c) the add dialog offers a free position, not the last one typed
+    q('vf-pos', 'A1'); openAddVial(); out.offered = document.getElementById('vf-pos').value; document.getElementById('vial-modal').classList.remove('open');
+    // (d) bulk add: a taken position and a repeated one are kept; a comma inside a tab-separated name is the name
+    document.getElementById('bulk-text').value = 'A1\tIntruder\nE5\tFirst, with comma\tP3\nE5\tSecond\nE6,Plain,P4';
+    bulkAddCommit();
+    const v = box().vials;
+    out.bulk = [v.A1.cellLine, v.E5 && v.E5.cellLine, v.E5 && v.E5.passage, v.E6 && v.E6.cellLine].join('|');
+    // (e) import
+    window.XLSX = { utils: { sheet_to_json: ws => ws.aoa }, read: () => window.__wb };
+    window.FileReader = class { readAsArrayBuffer() { this.onload({ target: { result: new ArrayBuffer(1) } }); } };
+    const H = ['Rack', 'Box', 'Size', 'Position', 'Contents', 'Passage', 'Freeze date'];
+    const run = async (names, sheets) => { window.__wb = { SheetNames: names, Sheets: sheets }; importXLSX(new Blob(['x'])); await new Promise(r => setTimeout(r, 40)); };
+    s0 = snap();
+    await run(['−80_C'], { '−80_C': { aoa: [H, ['Shelf 1', 'Box A', '9 × 9', 'A1', 'Other lab', 'P1', ''], ['Shelf 1', 'Box A', '9 × 9', 'K1', 'Outside', '', ''], ['Shelf 1', 'Box A', '9 × 9', 'F7', 'Fits', '', 46000]] } });
+    out.impKept = JSON.stringify(Object.assign({}, JSON.parse(s0), { F7: box().vials.F7 })) === snap() && !!box().vials.F7;
+    out.impDate = box().vials.F7 && box().vials.F7.freezeDate;
+    await run(['−80_C'], { '−80_C': { aoa: [H, ['New shelf', 'Big', '', 'J14', 'Wide', '', '']] } });
+    const nb = state.storages.minus80.racks.find(r => r.name === 'New shelf');
+    out.grown = nb ? nb.boxes[0].rows + 'x' + nb.boxes[0].cols + ' ' + !!nb.boxes[0].vials.J14 : 'none';
+    // a custom storage's sheet goes to that storage
+    state.storages.fr150 = { label: '−150°C freezer', racks: [] };
+    await run(['−150_C freezer'], { '−150_C freezer': { aoa: [H, ['S', 'B', '5 × 5', 'A1', 'Cold', '', '']] } });
+    out.custom = (state.storages.fr150.racks[0] && state.storages.fr150.racks[0].boxes[0].vials.A1) ? 'fr150' : 'elsewhere';
+    // a failure half way leaves the inventory as it was
+    const before = JSON.stringify(state.storages);
+    await run(['−80_C', 'Bad'], { '−80_C': { aoa: [H, ['Shelf 1', 'Box A', '9 × 9', 'G8', 'Half way', '', '']] }, get Bad() { throw new Error('boom'); } });
+    out.atomic = JSON.stringify(state.storages) === before;
+    return out;
+  });
+  r.addKept ? ok() : bad('F14', 'a new vial typed onto an occupied position replaced the vial that was there');
+  r.moveKept ? ok() : bad('F14', 'moving a vial onto an occupied position replaced the vial that was there');
+  r.offered && !/^(A1|A2|C4)$/.test(r.offered) && /^[A-Z]\d+$/.test(r.offered) ? ok() : bad('F14', 'the add dialog offered "' + r.offered + '", not a free position');
+  r.bulk === 'HCT116, DCAF15 KO #15|First, with comma|P3|Plain' ? ok() : bad('F14', 'bulk add: ' + r.bulk);
+  r.impKept ? ok() : bad('F14', 'an import replaced a vial, wrote outside the box, or lost the free one');
+  r.impDate === '2025-12-09' ? ok() : bad('F14', 'a spreadsheet date came in as ' + r.impDate);
+  r.grown === '10x14 true' ? ok() : bad('F14', 'a box the import creates did not grow to fit: ' + r.grown);
+  r.custom === 'fr150' ? ok() : bad('F14', 'a sheet exported from a custom storage went to ' + r.custom);
+  r.atomic ? ok() : bad('F14', 'an import that failed half way changed the inventory');
+  p.errs.length ? bad('F14', 'errors: ' + p.errs.join(' | ')) : ok();
   await p.context().close();
 });
 
