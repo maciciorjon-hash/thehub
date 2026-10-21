@@ -2899,7 +2899,7 @@ if (run('E78')) await guard('E78', async () => {
   await q.evaluate(() => { loadTestData(); }); await q.waitForTimeout(800);
   const PROBE = () => {
     const out = { btn: [], inp: [], glyph: [] }; const modal = document.getElementById('setup-modal'); const mopen = modal && !modal.classList.contains('hidden') && modal.offsetParent !== null; const root = mopen ? modal : document.body;
-    const SKIP_B = /\b(tab|outer-tab|setup-stab|plate-view|hx-ic|hx-tg|na-btn|plate-png|rrm|sx-link|setup-reopen-btn|setup-hclose|opts-btn|eg-x|cv-tbl-x|cv-mode-single|cv-mode-compare|ck-[\w-]+|tk-[\w-]+|as-[\w-]+|eg-sel|eg-tin|pinfo|dz-[\w-]+|ctx[\w-]*|cv-dl-item|rv-fix|setup-back|setup-next|run-btn|sx-pri|sx-sec)\b/;   /* the last five are SetupKit's (tools/setupkit/setup.css), reported as SHARED */
+    const SKIP_B = /\b(tab|outer-tab|setup-stab|plate-view|hx-ic|hx-tg|na-btn|plate-png|rrm|sx-link|setup-reopen-btn|setup-hclose|opts-btn|eg-x|cv-tbl-x|cv-mode-single|cv-mode-compare|ck-[\w-]+|tk-[\w-]+|as-[\w-]+|eg-sel|eg-tin|pinfo|dz-[\w-]+|ctx[\w-]*|cv-dl-item|rv-fix)\b/;
     for (const e of root.querySelectorAll('button')) {
       const r = e.getBoundingClientRect(), cs = getComputedStyle(e); if (r.width < 2 || r.height < 2 || cs.visibility === 'hidden' || cs.display === 'none' || e.disabled === undefined) continue;
       if (SKIP_B.test(e.className + ' ' + e.id) || e.closest('#dep-stack,.ck-root,.as-panel,[class*="tk-"]') || (e.textContent || '').trim().length < 3) continue;

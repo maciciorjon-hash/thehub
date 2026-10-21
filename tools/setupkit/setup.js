@@ -31,6 +31,7 @@ var SetupKit = (function(){
       return '<button type="button" data-' + (attr || 'v') + '="' + esc(x[0]) + '"' + (x[2] ? ' title="' + esc(x[2]) + '"' : '') + ' class="' + (String(x[0]) === String(active) ? 'active' : '') + '">' + x[1] + '</button>';
     }).join('') + '</div>';
   }
+  var CHL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>', CHR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>';
   function drop(id, title, text){ return '<div class="sx-drop" id="' + id + '" role="button" tabindex="0">' + UP + '<div><b>' + title + '</b>' + text + '</div></div>'; }
   // A plate in the list of plates: its name and what it holds, chips for what has been read (items [[text, count]]), a remove button.
   function plateRow(i, on, name, sub, chips, del){
@@ -131,12 +132,13 @@ var SetupKit = (function(){
       var have = {}; steps.forEach(function(s){ var e = el(paneId(s.key)); if (e) have[s.key] = e; });
       d.innerHTML = '<div class="setup-card' + (o.cardClass ? ' ' + o.cardClass : '') + '" role="dialog" aria-modal="true" aria-labelledby="' + id + '-title" data-step="' + steps[0].key + '">' +
         '<div class="setup-hdr"><div><div class="setup-htitle" id="' + id + '-title">' + esc(o.title) + '</div><div class="setup-hsub"' + (ids.sub ? ' id="' + ids.sub + '"' : '') + '>' + esc(o.sub || '') + '</div></div><button class="setup-hclose" id="' + idClose + '" aria-label="Close setup" title="Close (Esc)">' + X + '</button></div>' +
-        '<div class="setup-stabs" role="tablist">' + steps.map(function(s, i){ return '<button class="setup-stab" role="tab" data-i="' + i + '" data-tab="' + esc(s.key) + '"' + (s.attrs ? ' ' + s.attrs : '') + '><span class="sx-n">' + (i + 1) + '</span>' + esc(s.label) + (s.extra || '') + '</button>'; }).join('') + '</div>' +
+        '<div class="setup-stabs" role="tablist">' + steps.map(function(s, i){ return '<button class="setup-stab" role="tab" id="' + id + '-t-' + esc(s.key) + '" aria-controls="' + paneId(s.key) + '" tabindex="-1" data-i="' + i + '" data-tab="' + esc(s.key) + '"' + (s.attrs ? ' ' + s.attrs : '') + '><span class="sx-n">' + (i + 1) + '</span>' + esc(s.label) + (s.extra || '') + '</button>'; }).join('') + '</div>' +
         '<div class="setup-sbody" id="' + idBody + '">' + steps.map(function(s){ return have[s.key] ? '<div data-adopt="' + esc(s.key) + '"></div>' : '<div class="setup-pane" id="' + paneId(s.key) + '"></div>'; }).join('') + '</div>' +
         '<div class="setup-foot">' + (o.status ? '<div class="setup-fstatus" id="' + o.status + '"></div>' : '') + '<div class="sx-proj">' + (o.foot || []).map(function(b, i){ return '<button class="sx-ghost' + (b.quiet ? ' q' : '') + '" data-foot="' + i + '"' + (b.title ? ' title="' + esc(b.title) + '"' : '') + '>' + esc(b.label) + '</button>'; }).join('') + '</div>' +
-        '<div class="sx-nav"><button class="sx-sec" id="' + idBack + '">&#8249; Back</button><button class="sx-pri" id="' + idNext + '">Next &#8250;</button>' + (o.navExtra || '') + '</div></div></div>';
+        '<div class="sx-nav"><button class="sx-sec" id="' + idBack + '">' + CHL + ' Back</button><button class="sx-pri" id="' + idNext + '">Next ' + CHR + '</button>' + (o.navExtra || '') + '</div></div></div>';
       document.body.appendChild(d);
       steps.forEach(function(s){ var h = have[s.key], at = h && d.querySelector('[data-adopt="' + s.key + '"]'); if (h && at) { h.classList.add('setup-pane'); at.replaceWith(h); } });
+      steps.forEach(function(s){ var p = el(paneId(s.key)); if (p) { p.setAttribute('role', 'tabpanel'); p.setAttribute('aria-labelledby', id + '-t-' + s.key); } });
       K.el = d; K.body = el(idBody);
       var down = null;   // a press that began inside the card and ended on the backdrop (selecting text) is not a click on the backdrop
       d.addEventListener('mousedown', function(e){ down = e.target; });
@@ -150,14 +152,25 @@ var SetupKit = (function(){
         else if (t.classList.contains('setup-stab')) K.go(+t.dataset.i);
         else if (t.dataset.foot !== undefined) o.foot[+t.dataset.foot].fn(K);
       });
-      d.addEventListener('keydown', function(e){
+      // Esc and Tab are heard on the document while the dialog is open, so they work wherever the focus is (on the page behind it too);
+      // a question dialog drawn on top of this one says so with o.nested and keeps its own keys.
+      K._keys = function(e){
+        if (!K.isOpen() || (o.nested && o.nested())) return;
         if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); K.close(); return; }
         if (e.key === 'Tab') {   // keep Tab inside the dialog
           var f = Array.prototype.filter.call(d.querySelectorAll('button,input,select,textarea,[tabindex]:not([tabindex="-1"])'), function(x){ return !x.disabled && x.offsetParent !== null; });
           if (!f.length) return; var a = f[0], z = f[f.length - 1];
-          if (e.shiftKey && document.activeElement === a) { e.preventDefault(); z.focus(); } else if (!e.shiftKey && document.activeElement === z) { e.preventDefault(); a.focus(); }
+          if (!d.contains(document.activeElement)) { e.preventDefault(); (d.querySelector('.setup-stab.active') || a).focus(); }
+          else if (e.shiftKey && document.activeElement === a) { e.preventDefault(); z.focus(); } else if (!e.shiftKey && document.activeElement === z) { e.preventDefault(); a.focus(); }
+          return;
         }
-      });
+        var t = e.target;   // the step tabs: one tab stop, moved by the arrows
+        if (t && t.getAttribute && t.getAttribute('role') === 'tab' && d.contains(t)) {
+          var n = e.key === 'ArrowRight' ? K.step + 1 : e.key === 'ArrowLeft' ? K.step - 1 : e.key === 'Home' ? 0 : e.key === 'End' ? steps.length - 1 : -1;
+          if (n >= 0 && n < steps.length) { e.preventDefault(); K.go(n, true); var tb = d.querySelectorAll('.setup-stab')[n]; if (tb) tb.focus(); }
+        }
+      };
+      document.addEventListener('keydown', K._keys, true);
       if (o.wire) o.wire(d, K);
       K.built = true;
     }
@@ -179,17 +192,17 @@ var SetupKit = (function(){
     };
     K.hide = function(){ if (K.el) K.el.classList.add('hidden'); };      // away for a moment, without the close hook
     K.show = function(){ if (K.el) K.el.classList.remove('hidden'); };
-    K.go = function(i){
+    K.go = function(i, keepFocus){
       i = Math.max(0, Math.min(steps.length - 1, i)); K.step = i;
       K.el.querySelector('.setup-card').dataset.step = steps[i].key;
-      K.el.querySelectorAll('.setup-stab').forEach(function(t, k){ t.classList.toggle('active', k === i); t.setAttribute('aria-selected', k === i); });
+      K.el.querySelectorAll('.setup-stab').forEach(function(t, k){ t.classList.toggle('active', k === i); t.setAttribute('aria-selected', k === i); t.tabIndex = k === i ? 0 : -1; });
       K.el.querySelectorAll('.setup-pane').forEach(function(p, k){ p.classList.toggle('active', k === i); });
       el(idBack).style.visibility = i === 0 ? 'hidden' : '';
-      el(idNext).innerHTML = (o.nextLabel ? o.nextLabel(i, i === steps.length - 1) : (i === steps.length - 1 ? 'Done' : 'Next')) + ' &#8250;';
+      el(idNext).innerHTML = (o.nextLabel ? o.nextLabel(i, i === steps.length - 1) : (i === steps.length - 1 ? 'Done' : 'Next')) + ' ' + CHR;
       steps[i].render(K);
       K.tabs();
       K.body.scrollTop = 0;
-      if (steps[i].focus !== false) {
+      if (steps[i].focus !== false && !keepFocus) {
         var f = K.pane(steps[i].key).querySelector('input:not([type=checkbox]),select,textarea');
         if (f) setTimeout(function(){ try { f.focus({ preventScroll: true }); } catch (e) {} }, 0);
       }
@@ -206,5 +219,5 @@ var SetupKit = (function(){
     return K;
   }
   return { create: create, esc: esc, group: group, field: field, seg: seg, drop: drop, plateRow: plateRow, mini: mini, legend: legend, ctlRow: ctlRow, issues: issues, rangeStr: rangeStr, pos: pos, rc: rc,
-           dropFiles: dropFiles, handGrid: handGrid, handKeys: handKeys, handPaste: handPaste, OK: OK, WARN: WARN, X: X };
+           dropFiles: dropFiles, handGrid: handGrid, handKeys: handKeys, handPaste: handPaste, OK: OK, WARN: WARN, X: X, CHL: CHL, CHR: CHR };
 })();
