@@ -755,7 +755,7 @@ if (run('E19')) await guard('E19', async () => {
     }, 300));
   });
   check('E19', 'Echo sends one picture per plate, each a PNG data URL with a caption', !!sent.images && sent.images.length === sent.nPlates && sent.images.every(i => /^data:image\/png;base64,.{200,}/.test(i.dataUrl) && /—/.test(i.caption) && /\.png$/.test(i.name)), sent.images && sent.images.map(i => [i.name, i.dataUrl.length]));
-  check('E19', 'and the QC table, one row per plate', !!sent.tables && sent.tables[0].rows.length === sent.nPlates && sent.tables[0].cols.length === sent.tables[0].rows[0].length, sent.tables);
+  check('E19', 'and the QC table, one row per plate, in the shape Labbook draws (columns, label, createdAt: a table sent as cols/title arrived with no header and no cells)', !!sent.tables && sent.tables[0].rows.length === sent.nPlates && sent.tables[0].columns.length === sent.tables[0].rows[0].length && sent.tables[0].columns.length > 1 && /^Plate QC/.test(sent.tables[0].label) && !isNaN(Date.parse(sent.tables[0].createdAt)), sent.tables);
   const p2 = await ctx.newPage(); const errs2 = [];
   p2.on('pageerror', e => errs2.push(String(e && e.message || e)));
   await p2.goto('file://' + lb); await p2.waitForTimeout(1500);
