@@ -142,7 +142,7 @@
 //   E57 Setup lines up         Every Setup tab, with one assay and with three assay panels, at 1440 and 390 px: the alignment audit (one control
 //                             height a row, centres on one line, a checkbox on its label's first line) and the escape audit find nothing.
 //
-//   E58 a multi-assay run      Two panels (HiBiT on one prefix, CTG on another): a fit setting typed on one panel survives another being added
+//   E58 a multi-assay run      Two panels (HiBiT on one prefix, Viability on another): a fit setting typed on one panel survives another being added
 //       keeps its names         and removed; every column block names its assay AND its group; the normalisation banners name the assay type,
 //                               not "<id>_hibit"; Labbook gets one result set per assay, each with its own potency name and its own id;
 //                               the Raw data sheet says which assay each row is; no tab prints NaN or undefined.
@@ -157,6 +157,54 @@
 //                             step, Run Analysis only on the last (Next is gone there). Every setting sits on the step that decides it, every field
 //                             has a visible caption, the boxes and numbers of a card line up on one column, and a Review "Fix" button lands on the
 //                             step that holds the setting.
+//   E62 Setup is the kit's    The dialog is SetupKit's (tools/setupkit, the one Beacon and Lumina run on): numbered tabs in step order, Back / Next
+//                             as the kit's buttons, Run Analysis in the same row, the Files tab green once both kinds of file are in, no copy
+//                             of the card / tab / footer CSS in Echo's own style, no backdrop blur, and a press that starts inside the card and
+//                             ends on the backdrop (selecting text) does not close it.
+//   E63 normalise to          A GloMax export is read (Results sheet, a grid per reading, the run's name at the top). With "Normalise to
+//       viability             viability" each well's luminescence is divided by the same well's fluorescence BEFORE the DMSO wells normalise
+//                             it: from one GloMax file that holds both, or from a fluorescence-only file named for the plate (beside PHERAstar
+//                             luminescence). Readings distorted well by well and divided back give exactly the curves of the undistorted plate;
+//                             off, the distortion shows; a viability file is not a plate (no group, tagged in the list); a plate with no viability
+//                             reading is an error in Review and left out of the run; the Raw CSV carries both readings.
+//   E64 one file, two assays  A GloMax file with luminescence and fluorescence feeds a HiBiT panel (reading: luminescence) and a viability panel (reading:
+//                             fluorescence) of one multi-assay run, as two independent assays on the same files: each panel gets exactly the curves of a
+//                             plain run on that reading alone, the plate view keeps both (named for the assay, never one overwriting the other) and finds
+//                             each plate's own fit, a panel asking for a reading the file lacks says so, two panels of one type are refused. The type list says
+//                             "Viability fluorescence" (CellTiter-Glo, the other viability type, is luminescence).
+//
+//   E71 one run, one answer   Run Analysis pressed twice in one tick (or while a run is fitting) runs ONCE: every output file and every normalisation audit
+//                             once, not twice. Two Echo files whose columns differ stop the run on screen — "The analysis stopped" with the reason — instead of
+//                             closing Setup and rejecting in silence.
+//   E72 the budget is exact   The Gradient Planner's max transfer is vol × DMSO %, free of floating-point dust: 7.5 µL at 4.1 % is 307.5 nL (123 drops), not
+//                             307.49999999999994 (122), for every volume and DMSO % that makes a whole number of drops; a point that needs the last drop gets it.
+//
+//   E73 SD is judged in the   The replicate-SD gate is a limit in % of control. A gain-of-signal run and a run with no normalisation are in raw counts, where it
+//       units of the run       flagged every curve (SD=2128 against 25): there the SD is a percentage of the curve's own span, so clean curves are unflagged and a
+//                             replicate that really disagrees still is; a normalised run is judged exactly as before. A raw-count run is not held to the 100 % top
+//                             constraint (it fixed a 100,000-count curve's top at 100: every DC50 0.102 nM, R2 0) nor to a hook threshold of 10 counts.
+//
+//   E74 text is data          Markup in the assay name, the control wells, a plate barcode, a reader file's name, a compound ID, the target / cell line / time
+//                             boxes never becomes an element on any tab, plate view or Setup step (the Protocol tab wrote the assay name, control range, file
+//                             names and sheet name as HTML).
+//
+//   E75 text can be read      Every text run on every Setup step, tab and plate view, in both themes, is at least 3:1 against what is behind it (the floor
+//                             the Hub's own tertiary ink sets; 4.5:1 is the target, tracked in the report), disabled (dimmed) controls apart; the teal that
+//                             carried 'good' and the Compounds tile was 1.9:1 on white, the active segmented button 2.6:1, the group badges 2.7:1. The Review
+//                             table fits its card (its Notes column was cut at the edge).
+//
+//   E76 the keyboard is seen  Pressing Tab through every Setup step and every tab, each stop shows a mark (an outline, a shadow or a changed border): the Curves
+//                             selects and Y limits and the Plate tab's search and selects carried outline:none and showed nothing.
+//
+//   E77 a copy is a copy      Copy TSV keeps its icon after it flashes 'Copied' (it was rewritten as bare text), still copies when the async clipboard is refused
+//                             (textarea fallback), says so on screen when nothing could be copied, and Copy selected IDs does the same instead of failing in silence.
+//
+//   E78 one button, one input  docs/UI.md 2026-10-21 at desktop widths, on every Setup step, tab and the Gradient Planner: a text button is 32px with --r-1 corners and a
+//                              form box is 32px with --r-1 (small icon buttons, table-cell inputs and tabs apart); the tabs are <button role=tab aria-selected>, never
+//                              a div; no typed check mark (a drawn one) on screen; a Tab-reachable close button on Setup is 28px.
+//
+//   E79 an intermediate is   The Planner's prep table says what the snapped transfer REALLY makes: the Echo moves whole 2.5 nL drops, so 1 uM from a 10 mM Source over a
+//       what its drops make  30 uL pre-fill (ideal 3.0 nL) is made with 2.5 nL and comes out 0.83 uM (-17 %), warned about; 10 uM (30.03 nL -> 30 nL) is exact and is not.
 //
 // Usage (repo root):  node tools/echo_invariants.mjs [--only=E1,E7] [--file=path/to/echo.html] [--verbose]
 import { chromium } from 'playwright';
@@ -1229,6 +1277,16 @@ if (run('E28')) await guard('E28', async () => {
     return { groups: others.map(x => x.Protein + ':' + x.DC50_nM), rows: cell ? [...cell.querySelectorAll('.pp-aff-r')].map(e => e.textContent.replace(/\s+/g, ' ').trim()) : null };
   });
   check('E28', 'the Properties tab lists the potency for every group a compound was fitted in', r.rows && r.rows.length === r.groups.length && r.groups.every(g => r.rows.some(t => t.replace(' ', ':') === g || t.includes(g.split(':')[1]) && t.includes(g.split(':')[0]))), r);
+  // The potency cell is a label + number block under its own header: it does not stretch to the next column (the numbers sat against Ro5, far from the DC50 header), and the numbers line up on their right edge.
+  const g = await E(() => {
+    document.querySelector('.tab[data-tab="props"]').click();
+    const cell = document.querySelector('#props-panel td.pp-aff'), ths = [...document.querySelectorAll('#props-panel th')];
+    const grid = cell && cell.querySelector('.pp-aff-grid'), head = ths.find(t => /DC50/.test(t.textContent)), ro5 = ths.find(t => /^Ro5/.test(t.textContent.trim()));
+    if (!grid || !head || !ro5) return null;
+    const vals = [...grid.querySelectorAll('.pp-aff-r > span:last-child')].map(e => Math.round(e.getBoundingClientRect().right));
+    return { fromHead: grid.getBoundingClientRect().left - head.getBoundingClientRect().left, gapToRo5: ro5.getBoundingClientRect().left - grid.getBoundingClientRect().right, vals };
+  });
+  check('E28', 'the DC50 numbers sit under their header, a clear gap before Ro5, right-aligned', g && Math.abs(g.fromHead - 10) < 3 && g.gapToRo5 > 24 && g.vals.every(v => v === g.vals[0]), g);
 });
 
 if (run('E29')) await guard('E29', async () => {
@@ -1563,10 +1621,10 @@ if (run('E44')) await guard('E44', async () => {
     return { heads, rows, xlsx: caps[0] };
   }, '(' + MA_ROWS + ')');
   const x1 = r.rows.find(t => t[0] === 'X-1') || [];
-  check('E44', 'the table has a block per assay and group: HiBiT · BRD2, HiBiT · BRD4, CTG/Viability · HEK', ['HiBiT · BRD2', 'HiBiT · BRD4', 'CTG/Viability · HEK'].every(h => r.heads.includes(h)), r.heads);
+  check('E44', 'the table has a block per assay and group: HiBiT · BRD2, HiBiT · BRD4, Viability · HEK', ['HiBiT · BRD2', 'HiBiT · BRD4', 'Viability · HEK'].every(h => r.heads.includes(h)), r.heads);
   check('E44', 'compound X-1 shows BOTH HiBiT results (11.1 and 222) and the viability one', ['11.1', '222', '3333'].every(v => x1.includes(v)), x1);
   const hx = r.xlsx || [], hrow = hx[0] || [], x1x = (hx.find(t => t[0] === 'X-1') || []);
-  check('E44', 'the workbook has the same blocks and the same numbers', ['HiBiT · BRD2', 'HiBiT · BRD4', 'CTG/Viability · HEK'].every(h => hrow.includes(h)) && ['11.1', '222', '3333'].every(v => x1x.map(String).includes(v)), { hrow, x1x });
+  check('E44', 'the workbook has the same blocks and the same numbers', ['HiBiT · BRD2', 'HiBiT · BRD4', 'Viability · HEK'].every(h => hrow.includes(h)) && ['11.1', '222', '3333'].every(v => x1x.map(String).includes(v)), { hrow, x1x });
   check('E44', 'a compound only fitted in one group leaves the other block empty, not copied', (r.rows.find(t => t[0] === 'X-2') || []).includes('44.4') && !(r.rows.find(t => t[0] === 'X-2') || []).includes('222'), r.rows);
 });
 
@@ -1585,7 +1643,7 @@ if (run('E45')) await guard('E45', async () => {
     return { multi, single };
   }, '(' + MA_ROWS + ')');
   check('E45', 'a multi-assay Copy TSV starts with an Assay column', r.multi[0] && r.multi[0][0] === 'Assay', r.multi[0]);
-  check('E45', 'every row names its assay (HiBiT / CTG/Viability)', r.multi.slice(1).every(l => /^(HiBiT|CTG\/Viability)$/.test(l[0])) && r.multi.slice(1).some(l => l[0] === 'CTG/Viability'), r.multi.slice(1).map(l => l[0]));
+  check('E45', 'every row names its assay (HiBiT / Viability)', r.multi.slice(1).every(l => /^(HiBiT|Viability)$/.test(l[0])) && r.multi.slice(1).some(l => l[0] === 'Viability'), r.multi.slice(1).map(l => l[0]));
   check('E45', 'the potency column is called a potency, not DC50, when viability rows share it', (r.multi[0] || []).some(h => /^Potency/.test(h)), r.multi[0]);
   check('E45', 'a single-assay Copy TSV has no Assay column', r.single[0] && r.single[0][0] !== 'Assay' && !r.single[0].includes('Assay'), r.single[0]);
 });
@@ -2225,7 +2283,7 @@ if (run('E58')) await guard('E58', async () => {
   await q.evaluate(() => { document.getElementById('p-assay').value = 'E58MULTI'; return runPipeline(); });
   await q.waitForFunction(() => typeof _lastResultsData !== 'undefined' && _lastResultsData && _lastResultsData.length > 0, null, { timeout: 120000 }); await q.waitForTimeout(800);
   const r = await q.evaluate(() => {
-    const heads = [...document.querySelectorAll('#results-panel th')].map(t => t.textContent.trim()).filter(t => /HiBiT|CTG/.test(t));
+    const heads = [...document.querySelectorAll('#results-panel th')].map(t => t.textContent.trim()).filter(t => /HiBiT|Viability/.test(t));
     const banners = [...document.querySelectorAll('#results-panel .na-id')].map(e => e.textContent.trim());
     const sets = _echoLabbookSets().map(s => ({ id: s.id, assay: s.assay, pot: s.potencyLabel, n: s.rows.length, label: s.label }));
     let wb = null; const w0 = XLSX.write; XLSX.write = (w, o) => { wb = w; return w0.call(XLSX, w, o); }; const a0 = HTMLAnchorElement.prototype.click; HTMLAnchorElement.prototype.click = function () {};
@@ -2235,10 +2293,10 @@ if (run('E58')) await guard('E58', async () => {
     for (const t of ['results', 'curves', 'scatter', 'plate', 'props']) { const b = document.querySelector('[data-tab="' + t + '"]'); if (b) b.click(); const m = document.body.innerText.match(/\bNaN\b|\bundefined\b|\[object Object\]/); if (m) bad.push(t + ': ' + m[0]); }
     return { heads, banners, sets, rawA: [...new Set(raw.slice(1).map(x => x[0]))], bad };
   });
-  check('E58', 'each column block names its assay and its group', r.heads.some(h => /HiBiT · BRD2/.test(h)) && r.heads.some(h => /CTG\/Viability · BRD3/.test(h)), r.heads);
-  check('E58', 'the normalisation banners name the assay type', r.banners.length === 2 && r.banners.every(b => /^(HiBiT|CTG\/Viability)$/.test(b)), r.banners);
+  check('E58', 'each column block names its assay and its group', r.heads.some(h => /HiBiT · BRD2/.test(h)) && r.heads.some(h => /Viability · BRD3/.test(h)), r.heads);
+  check('E58', 'the normalisation banners name the assay type', r.banners.length === 2 && r.banners.every(b => /^(HiBiT|Viability)$/.test(b)), r.banners);
   check('E58', 'Labbook gets one set per assay, each with its own potency name and id', r.sets.length === 2 && r.sets.some(s => s.assay === 'hibit' && /DC50/.test(s.pot)) && r.sets.some(s => s.assay === 'ctg' && /IC50/.test(s.pot)) && new Set(r.sets.map(s => s.id)).size === 2 && r.sets.every(s => s.n > 0), r.sets);
-  check('E58', 'the Raw data sheet says which assay each row is', r.rawA.length === 2 && r.rawA.every(a => /^(HiBiT|CTG\/Viability)$/.test(a)), r.rawA);
+  check('E58', 'the Raw data sheet says which assay each row is', r.rawA.length === 2 && r.rawA.every(a => /^(HiBiT|Viability)$/.test(a)), r.rawA);
   check('E58', 'no tab prints NaN or undefined, and nothing throws', !r.bad.length && !errs.length, { bad: r.bad, errs });
   await c.close();
 });
@@ -2397,6 +2455,495 @@ if (run('E61')) await guard('E61', async () => {
     check('E61', tag + 'a Fix button goes to the step that has the control', fix[0] === 'analysis' && fix[1] === 'assay', fix);
     await c.close();
   }
+});
+
+if (run('E62')) await guard('E62', async () => {
+  const src = fs.readFileSync(FILE, 'utf8'), own = src.replace(/\/\* setup-kit:begin[\s\S]*?setup-kit:end \*\//, '').replace(/\/\* setup-kit-js:begin[\s\S]*?setup-kit-js:end \*\//, '');
+  const dup = ['.setup-overlay{', '.setup-card{', '.setup-hdr{', '.setup-stabs{', '.setup-stab{', '.setup-sbody{', '.setup-foot{', '.sx-group{', '.sx-ghd{', '.sx-f{'].filter(x => own.includes('\n' + x));
+  check('E62', 'Echo carries no second copy of the dialog CSS', !dup.length, dup);
+  check('E62', 'no backdrop-filter on the Setup overlay', !/\.setup-overlay[^{]*\{[^}]*backdrop-filter/.test(own));
+  const c = await browser.newContext({ viewport: { width: 1440, height: 900 } }); const q = await c.newPage(); const errs = []; q.on('pageerror', e => errs.push(e.message));
+  await q.goto('file://' + FILE); await q.waitForTimeout(1200);
+  await q.evaluate(() => { loadTestData(); }); await q.waitForTimeout(900);
+  await q.evaluate(() => { openSetupModal(); switchSetupTab('assay'); }); await q.waitForTimeout(300);
+  const r = await q.evaluate(() => {
+    const m = document.getElementById('setup-modal'), nav = m.querySelector('.sx-nav');
+    return { kit: typeof SetupKit === 'object' && !!window.EchoSetup && EchoSetup.el === m,
+      tabs: [...m.querySelectorAll('.setup-stab')].map(t => t.dataset.tab).join(), btn: [...m.querySelectorAll('.setup-stab')].every(t => t.tagName === 'BUTTON'),
+      back: document.getElementById('setup-back').classList.contains('sx-sec'), next: document.getElementById('setup-next').classList.contains('sx-pri'),
+      run: document.getElementById('run-btn').parentElement === nav, filesDone: m.querySelector('.setup-stab[data-tab="files"]').classList.contains('done'),
+      blur: getComputedStyle(m).backdropFilter, panes: [...m.querySelectorAll('.setup-sbody > .setup-pane')].map(p => p.id).join() };
+  });
+  check('E62', 'the dialog is built by SetupKit', r.kit, r);
+  check('E62', 'five tabs in step order, each a button', r.tabs === 'files,assay,analysis,output,review' && r.btn, r);
+  check('E62', 'Back and Next are the kit\'s buttons and Run Analysis is in their row', r.back && r.next && r.run, r);
+  check('E62', 'Files is green once the Echo and reader files are in', r.filesDone, r);
+  check('E62', 'the panes are inside the card, in step order, with their ids', r.panes === 'setup-pane-files,setup-pane-assay,setup-pane-analysis,setup-pane-output,setup-pane-review', r.panes);
+  check('E62', 'the overlay is not blurred', r.blur === 'none' || r.blur === '', r.blur);
+  const open = () => q.evaluate(() => EchoSetup.isOpen());
+  await q.evaluate(() => { const i = document.getElementById('p-assay') || document.querySelector('#setup-pane-assay input'); i.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); document.getElementById('setup-modal').click(); });
+  check('E62', 'a press that began inside the card does not close it on the backdrop', await open());
+  await q.evaluate(() => { const m = document.getElementById('setup-modal'); m.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); m.click(); });
+  check('E62', 'a click on the backdrop closes it', !(await open()));
+  await q.evaluate(() => openSetupModal()); await q.keyboard.press('Escape');
+  check('E62', 'Esc closes it', !(await open()));
+  check('E62', 'no page errors', !errs.length, errs);
+  await c.close();
+});
+
+// E63 — Normalise to viability. A GloMax export reads a plate twice (HiBiT luminescence, CellTiter-Fluor fluorescence): two grids on its
+// Results sheet. With the option on, each well's luminescence is divided by the fluorescence of the SAME well, and that ratio is what the
+// DMSO wells of the plate normalise. The test distorts every well of a bundled plate by a factor that changes from well to well (0.6–1.6),
+// puts the same factor in the fluorescence, and checks that dividing gives back exactly the curves of the plate that was never distorted.
+// A per-plate (or no) division could not: the factor differs inside a plate and inside the control wells.
+if (run('E63')) await guard('E63', async () => {
+  const c = await browser.newContext({ viewport: { width: 1440, height: 900 } }); const q = await c.newPage(); const errs = []; q.on('pageerror', e => errs.push(e.message));
+  await q.goto('file://' + FILE); await q.waitForTimeout(1200);
+  await q.evaluate(() => { loadTestData(); }); await q.waitForTimeout(900);
+  const R = await q.evaluate(async () => {
+    const mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', LET = 'ABCDEFGHIJKLMNOP';
+    const fac = (ri, ci) => 0.6 + ((ri * 7 + ci * 3) % 11) / 10;
+    const plates = _TEST_READERS.map(r => { const bc = r.name.replace(/\.[^.]+$/, ''); return { bc, w: _parsePHERAstarXLS(Uint8Array.from(atob(r.b64), c => c.charCodeAt(0)).buffer, bc, '') }; });
+    const val = (pl, ri, ci) => pl.w[ri * 24 + ci].measurement;
+    // a GloMax-shaped workbook: settings sheet, Results (one headed grid per reading, in the order given), Results By Well
+    const glo = (fname, name, chans) => {
+      const aoa = [[], [, , , 'Protocol: CellTiter-Fluor'], [, , , 'Result: ' + name], [], [], []];
+      chans.forEach(ch => {
+        aoa.push([ch.label]); aoa.push(['', 'Emission Filter:', '', '495-505']); aoa.push(['', 'Excitation Filter:', '', 'AFC 405 nm']);
+        aoa.push(['', 'Reading:', '', 1, '', ...Array.from({ length: 24 }, (_, i) => i + 1)]);
+        for (let ri = 0; ri < 16; ri++) aoa.push(['', '', '', '', LET[ri], ...Array.from({ length: 24 }, (_, ci) => { const v = ch.fn(ri, ci); return v === null ? '' : v; })]);
+        aoa.push([]);
+      });
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([[], [, , , 'CellTiter-Fluor'], [], [], [], [], ['Executed by:', , , 'PC\\user'], [, 'Instrument Name:', , 'Test GloMax'], [], [], [], [], [], [], [], [], ['Parameters:'], [, 'Plate Type:', , '384 well']]), 'CellTiter-Fluor');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Results');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([[], [, , , 'Protocol: CellTiter-Fluor'], [, , , 'Result: ' + name]]), 'Results By Well');
+      return new File([XLSX.write(wb, { type: 'array', bookType: 'xlsx' })], fname, { type: mime });
+    };
+    const bare = (fname, fn) => {   // a PHERAstar-like grid with no ID anywhere: letters down, numbers across
+      const aoa = [['', ...Array.from({ length: 24 }, (_, i) => i + 1)]];
+      for (let ri = 0; ri < 16; ri++) aoa.push([LET[ri], ...Array.from({ length: 24 }, (_, ci) => { const v = fn(ri, ci); return v === null ? '' : v; })]);
+      const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Data');
+      return new File([XLSX.write(wb, { type: 'array', bookType: 'xlsx' })], fname, { type: mime });
+    };
+    const lumD = pl => (ri, ci) => { const v = val(pl, ri, ci); return v === null ? null : v * fac(ri, ci); };
+    const fluD = (ri, ci) => 20000 * fac(ri, ci);
+    const q3 = v => { const n = Number(v); return isFinite(n) ? n.toPrecision(3) : String(v); };
+    const snap = () => Object.fromEntries((_lastResultsData || []).map(r => [r.Protein + '|' + r.Sample_ID, q3(r.DC50_nM) + '|' + q3(r.Dmax_pct)]));
+    const run1 = async (files, viab, name) => {
+      readerFiles = files; window._plateAssign = {};
+      document.getElementById('p-viab').checked = !!viab; document.getElementById('p-assay').value = name; document.getElementById('p-ctrl').value = 'B12-O12';
+      document.getElementById('log-panel').innerHTML = '';
+      _lastResultsData = null; try { await runPipeline(); } catch (e) {}
+      const raw = downloadBlobs.find(b => /Raw_Data/.test(b.name));
+      return { snap: snap(), n: (_lastResultsData || []).length, log: document.getElementById('log-panel').innerText, hdr: raw ? new TextDecoder().decode(raw.bytes).split(/\r?\n/)[0] : '', p: window._lastAnalysisParams, aud: (window._normAudits || [])[0] || null };
+    };
+    const review = async (files, viab) => {
+      readerFiles = files; window._plateAssign = {}; document.getElementById('p-viab').checked = !!viab;
+      document.getElementById('setup-modal')?.classList.remove('hidden'); await renderReview();
+      const o = { issues: window._rv.issues.map(i => i.level + ': ' + i.msg), viabFiles: window._rv.viabFiles, plates: window._rv.plates.map(p => p.plate + '|' + p.status + '|' + p.notes.join(';')), gp: document.getElementById('p-group-preview').innerText, tags: document.querySelectorAll('#rlist .rtag').length };
+      document.getElementById('setup-modal')?.classList.add('hidden'); return o;
+    };
+    const out = {};
+    // the reader
+    const g0 = glo('t.xlsx', 'BRD2-01', [{ label: 'Fluorescence', fn: fluD }, { label: 'Luminescence', fn: lumD(plates[0]) }]);
+    const w0 = _parsePHERAstarXLS(await g0.arrayBuffer(), 'BRD2-01', ''), wf = _parsePHERAstarXLS(await glo('f.xlsx', 'x', [{ label: 'Fluorescence', fn: fluD }]).arrayBuffer(), 'x', ''), wl = _parsePHERAstarXLS(await glo('l.xlsx', 'x', [{ label: 'Luminescence', fn: lumD(plates[0]) }]).arrayBuffer(), 'x', '');
+    out.read = { sig: w0[0].measurement, expect: val(plates[0], 0, 0) * fac(0, 0), via: w0[0].viab, viabOnly: w0.glomax.viabOnly, n: w0.length, last: w0[383].well, fOnly: wf.glomax.viabOnly, fSig: wf[0].measurement, lOnly: wl.glomax.viabOnly, lHasViab: wl[0].viab !== undefined, phera: _parsePHERAstarXLS(Uint8Array.from(atob(_TEST_READERS[0].b64), c => c.charCodeAt(0)).buffer, 'p', '').glomax === undefined };
+    // A: the plates as they are, untouched
+    const plain = {}; _TEST_READERS.forEach(r => { plain[r.name] = _b64toFile(r.b64, r.name, mime); });
+    out.A = await run1(plain, false, 'E63-plain');
+    // B: one GloMax file per plate holding both readings (fluorescence first, as the instrument writes them), option on
+    const both = {}; plates.forEach(p => { both[p.bc + '.xlsx'] = glo(p.bc + '.xlsx', p.bc, [{ label: 'Fluorescence', fn: fluD }, { label: 'Luminescence', fn: lumD(p) }]); });
+    out.B = await run1(both, true, 'E63-both');
+    out.Brv = await review(both, true);
+    // C: the same files with the option off: the distortion is in the numbers
+    out.C = await run1(both, false, 'E63-off');
+    // D: the luminescence from another reader (no GloMax marker), the viability from GloMax files named for the plates
+    const split = {}; plates.forEach(p => { split[p.bc + '.xlsx'] = bare(p.bc + '.xlsx', lumD(p)); split[p.bc + ' viability.xlsx'] = glo(p.bc + ' viability.xlsx', p.bc + ' viability', [{ label: 'Fluorescence', fn: fluD }]); });
+    out.D = await run1(split, true, 'E63-split');
+    out.Drv = await review(split, true);
+    // E: one plate's viability file missing
+    const lack = Object.assign({}, split); delete lack['BRD2-02 viability.xlsx'];
+    out.Erv = await review(lack, true); out.E = await run1(lack, true, 'E63-lack');
+    // F: option off, a fluorescence-only file is an ordinary reading and nothing is a viability file
+    out.Frv = await review(split, false);
+    return out;
+  });
+  const same = (a, b) => { const ka = Object.keys(a), kb = Object.keys(b); return ka.length > 0 && ka.length === kb.length && ka.every(k => a[k] === b[k]); };
+  check('E63', 'the reader takes the luminescence grid as the signal and the fluorescence grid of the same file as that well\'s viability (fluorescence written first)', R.read.n === 384 && R.read.last === 'P24' && Math.abs(R.read.sig / R.read.expect - 1) < 1e-9 && R.read.via === 20000 * (0.6) && R.read.viabOnly === false, R.read);
+  check('E63', 'a file with fluorescence only is a viability file; luminescence only has no viability; a PHERAstar file is not mistaken for a GloMax one', R.read.fOnly === true && R.read.lOnly === false && R.read.lHasViab === false && R.read.phera, R.read);
+  check('E63', 'the bundled plates give curves (the reference of this test)', R.A.n > 10, R.A.n);
+  check('E63', 'one GloMax file per plate with both readings, option on: exactly the curves of the plates that were never distorted', same(R.B.snap, R.A.snap), { a: Object.entries(R.A.snap).slice(0, 2), b: Object.entries(R.B.snap).slice(0, 2), n: [R.A.n, R.B.n] });
+  check('E63', 'the same files with the option off fit the distorted numbers: the option is what removes the distortion', !same(R.C.snap, R.A.snap), { n: R.C.n });
+  check('E63', 'luminescence from another reader plus GloMax fluorescence files named for the plates, option on: the same curves again', same(R.D.snap, R.A.snap), { a: Object.entries(R.A.snap).slice(0, 2), d: Object.entries(R.D.snap).slice(0, 2), n: [R.A.n, R.D.n] });
+  check('E63', 'the run says where each plate\'s viability came from', /Normalise to viability: signal ÷ viability on 6 plates/.test(R.B.log) && /Normalise to viability: signal ÷ viability on 6 plates/.test(R.D.log) && /BRD2-01 viability\.xlsx → viability of plate “BRD2-01”/.test(R.D.log), { b: R.B.log.slice(-400), d: R.D.log.slice(-500) });
+  check('E63', 'Review: no problems, the six viability files are named, tagged in the list, and are not plates (3 groups, not 6 or 12)', !R.Drv.issues.some(i => /^error/.test(i)) && R.Drv.viabFiles.length === 6 && R.Drv.tags === 6 && /3 groups/.test(R.Drv.gp) && R.Drv.plates.filter(p => !/^INTER/.test(p)).length === 6 && R.Drv.plates.filter(p => !/^INTER/.test(p)).every(p => /viability/.test(p)), R.Drv);
+  check('E63', 'Review of the double-read files: no viability files (they are the plates), every plate says signal ÷ viability', !R.Brv.issues.some(i => /^error/.test(i)) && R.Brv.viabFiles.length === 0 && R.Brv.plates.filter(p => !/^INTER/.test(p)).every(p => /signal ÷ viability, one file/.test(p)), R.Brv);
+  check('E63', 'a plate with no viability reading is an error in Review and is left out of the run, with the reason in the log', R.Erv.issues.some(i => /^error: Plate “BRD2-02” has no viability reading/.test(i)) && /No viability reading for plate BRD2-02/.test(R.E.log), { rv: R.Erv.issues.slice(0, 3), log: R.E.log.slice(-500) });
+  check('E63', 'with the option off nothing is a viability file: no tags, no viability notes', R.Frv.viabFiles.length === 0 && R.Frv.tags === 0, R.Frv);
+  check('E63', 'the Raw CSV carries Signal and Viability_Reading only when the option is on', /Viability_Reading/.test(R.B.hdr) && /Viability_Reading/.test(R.D.hdr) && !/Viability_Reading/.test(R.A.hdr) && !/Viability_Reading/.test(R.C.hdr), { b: R.B.hdr, a: R.A.hdr });
+  check('E63', 'the run records the option and the normalisation audit says the figures are ratios', R.B.p && R.B.p.viabNorm === true && R.A.p.viabNorm === false && R.B.aud && R.B.aud.viab === true, { p: R.B.p && R.B.p.viabNorm, aud: R.B.aud && R.B.aud.viab });
+  check('E63', 'no page errors', !errs.length, errs);
+  await c.close();
+});
+
+if (run('E64')) await guard('E64', async () => {
+  const c = await browser.newContext({ viewport: { width: 1440, height: 900 } }); const q = await c.newPage(); const errs = []; q.on('pageerror', e => errs.push(e.message));
+  await q.goto('file://' + FILE); await q.waitForTimeout(1200);
+  await q.evaluate(() => { loadTestData(); }); await q.waitForTimeout(900);
+  const R = await q.evaluate(async () => {
+    const mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', LET = 'ABCDEFGHIJKLMNOP';
+    const fac = (ri, ci) => 0.6 + ((ri * 7 + ci * 3) % 11) / 10;
+    const plates = _TEST_READERS.map(r => { const bc = r.name.replace(/\.[^.]+$/, ''); return { bc, w: _parsePHERAstarXLS(Uint8Array.from(atob(r.b64), c => c.charCodeAt(0)).buffer, bc, '') }; });
+    const val = (pl, ri, ci) => pl.w[ri * 24 + ci].measurement;
+    const glo = (fname, name, chans) => {
+      const aoa = [[], [, , , 'Protocol: HiBiT + CellTiter-Fluor'], [, , , 'Result: ' + name], [], [], []];
+      chans.forEach(ch => {
+        aoa.push([ch.label]); aoa.push(['', 'Emission Filter:', '', '495-505']); aoa.push(['', 'Excitation Filter:', '', 'AFC 405 nm']);
+        aoa.push(['', 'Reading:', '', 1, '', ...Array.from({ length: 24 }, (_, i) => i + 1)]);
+        for (let ri = 0; ri < 16; ri++) aoa.push(['', '', '', '', LET[ri], ...Array.from({ length: 24 }, (_, ci) => { const v = ch.fn(ri, ci); return v === null ? '' : v; })]);
+        aoa.push([]);
+      });
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([[], [, , , 'x'], [], [], [], [], ['Executed by:', , , 'PC\\user'], [, 'Instrument Name:', , 'Test GloMax'], [], [], [], [], [], [], [], [], ['Parameters:'], [, 'Plate Type:', , '384 well']]), 'x');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Results');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([[], [, , , 'Protocol: x'], [, , , 'Result: ' + name]]), 'Results By Well');
+      return new File([XLSX.write(wb, { type: 'array', bookType: 'xlsx' })], fname, { type: mime });
+    };
+    const bare = (fname, fn) => {
+      const aoa = [['', ...Array.from({ length: 24 }, (_, i) => i + 1)]];
+      for (let ri = 0; ri < 16; ri++) aoa.push([LET[ri], ...Array.from({ length: 24 }, (_, ci) => { const v = fn(ri, ci); return v === null ? '' : v; })]);
+      const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Data');
+      return new File([XLSX.write(wb, { type: 'array', bookType: 'xlsx' })], fname, { type: mime });
+    };
+    // luminescence = the bundled plate; fluorescence = the same plate distorted well by well, so the two assays give different curves
+    const lumF = pl => (ri, ci) => val(pl, ri, ci);
+    const fluF = pl => (ri, ci) => { const v = val(pl, ri, ci); return v === null ? null : v * fac(ri, ci); };
+    const q3 = v => { const n = Number(v); return isFinite(n) ? n.toPrecision(3) : String(v); };
+    const snap = (rows, type) => Object.fromEntries((rows || []).filter(r => !type || r._assayType === type).map(r => [r.Protein + '|' + r.Sample_ID, q3(r.DC50_nM) + '|' + q3(r.Dmax_pct)]));
+    const both = {}, lumOnly = {}, fluOnly = {}, lumGlo = {};
+    plates.forEach(p => { both[p.bc + '.xlsx'] = glo(p.bc + '.xlsx', p.bc, [{ label: 'Fluorescence', fn: fluF(p) }, { label: 'Luminescence', fn: lumF(p) }]); lumOnly[p.bc + '.xlsx'] = bare(p.bc + '.xlsx', lumF(p)); lumGlo[p.bc + '.xlsx'] = glo(p.bc + '.xlsx', p.bc, [{ label: 'Luminescence', fn: lumF(p) }]); fluOnly[p.bc + '.xlsx'] = bare(p.bc + '.xlsx', fluF(p)); });
+    const out = {};
+    // the multi-assay run: HiBiT on the luminescence, viability on the fluorescence, the same files, no prefixes
+    document.getElementById('p-assay-type').value = 'hibit';
+    openSetupModal(); const cb = document.getElementById('multi-assay-chk'); cb.checked = true; toggleMultiAssay();
+    const setv = (id, v) => { const e = document.getElementById(id); e.value = v; e.dispatchEvent(new Event('change')); };
+    setv('mat-type-0', 'hibit'); setv('mat-read-0', 'lum'); setv('mat-ctrl-0', 'B12-O12'); updateMatPanel(0);
+    setv('mat-type-1', 'ctg:fluor'); setv('mat-ctrl-1', 'B12-O12'); updateMatPanel(1);
+    const multi = async (files, name) => { readerFiles = files; window._plateAssay = null; window._plateAssign = {}; document.getElementById('p-assay').value = name; document.getElementById('log-panel').innerHTML = ''; _lastResultsData = null; try { await runPipeline(); } catch (e) {} return _lastResultsData || []; };
+    // references: the same two panels over plain grids (no GloMax marker, so the reading choice is moot): HiBiT on the luminescence values,
+    // viability on the fluorescence values, and viability on the luminescence values
+    out.refLum = snap(await multi(lumOnly, 'E64-ref-lum'), 'hibit');
+    out.refFlu = snap(await multi(fluOnly, 'E64-ref-flu'), 'ctg');
+    out.refLumCtg = snap(await multi(lumOnly, 'E64-ref-lumctg'), 'ctg');
+    const rows = await multi(both, 'E64-multi');
+    out.hibit = snap(rows, 'hibit'); out.ctg = snap(rows, 'ctg');
+    out.keys = Object.keys(window._plateData || {}); out.owner = window._plateAssay;
+    out.fits = out.keys.map(k => { const pd = window._plateData[k], w = Object.values(pd).find(x => x && x.s && x.s !== 'CTRL' && x.p); const f = w ? _plFit(w.s, w.p, k) : null; return { k, type: f && f._assayType, panel: f && f._panel }; });
+    out.cfg = (window._lastAnalysisParams.matConfigs || []).map(m => m.reading);
+    out.log = document.getElementById('log-panel').innerText;
+    // the same two panels, but reading the luminescence-only files: the viability panel has nothing to read
+    readerFiles = lumGlo; document.getElementById('log-panel').innerHTML = ''; _lastResultsData = null;
+    try { await runPipeline(); } catch (e) {}
+    out.noFlu = { log: document.getElementById('log-panel').innerText, ui: (document.getElementById('results-panel')?.innerText || '').replace(/\s+/g, ' ').slice(0, 300) };
+    // automatic reads the luminescence: panel 1 back to automatic gives the HiBiT curves on the viability panel too
+    setv('mat-type-1', 'ctg'); setv('mat-read-1', ''); updateMatPanel(1);
+    out.auto = snap(await multi(both, 'E64-auto'), 'ctg');
+    { const w = document.getElementById('mat-warn'); out.warnOn = { ui: w.style.display !== 'none' ? w.textContent : '', log: document.getElementById('log-panel').innerText };
+      setv('mat-type-1', 'ctg:fluor'); updateMatPanel(1); out.warnOff = w.style.display === 'none' && !w.textContent;
+      setv('mat-type-1', 'ctg'); setv('mat-read-1', ''); for (const [id, v] of [['mat-prefix-1', 'VIAB'], ['mat-prefix-0', 'HIBIT']]) { const e = document.getElementById(id); e.value = v; e.dispatchEvent(new Event('input')); } out.warnPrefix = w.style.display === 'none';
+      setv('mat-prefix-1', ''); setv('mat-prefix-0', ''); }
+    // the same type and reading twice is still refused; the same type with two readings is not
+    setv('mat-type-1', 'hibit'); setv('mat-read-1', 'lum'); updateMatPanel(1);
+    readerFiles = both; _lastResultsData = null; document.getElementById('log-panel').innerHTML = '';
+    try { await runPipeline(); } catch (e) {}
+    out.dup = (document.getElementById('results-panel')?.innerText || '').replace(/\s+/g, ' ').slice(0, 300);
+    setv('mat-read-1', 'fluor'); out.dupRead = '';
+    _lastResultsData = null; document.getElementById('log-panel').innerHTML = ''; try { await runPipeline(); } catch (e) {}
+    out.dupRead = (document.getElementById('results-panel')?.innerText || '').replace(/\s+/g, ' ').slice(0, 300);
+    out.panelNames = (()=>{ setv('mat-type-1', 'ctg:fluor'); updateMatPanel(1); syncMatAnalysisParams(); return [...document.querySelectorAll('#mat-analysis-container .sx-gt')].map(e => e.textContent.trim()); })();
+    out.cfg2 = collectMultiAssayConfigs().map(m => m.type + '/' + m.reading);
+    cb.checked = false; toggleMultiAssay();
+    return out;
+  });
+  const diff = (a, b) => Object.keys(Object.assign({}, a, b)).filter(k => a[k] !== b[k]).slice(0, 4).map(k => k + ': ' + a[k] + ' vs ' + b[k]);
+  const same = (a, b) => { const ka = Object.keys(a), kb = Object.keys(b); return ka.length > 0 && ka.length === kb.length && ka.every(k => a[k] === b[k]); };
+  check('E64', 'the references exist and differ (the fluorescence is a different assay from the luminescence)', Object.keys(R.refLum).length > 10 && !same(R.refLum, R.refFlu), { l: Object.keys(R.refLum).length, f: Object.keys(R.refFlu).length });
+  check('E64', 'the HiBiT panel (reading: luminescence) gives exactly the curves of a plain run on the luminescence alone', same(R.hibit, R.refLum), { n: [Object.keys(R.hibit).length, Object.keys(R.refLum).length], diff: diff(R.hibit, R.refLum) });
+  check('E64', 'the viability panel (reading: fluorescence) gives exactly the curves of a plain run on the fluorescence alone, from the same files', same(R.ctg, R.refFlu), { n: [Object.keys(R.ctg).length, Object.keys(R.refFlu).length], diff: diff(R.ctg, R.refFlu) });
+  check('E64', 'the panels record their reading and the log says which one each reads', R.cfg[0] === 'lum' && R.cfg[1] === 'fluor' && /luminescence reading/.test(R.log) && /fluorescence reading/.test(R.log), { cfg: R.cfg });
+  check('E64', 'the plate view keeps every plate once per assay, named for it, instead of one overwriting the other', R.keys.length === 12 && R.keys.filter(k => / · HiBiT$/.test(k)).length === 6 && R.keys.filter(k => / · Viability fluorescence$/.test(k)).length === 6, R.keys);
+  check('E64', 'each plate of the plate view finds the fit of its own assay', R.fits.length === 12 && R.fits.every(f => (/ · HiBiT$/.test(f.k) ? f.type === 'hibit' : f.type === 'ctg')), R.fits);
+  check('E64', 'a panel that reads a reading the files do not have says so, and the run stops with that reason', /None of the reader files has a fluorescence reading|no fluorescence reading in this GloMax file/.test(R.noFlu.log), { log: R.noFlu.log.split(/\n/).filter(l => /rror|reading|None/.test(l)).slice(-6), ui: R.noFlu.ui });
+  check('E64', 'a viability panel reading luminescence over the same files as a HiBiT panel is warned about, in Setup and in the run log, and the run still goes ahead', /Viability fluorescence/.test(R.warnOn.ui) && /same reading as the HiBiT panel/.test(R.warnOn.ui) && /⚠ The viability panel reads luminescence/.test(R.warnOn.log) && Object.keys(R.auto).length > 10, { ui: R.warnOn.ui, log: R.warnOn.log.slice(-200) });
+  check('E64', 'no warning for Viability fluorescence, nor when the two panels have different file prefixes', R.warnOff === true && R.warnPrefix === true, { off: R.warnOff, prefix: R.warnPrefix });
+  check('E64', 'automatic reads the luminescence of a file that holds both', same(R.auto, R.refLumCtg), { n: [Object.keys(R.auto).length, Object.keys(R.refLumCtg).length], diff: diff(R.auto, R.refLumCtg) });
+  check('E64', 'two panels of one type are refused, with the same reading or another (the results are keyed by assay type)', /Two assay panels both analyse hibit/.test(R.dup) && /Two assay panels both analyse hibit/.test(R.dupRead), { dup: R.dup, dupRead: R.dupRead });
+  check('E64', 'the panel type list says Viability fluorescence (CellTiter-Glo is luminescence), picking it reads the fluorescence, and the panel is named for it', R.cfg2.join() === 'hibit/lum,ctg/fluor' && R.panelNames.join() === 'HiBiT,Viability fluorescence', { cfg: R.cfg2, names: R.panelNames });
+  check('E64', 'no page errors', !errs.length, errs);
+  await c.close();
+});
+
+if (run('E71')) await guard('E71', async () => {
+  const c = await browser.newContext({ viewport: { width: 1440, height: 900 } }); const q = await c.newPage();
+  await q.goto('file://' + FILE); await q.waitForTimeout(1200);
+  await q.evaluate(() => { loadTestData(); }); await q.waitForTimeout(900);
+  const r = await q.evaluate(async () => { const a = runPipeline(), b = runPipeline(); await Promise.all([a, b]); await new Promise(r => setTimeout(r, 600));
+    const names = downloadBlobs.map(x => x.name); return { names, dup: names.length - new Set(names).size, audits: (window._normAudits || []).length, n: _lastResultsData.length }; });
+  check('E71', 'Run pressed twice runs once: no output file twice', r.dup === 0 && r.n > 0, r);
+  check('E71', 'Run pressed twice runs once: one normalisation audit', r.audits === 1, r);
+  const again = await q.evaluate(async () => { await runPipeline(); return (window._normAudits || []).length; });
+  check('E71', 'a run after a finished run is not blocked', again === 1, again);
+  // two transfer files with different columns
+  await q.evaluate(async () => { const t = await echoFiles[0].text(); const L = t.split(/\r?\n/); const i = L.findIndex(l => /^Source Plate Name/.test(l)); const cols = L[i].split(','); [cols[3], cols[4]] = [cols[4], cols[3]]; L[i] = cols.join(','); echoFiles = [echoFiles[0], new File([L.join('\n')], 'second.csv')]; });
+  const m = await q.evaluate(async () => { let rej = false; try { await runPipeline(); } catch (e) { rej = true; } return { rej, panel: document.getElementById('results-panel').innerText }; });
+  check('E71', 'different columns: the run stops on screen with the reason', !m.rej && /analysis stopped/i.test(m.panel) && /different columns/.test(m.panel), m);
+  await c.close();
+});
+
+if (run('E72')) await guard('E72', async () => {
+  const c = await browser.newContext({ viewport: { width: 1440, height: 900 } }); const q = await c.newPage();
+  await q.goto('file://' + FILE); await q.waitForTimeout(1200);
+  await q.evaluate(() => { [...document.querySelectorAll('.outer-tab')].find(b => /Gradient/.test(b.textContent)).click(); }); await q.waitForTimeout(400);
+  const r = await q.evaluate(async () => {
+    const set = (id, v) => { const e = document.getElementById(id); e.value = v; e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); };
+    const wait = ms => new Promise(r => setTimeout(r, ms)); const bad = []; let n = 0;
+    // every (volume, DMSO %) whose budget is a whole number of drops: the help line must count exactly that many
+    for (const [vol, dmso] of [[7.5, 4.1], [12.5, 2.3], [7.5, 4.1], [20, 0.25], [25, 0.3], [12.5, 4.1], [37.5, 3.3]]) {
+      set('eg-vol', vol); set('eg-dmso', dmso); await wait(300);
+      const exact = Math.round(vol * 1000 * dmso) / 100 / 2.5; if (Math.abs(exact - Math.round(exact)) > 1e-9) continue;
+      n++;
+      const t = document.getElementById('eg-h-assay').innerText; const m = /\((\d+) drops?\)/.exec(t);
+      // the top point asks for the whole budget: it must be dispensed, as the whole budget
+      set('eg-top-unit', '1e-6'); set('eg-top-val', (vol * 1000 * dmso / 100) * 10 / vol); await wait(500);
+      const row = document.querySelector('#eg-tbody tr'); const tin = row && row.querySelector('.eg-tin');
+      if (!m || +m[1] !== Math.round(exact) || !tin || Math.abs(+tin.value - vol * 1000 * dmso / 100) > 1e-6) bad.push({ vol, dmso, drops: m && m[1], want: Math.round(exact), top: tin && tin.value });
+    }
+    return { bad, n };
+  });
+  check('E72', 'a budget of a whole number of drops is all usable', r.n >= 4 && r.bad.length === 0, r);
+  await c.close();
+});
+
+// A small synthetic plate with known curves, built here (deterministic noise), for the checks that need a run on data they control.
+function synthPlate({ nCpd = 6, noise = 2, ctrl = 100000, badRep = false, gain = false, bc = 'SYN-01', suf = '' } = {}) {
+  const hdr = 'Source Plate Name,Source Plate Barcode,Source Plate Type,Source Well,Source Concentration,Source Concentration Units,Destination Plate Name,Destination Plate Barcode,Destination Plate Type,Destination Well,Destination Concentration,Destination Concentration Units,Sample ID,Sample Name,Transfer Volume,Actual Volume,Current Fluid Volume,Fluid Composition,Fluid Units,Fluid Type,Transfer Status,Time Point';
+  const rows = [], sig = Array.from({ length: 16 }, (_, r) => Array.from({ length: 24 }, (_, c) => ctrl * (1 + 0.02 * Math.sin(r * 7 + c * 3))));
+  let k = 0;
+  for (let i = 0; i < nCpd; i++) for (let rp = 0; rp < 2; rp++, k++) for (let j = 0; j < 10; j++) {
+    const d = 2e-5 / Math.pow(3, j), c = -8.4 + 0.3 * i, h = 1 + 0.2 * i, E = Math.pow(10, h * (Math.log10(d) - c));
+    let y = 8 + 92 / (1 + E) + noise * Math.sin(k * 13 + j * 5);
+    if (badRep && i === 0 && rp === 1 && j === 6) y += 60;
+    sig[k][1 + j] = gain ? ctrl + (100 - y) * 500 : ctrl * y / 100;
+    rows.push(['S', 'RP', 'T', 'A1', '0.001', 'M', 'I', bc, 'D', 'ABCDEFGHIJKLMNOP'[k] + (2 + j), d.toExponential(3), 'M', 'CPD-' + (i + 1) + suf, 'CPD-' + (i + 1) + suf, '12.5', '12.5', '45', '90', 'Percent', 'DMSO', '', '08:00'].join(','));
+  }
+  const text = ['Run ID,1', 'Run Date/Time,x', 'Application Name,x', 'Application Version,1', 'Protocol Name,x', 'User Name,x', '', '[DETAILS]', hdr, ...rows, ''].join('\r\n');
+  return { text, sig, bc };
+}
+async function loadSynth(q, d) {
+  await q.evaluate(({ text, sig, bc }) => {
+    echoFiles = [new File([text], 'echo.csv')]; echoFile = null;
+    const aoa = [['User: x'], ['Test ID: 1'], ['ID1: SYN 01'], [], [], ['Luminescence'], [], ['Raw Data (LUM plus)'], ['', ...Array.from({ length: 24 }, (_, i) => i + 1)]];
+    sig.forEach((r, i) => aoa.push(['ABCDEFGHIJKLMNOP'[i], ...r.map(v => Math.round(v))]));
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Microplate End point');
+    Object.keys(readerFiles).forEach(k => delete readerFiles[k]);
+    readerFiles[bc + '.xlsx'] = new File([XLSX.write(wb, { type: 'array', bookType: 'xlsx' })], bc + '.xlsx');
+    document.getElementById('p-ctrl').value = 'A20:P24'; document.getElementById('p-assay').value = 'SYN';
+    renderEchoList(); renderReaderList(); checkReady();
+  }, { ...d, bc: d.bc || 'SYN-01' });
+}
+async function runSynth(q) { await q.evaluate(() => { window.__done = false; runPipeline().then(() => { window.__done = true; }); }); await q.waitForFunction(() => window.__done === true, null, { timeout: 90000 }); return q.evaluate(() => _lastResultsData.map(r => ({ id: r.Sample_ID, flag: r.Flag_Reason, dc50: r.DC50_nM, r2: r.R2, top: r.Top_val }))); }
+
+if (run('E73')) await guard('E73', async () => {
+  const c = await browser.newContext({ viewport: { width: 1440, height: 900 } }); const q = await c.newPage();
+  await q.goto('file://' + FILE); await q.waitForTimeout(1200);
+  const clean = synthPlate({});
+  await loadSynth(q, clean);
+  let r = await runSynth(q);
+  check('E73', 'normalised: a clean synthetic plate has no SD flag', r.length === 6 && !r.some(x => /SD=/.test(x.flag)), r);
+  await loadSynth(q, synthPlate({ gain: true }));
+  await q.evaluate(() => { const e = document.getElementById('p-assay-type'); e.value = 'gain'; e.dispatchEvent(new Event('change')); });
+  r = await runSynth(q);
+  check('E73', 'gain of signal (raw counts): clean curves are not all flagged for SD', r.length > 0 && !r.some(x => /SD=/.test(x.flag)), r.slice(0, 3));
+  await loadSynth(q, clean);
+  await q.evaluate(() => { const e = document.getElementById('p-assay-type'); e.value = 'hibit'; e.dispatchEvent(new Event('change')); const n = document.getElementById('p-skip-norm'); n.checked = true; n.dispatchEvent(new Event('change')); });
+  r = await runSynth(q);
+  check('E73', 'no normalisation (raw counts): clean curves are not all flagged for SD', r.length > 0 && !r.some(x => /SD=/.test(x.flag)), r.slice(0, 3));
+  check('E73', 'no normalisation (raw counts): the 100 % top constraint is not applied to counts, so each curve is fitted: DC50 within x1.3 of the truth, R2 > 0.95, no hook invented', r.length === 6 && r.every(x => { const t = Math.pow(10, -8.4 + 0.3 * (+x.id.slice(4) - 1) + 9); return x.dc50 / t < 1.3 && t / x.dc50 < 1.3 && x.r2 > 0.95 && x.top > 1000 && !/Hook/.test(x.flag); }), r);
+  await q.evaluate(() => { const n = document.getElementById('p-skip-norm'); n.checked = false; n.dispatchEvent(new Event('change')); });
+  await q.evaluate(() => { const e = document.getElementById('p-assay-type'); e.value = 'hibit'; e.dispatchEvent(new Event('change')); });
+  await loadSynth(q, synthPlate({ badRep: true }));
+  r = await runSynth(q);
+  check('E73', 'normalised: a replicate 60 points off is still flagged for SD', /SD=/.test((r.find(x => x.id === 'CPD-1') || {}).flag || ''), r.slice(0, 2));
+  await loadSynth(q, synthPlate({ badRep: true, gain: true }));
+  await q.evaluate(() => { const e = document.getElementById('p-assay-type'); e.value = 'gain'; e.dispatchEvent(new Event('change')); });
+  r = await runSynth(q);
+  check('E73', 'gain of signal: a replicate that disagrees by most of the span is still flagged', /SD=/.test((r.find(x => x.id === 'CPD-1') || {}).flag || ''), r.slice(0, 2));
+  await c.close();
+});
+
+if (run('E74')) await guard('E74', async () => {
+  const P = '<img src=x onerror=window.__mx=(window.__mx||0)+1>';
+  const c = await browser.newContext({ viewport: { width: 1440, height: 900 } }); const q = await c.newPage();
+  await q.route(/^https?:\/\/(?!127\.0\.0\.1|localhost)/, r => r.abort());
+  await q.goto('file://' + FILE); await q.waitForTimeout(1200);
+  await loadSynth(q, synthPlate({ nCpd: 3, bc: 'B' + P, suf: P }));
+  await q.evaluate(P => { document.getElementById('p-assay').value = 'A' + P; for (const id of ['p-target', 'p-cell', 'p-time']) document.getElementById(id).value = P; }, P);
+  await runSynth(q); await q.waitForTimeout(600);
+  const probe = async where => { const r = await q.evaluate(() => ({ ran: window.__mx || 0, imgs: document.querySelectorAll('img[src="x"]').length })); check('E74', where + ': markup is text', r.ran === 0 && r.imgs === 0, r); };
+  for (const t of ['results', 'curves', 'scatter', 'plate', 'props', 'graph', 'console', 'history', 'protocol', 'source']) { await q.evaluate(t => { const b = document.querySelector(`.tab[data-tab="${t}"]`); b && b.click(); }, t); await q.waitForTimeout(350); await probe('tab ' + t); }
+  for (const v of ['maps', 'qc', 'compare']) { await q.evaluate(v => plateSetView(v), v).catch(() => {}); await q.waitForTimeout(300); await probe('plate ' + v); }
+  await q.evaluate(() => { openSetupModal(); switchSetupTab('review'); }); await q.waitForTimeout(2000); await probe('setup review');
+  for (const t of ['files', 'assay', 'analysis', 'output']) { await q.evaluate(t => switchSetupTab(t), t); await q.waitForTimeout(200); await probe('setup ' + t); }
+  await c.close();
+});
+
+if (run('E75')) await guard('E75', async () => {
+  const SCAN = (LIMIT) => {
+  const parse = c => { const m = c.match(/rgba?\(([^)]+)\)/); if (!m) return null; const p = m[1].split(/[ ,\/]+/).filter(Boolean).map(Number); return { r: p[0], g: p[1], b: p[2], a: p[3] === undefined ? 1 : p[3] }; };
+  const over = (f, b) => ({ r: f.r * f.a + b.r * (1 - f.a), g: f.g * f.a + b.g * (1 - f.a), b: f.b * f.a + b.b * (1 - f.a), a: 1 });
+  const lum = c => { const f = v => { v /= 255; return v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); }; return .2126 * f(c.r) + .7152 * f(c.g) + .0722 * f(c.b); };
+  const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + .05) / (Math.min(x, y) + .05); };
+  const bgOf = el => { const stack = []; let e = el; while (e && e.nodeType === 1) { const cs = getComputedStyle(e); if (cs.backgroundImage && cs.backgroundImage !== 'none' && /gradient|url/.test(cs.backgroundImage)) return null; const c = parse(cs.backgroundColor); if (c && c.a > 0) { stack.push(c); if (c.a >= 1) break; } e = e.parentElement; } let base = { r: 255, g: 255, b: 255, a: 1 }; const dark = document.documentElement.getAttribute('data-theme') === 'dark'; if (dark) base = { r: 13, g: 15, b: 20, a: 1 }; for (let i = stack.length - 1; i >= 0; i--) base = over(stack[i], base); return base; };
+  const out = []; const seen = new Set();
+  const modal = document.getElementById('setup-modal'); const mopen = modal && !modal.classList.contains('hidden') && modal.offsetParent !== null; const w = document.createTreeWalker(mopen ? modal : document.body, NodeFilter.SHOW_TEXT); let n;
+  while ((n = w.nextNode())) {
+    const t = n.textContent.trim(); if (!t) continue; const el = n.parentElement; if (!el || /^(SCRIPT|STYLE|OPTION|NOSCRIPT)$/.test(el.tagName)) continue;
+    const r = el.getBoundingClientRect(); if (r.width < 2 || r.height < 2) continue; const cs = getComputedStyle(el); if (cs.visibility === 'hidden' || cs.display === 'none' || +cs.opacity === 0) continue;
+    // ancestors opacity
+    let op = 1, e2 = el; while (e2 && e2.nodeType === 1) { op *= +getComputedStyle(e2).opacity; e2 = e2.parentElement; } if (op < 0.75) continue; /* a dimmed element is a disabled one */
+    if (el.closest('svg')) continue;
+    const bg = bgOf(el); if (!bg) continue; let fg = parse(cs.color); if (!fg) continue; fg = over({ ...fg, a: fg.a * op }, bg);
+    const cr = ratio(fg, bg); const size = parseFloat(cs.fontSize), bold = +cs.fontWeight >= 700; const need = (size >= 24 || (size >= 18.66 && bold)) ? 3 : 4.5;
+    if (cr < LIMIT) { const k = (el.className || el.tagName) + '|' + t.slice(0, 20); if (seen.has(k)) continue; seen.add(k); out.push({ t: t.slice(0, 40), cr: +cr.toFixed(2), need, cls: String(el.className).slice(0, 40), tag: el.tagName, id: el.closest('[id]') ? el.closest('[id]').id : '' }); }
+  }
+  return out;
+};;
+  for (const theme of ['light', 'dark']) {
+    const c = await browser.newContext({ viewport: { width: 1440, height: 900 } }); const q = await c.newPage();
+    await q.route(/^https?:\/\/(?!127\.0\.0\.1|localhost)/, r => r.abort());
+    await q.addInitScript(t => { try { localStorage.setItem('hub_theme', t); localStorage.setItem('assist_seen', '1'); } catch (e) {} }, theme);
+    await q.goto('file://' + FILE); await q.waitForTimeout(1200);
+    await q.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
+    await q.addStyleTag({ content: '*{transition:none!important;animation:none!important}' });
+    await q.evaluate(() => { loadTestData(); }); await q.waitForTimeout(800);
+    const scan = async where => { const r = await q.evaluate(`(${SCAN.toString()})(3.0)`); check('E75', theme + ' ' + where + ': every text run is at least 3:1', r.length === 0, r.slice(0, 4)); };
+    for (const t of ['files', 'assay', 'analysis', 'output', 'review']) {
+      await q.evaluate(t => { openSetupModal(); switchSetupTab(t); }, t); await q.waitForTimeout(t === 'review' ? 2200 : 250); await scan('setup ' + t);
+      if (t === 'review') { const f = await q.evaluate(() => { const e = document.querySelector('.rv-tw'); return e ? [e.scrollWidth, e.clientWidth] : null; }); check('E75', theme + ' Review table fits its card (no sideways scroll at 1440)', f && f[0] <= f[1], f); }
+    }
+    await q.evaluate(() => runPipeline()); await q.waitForFunction(() => typeof _lastResultsData !== 'undefined' && _lastResultsData && _lastResultsData.length > 0, null, { timeout: 120000 }); await q.waitForTimeout(1200);
+    await q.evaluate(() => closeSetupModal());
+    for (const t of ['results', 'curves', 'scatter', 'plate', 'props', 'history', 'protocol', 'source']) { await q.evaluate(t => { const b = document.querySelector(`.tab[data-tab="${t}"]`); b && b.click(); }, t); await q.waitForTimeout(400); await scan('tab ' + t); }
+    for (const v of ['maps', 'qc', 'compare']) { await q.evaluate(v => plateSetView(v), v).catch(() => {}); await q.waitForTimeout(350); await scan('plate ' + v); }
+    await c.close();
+  }
+});
+
+if (run('E76')) await guard('E76', async () => {
+  const c = await browser.newContext({ viewport: { width: 1440, height: 900 } }); const q = await c.newPage();
+  await q.route(/^https?:\/\/(?!127\.0\.0\.1|localhost)/, r => r.abort());
+  await q.goto('file://' + FILE); await q.waitForTimeout(1200);
+  await q.addStyleTag({ content: '*{transition:none!important}' });
+  await q.evaluate(() => { loadTestData(); }); await q.waitForTimeout(800);
+  const SIG = `(() => { const e = document.activeElement; if (!e || e === document.body) return null; const cs = getComputedStyle(e); const r = e.getBoundingClientRect(); return { id: (e.id || e.className || e.tagName).toString().slice(0, 40), tag: e.tagName, ring: cs.outlineStyle !== 'none' && parseFloat(cs.outlineWidth) > 0, shadow: cs.boxShadow !== 'none', vis: r.width > 0 && r.height > 0 }; })()`;
+  const stops = async (where, n) => {
+    const seen = new Map(), bad = [];
+    for (let i = 0; i < n; i++) {
+      await q.keyboard.press('Tab'); const s = await q.evaluate(SIG); if (!s || !s.vis || seen.has(s.id)) continue; seen.set(s.id, 1);
+      if (!s.ring && !s.shadow) { const a = await q.evaluate(() => { const e = document.activeElement; const b = getComputedStyle(e).borderColor; e.blur(); const b2 = getComputedStyle(e).borderColor; e.focus(); return b !== b2; }); if (!a) bad.push(s.tag + '#' + s.id); }
+    }
+    check('E76', where + ': every Tab stop shows where it is (' + seen.size + ' stops)', seen.size > 3 && bad.length === 0, bad);
+  };
+  for (const t of ['files', 'assay', 'analysis', 'output', 'review']) { await q.evaluate(t => { openSetupModal(); switchSetupTab(t); document.activeElement && document.activeElement.blur(); }, t); await q.waitForTimeout(t === 'review' ? 2200 : 250); await stops('setup ' + t, 40); }
+  await q.evaluate(() => runPipeline()); await q.waitForFunction(() => typeof _lastResultsData !== 'undefined' && _lastResultsData && _lastResultsData.length > 0, null, { timeout: 120000 }); await q.waitForTimeout(1200);
+  await q.evaluate(() => closeSetupModal());
+  for (const t of ['results', 'curves', 'scatter', 'plate', 'history', 'protocol', 'source']) { await q.evaluate(t => { const b = document.querySelector(`.tab[data-tab="${t}"]`); b && b.click(); document.activeElement && document.activeElement.blur(); document.getElementById('tabbtn-' + (t === 'source' ? 'survey' : t)).focus(); }, t); await q.waitForTimeout(350); await stops('tab ' + t, 45); }
+  await c.close();
+});
+
+if (run('E77')) await guard('E77', async () => {
+  const c = await browser.newContext({ viewport: { width: 1440, height: 900 } }); const q = await c.newPage();
+  await q.route(/^https?:\/\/(?!127\.0\.0\.1|localhost)/, r => r.abort());
+  await q.goto('file://' + FILE); await q.waitForTimeout(1200);
+  await q.evaluate(() => { loadTestData(); }); await q.waitForTimeout(800);
+  await q.evaluate(() => runPipeline()); await q.waitForFunction(() => typeof _lastResultsData !== 'undefined' && _lastResultsData && _lastResultsData.length > 0, null, { timeout: 120000 }); await q.waitForTimeout(1000);
+  await q.evaluate(() => document.querySelector('.tab[data-tab="results"]').click()); await q.waitForTimeout(300);
+  const btn = () => q.evaluate(() => { const b = document.querySelector('[onclick="copyResultsTSV()"]'); return b ? { svg: !!b.querySelector('svg'), text: b.textContent.trim() } : null; });
+  const before = await btn();
+  // 1. the async clipboard refuses; execCommand works
+  await q.evaluate(() => { window.__copied = null; Object.defineProperty(navigator, 'clipboard', { value: { writeText: () => Promise.reject(new Error('denied')) }, configurable: true }); document.execCommand = c => { if (c === 'copy') { window.__copied = document.activeElement && document.activeElement.value; return true; } return false; }; copyResultsTSV(); });
+  await q.waitForTimeout(500);
+  const mid = await btn(); const copied = await q.evaluate(() => window.__copied);
+  check('E77', 'the async clipboard refused: the table is copied through the fallback', typeof copied === 'string' && copied.split('\n').length > 20 && /DC50/.test(copied.split('\n')[0]), (copied || '').slice(0, 80));
+  check('E77', 'the button says Copied while it flashes', mid && /Copied/.test(mid.text), mid);
+  await q.waitForTimeout(1700);
+  const after = await btn();
+  check('E77', 'the button gets its icon and its words back', before && before.svg && after && after.svg && /Copy TSV/.test(after.text), { before, after });
+  // 2. nothing works: it is said
+  await q.evaluate(() => { document.execCommand = () => false; copyResultsTSV(); }); await q.waitForTimeout(500);
+  const say = await q.evaluate(() => document.body.innerText);
+  check('E77', 'when nothing can be copied the screen says so', /did not allow copying/.test(say), say.slice(-200));
+  // 3. selected IDs
+  const sel = await q.evaluate(() => { try { _selectedIDs.add('X1'); copySelectedIDs(); return 'ok'; } catch (e) { return String(e); } }); await q.waitForTimeout(500);
+  const say2 = await q.evaluate(() => document.body.innerText);
+  check('E77', 'Copy selected IDs that cannot copy says so, not a silent rejection', sel === 'ok' && /did not allow copying — select the names/.test(say2), { sel, tail: say2.slice(-160) });
+  await c.close();
+});
+
+if (run('E78')) await guard('E78', async () => {
+  const c = await browser.newContext({ viewport: { width: 1440, height: 900 } }); const q = await c.newPage();
+  await q.route(/^https?:\/\/(?!127\.0\.0\.1|localhost)/, r => r.abort());
+  await q.goto('file://' + FILE); await q.waitForTimeout(1200);
+  await q.addStyleTag({ content: '*{transition:none!important}' });
+  await q.evaluate(() => { loadTestData(); }); await q.waitForTimeout(800);
+  const PROBE = () => {
+    const out = { btn: [], inp: [], glyph: [] }; const modal = document.getElementById('setup-modal'); const mopen = modal && !modal.classList.contains('hidden') && modal.offsetParent !== null; const root = mopen ? modal : document.body;
+    const SKIP_B = /\b(tab|outer-tab|setup-stab|plate-view|hx-ic|hx-tg|na-btn|plate-png|rrm|sx-link|setup-reopen-btn|setup-hclose|opts-btn|eg-x|cv-tbl-x|cv-mode-single|cv-mode-compare|ck-[\w-]+|tk-[\w-]+|as-[\w-]+|eg-sel|eg-tin|pinfo|dz-[\w-]+|ctx[\w-]*|cv-dl-item|rv-fix)\b/;
+    for (const e of root.querySelectorAll('button')) {
+      const r = e.getBoundingClientRect(), cs = getComputedStyle(e); if (r.width < 2 || r.height < 2 || cs.visibility === 'hidden' || cs.display === 'none' || e.disabled === undefined) continue;
+      if (SKIP_B.test(e.className + ' ' + e.id) || e.closest('#dep-stack,.ck-root,.as-panel,[class*="tk-"]') || (e.textContent || '').trim().length < 3) continue;
+      if (Math.round(r.height) !== 32 || cs.borderTopLeftRadius !== '4px') out.btn.push((e.id || e.className).toString().slice(0, 30) + ' ' + Math.round(r.height) + 'h r' + cs.borderTopLeftRadius);
+    }
+    for (const e of root.querySelectorAll('input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]):not([type=hidden]),select')) {
+      const r = e.getBoundingClientRect(), cs = getComputedStyle(e); if (r.width < 2 || r.height < 2 || cs.visibility === 'hidden' || cs.display === 'none') continue;
+      if (/\b(rv-g|eg-sel|eg-tin|eg-top-unit|ck-[\w-]+)\b/.test(e.className + ' ' + e.id) || e.closest('.pl-find,.ck-root,.eg-tbl,#eg-table')) continue;
+      if (Math.round(r.height) !== 32 || cs.borderTopLeftRadius !== '4px') out.inp.push((e.id || e.className).toString().slice(0, 30) + ' ' + Math.round(r.height) + 'h r' + cs.borderTopLeftRadius);
+    }
+    const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT); let n; while ((n = w.nextNode())) { if (/✓/.test(n.textContent) && n.parentElement && n.parentElement.offsetParent !== null && !n.parentElement.closest('.guide-pane,#tab-guide,script,style,canvas,svg')) out.glyph.push(n.textContent.trim().slice(0, 30)); }
+    return out;
+  };
+  const probe = async where => { const r = await q.evaluate(PROBE); check('E78', where + ': text buttons are 32px / --r-1', r.btn.length === 0, r.btn.slice(0, 5)); check('E78', where + ': form boxes are 32px / --r-1', r.inp.length === 0, r.inp.slice(0, 5)); check('E78', where + ': no typed check mark', r.glyph.length === 0, r.glyph.slice(0, 3)); };
+  for (const t of ['files', 'assay', 'analysis', 'output', 'review']) { await q.evaluate(t => { openSetupModal(); switchSetupTab(t); }, t); await q.waitForTimeout(t === 'review' ? 2200 : 250); await probe('setup ' + t); }
+  const tabs = await q.evaluate(() => [...document.querySelectorAll('.tab,.setup-stab,.outer-tab')].map(e => e.tagName + '|' + e.getAttribute('role') + '|' + (e.getAttribute('aria-selected') !== null)).filter(x => x !== 'BUTTON|tab|true'));
+  check('E78', 'every tab is a <button role=tab aria-selected>', tabs.length === 0, tabs.slice(0, 4));
+  const ta = await q.evaluate(() => { echoToast('boom', 'err'); const e = document.querySelector('[role=alert]'); const a = e ? e.getAttribute('aria-live') : null; echoToast('fine'); const o = [...document.querySelectorAll('[role=status]')].some(x => x.textContent === 'fine'); return { alert: !!e, live: a, ok: o }; });
+  check('E78', 'a toast is role=status, an error toast role=alert', ta.alert && ta.live === 'assertive' && ta.ok, ta);
+  await q.evaluate(() => runPipeline()); await q.waitForFunction(() => typeof _lastResultsData !== 'undefined' && _lastResultsData && _lastResultsData.length > 0, null, { timeout: 120000 }); await q.waitForTimeout(1200);
+  await q.evaluate(() => closeSetupModal());
+  for (const t of ['results', 'curves', 'scatter', 'plate', 'props', 'history', 'protocol', 'survey']) { await q.evaluate(t => document.querySelector(`.tab[data-tab="${t}"]`).click(), t); await q.waitForTimeout(400); await probe('tab ' + t); }
+  await q.evaluate(() => { [...document.querySelectorAll('.outer-tab')].find(b => /Gradient/.test(b.textContent)).click(); }); await q.waitForTimeout(600); await probe('gradient planner');
+  await c.close();
+});
+
+if (run('E79')) await guard('E79', async () => {
+  const c = await browser.newContext({ viewport: { width: 1440, height: 900 } }); const q = await c.newPage();
+  await q.goto('file://' + FILE); await q.waitForTimeout(1200);
+  await q.evaluate(() => { [...document.querySelectorAll('.outer-tab')].find(b => /Gradient/.test(b.textContent)).click(); }); await q.waitForTimeout(500);
+  const out = async (val) => q.evaluate(async v => {
+    const set = (id, x) => { const e = document.getElementById(id); e.value = x; e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); };
+    set('eg-inter-vol', 30);
+    window._egS.length = 1; window._egS[0].val = 10; window._egS[0].unit = '1e-3'; _egAddStock(); _egSVal(1, v); _egSUnit(1, '1e-6');
+    await new Promise(r => setTimeout(r, 700));
+    const rows = [...document.querySelectorAll('#eg-bf-out table.eg-mini')][0]; const tr = rows && rows.querySelectorAll('tr')[1];
+    return { cells: tr ? [...tr.querySelectorAll('td')].map(t => t.innerText.trim()) : null, text: document.getElementById('eg-bf-out').innerText };
+  }, val);
+  let r = await out(1);
+  check('E79', '1 uM: the table says the 2.5 nL step makes 833 nM (-17 %)', r.cells && /833 nM/.test(r.cells[3]) && /-17%/.test(r.cells[3]), r.cells);
+  check('E79', '1 uM: a warning says the intermediate is off the listed concentration', /comes out -17% from the listed concentration/.test(r.text), r.text.slice(0, 300));
+  r = await out(10);
+  check('E79', '10 uM: made as listed (30 nL, 9.99 uM), no warning', r.cells && /^9\.99 µM$/.test(r.cells[3]) && !/from the listed concentration/.test(r.text), r.cells);
+  await c.close();
 });
 
 await browser.close();
