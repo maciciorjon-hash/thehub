@@ -127,6 +127,15 @@ if (run('PT5')) await guard('PT5', async () => {
   if (r.unlabeled.length) bad('PT5', 'fields with no label bound: ' + r.unlabeled.join(', ')); else ok();
   if (r.tips) bad('PT5', `${r.tips} ⓘ marks are not keyboard reachable or have no name`); else ok();
   if (r.enz) bad('PT5', 'enzyme buttons do not report which is pressed'); else ok();
+
+  const tb = await p.evaluate(() => { const tl = document.querySelector('.tabs'), tabs = [...tl.querySelectorAll('[role=tab]')], sel = () => tabs.filter(t => t.getAttribute('aria-selected') === 'true').length;
+    const first = tabs.filter(t => t.tabIndex === 0).length; tabs[0].focus(); tabs[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    const moved = tabs[1].classList.contains('active') && document.activeElement === tabs[1];
+    const toast = (typeof helixToast === 'function' ? (helixToast('x'), document.getElementById('helix-toast')) : (ptToast('x'), document.getElementById('pt-toast')));
+    return { list: tl.getAttribute('role'), n: tabs.length, sel: sel(), first, moved, panels: tabs.filter(t => { const pn = document.getElementById(t.getAttribute('aria-controls')); return pn && pn.getAttribute('role') === 'tabpanel'; }).length, toast: toast.getAttribute('role') + '/' + toast.getAttribute('aria-live') }; });
+  if (tb.list !== 'tablist' || tb.panels !== tb.n || tb.sel !== 1 || tb.first !== 1) bad('PT5', 'tabs are not a tablist with one selected tab and one tab stop: ' + JSON.stringify(tb)); else ok();
+  if (!tb.moved) bad('PT5', 'the right arrow does not move to and select the next tab'); else ok();
+  if (!/^status\//.test(tb.toast)) bad('PT5', 'the toast is not role=status'); else ok();
   await p.close();
 });
 

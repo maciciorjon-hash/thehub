@@ -188,6 +188,15 @@ if (run('HX8')) await guard('HX8', async () => {
   if (r.n !== 64 || r.badCell) bad('HX8', `${r.n} codon cells, ${r.badCell} not buttons or unnamed`); else ok();
   if (r.tips) bad('HX8', `${r.tips} ⓘ marks are not keyboard stops`); else ok();
   if (!/Copied|did not allow/.test(toast)) bad('HX8', `Copy gives no answer: "${toast}"`); else ok();
+
+  const tb = await p.evaluate(() => { const tl = document.querySelector('.tabs'), tabs = [...tl.querySelectorAll('[role=tab]')], sel = () => tabs.filter(t => t.getAttribute('aria-selected') === 'true').length;
+    const first = tabs.filter(t => t.tabIndex === 0).length; tabs[0].focus(); tabs[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    const moved = tabs[1].classList.contains('active') && document.activeElement === tabs[1];
+    const toast = (typeof helixToast === 'function' ? (helixToast('x'), document.getElementById('helix-toast')) : (ptToast('x'), document.getElementById('pt-toast')));
+    return { list: tl.getAttribute('role'), n: tabs.length, sel: sel(), first, moved, panels: tabs.filter(t => { const pn = document.getElementById(t.getAttribute('aria-controls')); return pn && pn.getAttribute('role') === 'tabpanel'; }).length, toast: toast.getAttribute('role') + '/' + toast.getAttribute('aria-live') }; });
+  if (tb.list !== 'tablist' || tb.panels !== tb.n || tb.sel !== 1 || tb.first !== 1) bad('HX8', 'tabs are not a tablist with one selected tab and one tab stop: ' + JSON.stringify(tb)); else ok();
+  if (!tb.moved) bad('HX8', 'the right arrow does not move to and select the next tab'); else ok();
+  if (!/^status\//.test(tb.toast)) bad('HX8', 'the toast is not role=status'); else ok();
   await p.close();
 });
 
@@ -198,7 +207,7 @@ const CONTRAST = () => {
   const over = (t, b) => [t[0] * t[3] + b[0] * (1 - t[3]), t[1] * t[3] + b[1] * (1 - t[3]), t[2] * t[3] + b[2] * (1 - t[3]), 1];
   const bgOf = el => { const st = []; for (let e = el; e && e.nodeType === 1; e = e.parentElement) { const b = rgba(getComputedStyle(e).backgroundColor); if (b[3] > 0) { st.push(b); if (b[3] >= 0.999) break; } } let cur = (st.length && st[st.length - 1][3] >= 0.999) ? st.pop() : [255, 255, 255, 1]; while (st.length) cur = over(st.pop(), cur); return cur; };
   const out = [];
-  document.querySelectorAll('.nt-A,.nt-T,.nt-G,.nt-C,.aa-nonpolar,.aa-polar,.aa-acidic,.aa-basic,.aa-stop,.pill,.res-val,.res-lbl,#orf-seq-disp span[id],#hx-comp-counts span,.match-line,.codon-legend-item,#re-result td,#re-result div,#pr-result div,.stat-table td').forEach(el => {
+  document.querySelectorAll('.nt-A,.nt-T,.nt-G,.nt-C,.aa-nonpolar,.aa-polar,.aa-acidic,.aa-basic,.aa-stop,.pill,.res-val,.res-lbl,#orf-seq-disp span[id],#hx-comp-counts span,.match-line,.codon-legend-item,#re-result td,#re-result div,#pr-result div,.stat-table td,.tab,.btn-sec,.copy-btn,label,.result-card-hdr,.seq-a,.seq-b').forEach(el => {
     if (!(el.textContent || '').trim() || el.children.length > 3) return; const r = el.getBoundingClientRect(); if (r.width < 1) return;
     const bg = bgOf(el), fg = over(rgba(getComputedStyle(el).color), bg), a = lum(fg), b = lum(bg), ratio = (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
     if (ratio < 4.5) out.push(`${(el.className || el.tagName)} "${el.textContent.trim().slice(0, 14)}" ${ratio.toFixed(2)}`);
