@@ -16,6 +16,10 @@
 //                           there (a version restored from Recover > Versions) the live one is kept and the bin's comes back beside it as a copy.
 //   L8 a step has its own id  A notebook whose experiment holds two steps with one id (a hand-edited or merged file) comes up with distinct ids, so
 //                           ticking the second does not tick the first.
+//   L9 one date format      No date on screen is written 19/10/2026 or "Oct 19": it is `19 Oct 2026` (docs/UI.md); records stay ISO.
+//   L10 Tab leaves the text  Tab in a step's text outside a list moves on (it indented the paragraph: a keyboard trap); Esc then Tab leaves a list too.
+//   L11 text is readable    On the main screens, in both themes, every piece of text that is not ink-on-a-fill is 4.5:1 against what is behind it
+//                           (--text3 was 3.85, accent / good / warn as text 3.5-3.8, a literal green in the dark recipe).
 //   L7 an import is one undo step  Importing one experiment from a file is undone by one ⌘Z (the bundle had it; the single import did not)
 //
 //   node tools/labbook_audit_invariants.mjs [--url=URL] [--only=L1,L3]
@@ -203,8 +207,70 @@ try {
     if (new Set(r).size !== r.length) bad('L8', 'two steps of one experiment still share an id after a reload');
     await ctx.close();
   }
+  // ── L9 / L11 ──
+  if (run('L9') || run('L11')) {
+    counts.L9 = counts.L11 = 1;
+    const ctx = await newCtx(); const { page } = await open(ctx);
+    const ids = await page.evaluate(`${SEED}`);
+    await page.addStyleTag({ content: '*,*::before,*::after{transition:none!important;animation:none!important}' });
+    const SCENES = [`openExp('${ids.spark}')`, `openExp('${ids.bio}')`, `selectNode('home')`, `selectNode('journal')`, `selectNode('week')`, `selectNode('exps')`, `selectNode('design')`, `openRecover('trash')`, `openSettings()`, `(function(){var p=LB.data.projects.filter(function(x){return (x.sections||[]).length})[0];selectNode('expsec',p.id,p.sections[0].id);openNew();})()`];
+    for (const theme of ['light', 'dark']) {
+      await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
+      for (const js of SCENES) {
+        await page.evaluate(js => { document.querySelectorAll('.modal-back.open,#spot-back.open').forEach(x => x.classList.remove('open')); (0, eval)(js); }, js);
+        await page.waitForTimeout(500);
+        const r = await page.evaluate(() => {
+          const out = { dates: [], low: [] };
+          const vis = e => { const r = e.getBoundingClientRect(); if (r.width < 1 || r.height < 1) return false; for (let p = e; p && p !== document.body; p = p.parentElement) { const c = getComputedStyle(p); if (c.display === 'none' || c.visibility === 'hidden') return false; } return true; };
+          const txt = document.body.innerText;
+          const d1 = txt.match(/\b\d{1,2}\/\d{1,2}\/\d{4}\b/g), d2 = txt.match(/\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun),? (?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{1,2}\b/g);
+          (d1 || []).concat(d2 || []).slice(0, 3).forEach(x => out.dates.push(x));
+          const parse = s => { const m = s.match(/rgba?\(([^)]+)\)/); if (!m) return null; const p = m[1].split(/[,\s/]+/).filter(Boolean).map(Number); return { r: p[0], g: p[1], b: p[2], a: p[3] === undefined ? 1 : p[3] }; };
+          const lin = c => { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+          const Lm = c => 0.2126 * lin(c.r) + 0.7152 * lin(c.g) + 0.0722 * lin(c.b);
+          const blend = (f, b) => ({ r: f.r * f.a + b.r * (1 - f.a), g: f.g * f.a + b.g * (1 - f.a), b: f.b * f.a + b.b * (1 - f.a), a: 1 });
+          const onAcc = parse(getComputedStyle(document.documentElement).getPropertyValue('--on-accent').trim().replace(/^#(..)(..)(..)$/, (m, a, b, c) => `rgb(${parseInt(a, 16)},${parseInt(b, 16)},${parseInt(c, 16)})`) || 'rgb(255,255,255)');
+          const bgOf = e => { const st = []; let p = e; while (p) { const cs = getComputedStyle(p); if (/gradient/.test(cs.backgroundImage)) return null; const c = parse(cs.backgroundColor); if (c && c.a > 0) { st.push(c); if (c.a >= 1) break; } p = p.parentElement; } let base = { r: 255, g: 255, b: 255, a: 1 }; for (let i = st.length - 1; i >= 0; i--) base = blend(st[i], base); return base; };
+          const seen = new Set(); const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT); let n, k = 0;
+          while ((n = w.nextNode()) && k < 3000) {
+            const t = n.textContent.trim(); if (!t) continue; const e = n.parentElement; if (!e || /^(SCRIPT|STYLE)$/.test(e.tagName) || !vis(e)) continue; k++;
+            if (e.closest('.modal-back:not(.open),[disabled],svg,#lb-tour')) continue;
+            const cs = getComputedStyle(e); const fg = parse(cs.color), bg = bgOf(e); if (!fg || !bg) continue;
+            if (onAcc && Math.abs(fg.r - onAcc.r) < 3 && Math.abs(fg.g - onAcc.g) < 3 && Math.abs(fg.b - onAcc.b) < 3) continue;   // ink on a fill: held at 3:1 by docs/UI.md
+            if (document.querySelector('.modal-back.open') && !e.closest('.modal-back.open')) continue;       // behind a dialog's backdrop
+            const f = blend({ ...fg, a: fg.a * (+cs.opacity || 1) }, bg); const l1 = Lm(f), l2 = Lm(bg); const ratio = (Math.max(l1, l2) + .05) / (Math.min(l1, l2) + .05);
+            const fs = parseFloat(cs.fontSize), large = fs >= 24 || (fs >= 18.66 && +cs.fontWeight >= 700);
+            if (ratio < (large ? 3 : 4.5)) { const key = (e.className || e.tagName) + cs.color; if (!seen.has(key)) { seen.add(key); out.low.push(ratio.toFixed(2) + ' ' + (typeof e.className === 'string' ? e.className.split(' ')[0] : e.tagName) + ' "' + t.slice(0, 18) + '" ' + cs.color); } }
+          }
+          return out;
+        });
+        if (run('L9')) r.dates.forEach(d => bad('L9', 'a date on screen reads "' + d + '"'));
+        if (run('L11')) r.low.forEach(m => bad('L11', theme + ' · ' + js.slice(0, 22) + ' · ' + m));
+      }
+    }
+    await ctx.close();
+  }
+  // ── L10 ──
+  if (run('L10')) {
+    counts.L10 = 1;
+    const ctx = await newCtx(); const { page } = await open(ctx);
+    const ids = await page.evaluate(`${SEED}`);
+    await page.evaluate(id => openExp(id), ids.wb); await page.waitForTimeout(600);
+    await page.evaluate(() => { document.querySelectorAll('.modal-back.open').forEach(x => x.classList.remove('open')); });
+    const ed = await page.evaluate(() => { const rts = [...document.querySelectorAll('.bench-group .rt[contenteditable="true"]')]; const t = rts.find(e => !e.querySelector('li')) || rts[0]; if (!t) return null; t.setAttribute('data-l10', '1'); return true; });
+    if (!ed) bad('L10', 'no step text to test');
+    else {
+      await page.focus('[data-l10]'); await page.evaluate(() => { const t = document.querySelector('[data-l10]'); const r = document.createRange(); r.selectNodeContents(t); r.collapse(false); const s = getSelection(); s.removeAllRanges(); s.addRange(r); });
+      const html0 = await page.evaluate(() => document.querySelector('[data-l10]').innerHTML);
+      await page.keyboard.press('Tab');
+      const r = await page.evaluate(() => ({ still: document.activeElement === document.querySelector('[data-l10]') || !!document.querySelector('[data-l10]').contains(document.activeElement), html: document.querySelector('[data-l10]').innerHTML }));
+      if (r.still) bad('L10', 'Tab stayed in the text of a step (a keyboard trap)');
+      if (r.html !== html0) bad('L10', 'Tab changed the text of a step outside a list');
+    }
+    await ctx.close();
+  }
 } finally { await browser.close(); if (srv) srv.kill(); }
-for (const id of ['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8']) { if (ONLY && !ONLY.includes(id)) continue; const fs_ = findings.filter(f => f.id === id); process.stdout.write(`  ${fs_.length ? '✗' : '✓'} ${id}${fs_.length ? '  — ' + fs_.length + ' finding(s)' : ''}\n`); }
+for (const id of ['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8', 'L9', 'L10', 'L11']) { if (ONLY && !ONLY.includes(id)) continue; const fs_ = findings.filter(f => f.id === id); process.stdout.write(`  ${fs_.length ? '✗' : '✓'} ${id}${fs_.length ? '  — ' + fs_.length + ' finding(s)' : ''}\n`); }
 const seen = new Set(); findings.forEach(f => { const k = f.id + f.m; if (seen.has(k)) return; seen.add(k); process.stdout.write(`     [${f.id}] ${f.m}\n`); });
 if (!findings.length) process.stdout.write('\nLabbook audit invariants hold.\n');
 process.exit(findings.length ? 1 : 0);

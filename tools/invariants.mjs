@@ -450,8 +450,9 @@ async function suite(opts) {
       openQuick(key, v.o);
       // I9 — the dates the preview lists, read off the screen it draws.
       const promised = [...document.querySelectorAll('#nm-preview .nm-pv-row')].map(r => {
-        const m = (r.querySelector('.nm-pv-day') || {}).textContent.match(/(\d{2})\/(\d{2})\/(\d{4})/);
-        return m ? `${m[3]}-${m[2]}-${m[1]}` : null; }).filter(Boolean);
+        // on screen a date is `1 Oct 2026` (docs/UI.md, 2026-10-21); the record is ISO
+        const m = (r.querySelector('.nm-pv-day') || {}).textContent.match(/(\d{1,2}) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\d{4})/);
+        return m ? `${m[3]}-${String(['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].indexOf(m[2]) + 1).padStart(2, '0')}-${m[1].padStart(2, '0')}` : null; }).filter(Boolean);
       const A = await created(() => createExperiment());
       closeNew();
       designFrom(key, v.o);
