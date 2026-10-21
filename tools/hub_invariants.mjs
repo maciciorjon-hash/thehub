@@ -14,6 +14,8 @@
 //                         open app lights the landing it belongs to
 //   S6  the rail's order      Journal, Planner, Experiments, Designer, then the landings; Experiments has its own entry and icon, an old
 //                         "exps" link lights it, and Labbook telling the Hub it is in Experiments lights it
+//   S7  opaque links      a public app's link is an opaque slug, never its name: opening Echo writes the slug to the URL, the
+//                         slug opens it for anyone, and #echo opens only for the admin or a visitor who typed Echo's word
 //
 //   node tools/hub_invariants.mjs [--shell=PATH] [--only=S1]      exit 1 on any finding
 import { chromium } from 'playwright';
@@ -194,6 +196,34 @@ if (run('S6')) {
   if (r.afterExps !== 'experiments' || r.section !== 'experiments') bad('S6', 'the old Experiments link lit ' + r.afterExps + ' (section ' + r.section + '), expected Experiments'); else ok();
   if (r.afterPlanner !== 'planner') bad('S6', 'Planner lit ' + r.afterPlanner); else ok();
   if (r.afterTold !== 'experiments') bad('S6', 'Labbook said it is in Experiments and the rail lit ' + r.afterTold); else ok();
+}
+
+if (run('S7')) {
+  const r = await page.evaluate(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    const reset = async () => { try { backToHub({ plain: true }); } catch (e) {} await wait(450); sessionStorage.removeItem('hub_own_hash'); };
+    const tryHash = async h => { await reset(); history.replaceState({}, '', location.pathname + '#' + h); _openFromHash(); await wait(400); return { app: currentApp, hash: location.hash }; };
+    const out = {};
+    _authResolved = true; isAdmin = false; _unlockedApps.clear();
+    out.slugOk = APP_SLUG.echo && /^[0-9a-f]{12}$/.test(APP_SLUG.echo) && new Set(Object.values(APP_SLUG)).size === Object.keys(APP_SLUG).length;
+    out.name = await tryHash('echo');
+    out.slug = await tryHash(APP_SLUG.echo);
+    out.urlInApp = out.slug.hash;
+    _unlockedApps.add('echo');
+    out.unlocked = await tryHash('echo');
+    _unlockedApps.clear(); isAdmin = true;
+    out.admin = await tryHash('echo');
+    out.copy = _hashFor('echo');
+    await reset();
+    return out;
+  });
+  if (!r.slugOk) bad('S7', 'the public apps need distinct 12-hex slugs'); else ok();
+  if (r.name.app === 'echo') bad('S7', '#echo opened Echo for a visitor who never typed the word'); else ok();
+  if (r.name.hash) bad('S7', 'the refused #echo was left in the URL: ' + r.name.hash); else ok();
+  if (r.slug.app !== 'echo') bad('S7', 'the slug link did not open Echo: ' + JSON.stringify(r.slug)); else ok();
+  if (r.urlInApp !== '#' + r.copy || r.urlInApp === '#echo') bad('S7', 'inside Echo the URL reads ' + r.urlInApp + ', not its slug'); else ok();
+  if (r.unlocked.app !== 'echo') bad('S7', '#echo did not open Echo for a visitor who typed its word'); else ok();
+  if (r.admin.app !== 'echo') bad('S7', '#echo did not open Echo for the admin'); else ok();
 }
 
 for (const e of errs) bad('page', e);
