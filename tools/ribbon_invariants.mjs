@@ -79,6 +79,7 @@
 //                           light accent fill is the Hub's held decision); buttons and fields are 32px with the one small radius; forced-colours mode keeps an edge on icon buttons.
 //   RB46 small molecules  An SDF (several molecules are frames), a MOL2 and an XYZ open as one ligand, atoms named by element and number, LIG on chain A in every frame; selection,
 //                           measurement and Analyse read it; an empty or wrong file is refused with the formats named and the structure on screen kept.
+//   RB47 a long render says so  Export says Rendering… and is disabled the moment it is pressed; a double press makes one file; the button is itself again afterwards.
 //
 // 3Dmol comes from its CDN (pinned); every other network call is stubbed. If the CDN is unreachable the
 // checks that need the viewer are reported as skipped, not passed.
@@ -2978,7 +2979,23 @@ async function rb46() {
   await ctx.close();
 }
 
-const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20], ['RB21', rb21], ['RB22', rb22], ['RB23', rb23], ['RB24', rb24], ['RB25', rb25], ['RB26', rb26], ['RB27', rb27], ['RB28', rb28], ['RB29', rb29], ['RB30', rb30], ['RB31', rb31], ['RB32', rb32], ['RB33', rb33], ['RB34', rb34], ['RB35', rb35], ['RB36', rb36], ['RB37', rb37], ['RB38', rb38], ['RB39', rb39], ['RB40', rb40], ['RB41', rb41], ['RB42', rb42], ['RB43', rb43], ['RB44', rb44], ['RB45', rb45], ['RB46', rb46]];
+// ── RB47 a long render says so ──────────────────────────────────────────────────────────────
+async function rb47() {
+  const { ctx, pg, E, go } = await open({ tag: 'RB47 ' });
+  if (!(await has3d(pg))) { skipped.push('RB47 (3Dmol could not load from its CDN)'); await ctx.close(); return; }
+  await go('4LIG');
+  await pg.click('#exportBtn2'); await sleep(200);
+  await E(() => { window.__dl = 0; const o = window._saveBlob; window._saveBlob = function (b, n) { window.__dl++; return o.apply(this, arguments); }; });
+  const dl = pg.waitForEvent('download');
+  await E(() => { const b = document.getElementById('exGo'); b.click(); b.click(); window.__st = { dis: b.disabled, txt: b.textContent }; });
+  check('RB47', 'Export says Rendering… and is disabled the moment it is pressed (a 1200 dpi render is seconds without a GPU)', await E(() => window.__st.dis && /Rendering/.test(window.__st.txt)), await E(() => window.__st));
+  await dl; await sleep(600);
+  const r = await E(() => ({ n: window.__dl, dis: document.getElementById('exGo').disabled, txt: document.getElementById('exGo').textContent, open: document.getElementById('export-modal').classList.contains('open') }));
+  check('RB47', 'a double press makes one file, and the button is itself again afterwards', r.n === 1 && !r.dis && r.txt === 'Export', r);
+  await ctx.close();
+}
+
+const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20], ['RB21', rb21], ['RB22', rb22], ['RB23', rb23], ['RB24', rb24], ['RB25', rb25], ['RB26', rb26], ['RB27', rb27], ['RB28', rb28], ['RB29', rb29], ['RB30', rb30], ['RB31', rb31], ['RB32', rb32], ['RB33', rb33], ['RB34', rb34], ['RB35', rb35], ['RB36', rb36], ['RB37', rb37], ['RB38', rb38], ['RB39', rb39], ['RB40', rb40], ['RB41', rb41], ['RB42', rb42], ['RB43', rb43], ['RB44', rb44], ['RB45', rb45], ['RB46', rb46], ['RB47', rb47]];
 const port = await freePort();
 const srv = spawn('python3', ['-m', 'http.server', String(port), '--bind', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });
 base = `http://127.0.0.1:${port}/`;
