@@ -34,7 +34,7 @@ assistRegister('hub', {
     { id: 'unlock', t: 'Getting more tools', group: 'Getting started', on: ['visitor'],
       q: ['code word', 'unlock', 'discover', 'enter code', 'secret code', 'hidden apps', 'codigo', 'palabra clave', 'desbloquear', 'mas apps', 'more apps', 'more tools', 'i dont see', 'no veo'],
       a: ['Some tools are shared by invitation. If someone gave you a code word, type it into the **discover** box on the home page and press Enter. Most words open one tool; a suite word opens a whole group of tools at once.',
-          'There is no account to create.'],
+          'There is no account to create. To get a code word, ask Jon on Slack or by email (maciciorjon@gmail.com).'],
       show: { sel: '#hub-unlock-input', say: 'Type the code word here.' } },
     { id: 'tours', t: 'Take a guided tour of a tool', group: 'Getting started',
       q: ['guided tour', 'take the tour', 'tour of this tool', 'show me around', 'walk me through', 'first time using', 'new to this tool', 'visita guiada', 'recorrido guiado', 'enseñame como funciona', 'primera vez'],

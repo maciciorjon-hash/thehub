@@ -16,6 +16,8 @@
 //   H11 stored text stays text    markup in a task, culture, antibody, announcement, toast or question is printed, never run, on every landing, the nav note and the search
 //   H10 contrast, the whole shell  every text run the shell draws (landings, Settings tabs, search, toast, bar) is >= 4.5:1 in both themes
 //                                  (ink on a solid accent fill is held at 3:1, docs/UI.md)
+//   H12 an access reset resets          an unlock stored under an older ACCESS_EPOCH is dropped, the old words open nothing, the discover box says who to ask
+//                                  for a code, and an unlock made now survives a reload
 //
 //   node tools/hub_audit_invariants.mjs [--shell=PATH] [--only=H2]      exit 1 on any finding
 import { chromium } from 'playwright';
@@ -334,6 +336,32 @@ if (run('H11')) {
   });
   if (r.xss || r.imgs) bad('H11', 'stored or typed markup was run or became an element: ' + JSON.stringify(r)); else ok();
   await context.close();
+}
+
+if (run('H12')) {
+  {
+    const { context, page } = await open({ mode: 'visitor', init: "localStorage.setItem('hub_unlocked', JSON.stringify(['lumina','echo']));" });
+    const r = await page.evaluate(() => ({
+      held: Array.from(_unlockedApps), stored: localStorage.getItem('hub_unlocked'), epoch: localStorage.getItem('hub_access_epoch'), want: String(ACCESS_EPOCH),
+      cards: document.querySelectorAll('#hub-suites .card').length,
+      note: (document.querySelector('#hub-unlock .unlock-note') || {}).textContent || '', mail: (document.querySelector('#hub-unlock .unlock-note a') || {}).href || '',
+      old: ['acoustic', 'illuminate', 'hillslope', 'degrade'].filter(w => tryUnlock(w)),
+    }));
+    if (r.held.length || r.stored !== null || r.cards) bad('H12', 'an unlock stored before the reset still opened apps: ' + JSON.stringify(r));
+    else if (r.epoch !== r.want) bad('H12', 'the visitor was not moved to the current epoch: ' + JSON.stringify(r));
+    else if (r.old.length) bad('H12', 'a retired code word still unlocks: ' + r.old.join(', '));
+    else if (!/Jon/.test(r.note) || !/Slack/.test(r.note) || !/^mailto:/.test(r.mail)) bad('H12', 'the discover box does not say who to ask for a code: ' + JSON.stringify(r.note));
+    else ok();
+    await context.close();
+  }
+  {
+    const { context, page } = await open({ mode: 'visitor' });
+    await page.evaluate(() => { tryUnlock(APP_UNLOCK_WORDS.lumina); });
+    await page.reload({ waitUntil: 'load' }); await page.waitForTimeout(600);
+    const r = await page.evaluate(() => ({ has: _unlockedApps.has('lumina'), others: Array.from(_unlockedApps).filter(x => x !== 'lumina') }));
+    r.has && !r.others.length ? ok() : bad('H12', 'an unlock made under the current epoch did not survive a reload: ' + JSON.stringify(r));
+    await context.close();
+  }
 }
 
 await browser.close();
