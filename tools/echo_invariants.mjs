@@ -1277,6 +1277,16 @@ if (run('E28')) await guard('E28', async () => {
     return { groups: others.map(x => x.Protein + ':' + x.DC50_nM), rows: cell ? [...cell.querySelectorAll('.pp-aff-r')].map(e => e.textContent.replace(/\s+/g, ' ').trim()) : null };
   });
   check('E28', 'the Properties tab lists the potency for every group a compound was fitted in', r.rows && r.rows.length === r.groups.length && r.groups.every(g => r.rows.some(t => t.replace(' ', ':') === g || t.includes(g.split(':')[1]) && t.includes(g.split(':')[0]))), r);
+  // The potency cell is a label + number block under its own header: it does not stretch to the next column (the numbers sat against Ro5, far from the DC50 header), and the numbers line up on their right edge.
+  const g = await E(() => {
+    document.querySelector('.tab[data-tab="props"]').click();
+    const cell = document.querySelector('#props-panel td.pp-aff'), ths = [...document.querySelectorAll('#props-panel th')];
+    const grid = cell && cell.querySelector('.pp-aff-grid'), head = ths.find(t => /DC50/.test(t.textContent)), ro5 = ths.find(t => /^Ro5/.test(t.textContent.trim()));
+    if (!grid || !head || !ro5) return null;
+    const vals = [...grid.querySelectorAll('.pp-aff-r > span:last-child')].map(e => Math.round(e.getBoundingClientRect().right));
+    return { fromHead: grid.getBoundingClientRect().left - head.getBoundingClientRect().left, gapToRo5: ro5.getBoundingClientRect().left - grid.getBoundingClientRect().right, vals };
+  });
+  check('E28', 'the DC50 numbers sit under their header, a clear gap before Ro5, right-aligned', g && Math.abs(g.fromHead - 10) < 3 && g.gapToRo5 > 24 && g.vals.every(v => v === g.vals[0]), g);
 });
 
 if (run('E29')) await guard('E29', async () => {
