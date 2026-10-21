@@ -2020,6 +2020,7 @@ var SetupKit = (function(){
             </div>
             <div id="multi-assay-panels" style="display:none;">
               <div id="mat-type-list"></div>
+              <div id="mat-warn" class="sx-hint" role="status" style="display:none;color:var(--warn);"></div>
               <button class="sx-btn sx-add" onclick="addAssayType()">+ Add assay type</button>
             </div>
           </div>
@@ -2899,6 +2900,7 @@ async function _runPipeline() {
           if (seen.has(k)) throw new Error('Two assay panels both analyse ' + mc.type + (mc.prefix ? ' for the files starting “' + mc.prefix + '”' : ' for all the plate files') + ', so every compound would appear twice. Give each panel its own assay type or file prefix, or remove one.');
           seen.add(k);
         } }
+      _matLumClash(matConfigs).forEach(w => log('⚠ ' + w, 'warn'));
       const mergedResults = [];
       const panelPlates = [];   // per panel: the plates it analysed and their Smart DMSO notes, merged below
       window._runScreens = matConfigs.map((mc, i) => _screenMeta(i, mc.type, mc.role, mc.target, mc.cell, mc.time, mc.prefix));
@@ -13020,12 +13022,12 @@ function addAssayType() {
         <option value="ctg">Viability luminescence (CellTiter-Glo)</option>
         <option value="ctg:fluor">Viability fluorescence</option>
       </select>
-      <input type="text" id="mat-prefix-${idx}" placeholder="Reader file prefix (e.g. HIBIT)" aria-label="Reader file prefix of this panel">
+      <input type="text" id="mat-prefix-${idx}" placeholder="Reader file prefix (e.g. HIBIT)" aria-label="Reader file prefix of this panel" oninput="_matShowClash()">
       <button class="sx-btn" aria-label="Remove this assay type" onclick="removeAssayType(${idx})">✕</button>
     </div>
     <div class="setup-2col">
       <div class="sx-f"><label for="mat-read-${idx}">GloMax reading <span class="pinfo" data-tip="For a GloMax file that holds two readings of the same plate (luminescence and fluorescence). Choose which one this panel analyses, so one file can feed a HiBiT degradation panel (luminescence) and a viability panel (fluorescence), each with its own controls, fit and results. Automatic reads the luminescence." tabindex="0" role="img" aria-label="Explanation">?</span></label>
-        <select id="mat-read-${idx}"><option value="">Automatic (luminescence)</option><option value="lum">Luminescence</option><option value="fluor">Fluorescence</option></select></div>
+        <select id="mat-read-${idx}" onchange="_matShowClash()"><option value="">Automatic (luminescence)</option><option value="lum">Luminescence</option><option value="fluor">Fluorescence</option></select></div>
       <div class="sx-f"><label for="mat-ctrl-${idx}">Control (vehicle) wells</label>
         <div class="sx-inline"><input type="text" id="mat-ctrl-${idx}" placeholder="e.g. B22:O23"><button class="sx-btn" onclick="openMatCtrlPicker(${idx})">⊞ Grid</button></div></div>
       <div class="sx-f" id="mat-zero-wrap-${idx}" style="display:none;"><label for="mat-zero-${idx}">0% signal wells</label>
@@ -13054,6 +13056,21 @@ function addAssayType() {
   syncMatAnalysisParams();
 }
 
+// A viability panel that reads luminescence over the same files as a HiBiT (or any other luminescence) panel reads the very same
+// grid: its "viability" curve would be the HiBiT one. Multiplexed with HiBiT the viability has to be the fluorescence reading.
+// Returns one sentence per such pair; it only warns (CellTiter-Glo plates in the same folder are a fine reason to carry on).
+function _matLumClash(configs) {
+  const lum = c => c.type !== 'ctg' && c.reading !== 'fluor', via = c => c.type === 'ctg' && c.reading !== 'fluor';
+  const shares = (a, b) => !a.prefix || !b.prefix || a.prefix.toLowerCase() === b.prefix.toLowerCase();
+  const nm = { hibit: 'HiBiT', displacement: 'Displacement', gain: 'Gain-of-Signal' }, out = [];
+  configs.forEach(v => { if (!via(v)) return; configs.forEach(o => { if (o !== v && lum(o) && shares(o, v)) out.push('The viability panel reads luminescence, the same reading as the ' + (nm[o.type] || o.type) + ' panel on the same files, so its curves would be the ' + (nm[o.type] || o.type) + ' ones. Multiplexed with a luminescence assay the viability is the fluorescence: choose “Viability fluorescence”.'); }); });
+  return out;
+}
+function _matShowClash() {
+  const el = document.getElementById('mat-warn'); if (!el) return;
+  const w = document.getElementById('multi-assay-chk')?.checked ? _matLumClash(collectMultiAssayConfigs()) : [];
+  el.textContent = w.join(' '); el.style.display = w.length ? '' : 'none';
+}
 // A panel's type select also carries the reading of a viability panel ('ctg:fluor' = viability read as fluorescence).
 const _matBase = v => String(v || 'hibit').split(':')[0];
 function updateMatPanel(idx) {
@@ -13089,6 +13106,7 @@ function removeAssayType(idx) {
 }
 
 function syncMatAnalysisParams() {
+  _matShowClash();
   const container = document.getElementById('mat-analysis-container');
   const single = document.getElementById('single-analysis-params');
   const isMulti = document.getElementById('multi-assay-chk')?.checked;

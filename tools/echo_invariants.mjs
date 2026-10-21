@@ -2639,6 +2639,10 @@ if (run('E64')) await guard('E64', async () => {
     // automatic reads the luminescence: panel 1 back to automatic gives the HiBiT curves on the viability panel too
     setv('mat-type-1', 'ctg'); setv('mat-read-1', ''); updateMatPanel(1);
     out.auto = snap(await multi(both, 'E64-auto'), 'ctg');
+    { const w = document.getElementById('mat-warn'); out.warnOn = { ui: w.style.display !== 'none' ? w.textContent : '', log: document.getElementById('log-panel').innerText };
+      setv('mat-type-1', 'ctg:fluor'); updateMatPanel(1); out.warnOff = w.style.display === 'none' && !w.textContent;
+      setv('mat-type-1', 'ctg'); setv('mat-read-1', ''); for (const [id, v] of [['mat-prefix-1', 'VIAB'], ['mat-prefix-0', 'HIBIT']]) { const e = document.getElementById(id); e.value = v; e.dispatchEvent(new Event('input')); } out.warnPrefix = w.style.display === 'none';
+      setv('mat-prefix-1', ''); setv('mat-prefix-0', ''); }
     // the same type and reading twice is still refused; the same type with two readings is not
     setv('mat-type-1', 'hibit'); setv('mat-read-1', 'lum'); updateMatPanel(1);
     readerFiles = both; _lastResultsData = null; document.getElementById('log-panel').innerHTML = '';
@@ -2661,6 +2665,8 @@ if (run('E64')) await guard('E64', async () => {
   check('E64', 'the plate view keeps every plate once per assay, named for it, instead of one overwriting the other', R.keys.length === 12 && R.keys.filter(k => / · HiBiT$/.test(k)).length === 6 && R.keys.filter(k => / · Viability fluorescence$/.test(k)).length === 6, R.keys);
   check('E64', 'each plate of the plate view finds the fit of its own assay', R.fits.length === 12 && R.fits.every(f => (/ · HiBiT$/.test(f.k) ? f.type === 'hibit' : f.type === 'ctg')), R.fits);
   check('E64', 'a panel that reads a reading the files do not have says so, and the run stops with that reason', /None of the reader files has a fluorescence reading|no fluorescence reading in this GloMax file/.test(R.noFlu.log), { log: R.noFlu.log.split(/\n/).filter(l => /rror|reading|None/.test(l)).slice(-6), ui: R.noFlu.ui });
+  check('E64', 'a viability panel reading luminescence over the same files as a HiBiT panel is warned about, in Setup and in the run log, and the run still goes ahead', /Viability fluorescence/.test(R.warnOn.ui) && /same reading as the HiBiT panel/.test(R.warnOn.ui) && /⚠ The viability panel reads luminescence/.test(R.warnOn.log) && Object.keys(R.auto).length > 10, { ui: R.warnOn.ui, log: R.warnOn.log.slice(-200) });
+  check('E64', 'no warning for Viability fluorescence, nor when the two panels have different file prefixes', R.warnOff === true && R.warnPrefix === true, { off: R.warnOff, prefix: R.warnPrefix });
   check('E64', 'automatic reads the luminescence of a file that holds both', same(R.auto, R.refLumCtg), { n: [Object.keys(R.auto).length, Object.keys(R.refLumCtg).length], diff: diff(R.auto, R.refLumCtg) });
   check('E64', 'two panels of one type are refused, with the same reading or another (the results are keyed by assay type)', /Two assay panels both analyse hibit/.test(R.dup) && /Two assay panels both analyse hibit/.test(R.dupRead), { dup: R.dup, dupRead: R.dupRead });
   check('E64', 'the panel type list says Viability fluorescence (CellTiter-Glo is luminescence), picking it reads the fluorescence, and the panel is named for it', R.cfg2.join() === 'hibit/lum,ctg/fluor' && R.panelNames.join() === 'HiBiT,Viability fluorescence', { cfg: R.cfg2, names: R.panelNames });
