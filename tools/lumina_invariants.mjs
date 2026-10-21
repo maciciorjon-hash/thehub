@@ -17,6 +17,12 @@
 //   L9  a reader file whose grid is not the size of the plate on screen says so
 //   L11 a point left out of its curve: the fit is remade without it, the raw export marks it, the Prism tables omit it,
 //       the plate crosses it, and ⌘Z brings the fit back exactly (the click / right-click / undo gestures are in tools/transfer_invariants.mjs)
+//   L13 Setup is the same walk as Beacon's (tools/setupkit): five steps with Back / Next, typed control ranges mark exactly those wells,
+//       placing the names makes the compounds, the series and the plates they need, Escape closes, and ⌘Z undoes it all
+//   L14 normalise to viability   Optional. Each reading is divided by the fluorescence of the same well before the controls: readings distorted well by well
+//                                 and divided back give exactly the undistorted curves, from a GloMax double read stored with the plate and from
+//                                 fluorescence-only files named for their plates; off, the distortion shows; a plate without viability is left out
+//                                 and said; the session, the raw export and ⌘Z carry it.
 //   L10 the potency and the effect are called what the selected assay calls them — DC50/Dmax, IC50/Span,
 //       IC50, EC50/Emax — in the table, the curve, the Plot, every export and what goes to Labbook
 //
@@ -336,17 +342,127 @@ try { if (hasX) {
   });
   check('L12 the dropdown follows the plate: 96 after switching, 384 again after undo', l12c.v1 === '96' && l12c.back === '384' && l12c.fmt === 384, JSON.stringify(l12c));
 } } catch (e) { findings.push('✗ the run stopped: ' + e.message.split('\n')[0]); }
+
+// ── L13 the Setup dialog ─────────────────────────────────────────────────────────────────
+try {
+  const r = await ev(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms)), o = {};
+    if (state.format !== 96) setPlateFormat(96);
+    lsOpen(0); lsClearAll(); await wait(50);
+    const d = document.getElementById('ls');
+    o.tabs = [...d.querySelectorAll('.setup-stab')].map(t => t.textContent.replace(/^\d/, '')).join(',');
+    o.back0 = getComputedStyle(document.getElementById('ls-back')).visibility;
+    lsGo(2);
+    const inp = d.querySelector('input[data-role=ctrl]'); inp.value = 'A1:H1'; inp.dispatchEvent(new Event('change', { bubbles: true }));
+    o.ctrl = [...state.ctrlWells].sort().join(','); o.shown = inp.value;
+    inp.value = 'Z99'; inp.dispatchEvent(new Event('change', { bubbles: true }));
+    o.badKept = state.ctrlWells.size; o.badMark = inp.parentNode.classList.contains('bad');
+    inp.value = 'A1:H1'; inp.dispatchEvent(new Event('change', { bubbles: true }));
+    lsGo(3);
+    const names = document.getElementById('ls-names'); names.value = 'Alpha\nBeta\nGamma'; names.dispatchEvent(new Event('input', { bubbles: true }));
+    o.plan = document.getElementById('ls-plan').textContent;
+    document.getElementById('ls-place').click(); await wait(50);
+    const g = state.layout.grads[0], conc = p => lmConcAt(p);
+    o.placed = { S: _lmS(), grads: state.layout.grads.length, names: state.names.join(','), top: conc('B2'), end: conc('B12'), reps: state.layout.zones[0].length / 11, ctrlFree: state.layout.zones.every(z => z.every(w => !state.ctrlWells.has(w))), rows: state.layout.zones.map(z => [...new Set(z.map(w => w[0]))].join('')).join('|') };
+    // more names than a plate holds: 4 replicates of 11 points leaves room for two compounds a plate, so five names need three plates
+    LS.form.reps = 4; names.value = 'a\nb\nc\nd\ne'; names.dispatchEvent(new Event('input', { bubbles: true }));
+    document.getElementById('ls-place').click(); await wait(50);
+    o.spill = { S: _lmS(), plates: state.plates.length, names: state.names.join('') };
+    lmUndo(); await wait(50);
+    o.undone = { S: _lmS(), plates: state.plates.length };
+    // the dialog follows what is done on the plate itself
+    LM_SEL = new Set(['H12']); lmMarkCtrl('ctrl'); lsGo(2); await wait(30);
+    o.follow = d.querySelector('input[data-role=ctrl]').value;
+    // typed values
+    lsGo(1); document.getElementById('ls-hand-tog').click(); await wait(30);
+    const cell = d.querySelector('#ls-hand input[data-p="B3"]'); cell.value = '12,5'; cell.dispatchEvent(new Event('change', { bubbles: true })); await wait(400);
+    o.typed = state.plates[0].signal.B3;
+    lsGo(4); o.review = document.getElementById('ls-p-review').textContent; o.next = document.getElementById('ls-next').textContent;
+    d.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    o.closed = d.classList.contains('hidden');
+    lsClearAll(); await wait(30); d.classList.add('hidden');
+    return o;
+  });
+  check('L13 Setup is five steps (Assay · Readings · Controls · Compounds · Review) and Back is hidden on the first', r.tabs === 'Assay,Readings,Controls,Compounds,Review' && r.back0 === 'hidden', JSON.stringify([r.tabs, r.back0]));
+  check('L13 a typed control range marks exactly those wells, is shown back normalised, and a range naming no well changes nothing', r.ctrl === 'A1,B1,C1,D1,E1,F1,G1,H1' && r.shown === 'A1:H1' && r.badKept === 8 && r.badMark, JSON.stringify([r.ctrl, r.shown, r.badKept, r.badMark]));
+  check('L13 placing 3 names makes 3 compounds of 2 replicates over the 11 free columns, 10 µM at the left, one gradient, nothing on a control', r.placed.S === 3 && r.placed.grads === 1 && r.placed.names === 'Alpha,Beta,Gamma' && Math.abs(r.placed.top / 1e-5 - 1) < 1e-9 && Math.abs(r.placed.end / (1e-5 / Math.pow(3, 10)) - 1) < 1e-9 && r.placed.reps === 2 && r.placed.ctrlFree && r.placed.rows === 'AB|CD|EF', JSON.stringify(r.placed));
+  check('L13 five names on a layout that holds two a plate fill three plates in order, and ⌘Z puts the layout back', r.spill.S === 2 && r.spill.plates === 3 && r.spill.names === 'abcde' && r.undone.S === 3 && r.undone.plates === 1, JSON.stringify([r.spill, r.undone]));
+  check('L13 the dialog follows the plate: a control marked on the plate shows in the box', /H12/.test(r.follow) || r.follow.indexOf('H1') >= 0, r.follow);
+  check('L13 a value typed into the grid is a reading (decimal comma kept as a decimal)', r.typed === 12.5, r.typed);
+  check('L13 Review says what is missing, the last button says what comes next, and Escape closes', /no readings|No dilution|no name|Before you fit/.test(r.review) && /Open the plate|Fit curves/.test(r.next) && r.closed, JSON.stringify([r.next, r.closed]));
+} catch (e) { findings.push('✗ L13 the run stopped: ' + e.message.split('\n')[0]); }
+
+// L14 — Normalise to viability (optional).
+try {
+  const r = await ev(async () => {
+    const mime = 'application/octet-stream', LET = 'ABCDEFGHIJKLMNOP', fac = (ri, ci) => 0.6 + ((ri * 7 + ci * 3) % 11) / 10;
+    const glo = (fname, chans) => {
+      const aoa = [[], [,,,'Protocol: T'], [,,,'Result: ' + fname], [], [], []];
+      chans.forEach(ch => { aoa.push([ch.head]); aoa.push(['', 'Reading:', '', 1, '', ...Array.from({ length: 12 }, (_, i) => i + 1)]);
+        for (let r = 0; r < 8; r++) aoa.push(['', '', '', '', LET[r], ...Array.from({ length: 12 }, (_, c) => ch.fn(r, c))]); aoa.push([]); });
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([[], [,,,'T']]), 'T'); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Results');
+      return new File([XLSX.write(wb, { type: 'array', bookType: 'xlsx' })], fname, { type: mime });
+    };
+    const q3 = v => Number(v).toPrecision(3);
+    const fit = () => { state.fitSig = null; const ok = runLuminaAnalysis({ quiet: true }); return { ok, snap: Object.fromEntries((state.fitResults || []).map(x => [x.sampleId, q3(x.logEC50) + '|' + q3(x.hill) + '|' + q3(x.top)])) }; };
+    const same = (a, b) => { const ka = Object.keys(a); return ka.length > 0 && ka.length === Object.keys(b).length && ka.every(k => a[k] === b[k]); };
+    const o = {};
+    loadLuminaTestData(); state.viabNorm = false;
+    const orig = state.plates.map(p => Object.assign({}, p.signal));
+    o.base = fit(); o.nBase = Object.keys(o.base.snap).length;
+    // distort every reading well by well and keep the same factor as the fluorescence
+    const posOf = (ri, ci) => LET[ri] + (ci + 1);
+    state.plates.forEach((pl, i) => { pl.viab = {}; pl.viabFile = 'x'; for (let ri = 0; ri < 8; ri++) for (let ci = 0; ci < 12; ci++) { const k = posOf(ri, ci); if (orig[i][k] !== undefined) pl.signal[k] = orig[i][k] * fac(ri, ci); pl.viab[k] = 20000 * fac(ri, ci); } });
+    o.off = fit();
+    lmSetViab(true); o.on = fit(); o.exportHdr = _rawHeader(); o.protoRow = !!state.rawViab;
+    o.sessV = lmSession(); const sv = JSON.parse(JSON.stringify(o.sessV)); o.sessKeys = Object.keys(sv.plates[0].viab || {}).length; o.sessOn = sv.viabNorm;
+    lmUndo(); o.undoOff = !state.viabNorm; lmRedo(); o.redoOn = state.viabNorm;
+    // switching the option with a fit on screen must refit by itself (the fit's signature includes it)
+    { const sn = () => JSON.stringify(Object.fromEntries((state.fitResults || []).map(x => [x.sampleId, q3(x.logEC50)])));
+      state.fitSig = null; _lmEnsureFit(true); const a1 = sn(); lmSetViab(false); _lmEnsureFit(true); const b1 = sn(); lmSetViab(true); _lmEnsureFit(true); const c1 = sn();
+      o.stale = { moved: a1 !== b1, back: a1 === c1 }; }
+    // viability from fluorescence-only files named for the plates
+    state.plates.forEach(pl => { delete pl.viab; delete pl.viabFile; });
+    o.noneFit = fit(); o.noneMissing = lmViabMissing(); o.noneMsg = state.fitMsg;
+    await handleReaderFiles([glo('Plate 2 viability.xlsx', [{ head: 'Fluorescence', fn: (r, c) => 20000 * fac(r, c) }]), glo('Plate 1 viability.xlsx', [{ head: 'Fluorescence', fn: (r, c) => 20000 * fac(r, c) }])]);
+    o.files = state.plates.map(p => [Object.keys(p.viab || {}).length, p.viabFile]);
+    o.sep = fit();
+    // a plate with no viability is left out and said
+    delete state.plates[1].viab; o.partMissing = lmViabMissing(); o.part = fit();
+    // option off: a fluorescence-only file is an ordinary reading; with it on, a double read keeps the fluorescence with its plate
+    state.viabNorm = false; state.plates[0] = _lmNewPlate(); state.plate = 0;
+    await handleReaderFiles([glo('fl.xlsx', [{ head: 'Fluorescence', fn: () => 7 }])], 0);
+    o.flOff = Object.keys(state.plates[0].signal).length + '/' + Object.keys(state.plates[0].viab || {}).length;
+    state.plates[0] = _lmNewPlate();
+    await handleReaderFiles([glo('dbl.xlsx', [{ head: 'Fluorescence', fn: (r, c) => 20000 * fac(r, c) }, { head: 'Luminescence', fn: (r, c) => 1000 * fac(r, c) }])], 0);
+    o.dbl = { sig: state.plates[0].signal.A1, via: state.plates[0].viab && state.plates[0].viab.A1, nVia: Object.keys(state.plates[0].viab || {}).length };
+    return o;
+  });
+  check('L14 the layout gives curves to compare against', r.nBase >= 4, r.nBase);
+  check('L14 off, the distorted readings give different curves', !(JSON.stringify(r.off.snap) === JSON.stringify(r.base.snap)), 'identical with the distortion in');
+  check('L14 on, dividing by the same well\'s fluorescence gives exactly the undistorted curves', r.on.ok && JSON.stringify(r.on.snap) === JSON.stringify(r.base.snap), { b: Object.entries(r.base.snap).slice(0, 2), o: Object.entries(r.on.snap).slice(0, 2) });
+  check('L14 switching the option with a fit on screen refits by itself, and switching back restores the same curves', r.stale.moved && r.stale.back, r.stale);
+  check('L14 the raw export carries Signal and Viability_Reading only when it is on', r.exportHdr.indexOf('Viability_Reading') >= 0 && r.protoRow, r.exportHdr);
+  check('L14 the session keeps the option and every well of the viability; ⌘Z and redo move it', r.sessOn === true && r.sessKeys === 96 && r.undoOff && r.redoOn, { on: r.sessOn, keys: r.sessKeys, u: r.undoOff, r: r.redoOn });
+  check('L14 with no viability anywhere the fit says why instead of fitting raw counts', r.noneFit.ok === false && r.noneMissing.length === 2 && /viability/i.test(r.noneMsg), { ok: r.noneFit.ok, m: r.noneMissing, msg: r.noneMsg });
+  check('L14 two fluorescence-only files dropped out of order go to the plates they are named for', r.files[0][1] === 'Plate 1 viability.xlsx' && r.files[1][1] === 'Plate 2 viability.xlsx' && r.files[0][0] === 96, r.files);
+  check('L14 …and give exactly the undistorted curves', r.sep.ok && JSON.stringify(r.sep.snap) === JSON.stringify(r.base.snap), { b: Object.entries(r.base.snap).slice(0, 2), s: Object.entries(r.sep.snap).slice(0, 2) });
+  check('L14 a plate without viability is named and left out, the others are still fitted', r.partMissing.length === 1 && r.partMissing[0] === 'Plate 2' && Object.keys(r.part.snap).length > 0 && Object.keys(r.part.snap).length < r.nBase, { m: r.partMissing, n: Object.keys(r.part.snap).length, of: r.nBase });
+  check('L14 option off: a fluorescence-only file is an ordinary reading (no viability)', r.flOff === '96/0', r.flOff);
+  check('L14 a double read keeps its fluorescence with the plate whether or not the option is on', r.dbl.sig === 1000 * 0.6 && r.dbl.via === 20000 * 0.6 && r.dbl.nVia === 96, r.dbl);
+} catch (e) { findings.push('✗ L14 the run stopped: ' + e.message.split('\n')[0]); }
 // _lmReadFmt is arithmetic and needs no file
 {
   const r = await ev(() => [[3237970, 5], [9100, 5], [76190, 5], [1274665, 4], [-2500000, 5], [0.00123, 5]].map(([v, f]) => _lmReadFmt(v, f).length <= Math.max(f, 3)));
   check('L8 _lmReadFmt fits the room it is given', r.every(Boolean), JSON.stringify(r));
 }
 
-// ── L13–L17 (the 2026-10-20 audit): keyboard and names, a plate with no control, grouped digits ──────────────────────
+// ── L15–L19 (the 2026-10-20 audit): keyboard and names, a plate with no control, grouped digits ──────────────────────
 {
   await ev(() => { setPlateFormat(96); loadLuminaTestData(); switchTab('results'); });
   await page.waitForTimeout(400);
-  // L13 one generic probe: nothing a person can click is out of reach of the keyboard, nothing that takes input is unnamed, and everything
+  // L15 one generic probe: nothing a person can click is out of reach of the keyboard, nothing that takes input is unnamed, and everything
   // that takes focus shows where it is. Kit blocks (assistant, tour, chart editor, right-click) have their own checks and are left out.
   await page.click('#rs-set-btn');
   const l13 = await page.evaluate(() => {
@@ -360,14 +476,14 @@ try { if (hasX) {
     out.tabs = { role: tabs.every(t => t.getAttribute('role') === 'tab'), list: document.getElementById('lm-tabbar').getAttribute('role') === 'tablist', sel: tabs.filter(t => t.getAttribute('aria-selected') === 'true').length, rov: tabs.filter(t => t.tabIndex === 0).length };
     return out;
   });
-  check('L13 nothing clickable is out of the keyboard\'s reach', l13.stuck.length === 0, l13.stuck.slice(0, 5).join(' | '));
-  check('L13 every box and select has a name a screen reader can read (the fit settings\' numbers shared one label)', l13.unnamed.length === 0, l13.unnamed.slice(0, 6).join(' | '));
-  check('L13 everything that takes focus shows a ring', l13.ring.length === 0, l13.ring.slice(0, 6).join(' | '));
-  check('L13 the tabs are a tablist: role, one selected, one in the tab order', l13.tabs.role && l13.tabs.list && l13.tabs.sel === 1 && l13.tabs.rov === 1, JSON.stringify(l13.tabs));
+  check('L15 nothing clickable is out of the keyboard\'s reach', l13.stuck.length === 0, l13.stuck.slice(0, 5).join(' | '));
+  check('L15 every box and select has a name a screen reader can read (the fit settings\' numbers shared one label)', l13.unnamed.length === 0, l13.unnamed.slice(0, 6).join(' | '));
+  check('L15 everything that takes focus shows a ring', l13.ring.length === 0, l13.ring.slice(0, 6).join(' | '));
+  check('L15 the tabs are a tablist: role, one selected, one in the tab order', l13.tabs.role && l13.tabs.list && l13.tabs.sel === 1 && l13.tabs.rov === 1, JSON.stringify(l13.tabs));
   await page.focus('#lm-tabbar .tab[aria-selected=true]');
   await page.keyboard.press('ArrowLeft'); await page.keyboard.press('Enter'); await page.waitForTimeout(250);
   const l13b = await ev(() => ({ on: document.querySelector('#lm-tabbar .tab.active').dataset.tab, sel: document.querySelector('#lm-tabbar .tab[aria-selected=true]').dataset.tab }));
-  check('L13 arrows move between the tabs and Enter opens one', l13b.on === 'input' && l13b.sel === 'input', JSON.stringify(l13b));
+  check('L15 arrows move between the tabs and Enter opens one', l13b.on === 'input' && l13b.sel === 'input', JSON.stringify(l13b));
   await ev(() => switchTab('results'));
   await page.focus('#rs-exp-btn'); await page.keyboard.press('Enter'); await page.waitForTimeout(200);
   const m1 = await ev(() => ({ open: document.getElementById('rs-exp').classList.contains('open'), exp: document.getElementById('rs-exp-btn').getAttribute('aria-expanded'), inside: document.getElementById('rs-exp').contains(document.activeElement) }));
@@ -375,10 +491,10 @@ try { if (hasX) {
   await page.keyboard.press('ArrowDown'); const f2 = await ev(() => document.activeElement.textContent);
   await page.keyboard.press('Escape'); await page.waitForTimeout(150);
   const m2 = await ev(() => ({ open: document.getElementById('rs-exp').classList.contains('open'), exp: document.getElementById('rs-exp-btn').getAttribute('aria-expanded'), back: document.activeElement.id }));
-  check('L13 a menu opened by keyboard takes the focus, says aria-expanded, ↑ ↓ walk its items, Esc closes it and returns the focus to its button',
+  check('L15 a menu opened by keyboard takes the focus, says aria-expanded, ↑ ↓ walk its items, Esc closes it and returns the focus to its button',
     m1.open && m1.exp === 'true' && m1.inside && f1 !== f2 && !m2.open && m2.exp === 'false' && m2.back === 'rs-exp-btn', JSON.stringify([m1, f1, f2, m2]));
 
-  // L14 the plate with the keyboard
+  // L16 the plate with the keyboard
   await ev(() => { switchTab('input'); state.activeSubtab = 'layout'; lmAfterChange(); lmSetSel(new Set()); });
   await page.focus('#well-grid');
   const sel = () => ev(() => Array.from(LM_SEL).sort().join(','));
@@ -386,9 +502,9 @@ try { if (hasX) {
   await page.keyboard.press('ArrowRight'); await page.keyboard.press('ArrowDown'); const a2 = await sel();
   await page.keyboard.down('Shift'); await page.keyboard.press('ArrowRight'); await page.keyboard.press('ArrowDown'); await page.keyboard.up('Shift'); const a3 = await sel();
   await page.keyboard.press('Escape'); const a4 = await sel();
-  check('L14 the plate can be selected with the keyboard: arrows move a well, Shift extends from where it started, Esc clears', a1 === 'A1' && a2 === 'B2' && a3 === 'B2,B3,C2,C3' && a4 === '', [a1, a2, a3, a4].join(' / '));
+  check('L16 the plate can be selected with the keyboard: arrows move a well, Shift extends from where it started, Esc clears', a1 === 'A1' && a2 === 'B2' && a3 === 'B2,B3,C2,C3' && a4 === '', [a1, a2, a3, a4].join(' / '));
 
-  // L15 a plate whose control wells hold nothing is not mixed in with plates read as percentages
+  // L17 a plate whose control wells hold nothing is not mixed in with plates read as percentages
   const l15 = await ev(() => {
     loadLuminaTestData();
     state.ctrlWells.forEach(pos => { delete state.plates[1].signal[pos]; });
@@ -400,43 +516,43 @@ try { if (hasX) {
     loadLuminaTestData(); state.ctrlWells = new Set(); lmAfterChange(); runLuminaAnalysis({ quiet: true });
     return { names, big, noteShown: !note.hidden || true, skipped: (state.fitSkipped || []).length, allRaw: state.fitResults.length, normalised: state.normalised };
   });
-  check('L15 a plate with no readings in its control wells is left out (not fitted in counts and printed as %), and the note says so', l15.names.join() === 'Cpd-08,Cpd-17,Cpd-42,Ref-A' && !l15.big, JSON.stringify(l15));
-  check('L15 with no control on any plate nothing is dropped: raw counts, as before', l15.allRaw === 6 && l15.normalised === false && l15.skipped === 0, JSON.stringify(l15));
+  check('L17 a plate with no readings in its control wells is left out (not fitted in counts and printed as %), and the note says so', l15.names.join() === 'Cpd-08,Cpd-17,Cpd-42,Ref-A' && !l15.big, JSON.stringify(l15));
+  check('L17 with no control on any plate nothing is dropped: raw counts, as before', l15.allRaw === 6 && l15.normalised === false && l15.skipped === 0, JSON.stringify(l15));
   const l15b = await ev(() => {
     loadLuminaTestData(); state.ctrlWells.forEach(pos => { Object.keys(state.plates[1].signal).length; state.plates[1].signal[pos] = 0; });
     lmAfterChange(); runLuminaAnalysis({ quiet: true });
     renderResults(); return { n: state.fitResults.length, sk: (state.fitSkipped || []).map(k => k.plate + ': ' + k.why), note: document.getElementById('rs-note').textContent };
   });
-  check('L15 controls that average 0 are no control to be a percentage of: that plate is left out and says why', l15b.n === 4 && l15b.sk.length === 1 && /average 0/.test(l15b.sk[0]) && /left out/.test(l15b.note), JSON.stringify(l15b));
+  check('L17 controls that average 0 are no control to be a percentage of: that plate is left out and says why', l15b.n === 4 && l15b.sk.length === 1 && /average 0/.test(l15b.sk[0]) && /left out/.test(l15b.note), JSON.stringify(l15b));
 
-  // L16 what Excel copies is read as the numbers it shows
+  // L18 what Excel copies is read as the numbers it shows
   const l16 = await ev(() => {
     const T = t => { const r = lmParseGrid(t, 8, 12); return r && r.labelled ? r.vals : r && r.block; };
     return { us: T('A\t1,234.5\t12,345,678\nB\t2\t3'), eu: T('A\t1.234,5\t2,5\nB\t2\t3'), hex: lmParseGrid('0x10\t0x20\n1\t2', 8, 12), dup: lmParseGrid('A\t1\t2\nA\t3\t4', 8, 12).n, minus: T('A\t−5\t2') };
   });
-  check('L16 grouped digits are thousands, 1.234,5 is European, 0x10 is not a reading, a letter written twice is one well',
+  check('L18 grouped digits are thousands, 1.234,5 is European, 0x10 is not a reading, a letter written twice is one well',
     l16.us.A1 === 1234.5 && l16.us.A2 === 12345678 && l16.eu.A1 === 1234.5 && l16.eu.A2 === 2.5 && JSON.stringify(l16.hex.block) === '[[1,2]]' && l16.dup === 2 && l16.minus.A1 === -5, JSON.stringify(l16));
 
-  // L17 the Hub's controls (docs/UI.md): a button is 32px with --r-1 corners, a field is 32px, a tab is a <button role=tab>, the toast is a live region, the gear and the name box behave as dialogs do
+  // L19 the Hub's controls (docs/UI.md): a button is 32px with --r-1 corners, a field is 32px, a tab is a <button role=tab>, the toast is a live region, the gear and the name box behave as dialogs do
   await ev(() => { switchTab('input'); lmAfterChange(); });
   const l17 = await ev(() => {
     const b = document.querySelector('#lm-fit'), i = document.getElementById('lm-sel-range'), bs = getComputedStyle(b), is = getComputedStyle(i);
     const tabs = [...document.querySelectorAll('#lm-tabbar .tab')];
     return { btn: [bs.height, bs.borderTopLeftRadius, bs.fontSize], inp: [is.height, is.borderTopLeftRadius, is.fontSize], tabs: tabs.every(t => t.tagName === 'BUTTON' && t.getAttribute('role') === 'tab'), activeInk: getComputedStyle(document.querySelector('.tab.active')).fontWeight, live: document.getElementById('toast').getAttribute('role') };
   });
-  check('L17 a button is 32px, --r-1, --fs-3; a field is 32px, --r-1, --fs-3', l17.btn.join() === '32px,4px,12px' && l17.inp.join() === '32px,4px,12px', JSON.stringify(l17));
-  check('L17 the tabs are buttons with role=tab, and the toast is role=status', l17.tabs && l17.live === 'status', JSON.stringify(l17));
+  check('L19 a button is 32px, --r-1, --fs-3; a field is 32px, --r-1, --fs-3', l17.btn.join() === '32px,4px,12px' && l17.inp.join() === '32px,4px,12px', JSON.stringify(l17));
+  check('L19 the tabs are buttons with role=tab, and the toast is role=status', l17.tabs && l17.live === 'status', JSON.stringify(l17));
   await page.focus('#opts-btn'); await page.keyboard.press('Enter');
   const g1 = await ev(() => ({ open: document.getElementById('opts-panel').classList.contains('open'), x: document.getElementById('opts-btn').getAttribute('aria-expanded') }));
   await page.keyboard.press('Escape');
   const g2 = await ev(() => ({ open: document.getElementById('opts-panel').classList.contains('open'), x: document.getElementById('opts-btn').getAttribute('aria-expanded'), f: document.activeElement.id }));
-  check('L17 the gear opens its panel, says aria-expanded, and Esc closes it', g1.open && g1.x === 'true' && !g2.open && g2.x === 'false', JSON.stringify([g1, g2]));
+  check('L19 the gear opens its panel, says aria-expanded, and Esc closes it', g1.open && g1.x === 'true' && !g2.open && g2.x === 'false', JSON.stringify([g1, g2]));
   await page.focus('.lm-ptab'); await ev(() => lmAskPlateName(0, 200, 200)); await page.waitForTimeout(100);
   await page.keyboard.press('Tab'); await page.keyboard.press('Tab'); await page.keyboard.press('Tab');
   const p1 = await ev(() => !!document.querySelector('.lm-prompt') && document.querySelector('.lm-prompt').contains(document.activeElement));
   await page.keyboard.press('Escape');
   const p2 = await ev(() => ({ gone: !document.querySelector('.lm-prompt'), back: document.activeElement && document.activeElement.classList.contains('lm-ptab') }));
-  check('L17 the name box keeps the Tab inside it, Esc closes it and the focus goes back to where it was', p1 && p2.gone && p2.back, JSON.stringify([p1, p2]));
+  check('L19 the name box keeps the Tab inside it, Esc closes it and the focus goes back to where it was', p1 && p2.gone && p2.back, JSON.stringify([p1, p2]));
 }
 check('no page or console errors', errs.length === 0, errs.slice(0, 3).join(' | '));
 await browser.close();
