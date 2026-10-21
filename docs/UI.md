@@ -309,7 +309,7 @@ to `--shadow-md`. A card header is `--fs-2`/700/uppercase/1.3px in `--text3`.
 
 **Panel** — the same surface without the hover: a titled box inside a screen.
 
-**Table** — header row `--fs-2`/700/uppercase/`--text3`, cells `--fs-3`, rows separated by
+**Table** — header row `--fs-2`/700/`--text3` (uppercase only where no header holds a unit: `text-transform:uppercase` turns µ into Greek capital Mu, so "Per sample (µL)" read "(ML)" — millilitres — in Archive), cells `--fs-3`, rows separated by
 `1px solid var(--border)` and nothing else. Numbers in `--mono` with `font-variant-numeric:
 tabular-nums`. Wide tables scroll inside their own `overflow-x:auto`, never the page.
 
