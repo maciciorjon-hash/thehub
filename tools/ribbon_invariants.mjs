@@ -2536,7 +2536,9 @@ async function rb31() {
   await E(() => { document.activeElement && document.activeElement.blur(); state.hsl = { h: 0, s: 100, l: 100 }; syncControlsToState(); recolorStructure(); undoFlush(); });
   const before = await E(() => _undo.stack.length);
   await E(async () => { const sl = document.getElementById('hslH'); for (let v = 1; v <= 40; v++) { sl.value = v; sl.dispatchEvent(new Event('input')); await new Promise(r => setTimeout(r, 10)); } });
-  await sleep(500);
+  // the step lands 320 ms after the last tick (undoNote); on a loaded runner the page is late, so wait for it rather than for a fixed time
+  for (let i = 0; i < 60 && (await E(() => _undo.stack.length)) === before; i++) await sleep(100);
+  await sleep(700);
   check('RB31', 'a slider dragged is one step to undo, not forty', await E(() => _undo.stack.length) === before + 1, { before, after: await E(() => _undo.stack.length) });
   await pg.keyboard.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z'); await sleep(300);
   check('RB31', '⌘Z / Ctrl+Z undoes', await E(() => state.hsl.h) === 0);

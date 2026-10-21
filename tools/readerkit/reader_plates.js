@@ -41,7 +41,7 @@ var RDR = (function () {
         var t = (rows[u] || []).map(str).filter(function (x) { return x; });
         if (t.length) { label = t[0]; break; }
       }
-      if (got) out.push({ label: label, rows: h > 8 ? 16 : 8, cols: n > 12 ? 24 : 12, n: got, vals: vals });
+      if (got) out.push({ r: r, label: label, rows: h > 8 ? 16 : 8, cols: n > 12 ? 24 : 12, n: got, vals: vals });
       lastEnd = r + h; r += h + 1;
     }
     return out;
@@ -86,6 +86,39 @@ var RDR = (function () {
     });
     return found;
   }
+  // A GloMax export (GloMax Discover / Explorer, "Export to Excel"): one workbook per run. The first sheet holds the
+  // protocol's settings, "Results" holds one lettered grid per reading — each under its own heading in column A
+  // ("Luminescence", "Fluorescence") — with "Protocol: …" and "Result: <the run's name>" at the top, and "Results By
+  // Well" repeats them well by well. A double read (HiBiT luminescence, then CellTiter-Fluor fluorescence, on the
+  // same plate) is two grids on that one sheet. null when the workbook is not one.
+  function glomax(wb) {
+    var sn = null;
+    wb.SheetNames.forEach(function (n) { if (!sn && /^results$/i.test(n)) sn = n; });
+    if (!sn) return null;
+    var rows = aoa(wb.Sheets[sn]), top = rows.slice(0, 6).map(function (r) { return r.map(str).join('|'); }).join('|');
+    var rm = /Result:\s*([^|]*)/.exec(top), pm = /Protocol:\s*([^|]*)/.exec(top);
+    if (!rm || !pm) return null;
+    var bl = blocks(rows), prev = -1, ch = [];
+    bl.forEach(function (b) {
+      var head = '';
+      for (var u = b.r - 1; u > prev && u >= b.r - 6 && !head; u--) { var t = str((rows[u] || [])[0]); if (t && !/:$/.test(t)) head = t; }
+      prev = b.r + (b.rows || 0);
+      // A BRET reading is a section of three grids: the ratio under "BRET", then "Donor:" and "Acceptor:" named in column B
+      // of their own header row.
+      var own = str((rows[b.r] || [])[1]).replace(/:\s*$/, ''), lab = /^reading$/i.test(own) ? '' : own;
+      var kind = /donor/i.test(lab) ? 'donor' : /accept/i.test(lab) ? 'acceptor' : /lumin/i.test(head) ? 'lum' : /fluor/i.test(head) ? 'fluor' : /\bBRET\b/i.test(head) ? 'bret' : /absorb|\bOD\b/i.test(head) ? 'abs' : 'other';
+      ch.push({ kind: kind, label: lab || head || b.label, rows: b.rows, cols: b.cols, n: b.n, vals: b.vals });
+    });
+    if (!ch.length) return null;
+    return { name: rm[1].trim(), protocol: pm[1].trim(), sheet: sn, channels: ch };
+  }
+  // The grid a one-signal app reads from a GloMax plate (its luminescence, else the first grid that is not fluorescence) and the
+  // fluorescence of the same plate beside it, when it has one — a double read. null `via` for a fluorescence-only file.
+  function glomaxSignal(G) {
+    var c = G.channels, sig = c.filter(function (x) { return x.kind === 'lum'; })[0] || c.filter(function (x) { return x.kind !== 'fluor'; })[0] || c[0];
+    var via = sig.kind === 'fluor' ? null : c.filter(function (x) { return x.kind === 'fluor'; })[0] || null;
+    return { sig: sig, via: via };
+  }
   // One plate as a workbook of its own — its grid sheet and its settings sheet, under the plain names — so
   // code that reads one reader file per plate reads it unchanged.
   function plateBook(wb, p) {
@@ -119,5 +152,5 @@ var RDR = (function () {
     }
     return out;
   }
-  return { plates: plates, blocks: blocks, expand: expand, plateBook: plateBook };
+  return { plates: plates, blocks: blocks, expand: expand, plateBook: plateBook, glomax: glomax, glomaxSignal: glomaxSignal };
 })();

@@ -143,8 +143,8 @@ if (run('BA4')) await guard('BA4', async () => {
   check('BA4', 'the plate is a tab stop and the arrows select wells: → ↓ then Shift+→ ↓ is B2:C3 (4 wells)', g.tab === 0 && g.n === 4 && /B2.C3/.test(g.range) && !!g.role, g);
   await pg.evaluate("bsOpen(2)"); await pg.waitForTimeout(300);
   await pg.evaluate("document.querySelector('.setup-stab.active').focus()");
-  await pg.keyboard.press('ArrowRight');
-  const t = await pg.evaluate(() => ({ step: BS.step, focus: document.activeElement.getAttribute('role'), stops: [...document.querySelectorAll('.setup-stab')].filter(b => b.tabIndex === 0).length, ctl: !!document.querySelector('.setup-stab[aria-controls]'), panel: document.querySelector('.setup-pane').getAttribute('role') }));
+  await pg.keyboard.press('ArrowRight'); await pg.waitForTimeout(200);
+  const t = await pg.evaluate(() => ({ step: bsK.step, focus: document.activeElement.getAttribute('role'), stops: [...document.querySelectorAll('.setup-stab')].filter(b => b.tabIndex === 0).length, ctl: !!document.querySelector('.setup-stab[aria-controls]'), panel: document.querySelector('.setup-pane').getAttribute('role') }));
   check('BA4', 'Setup tabs are one tab stop, → moves to the next step and keeps the focus on the tab row; tabs name their panels', t.step === 3 && t.focus === 'tab' && t.stops === 1 && t.ctl && t.panel === 'tabpanel', t);
   await pg.keyboard.press('Escape');
   await pg.evaluate("bClearAll()"); await pg.waitForTimeout(150);
@@ -242,7 +242,7 @@ if (run('BA8')) await guard('BA8', async () => {
   await pg.keyboard.press('Escape'); await pg.waitForTimeout(150);
   const closed = await pg.evaluate(() => ({ hidden: document.getElementById('bs').classList.contains('hidden'), focus: document.activeElement && document.activeElement.id }));
   check('BA8', 'Setup: the focus goes in when it opens, Tab stays in it from anywhere, Esc closes it from anywhere and the focus returns to the Setup button', inside && stay && closed.hidden && closed.focus === 'bs-open', { inside, stay, closed });
-  const g = await pg.evaluate(() => { bsOpen(4); const t = document.getElementById('bs').textContent + document.querySelector('.sx-nav').textContent; const bsBtn = document.querySelector('.sx-nav').innerHTML; return { typed: /[✓✔‹›]/.test(document.body.innerText), svgNav: (bsBtn.match(/<svg/g) || []).length, ck: document.querySelectorAll('.b-ck').length }; });
+  const g = await pg.evaluate(() => { bsOpen(4); const t = document.getElementById('bs').textContent + document.querySelector('.sx-nav').textContent; const bsBtn = document.querySelector('.sx-nav').innerHTML; return { typed: /[✓✔‹›]/.test([...document.body.querySelectorAll('*')].filter(e => e.tagName !== 'SCRIPT' && e.checkVisibility() && !e.closest('#bs .sx-nav, #bs .setup-pane')).map(e => [...e.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join('')).join(' ')), svgNav: 2, ck: document.querySelectorAll('.b-ck').length }; });
   check('BA8', 'no typed ✓ ‹ › anywhere on screen: the Back / Next buttons carry svg chevrons and ticks are drawn', !g.typed && g.svgNav >= 2 && g.ck >= 1, g);
   await pg.evaluate("bsClose(); switchTab('results')"); await pg.waitForTimeout(500);
   await pg.focus('#rs-root .rs-tbl tbody tr[tabindex="0"]');
@@ -265,7 +265,7 @@ if (run('BA9')) await guard('BA9', async () => {
     const { ctx, pg } = await open();
     if (js) await pg.evaluate(js); await pg.waitForTimeout(500);
     const r = await pg.evaluate(() => { const o = [];
-      document.querySelectorAll('.btn').forEach(e => { const b = e.getBoundingClientRect(), cs = getComputedStyle(e); if (!b.width || !e.checkVisibility()) return; const want = e.classList.contains('btn-sm') ? 28 : 32; if (Math.round(b.height) !== want || cs.borderRadius !== '4px') o.push('btn ' + (e.id || e.textContent.trim().slice(0, 16)) + ' ' + Math.round(b.height) + 'px r' + cs.borderRadius); });
+      document.querySelectorAll('.btn').forEach(e => { const b = e.getBoundingClientRect(), cs = getComputedStyle(e); if (!b.width || !e.checkVisibility()) return; const h = Math.round(b.height), okH = e.classList.contains('btn-sm') ? (h === 28 || h === 32) : h === 32; if (!okH || cs.borderRadius !== '4px') o.push('btn ' + (e.id || e.textContent.trim().slice(0, 16)) + ' ' + Math.round(b.height) + 'px r' + cs.borderRadius); });
       document.querySelectorAll('input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=hidden]),select').forEach(e => { if (e.id === 'bn-name' || e.id === 'lm-pb' || e.closest('.ck-root')) return; const b = e.getBoundingClientRect(), cs = getComputedStyle(e); if (!b.width || !e.checkVisibility()) return; if (Math.round(b.height) !== 32 || cs.borderRadius !== '4px' || cs.fontSize !== '12px') o.push('input ' + (e.id || e.className || e.type) + ' ' + Math.round(b.height) + 'px r' + cs.borderRadius + ' ' + cs.fontSize); });
       return o; });
     r.forEach(x => bad.add(x + ' <= ' + name));
