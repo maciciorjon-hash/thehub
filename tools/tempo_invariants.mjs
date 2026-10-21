@@ -482,6 +482,27 @@ try {
     check('K17 a concentration that is not a number is refused with a warning and changes nothing; a decimal comma is read', ['abc', '-5', '1e999', '0,5x'].every(k => r[k].conc && r[k].warn && r[k].undo) && r.ok, JSON.stringify(r));
   }
 
+  /* ───── K18 dialogs: named, Tab stays inside, focus goes back to the opener, a closed one has nothing to tab to ───── */
+  {
+    const c5 = await browser.newContext({ viewport: { width: 1280, height: 800 } }), pg = await c5.newPage();
+    await pg.route(/^https?:/, r => r.abort()); await pg.addInitScript(() => { try { localStorage.clear(); } catch (e) {} });
+    await pg.goto('file://' + FILE); await pg.waitForFunction(() => typeof tpTab === 'function'); await pg.evaluate(() => tpLoadExample()); await pg.waitForTimeout(1200);
+    const r = {};
+    r.closed = await pg.evaluate(() => { const d = document.getElementById('tp-dlg'); tpDialog('<h3>x</h3><div class="bd"><input class="inp"></div><div class="ft"><button class="btn primary">ok</button></div>'); tpCloseDialog(); return getComputedStyle(d).visibility; });
+    await pg.focus('button:has-text("Paste layout")'); await pg.keyboard.press('Enter'); await pg.waitForTimeout(250);
+    r.name = await pg.evaluate(() => { const b = document.getElementById('tp-dlg-in'), h = document.getElementById(b.getAttribute('aria-labelledby') || '_'); return h ? h.textContent : null; });
+    r.first = await pg.evaluate(() => document.activeElement.id);
+    let left = false; for (let i = 0; i < 12 && !left; i++) { await pg.keyboard.press(i % 2 ? 'Tab' : 'Shift+Tab'); left = await pg.evaluate(() => !document.activeElement.closest('#tp-dlg')); }
+    r.left = left; await pg.keyboard.press('Escape'); await pg.waitForTimeout(250);
+    r.back = await pg.evaluate(() => document.activeElement.textContent.trim());
+    await pg.focus('button:has-text("Analysis settings")'); await pg.keyboard.press('Enter'); await pg.waitForTimeout(300);
+    r.drawerIn = await pg.evaluate(() => !!document.activeElement.closest('#tp-drawer')); await pg.keyboard.press('Escape'); await pg.waitForTimeout(250);
+    r.drawerBack = await pg.evaluate(() => document.activeElement.textContent.trim());
+    check('K18 a dialog is named by its title, starts in its field, keeps Tab inside, hands focus back; a closed one is not focusable', r.closed === 'hidden' && r.name === 'Paste a layout' && r.first === 'tp-pl-t' && !r.left && r.back === 'Paste layout', JSON.stringify(r));
+    check('K18 the settings drawer takes focus when it opens and gives it back on Escape', r.drawerIn && /Analysis settings/.test(r.drawerBack), JSON.stringify(r));
+    await c5.close();
+  }
+
   /* ───── K14 an x tick that sits on the y axis does not land on the lowest y label ───── */
   {
     const hit = await ev(() => {

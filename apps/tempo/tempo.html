@@ -250,8 +250,8 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
 .dr-l .hint{font-weight:400;color:var(--text2);font-size:var(--fs-2);}
 .dr-row-wide{grid-template-columns:minmax(0,1fr) auto;}
 .dr-ft{display:flex;flex-wrap:wrap;gap:8px;padding:10px 16px;border-top:1px solid var(--border);background:var(--surface);}
-.dlg-back{position:fixed;inset:0;z-index:250;background:rgba(10,12,18,.42);display:flex;align-items:center;justify-content:center;padding:16px;opacity:0;pointer-events:none;transition:opacity var(--dur-2) var(--ease);}
-.dlg-back.open{opacity:1;pointer-events:auto;}
+.dlg-back{position:fixed;inset:0;z-index:250;background:rgba(10,12,18,.42);display:flex;align-items:center;justify-content:center;padding:16px;opacity:0;pointer-events:none;visibility:hidden;transition:opacity var(--dur-2) var(--ease),visibility 0s linear var(--dur-2);}
+.dlg-back.open{opacity:1;pointer-events:auto;visibility:visible;transition:opacity var(--dur-2) var(--ease),visibility 0s;}
 .dlg{background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-4);box-shadow:var(--shadow-lg);width:min(560px,100%);max-height:calc(100dvh - 32px);display:flex;flex-direction:column;overflow:hidden;transform:translateY(8px);transition:transform var(--dur-2) var(--ease-out);}
 .dlg-back.open .dlg{transform:none;}
 .dlg h3{margin:0;padding:16px 18px 6px;font-size:var(--fs-6);font-weight:600;}
@@ -1624,8 +1624,23 @@ function tpQ(q, s) { return (q === '>' ? '> ' : q === '≥' ? '≥ ' : q === '<'
 function tpTipPlace(t) { const el = $('#tp-tip'), r = t.getBoundingClientRect(), w = el.offsetWidth, h = el.offsetHeight; let x = r.left + r.width / 2 - w / 2, y = r.bottom + 8; if (y + h > innerHeight - 8) y = r.top - h - 8; x = Math.max(8, Math.min(innerWidth - w - 8, x)); y = Math.max(8, Math.min(innerHeight - h - 8, y)); el.style.left = x + 'px'; el.style.top = y + 'px'; }
 
 /* ───── dialog ───── */
-function tpDialog(html, onMount) { const b = $('#tp-dlg'); $('#tp-dlg-in').innerHTML = html; b.classList.add('open'); b.setAttribute('aria-hidden', 'false'); if (onMount) onMount($('#tp-dlg-in')); const f = $('#tp-dlg-in').querySelector('input,select,button.primary'); if (f) setTimeout(() => f.focus(), 30); }
-function tpCloseDialog() { const b = $('#tp-dlg'); b.classList.remove('open'); b.setAttribute('aria-hidden', 'true'); }
+// A dialog is named by its title, keeps Tab inside itself while open, and gives focus back to what opened it when it closes.
+function tpDialog(html, onMount) {
+  const b = $('#tp-dlg'), box = $('#tp-dlg-in'); if (!b.classList.contains('open')) tpDialog._from = document.activeElement;
+  box.innerHTML = html; const h = box.querySelector('h3'); if (h) { h.id = 'tp-dlg-h'; box.setAttribute('aria-labelledby', 'tp-dlg-h'); } else box.removeAttribute('aria-labelledby');
+  b.classList.add('open'); b.setAttribute('aria-hidden', 'false'); if (onMount) onMount(box);
+  const f = box.querySelector('input,select,textarea,button.primary'); if (f) setTimeout(() => f.focus(), 30);
+}
+function tpCloseDialog() {
+  const b = $('#tp-dlg'); const was = b.classList.contains('open'); b.classList.remove('open'); b.setAttribute('aria-hidden', 'true');
+  const f = tpDialog._from; tpDialog._from = null; if (was && f && f.isConnected && f.focus) { try { f.focus({ preventScroll: true }); } catch (e) {} }
+}
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Tab' || !$('#tp-dlg').classList.contains('open')) return;
+  const q = [...$('#tp-dlg-in').querySelectorAll('button,input,select,textarea,[tabindex]:not([tabindex="-1"])')].filter(x => !x.disabled && x.offsetParent !== null); if (!q.length) return;
+  const i = q.indexOf(document.activeElement);
+  if (e.shiftKey && (i <= 0)) { e.preventDefault(); q[q.length - 1].focus(); } else if (!e.shiftKey && (i < 0 || i === q.length - 1)) { e.preventDefault(); q[0].focus(); }
+});
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('#tp-dlg').classList.contains('open')) tpCloseDialog(); });
 $('#tp-dlg').addEventListener('mousedown', e => { if (e.target.id === 'tp-dlg') tpCloseDialog(); });
 
@@ -2523,8 +2538,15 @@ function tpExportMenu(btn) {
 function tpOpenProjectDlg() { $('#tp-proj').click(); }
 
 /* ───── analysis settings ───── */
-function tpOpenSettings() { const d = $('#tp-drawer'); if (d.classList.contains('open')) { tpCloseSettings(); return; } d.innerHTML = tpSettingsHTML(); d.classList.add('open'); d.setAttribute('aria-hidden', 'false'); }
-function tpCloseSettings() { const d = $('#tp-drawer'); d.classList.remove('open'); d.setAttribute('aria-hidden', 'true'); }
+function tpOpenSettings() {
+  const d = $('#tp-drawer'); if (d.classList.contains('open')) { tpCloseSettings(); return; }
+  tpOpenSettings._from = document.activeElement; d.innerHTML = tpSettingsHTML(); d.classList.add('open'); d.setAttribute('aria-hidden', 'false');
+  const t = d.querySelector('.dr-tab[aria-selected="true"]') || d.querySelector('.dr-tab, input, select'); if (t) setTimeout(() => t.focus({ preventScroll: true }), 40);
+}
+function tpCloseSettings() {
+  const d = $('#tp-drawer'), was = d.classList.contains('open'); d.classList.remove('open'); d.setAttribute('aria-hidden', 'true');
+  const f = tpOpenSettings._from; tpOpenSettings._from = null; if (was && f && f.isConnected && f.focus) { try { f.focus({ preventScroll: true }); } catch (e) {} }
+}
 /* The drawer is four tabs of aligned rows (caption and hint left, control right) with Apply always in view; every control keeps its st-* id, and the panes
    stay in the DOM when hidden, so tpApplySettings reads all of them whichever tab is open. */
 const TP_SET_TABS = [['norm', 'Normalise'], ['fit', 'Fit'], ['models', 'Models'], ['report', 'Report']];
