@@ -97,6 +97,18 @@ try {
   check('K2 a time axis that does not increase is refused, not re-sorted', typeof K1.nonMono === 'string' && /strictly/.test(K1.nonMono), String(K1.nonMono));
   check('K2 the unit of time comes from the header; a bare column is read from its spacing', K1.uSec === '0,5,10,15,20,25' && K1.uHr === '0,30,60,90,120,150' && K1.uMin === '0,5,10,15,20,25' && K1.uNone === '0,5,10,15,20,25', JSON.stringify([K1.uSec, K1.uHr, K1.uMin, K1.uNone]));
 
+  // ProNect's own files are not exempt from a strictly increasing time axis (a shuffled axis fitted garbage without a word)
+  const K2b = await ev(() => {
+    const times = [0, 10, 5, 20, 30, 40, 50, 60, 70, 80], w = (c, type, cmp, conc) => ({ Position: { Row: 'A', Column: c }, Type: type, Compound: cmp, Target: 'T', Concentration: conc, Unit: 'nM', RawKinetic: times.map((t, i) => 1000 - i) });
+    const j = tpParseProNectJSON({ Name: 'x', TimeValues: times, Wells: [w(12, 'BKGRND', '', null), w(1, 'SAMPLE', 'X', 1)] });
+    const rows = [['Wells', 'A12', 'A1'], ['Cell Type', '', ''], ['Target', 'Background', 'T'], ['Compound', '', 'X'], ['Concentration', '', '1'], ['Unit', '', 'nM'], ['Time (min)', '', '']];
+    times.forEach((t, i) => rows.push([String(t), '10', String(1000 - i)]));
+    const c = tpReadTables([{ name: 'c', rows }]);
+    const ok = tpParseProNectJSON({ Name: 'x', TimeValues: times.slice().sort((a, b) => a - b), Wells: [w(12, 'BKGRND', '', null), w(1, 'SAMPLE', 'X', 1)] });
+    return { json: j && j.error, csvPlates: c.plates.length, csvNote: c.notes.join(' '), okPlate: !!(ok && ok.wells) };
+  });
+  check('K2 a ProNect JSON or CSV whose time axis does not increase is refused too', /strictly/.test(K2b.json || '') && K2b.csvPlates === 0 && /strictly/.test(K2b.csvNote) && K2b.okPlate, JSON.stringify(K2b));
+
   /* ───── K3 normalisation against an independent calculation ───── */
   const K3 = await ev(() => {
     const plate = tpSynthPlate({ seed: 5, compounds: tpSynthDemoSpecs().slice(0, 3), reads: 100 }), nm = tpNormalise(plate, {}, {}), ids = Object.keys(plate.wells), N = plate.times.length, o = {};
@@ -406,6 +418,89 @@ try {
       await c3.close();
     }
     check('K15 every tab of Analysis settings: one column, a caption each, inside the drawer, Apply in view — 1440 / 390 / 320, light and dark', bad.length === 0, bad.slice(0, 6).join(' | '));
+  }
+
+  /* ───── K16 a keyboard reaches everything a mouse does, and what it reaches is big enough and legible ───── */
+  {
+    const bad = [];
+    for (const theme of ['light', 'dark']) {
+      const c4 = await browser.newContext({ viewport: { width: 1440, height: 900 } }), pg = await c4.newPage();
+      await pg.route(/^https?:/, r => r.abort());
+      await pg.addInitScript(t => { try { localStorage.clear(); localStorage.setItem('hub_theme', t); } catch (e) {} }, theme);
+      await pg.goto('file://' + FILE); await pg.waitForFunction(() => typeof tpTab === 'function');
+      await pg.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
+      await pg.addStyleTag({ content: '*{transition:none!important}' });
+      await pg.evaluate(() => tpLoadExample()); await pg.waitForTimeout(1500);
+      const scan = () => pg.evaluate(() => {
+        const out = [], vis = e => { const r = e.getBoundingClientRect(), cs = getComputedStyle(e); return r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none' && !e.closest('[hidden],#tp-dlg:not(.open)'); };
+        const d = e => e.tagName.toLowerCase() + (e.className && e.className.baseVal === undefined ? '.' + String(e.className).split(' ')[0] : '') + ' "' + (e.textContent || '').trim().slice(0, 18) + '"';
+        // 1 clickable and not natively focusable: it must carry a tabindex (and a name)
+        document.querySelectorAll('[onclick]').forEach(e => { if (!vis(e) || e.closest('#tp-tip')) return; if (/^(BUTTON|A|INPUT|SELECT|TEXTAREA|SUMMARY|LABEL)$/i.test(e.tagName)) return; if (e.tabIndex < 0 && !e.querySelector('button,a,input,select')) out.push('mouse only: ' + d(e)); });
+        // 2 a button / chip a pointer lands on is at least 24 px each way (WCAG 2.2 target size)
+        document.querySelectorAll('button,[role=button],.wchip,.pchip .x,.pill[tabindex]').forEach(e => { if (!vis(e) || e.closest('.tab-ink,svg')) return; const r = e.getBoundingClientRect(); if (r.height < 23.5 || r.width < 23.5) out.push('small ' + Math.round(r.width) + 'x' + Math.round(r.height) + ': ' + d(e)); });
+        // 3 a pill's ink on its own tint: 4.5:1 in both themes
+        const lum = c => { const f = v => { v /= 255; return v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); }; return .2126 * f(c[0]) + .7152 * f(c[1]) + .0722 * f(c[2]); };
+        const rgb = s => { const m = s.match(/[\d.]+/g).map(Number); return m; };
+        const surf = rgb(getComputedStyle(document.querySelector('.card') || document.body).backgroundColor);
+        document.querySelectorAll('.pill').forEach(e => { if (!vis(e)) return; const cs = getComputedStyle(e), f = rgb(cs.color), b = rgb(cs.backgroundColor), a = b.length > 3 ? b[3] : 1, bg = [0, 1, 2].map(i => b[i] * a + surf[i] * (1 - a)); const L1 = lum(f), L2 = lum(bg), r = (Math.max(L1, L2) + .05) / (Math.min(L1, L2) + .05); if (r < 4.5) out.push('pill ' + r.toFixed(2) + ': ' + d(e)); });
+        return out;
+      });
+      for (const t of ['plate', 'curves', 'results', 'compare']) { await pg.evaluate(t => tpTab(t), t); await pg.waitForTimeout(450); [...new Set(await scan())].forEach(x => bad.push(theme + ' ' + t + ': ' + x)); }
+      if (theme === 'light') {
+        // the plate by keyboard: focus A1, Shift+ArrowRight ×2, Shift+ArrowDown selects a 2×3 block; Space adds one; Escape clears
+        await pg.evaluate(() => tpTab('plate')); await pg.waitForTimeout(300);
+        await pg.focus('#tp-pgrid .w[data-id="A1"]');
+        await pg.keyboard.press('Shift+ArrowRight'); await pg.keyboard.press('Shift+ArrowRight'); await pg.keyboard.press('Shift+ArrowDown');
+        const sel = await pg.evaluate(() => [...TP.wsel].sort().join());
+        check('K16 the plate by keyboard: Shift+arrows select a block of wells', sel === 'A1,A2,A3,B1,B2,B3', sel);
+        await pg.keyboard.press('ArrowRight'); const one = await pg.evaluate(() => [...TP.wsel].join() + '|' + document.activeElement.dataset.id);
+        check('K16 an arrow moves the focus and the selection together', one === 'B4|B4', one);
+        await pg.keyboard.press('Escape'); check('K16 Escape clears the selection', await pg.evaluate(() => TP.wsel.size === 0));
+        // a result row opens its compound on Enter; a column header sorts on Enter
+        await pg.evaluate(() => tpTab('results')); await pg.waitForTimeout(300);
+        const k0 = await pg.evaluate(() => TP.ui.sort.k); await pg.focus('#tp-restbl th[data-k="name"]'); await pg.keyboard.press('Enter');
+        check('K16 a column header sorts on Enter', await pg.evaluate(k => TP.ui.sort.k === 'name' && k !== 'name', k0));
+        await pg.focus('#tp-restbl tr.pick'); await pg.keyboard.press('Enter'); await pg.waitForTimeout(300);
+        check('K16 a result row opens its curves on Enter', await pg.evaluate(() => TP.ui.tab === 'curves'));
+      }
+      await c4.close();
+    }
+    check('K16 everything clickable is reachable by keyboard, every target is 24 px, every pill reads at 4.5:1 — every tab, both themes', bad.length === 0, bad.slice(0, 6).join(' | ') + (bad.length > 6 ? ' … +' + (bad.length - 6) : ''));
+  }
+
+  /* ───── K17 a layout edit that cannot be read is refused out loud, not reported as done ───── */
+  {
+    const r = await ev(async () => {
+      await tpLoadExample(); tpTab('plate'); const p = tpPlate(), before = p.wells.A1.conc, n0 = TP_UNDO.stack.length, out = {};
+      for (const bad of ['abc', '-5', '1e999', '0,5x']) {
+        TP.wsel = new Set(['A1', 'A2']); tpRenderPlate(); document.getElementById('tp-sn').value = bad; tpApplySel();
+        const t = document.getElementById('tp-toast'); out[bad] = { conc: p.wells.A1.conc === before, warn: /warn/.test(t.className) && /not a concentration/.test(t.textContent), undo: TP_UNDO.stack.length === n0 };
+      }
+      TP.wsel = new Set(['A1']); tpRenderPlate(); document.getElementById('tp-sn').value = '2,5'; document.getElementById('tp-su').value = 'uM'; tpApplySel(); out.ok = Math.abs(p.wells.A1.conc - 2500) < 1e-9;
+      return out;
+    });
+    check('K17 a concentration that is not a number is refused with a warning and changes nothing; a decimal comma is read', ['abc', '-5', '1e999', '0,5x'].every(k => r[k].conc && r[k].warn && r[k].undo) && r.ok, JSON.stringify(r));
+  }
+
+  /* ───── K18 dialogs: named, Tab stays inside, focus goes back to the opener, a closed one has nothing to tab to ───── */
+  {
+    const c5 = await browser.newContext({ viewport: { width: 1280, height: 800 } }), pg = await c5.newPage();
+    await pg.route(/^https?:/, r => r.abort()); await pg.addInitScript(() => { try { localStorage.clear(); } catch (e) {} });
+    await pg.goto('file://' + FILE); await pg.waitForFunction(() => typeof tpTab === 'function'); await pg.evaluate(() => tpLoadExample()); await pg.waitForTimeout(1200);
+    const r = {};
+    r.closed = await pg.evaluate(() => { const d = document.getElementById('tp-dlg'); tpDialog('<h3>x</h3><div class="bd"><input class="inp"></div><div class="ft"><button class="btn primary">ok</button></div>'); tpCloseDialog(); return getComputedStyle(d).visibility; });
+    await pg.focus('button:has-text("Paste layout")'); await pg.keyboard.press('Enter'); await pg.waitForTimeout(250);
+    r.name = await pg.evaluate(() => { const b = document.getElementById('tp-dlg-in'), h = document.getElementById(b.getAttribute('aria-labelledby') || '_'); return h ? h.textContent : null; });
+    r.first = await pg.evaluate(() => document.activeElement.id);
+    let left = false; for (let i = 0; i < 12 && !left; i++) { await pg.keyboard.press(i % 2 ? 'Tab' : 'Shift+Tab'); left = await pg.evaluate(() => !document.activeElement.closest('#tp-dlg')); }
+    r.left = left; await pg.keyboard.press('Escape'); await pg.waitForTimeout(250);
+    r.back = await pg.evaluate(() => document.activeElement.textContent.trim());
+    await pg.focus('button:has-text("Analysis settings")'); await pg.keyboard.press('Enter'); await pg.waitForTimeout(300);
+    r.drawerIn = await pg.evaluate(() => !!document.activeElement.closest('#tp-drawer')); await pg.keyboard.press('Escape'); await pg.waitForTimeout(250);
+    r.drawerBack = await pg.evaluate(() => document.activeElement.textContent.trim());
+    check('K18 a dialog is named by its title, starts in its field, keeps Tab inside, hands focus back; a closed one is not focusable', r.closed === 'hidden' && r.name === 'Paste a layout' && r.first === 'tp-pl-t' && !r.left && r.back === 'Paste layout', JSON.stringify(r));
+    check('K18 the settings drawer takes focus when it opens and gives it back on Escape', r.drawerIn && /Analysis settings/.test(r.drawerBack), JSON.stringify(r));
+    await c5.close();
   }
 
   /* ───── K14 an x tick that sits on the y axis does not land on the lowest y label ───── */
