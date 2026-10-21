@@ -7,6 +7,11 @@
 //   R4  Echo reads each plate     Each plate's file goes through Echo's own reader and gives that plate's wells under that plate's name.
 //   R5  Beacon: donor + acceptor  A workbook whose plates each have two grids is complete plates (first grid donor, second acceptor), named for the plate; a plain one-plate grid file still goes the old way.
 //   R6  the real export           (only with --real=path) the user's file reads as the plates it holds.
+//   R7  Lumina reads GloMax      A GloMax workbook (Results sheet, one headed grid per reading) is one plate whose signal is its luminescence — not the
+//                                settings sheet, not the fluorescence written first; a 96 grid on a 384 plate says so; fluorescence-only is read as the signal.
+//   R8  Beacon reads GloMax      A BRET export (ratio, Donor, Acceptor) fills both channels of one plate named for the file and does not read the ratio; two
+//                                plain luminescence grids are donor then acceptor; one grid is the channel the plate waits for.
+//   R9  the real GloMax export   (only with --glomax=path) a real double-read file reads in Lumina as its 384 luminescence wells.
 //
 // Usage (repo root):  node tools/readerkit_invariants.mjs [--only=R1,R3] [--real=path.xlsx]
 import { chromium } from 'playwright';
@@ -145,6 +150,83 @@ if (run('R6') && args.real) await guard('R6', async () => {
   }, b64);
   console.log('real export →', JSON.stringify(r));
   check('R6', 'the real export is several plates with readings', r.length >= 2 && r.every(p => p[1] > 0), r);
+  await ctx.close();
+});
+
+// A GloMax-shaped workbook: settings sheet, Results (headed grids in the order given), Results By Well.
+const GLO = `window.__glo = function(fname, name, chans){
+  var L = 'ABCDEFGHIJKLMNOP', aoa = [[], [,,,'Protocol: Test'], [,,,'Result: ' + name], [], [], []];
+  chans.forEach(function(ch){
+    var R = ch.rows || 8, C = ch.cols || 12;
+    if (ch.head) aoa.push([ch.head]);
+    var h = ['', ch.own || 'Reading:', '', ch.own ? '' : 1, '']; for (var c = 1; c <= C; c++) h.push(c); aoa.push(h);
+    for (var r = 0; r < R; r++) { var row = ['', '', '', '', L[r]]; for (var c2 = 0; c2 < C; c2++) row.push(ch.base + r * 100 + c2); aoa.push(row); }
+    aoa.push([]);
+  });
+  var wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([[], [,,,'Test'], [], [], [], [], ['Executed by:', , , 'PC'], [, 'Plate Type:', , 'plate']]), 'Test');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Results');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([[], [,,,'Protocol: Test']]), 'Results By Well');
+  return new File([XLSX.write(wb, { type: 'array', bookType: 'xlsx' })], fname, { type: 'application/octet-stream' });
+};`;
+
+if (run('R7')) await guard('R7', async () => {
+  const { ctx, pg } = await open('/apps/lumina/lumina.html');
+  await pg.evaluate(GLO);
+  const r = await pg.evaluate(async () => {
+    const o = {}, read = async (f) => { await handleReaderFiles([f]); const p = state.plates[state.plate]; return { n: Object.keys(p.signal).length, a1: p.signal.A1, h12: p.signal.H12, name: p.name, file: p.file, toast: (document.querySelector('.toast, #toast') || {}).innerText || '' }; };
+    // double read, fluorescence first (as the instrument writes it); 96-well plate on screen
+    o.dbl = await read(__glo('dbl.xlsx', 'dbl', [{ head: 'Fluorescence', base: 50000 }, { head: 'Luminescence', base: 1000 }]));
+    state.plates.forEach(p => { p.signal = {}; });
+    o.fl = await read(__glo('fl.xlsx', 'fl', [{ head: 'Fluorescence', base: 50000 }]));
+    // a 384 grid on a 96-well plate: only the plate's own wells, and the shape is said
+    state.plates.forEach(p => { p.signal = {}; });
+    o.big = await read(__glo('big.xlsx', 'big', [{ head: 'Luminescence', base: 1000, rows: 16, cols: 24 }]));
+    o.bigNote = _lmReadShape;
+    return o;
+  });
+  check('R7', 'a double read gives the luminescence (A1 1000), 96 wells, not the fluorescence written first', r.dbl.n === 96 && r.dbl.a1 === 1000 && r.dbl.h12 === 1000 + 700 + 11, r.dbl);
+  check('R7', 'the plate is named for the file', r.dbl.name === 'dbl', r.dbl);
+  check('R7', 'a fluorescence-only file is read as the signal', r.fl.n === 96 && r.fl.a1 === 50000, r.fl);
+  check('R7', 'a 384 grid on a 96-well plate reads the first 8 × 12 wells and says it holds more', r.big.n === 96 && r.bigNote === 'bigger', { big: r.big, note: r.bigNote });
+  await ctx.close();
+});
+
+if (run('R8')) await guard('R8', async () => {
+  const { ctx, pg } = await open('/apps/beacon/beacon.html');
+  await pg.evaluate(GLO);
+  const r = await pg.evaluate(async () => {
+    const o = {}, snap = () => state.plates.map(p => ({ name: p.name, d: Object.keys(p.donor).length, a: Object.keys(p.acceptor).length, d1: p.donor.A1, a1: p.acceptor.A1, complete: bComplete(p) }));
+    // BRET: the ratio under "BRET", then "Donor:" and "Acceptor:" in column B of their header rows
+    await bHandleFiles([__glo('bret.xlsx', 'BRET 1', [{ head: 'BRET', base: 7 }, { own: 'Donor:', base: 1000 }, { own: 'Acceptor:', base: 2000 }])]);
+    o.bret = snap();
+    // two plain luminescence grids: donor then acceptor
+    while (state.plates.length > 1) state.plates.pop(); state.plates[0] = bNewPlate(8, 12, null);
+    await bHandleFiles([__glo('two.xlsx', 'two', [{ head: 'Luminescence', base: 3000 }, { head: 'Luminescence', base: 4000 }])]);
+    o.two = snap();
+    // one grid: the channel the plate is waiting for
+    state.plates[0] = bNewPlate(8, 12, null);
+    await bHandleFiles([__glo('one donor.xlsx', 'one', [{ head: 'Luminescence', base: 5000 }])]);
+    o.one = snap();
+    return o;
+  });
+  check('R8', 'a BRET export is one plate with donor 1000 and acceptor 2000 — the ratio grid is not a channel — named for the file', r.bret.length === 1 && r.bret[0].d === 96 && r.bret[0].a === 96 && r.bret[0].d1 === 1000 && r.bret[0].a1 === 2000 && r.bret[0].complete && r.bret[0].name === 'bret', r.bret);
+  check('R8', 'two luminescence grids are donor then acceptor', r.two[0].d1 === 3000 && r.two[0].a1 === 4000 && r.two[0].complete, r.two);
+  check('R8', 'one grid fills the channel the file name says (a donor), and the plate waits for the other', r.one[0].d1 === 5000 && r.one[0].a === 0 && !r.one[0].complete, r.one);
+  await ctx.close();
+});
+
+if (run('R9') && args.glomax) await guard('R9', async () => {
+  const b64 = fs.readFileSync(path.resolve(String(args.glomax))).toString('base64');
+  const { ctx, pg } = await open('/apps/lumina/lumina.html');
+  const r = await pg.evaluate(async (b64) => {
+    const bin = atob(b64), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+    setPlateFormat(384);
+    await handleReaderFiles([new File([u], 'spark-sc4-4.xlsx')]);
+    const p = state.plates[0]; return { n: Object.keys(p.signal).length, a1: p.signal.A1, p24: p.signal.P24, name: p.name };
+  }, b64);
+  console.log('real GloMax →', JSON.stringify(r));
+  check('R9', 'the real double read is 384 luminescence wells (A1 8304), not the fluorescence', r.n === 384 && r.a1 === 8304, r);
   await ctx.close();
 });
 

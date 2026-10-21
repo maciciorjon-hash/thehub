@@ -135,7 +135,7 @@
       { id: 'plot', t: 'Plot one result against another', group: 'Results', on: ['results'],
         q: ['plot', 'scatter', 'chart', 'compare compounds', 'graph', 'grafico', 'comparar compuestos', 'dmax vs dc50', 'xy'],
         a: 'Switch **Curve** to **Plot** to draw any fitted quantity against any other; the default is potency against Dmax. Hollow red points are flagged, colour can follow the plate, and you can search a compound to dim the rest.',
-        tip: 'Click a point to select that compound; double-click for its curve. **Save PNG** always uses a light background so it is ready for a slide.',
+        tip: 'Click a point to select that compound; double-click for its curve. **Export PNG** always uses a light background so it is ready for a slide.',
         prep: results, show: [{ sel: '#rs-tabs', say: 'Switch to Plot here.', miss: FIT1 }] },
       { id: 'export', t: 'Export the results', group: 'Results', on: ['results'],
         q: ['export', 'save results', 'download', 'excel', 'csv', 'prism', 'copy table', 'png', 'exportar', 'descargar', 'guardar resultados', 'copiar tabla', 'get data out'],
