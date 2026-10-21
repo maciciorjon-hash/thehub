@@ -13,9 +13,10 @@
   --fs-1:10px;--fs-2:11px;--fs-3:12px;--fs-4:13px;--fs-5:15px;--fs-6:17px;--fs-7:20px;--fs-8:26px;--fs-9:38px;
   --r-1:4px;--r-2:6px;--r-3:9px;--r-4:13px;--r-full:999px;--bg:#f4f5f8;--surface:#ffffff;--surface2:#f0f1f5;--surface3:#e4e6ee;
   --border:rgba(0,0,0,0.07);--border2:rgba(0,0,0,0.13);
-  --text:#1a1d2e;--text2:#5a5f7a;--text3:#7c8199;
+  --text:#1a1d2e;--text2:#4f5470;--text3:#5f647e;   /* text3 was #7c8199: 3.4:1 on the panel's --surface2, under 4.5 for the 11-12px text it carries (4.7 now) */
   --accent:#5e87c5;--on-accent:#ffffff;--accent-dim:rgba(94,135,197,0.12);--accent-soft:rgba(94,135,197,0.22);
-  --good:#2d9462;--mid:#b58830;--poor:#b84545;
+  --good:#2d9462;--warn:#c47818;--danger:#c04040;--mid:var(--warn);--poor:var(--danger);   /* Beacon's own mid/poor are the Hub's warn/danger now; --warn and --danger did not exist here, so var(--danger) gave dark the light value */
+  --accent-ink:#36609f;--good-ink:#176c42;--warn-ink:#8a4f08;   /* ink for text: the plain accent / good / warn are 3.5-3.8:1 on white as text (fills and rings keep them) */
   --sans:'IBM Plex Sans',system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;--mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   --shadow-xs:0 1px 4px rgba(0,0,0,.04);--shadow-sm:0 2px 8px rgba(0,0,0,.06);
   --shadow-md:0 6px 24px rgba(0,0,0,.09);--shadow-lg:0 16px 48px rgba(0,0,0,.14);
@@ -29,9 +30,9 @@
 [data-theme="dark"]{
   --bg:#0d0f14;--surface:#13161e;--surface2:#1c2030;--surface3:#252a3a;
   --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.13);
-  --text:#e8eaf2;--text2:#8b90a8;--text3:#7b8099;
+  --text:#e8eaf2;--text2:#a0a6bc;--text3:#9096ad;   /* 4.5:1 and over on --surface3 as well (text2 #8b90a8 was 4.3 on a highlighted row, text3 3.7 on --surface3) */
   --brand:#8a97dd;--accent:#8aaee0;--on-accent:#0d0f14;--accent-dim:rgba(138,174,224,0.16);--accent-soft:rgba(138,174,224,0.26);
-  --good:#6ddca8;--mid:#f8cc6d;--poor:#f89090;
+  --good:#6ddca8;--warn:#f0b060;--danger:#f08a84;--accent-ink:var(--accent);--good-ink:var(--good);--warn-ink:var(--warn);
   --shadow-xs:0 1px 4px rgba(0,0,0,.30);--shadow-sm:0 2px 8px rgba(0,0,0,.40);
   --shadow-md:0 6px 24px rgba(0,0,0,.50);--shadow-lg:0 16px 48px rgba(0,0,0,.55);
   --shadow-xl:0 32px 80px rgba(0,0,0,.65);--modal-backdrop:rgba(0,0,0,.65);
@@ -79,7 +80,8 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
   border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .15s;
   white-space:nowrap;display:inline-flex;align-items:center;gap:6px;}
 .tab svg{width:15px;height:15px;flex-shrink:0;}
-.tab.active{color:var(--accent);border-bottom-color:transparent;}
+.tab.active{color:var(--text);font-weight:600;border-bottom-color:transparent;}
+.tablist{display:flex;gap:2px;}
 .tab:hover:not(.active){color:var(--text);}
 .tab-indicator{position:absolute;bottom:0;height:2px;background:var(--accent);
   border-radius:var(--r-1) 1px 0 0;z-index:1;transition:none;}
@@ -90,38 +92,42 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
 .panel.active{display:block;}
 
 /* SHARED CONTROLS */
-.btn{padding:7px 16px;border-radius:var(--r-1);border:none;font-family:var(--sans);
-  font-size:var(--fs-4);font-weight:600;cursor:pointer;transition:opacity .15s,background .15s;}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;min-height:32px;padding:0 14px;white-space:nowrap;border-radius:var(--r-1);border:1px solid transparent;font-family:var(--sans);
+  font-size:var(--fs-3);font-weight:600;cursor:pointer;transition:background-color var(--dur-1) var(--ease),color var(--dur-1) var(--ease),border-color var(--dur-1) var(--ease);}   /* docs/UI.md: --r-1, 32px, --fs-3; hover changes background/colour, never opacity */
 .btn-primary{background:var(--accent);color:var(--on-accent);}
-.btn-primary:hover{opacity:.88;}
-.btn-sec{background:var(--surface3);color:var(--text);border:1px solid var(--border2);}
+.btn-primary:hover{background:color-mix(in srgb,var(--accent) 86%,var(--text));}
+.btn-sec{background:var(--surface3);color:var(--text);border-color:var(--border2);}
 .btn-sec:hover{background:var(--surface2);}
-.btn-sm{padding:5px 12px;font-size:var(--fs-3);}
+.btn-danger:hover{border-color:var(--danger);color:var(--danger);}
+.btn-sm{height:28px;min-height:28px;padding:0 12px;}   /* inside a strip of the plate card: the one compact size */
 /* One height for the header bar. .btn sizes from its padding (27px) and .opts-btn is a 30px
    circle, so the two sat 3px apart in the same row — docs/UI.md has said 32px for a toolbar
    control since it was written. Scoped to the header: .btn is also used full-width inside
    panels, where a fixed height would clip a label that wraps. */
-.header-right .btn,.header-right .opts-btn{height:32px;min-height:32px;padding-top:0;padding-bottom:0;
-  display:inline-flex;align-items:center;justify-content:center;}
+.header-right .btn,.header-right .opts-btn{display:inline-flex;align-items:center;justify-content:center;}
 .header-right .opts-btn{width:32px;}
 .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-2);padding:18px;}
 .empty-note{font-size:var(--fs-3);color:var(--text3);margin:0;}
-.card-hdr{font-size:var(--fs-2);font-weight:700;letter-spacing:.5px;text-transform:uppercase;
-  color:var(--text3);margin-bottom:14px;}
+.card-hdr{font-size:var(--fs-3);font-weight:600;color:var(--text2);margin-bottom:14px;}   /* sentence case, as the writing is: forced uppercase made 'Dose–response' read as a label of a different app */
 .row{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;}
 .field{display:flex;flex-direction:column;gap:4px;}
 .field label{font-size:var(--fs-2);color:var(--text3);}
-.field input,.field select{min-width:120px;padding:7px 10px;border-radius:var(--r-1);
-  border:1px solid var(--border2);background:var(--surface);color:var(--text);
-  font-family:var(--sans);font-size:var(--fs-4);outline:none;}
+.field input,.field select{min-width:120px;height:32px;padding:0 10px;border-radius:var(--r-1);
+  border:1px solid var(--border2);background:var(--surface2);color:var(--text);
+  font-family:var(--sans);font-size:var(--fs-3);outline:none;}   /* docs/UI.md: 32px, --surface2, --border2, --r-1, --fs-3 (inside a --surface2 panel the fill is --surface, below) */
 .field input:focus,.field select:focus{border-color:var(--accent);}
+/* One focus ring for everything a keyboard can reach. Fields drew nothing but a 1px border turning blue (their rules say outline:none), so the keyboard
+   could not tell which box it was in; the !important is what beats those per-class rules once, instead of one ring per class. */
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+input:focus-visible,select:focus-visible,textarea:focus-visible,.well-grid:focus-visible{outline:2px solid var(--accent)!important;outline-offset:-1px;}
+button:focus-visible,summary:focus-visible,[role=button]:focus-visible,[role=tab]:focus-visible,a:focus-visible{outline:2px solid var(--accent)!important;outline-offset:2px;}
 .field input:disabled,.field select:disabled{opacity:.6;cursor:not-allowed;}
 
 .badge{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;
   border-radius:var(--r-4);font-size:var(--fs-3);font-weight:600;}
-.badge-good{background:rgba(45,148,98,.15);color:var(--good);}
-.badge-mid{background:rgba(181,136,48,.15);color:var(--mid);}
-.badge-poor{background:rgba(184,69,69,.15);color:var(--poor);}
+.badge-good{background:rgba(45,148,98,.15);color:var(--good-ink);}   /* the state colour on its own 15% tint was 2.8-3.2:1; mixed toward the ink it is 5:1+ in both themes and still reads green / amber / red */
+.badge-mid{background:rgba(196,120,24,.15);color:var(--warn-ink);}
+.badge-poor{background:rgba(192,64,64,.15);color:color-mix(in srgb,var(--poor) 55%,var(--text));}
 .badge-neutral{background:var(--surface2);color:var(--text2);}
 
 /* ══ The plate card and Results — Lumina's, adapted (see tools/sync_plate_engine.py for the engine) ══ */
@@ -158,16 +164,16 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
    under the pointer moves the target the drag is aiming at. */
 .well:hover{border-color:var(--accent);}
 .well.sel{border-color:var(--accent);box-shadow:inset 0 0 0 2px var(--accent);}
-.well .w-conc{font-weight:600;color:var(--text);font-variant-numeric:tabular-nums;font-size:clamp(10px,calc(var(--wpx,38px)*.25),13px);line-height:1.1;}
+.well .w-conc{font-weight:600;color:var(--text);font-variant-numeric:tabular-nums;font-size:var(--fs-1);line-height:1.1;}
 .well .w-ctl{font-weight:700;color:var(--text2);letter-spacing:.2px;}
 .lm-tiny .well .w-conc,.lm-tiny .well .w-ctl{display:none;}   /* a well under 24px cannot hold '100' or a concentration: its colour, outline and tooltip say it */
-.well .w-val{font-size:clamp(9px,calc(var(--wpx,38px)*.24),15px);font-weight:600;color:var(--text);font-variant-numeric:tabular-nums;letter-spacing:-.01em;white-space:nowrap;}
+.well .w-val{font-size:var(--fs-1);font-weight:600;color:var(--text);font-variant-numeric:tabular-nums;letter-spacing:-.01em;white-space:nowrap;}
 .lm-sel-count{font-size:var(--fs-4);font-weight:600;color:var(--text);}
 .lm-sel-count .sub{color:var(--text3);font-weight:500;}
 .lm-range{width:140px;font-family:var(--mono);font-size:var(--fs-3);}
 .lm-cpd .field{min-width:0;}
 .lm-cpd input,.lm-cpd select{width:100%;box-sizing:border-box;}
-.lm-dir{align-self:flex-start;display:inline-flex;border:1px solid var(--border2);border-radius:var(--r-1);overflow:hidden;height:36px;box-sizing:border-box;}
+.lm-dir{align-self:flex-start;display:inline-flex;border:1px solid var(--border2);border-radius:var(--r-1);overflow:hidden;height:32px;box-sizing:border-box;}
 .lm-dir button{font-family:var(--sans);font-size:var(--fs-4);min-width:36px;padding:0 8px;border:none;border-right:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer;}
 .lm-dir button:last-child{border-right:none;}
 .lm-dir button.active{background:var(--accent);color:var(--on-accent);}
@@ -175,7 +181,7 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
 .lm-preview b{color:var(--text);font-weight:600;}
 .lm-preview .warn{color:var(--poor);}
 /* Plates are tabs of one experiment, not separate designs: same strip, one layout. */
-.lm-ptab{display:inline-flex;align-items:center;gap:8px;padding:0 6px 0 12px;height:36px;box-sizing:border-box;border:1px solid var(--border2);border-radius:var(--r-2);background:var(--surface);cursor:pointer;font-size:var(--fs-3);}
+.lm-ptab{display:inline-flex;align-items:center;gap:8px;padding:0 6px 0 12px;height:32px;box-sizing:border-box;border:1px solid var(--border2);border-radius:var(--r-2);background:var(--surface);cursor:pointer;font-size:var(--fs-3);}
 .lm-ptab:hover{border-color:var(--accent);}
 .lm-ptab.on{background:var(--accent-dim);border-color:var(--accent);}
 .lm-ptab .pt-n{font-weight:600;color:var(--text);max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
@@ -193,9 +199,9 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
    Everything else is shown only when it has something to act on. */
 .lm-card{position:relative;}
 .lm-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 12px;margin-bottom:14px;}   /* space-between, not margin-left:auto: once the row wraps, an auto margin keeps the item on the right of the SECOND line (docs/UI.md) */
-.lm-assay{min-width:190px;font-weight:600;height:36px;box-sizing:border-box;}   /* the same 36px as the button beside it: WebKit draws a select shorter than its padding says */
+.lm-assay{min-width:190px;font-weight:600;height:32px;box-sizing:border-box;}   /* the same 36px as the button beside it: WebKit draws a select shorter than its padding says */
 .lm-plates{display:flex;flex-wrap:wrap;align-items:center;gap:6px;}
-.lm-padd{height:36px;}
+.lm-padd{height:32px;}
 .lm-steps{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin-bottom:16px;}
 .lm-step{display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--border);border-radius:var(--r-2);background:var(--surface);cursor:pointer;text-align:left;font-family:var(--sans);min-width:0;min-height:52px;color:var(--text);}
 .lm-step:hover{border-color:var(--accent);}
@@ -226,8 +232,8 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
 @media (min-width:1241px){.lm-body.x384 .lm-sel{position:sticky;}}
 .lm-sel-hd{display:flex;align-items:center;gap:8px;margin-bottom:12px;}
 .lm-sel-count{font-size:var(--fs-4);font-weight:600;color:var(--text);margin-right:auto;white-space:nowrap;}
-.lm-range{width:120px;font-family:var(--mono);font-size:var(--fs-3);}
-.lm-x{border:none;background:none;color:var(--text3);cursor:pointer;width:36px;height:36px;border-radius:var(--r-1);display:inline-flex;align-items:center;justify-content:center;padding:0;flex-shrink:0;}
+.lm-range{width:120px;height:32px;box-sizing:border-box;font-family:var(--mono);font-size:var(--fs-3);}   /* the 36px of the close button beside it */
+.lm-x{border:none;background:none;color:var(--text3);cursor:pointer;width:32px;height:32px;border-radius:var(--r-1);display:inline-flex;align-items:center;justify-content:center;padding:0;flex-shrink:0;}
 .lm-x:hover{background:var(--surface3);color:var(--text);}
 .lm-x svg{width:15px;height:15px;}
 .lm-idle{font-size:var(--fs-4);color:var(--text2);line-height:1.55;overflow-wrap:anywhere;min-width:0;}
@@ -235,22 +241,23 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
 .lm-idle .btn{display:block;margin-top:12px;}
 .lm-idle .lm-keys{font-size:var(--fs-2);color:var(--text3);margin-top:14px;padding-top:10px;border-top:1px solid var(--border);line-height:1.6;}
 .lm-modes{display:flex;margin-bottom:14px;}
-.lm-modes button{flex:1;min-height:34px;}
+.lm-modes button{flex:1;min-height:32px;}
 .lm-cpd{display:grid;grid-template-columns:1fr 90px 1fr;gap:10px 10px;align-items:end;}
 .lm-cpd .field{min-width:0;}
 .lm-cpd .f-dir{grid-column:1/-1;}
-.lm-cpd input,.lm-cpd select{width:100%;box-sizing:border-box;}
+.lm-cpd input,.lm-cpd select,.bc-name input{width:100%;min-width:0;box-sizing:border-box;height:32px;}
+.lm-sel .field input,.lm-sel .field select,.lm-sel .lm-range{background:var(--surface);}   /* .field input asks for 120px: the 90px unit column was overlapped by its select, and a select drew 2px taller than the boxes beside it */
 .lm-go{width:100%;margin-top:12px;}
 .lm-mode[data-m="ctl"] .lm-go{margin-top:0;flex:1;}
 .lm-acts{margin-top:10px;}
 .lm-acts:empty{display:none;}
-.lm-link{background:none;border:none;padding:0;min-height:36px;display:inline-flex;align-items:center;font-family:var(--sans);font-size:var(--fs-3);font-weight:600;color:var(--text2);cursor:pointer;text-decoration:underline;text-decoration-color:var(--border2);text-underline-offset:3px;}
+.lm-link{background:none;border:none;padding:0;min-height:32px;display:inline-flex;align-items:center;font-family:var(--sans);font-size:var(--fs-3);font-weight:600;color:var(--text2);cursor:pointer;text-decoration:underline;text-decoration-color:var(--border2);text-underline-offset:3px;}
 .lm-link:hover{color:var(--text);text-decoration-color:currentColor;}
 .lm-toolbar{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;margin-top:18px;padding-top:14px;border-top:1px solid var(--border);}
 .lm-ready{flex:1 1 auto;text-align:right;font-size:var(--fs-3);color:var(--text3);}
 .lm-toolbar .btn[disabled]{opacity:.45;cursor:default;}
 /* The readings strip: where the reader file for the plate on screen came from, or where to drop it. */
-.lm-read{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:var(--fs-3);color:var(--text2);margin-bottom:10px;min-height:36px;}
+.lm-read{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:var(--fs-3);color:var(--text2);margin-bottom:10px;min-height:32px;}
 .lm-read:empty{display:none;}
 /* Its sentence must not set the plate column's width — the plate does. */
 .lm-read{contain:inline-size;}
@@ -269,7 +276,7 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
 .well-grid.x384 .w-zone span{font-size:var(--fs-1);padding:1px 6px;}
 .tab-n{font-size:var(--fs-1);font-weight:700;background:var(--surface3);color:var(--text2);border-radius:var(--r-4);padding:1px 7px;margin-left:2px;}
 .tab-n:empty{display:none;}
-.tab.active .tab-n{background:var(--accent-dim);color:var(--accent);}
+.tab.active .tab-n{background:var(--accent-dim);color:var(--accent-ink);}
 .rs-head{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;margin-bottom:14px;}
 .rs-title{font-size:var(--fs-5);font-weight:600;color:var(--text);margin-right:auto;}
 .rs-title .sub{font-size:var(--fs-3);font-weight:500;color:var(--text2);margin-left:8px;}
@@ -278,7 +285,8 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
 .rs-pop{display:none;position:absolute;right:0;top:calc(100% + 6px);z-index:30;box-sizing:border-box;min-width:min(270px,calc(100vw - 16px));max-width:calc(100vw - 16px);background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-2);box-shadow:var(--shadow-lg);padding:6px;}
 .rs-pop.open{display:block;}
 .rs-pop button[role=menuitem]{display:block;width:100%;text-align:left;border:none;background:none;padding:8px 10px;border-radius:var(--r-1);cursor:pointer;font-family:var(--sans);color:var(--text);}
-.rs-pop button[role=menuitem]:hover,.rs-pop button[role=menuitem]:focus-visible{background:var(--surface2);outline:none;}
+.rs-pop button[role=menuitem]:hover,.rs-pop button[role=menuitem]:focus-visible{background:var(--surface2);}
+.rs-pop button[role=menuitem]:focus-visible{outline-offset:-2px!important;}
 .rs-pop button[role=menuitem] b{display:block;font-size:var(--fs-3);font-weight:600;}
 .rs-pop button[role=menuitem] span{display:block;font-size:var(--fs-2);color:var(--text2);margin-top:1px;}
 /* Fit settings: two groups of rows, each row a checkbox, its sentence and its number. A row that is
@@ -320,20 +328,20 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
 .rs-curve-t .sub{font-weight:500;color:var(--text2);}
 .rs-sub{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;}
 .seg button{white-space:nowrap;}
-.rs-menu .btn b{font-weight:600;color:var(--accent);}
+.rs-menu .btn b{font-weight:600;color:var(--accent-ink);}
 /* ── Beacon's plate card: Lumina's, with what a NanoBRET plate adds ─────────────────────────
    The plate, its steps and its selection panel are Lumina's (docs/CLAUDE_REFERENCE › Lumina,
    simplified around the plate); the rules below are what Beacon needs on top: the readings strip
    with one chip per channel, the role buttons, the list of what is on the plate, the empty state. */
 .well.fx,.well.fx .w-val,.well.fx .w-conc,.well.fx .w-ctl{color:#1a1d2e;}   /* fixed ink on a fixed pastel */
 .well .w-ctl{font-size:clamp(9px,calc(var(--wpx,38px)*.22),12px);}
-.lm-pone{display:inline-flex;align-items:center;height:36px;padding:0 4px;font-size:var(--fs-4);font-weight:600;color:var(--text);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.lm-head .btn,.lm-toolbar .btn{height:36px;padding-top:0;padding-bottom:0;}
+.lm-pone{display:inline-flex;align-items:center;height:32px;padding:0 4px;font-size:var(--fs-4);font-weight:600;color:var(--text);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.lm-head .btn,.lm-toolbar .btn{height:32px;padding-top:0;padding-bottom:0;}
 .lm-padd{white-space:nowrap;}
 .lm-go{width:100%;margin-top:12px;}
 .lm-go[disabled]{opacity:.45;cursor:default;}
 .lm-toolbar{align-items:center;}
-.lm-toolbar .seg button{height:36px;padding-top:0;padding-bottom:0;}
+.lm-toolbar .seg button{height:32px;padding-top:0;padding-bottom:0;}
 .bc-name{margin-bottom:10px;}
 .bc-name input{width:100%;box-sizing:border-box;}
 .lm-cpd .field.f-dir{grid-column:1/-1;}
@@ -342,7 +350,7 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
 .lm-platebar .lm-read{flex:1 1 300px;margin-bottom:0;min-width:0;}
 .lm-assay.lm-fmt{min-width:150px;}   /* the select of the assay, narrower: it only says 96 or 384 */
 .bc-demo{display:none;flex-wrap:wrap;align-items:center;gap:4px 16px;margin:-2px 0 10px;font-size:var(--fs-3);color:var(--text3);}
-.lm-read .bc-ch{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 10px;border:1px solid var(--border2);border-radius:var(--r-full);background:var(--surface);color:var(--text2);font-family:var(--sans);font-size:var(--fs-3);cursor:pointer;}
+.lm-read .bc-ch{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 10px;border:1px solid var(--border2);border-radius:var(--r-full);background:var(--surface);color:var(--text2);font-family:var(--sans);font-size:var(--fs-3);cursor:pointer;}
 .lm-read .bc-ch b{font-weight:700;color:var(--text3);}
 .lm-read .bc-ch.has b{color:var(--good);}
 .lm-read .bc-ch em{font-style:normal;font-size:var(--fs-2);color:var(--text3);}
@@ -357,9 +365,9 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
 .bc-role span{min-width:0;flex:1;line-height:1.25;}
 .bc-role em{font-style:normal;font-weight:500;font-size:var(--fs-2);color:var(--text3);flex:none;}
 .bc-role.on{border-color:var(--accent);background:var(--accent-dim);}
-.bc-role.on em{color:var(--accent);font-weight:600;}
+.bc-role.on em{color:var(--text);font-weight:600;}
 .bg-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin-bottom:14px;font-size:var(--fs-3);color:var(--text2);}
-.bg-bar .seg button{height:36px;padding-top:0;padding-bottom:0;}
+.bg-bar .seg button{height:32px;padding-top:0;padding-bottom:0;}
 .bg-empty{display:none;margin:6px 0 14px;font-size:var(--fs-4);color:var(--text2);}
 .bc-listgo{display:block;margin-top:10px;}
 .bc-lhd{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;}
@@ -372,7 +380,8 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
 .bc-lrow{display:grid;grid-template-columns:14px minmax(0,1fr) auto;align-items:center;gap:8px;margin-bottom:4px;}
 .bc-lrow i{width:14px;height:14px;border-radius:var(--r-1);border:1px solid var(--border2);}
 .bc-lrow .bc-nm{width:100%;box-sizing:border-box;height:32px;}
-.bc-nm,.bc-lq textarea{padding:6px 10px;border-radius:var(--r-1);border:1px solid var(--border2);background:var(--surface);color:var(--text);font-family:var(--sans);font-size:var(--fs-4);outline:none;}
+.bc-nm,.bc-lq textarea{padding:6px 10px;border-radius:var(--r-1);border:1px solid var(--border2);background:var(--surface);color:var(--text);font-family:var(--sans);font-size:var(--fs-3);outline:none;}   /* the list sits in the --surface2 panel: --surface fill */
+.bc-nm{height:32px;padding-top:0;padding-bottom:0;}
 .bc-nm:focus,.bc-lq textarea:focus{border-color:var(--accent);}
 .bc-lrow .v{font-size:var(--fs-2);color:var(--text2);font-variant-numeric:tabular-nums;white-space:nowrap;}
 .bc-lq{display:block;margin-top:14px;font-size:var(--fs-2);color:var(--text3);}
@@ -388,14 +397,14 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
 .rs-card{margin-bottom:16px;}
 .rs-foot{font-size:var(--fs-2);color:var(--text3);line-height:1.5;margin-top:10px;}
 .rs-stats{display:flex;flex-wrap:wrap;gap:8px 28px;align-items:flex-end;}
-.rs-stats span{display:block;font-size:var(--fs-2);color:var(--text3);}
+.rs-stats span:not(.badge){display:block;font-size:var(--fs-2);color:var(--text3);}
 .rs-stats b{font-family:var(--mono);font-size:var(--fs-7);font-weight:500;color:var(--text);}
 .rs-stats em{font-style:normal;font-size:var(--fs-2);color:var(--text3);margin-left:5px;}
 .rs-canvas{display:block;width:100%;border-radius:var(--r-2);}
 .rs-card .rs-tbl.bare{margin-top:2px;overflow-x:auto;}
 .rs-card .rs-tbl.bare + .ctrl-legend,.ctrl-legend + .rs-tbl{margin-top:12px;}
 .rs-det{padding:0;}
-.rs-det summary{padding:14px 18px;font-size:var(--fs-3);font-weight:600;color:var(--accent);cursor:pointer;list-style:none;}
+.rs-det summary{padding:14px 18px;font-size:var(--fs-3);font-weight:600;color:var(--accent-ink);cursor:pointer;list-style:none;}
 .rs-det summary::-webkit-details-marker{display:none;}
 .rs-det[open] summary{border-bottom:1px solid var(--border);}
 .rs-det .proto-sec,.rs-det .proto-row{margin-left:18px;margin-right:18px;}
@@ -403,15 +412,15 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
 .rs-det .proto-row:last-child{margin-bottom:14px;}
 .rs-note > span{min-width:0;}
 .rs-pop{min-width:min(300px,calc(100vw - 16px));}
-.seg button{height:36px;padding-top:0;padding-bottom:0;}
-.rs-acts .btn{height:36px;padding-top:0;padding-bottom:0;}
+.seg button{height:32px;padding-top:0;padding-bottom:0;}
+.rs-acts .btn{height:32px;padding-top:0;padding-bottom:0;}
 .rs-empty .btn{height:auto;}
 .rs-tbl td{padding-top:9px;padding-bottom:9px;}
 .rs-tbl th.num,.rs-tbl td.num{text-align:right;}
 .hu{font-weight:500;color:var(--text3);text-transform:none;letter-spacing:0;}
 .ci{color:var(--text2);}
 /* Report-style rows for the run details */
-.proto-sec{font-size:var(--fs-2);font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--accent);margin:20px 0 8px;padding:5px 10px;background:var(--surface2);border-radius:var(--r-1);overflow-wrap:anywhere;}
+.proto-sec{font-size:var(--fs-3);font-weight:600;color:var(--accent-ink);margin:20px 0 8px;padding:5px 10px;background:var(--surface2);border-radius:var(--r-1);overflow-wrap:anywhere;}
 .proto-row{display:grid;grid-template-columns:200px minmax(0,1fr);gap:4px 14px;padding:5px 0;border-bottom:1px solid var(--border);font-size:var(--fs-3);align-items:start;}
 .proto-k{color:var(--text3);font-size:var(--fs-2);padding-top:1px;}
 .proto-v{color:var(--text);line-height:1.5;min-width:0;overflow-wrap:anywhere;}
@@ -445,8 +454,8 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
   body.lm-needs-landscape #lm-rotate{display:flex;}
 }
 .cv-hint{font-size:var(--fs-2);color:var(--text3);padding:6px 2px 0;line-height:1.45;}
-.qc-chip{display:inline-block;padding:1px 8px;border-radius:var(--r-4);font-size:var(--fs-2);font-weight:600;background:rgba(184,69,69,.14);color:var(--poor);white-space:nowrap;}
-.lm-assay,.lm-range{padding:7px 10px;border-radius:var(--r-1);border:1px solid var(--border2);background:var(--surface);color:var(--text);font-family:var(--sans);font-size:var(--fs-4);outline:none;}
+.qc-chip{display:inline-block;padding:1px 8px;border-radius:var(--r-4);font-size:var(--fs-2);font-weight:600;background:rgba(192,64,64,.14);color:color-mix(in srgb,var(--danger) 55%,var(--text));white-space:nowrap;}
+.lm-assay,.lm-range{height:32px;box-sizing:border-box;padding:0 10px;border-radius:var(--r-1);border:1px solid var(--border2);background:var(--surface2);color:var(--text);font-family:var(--sans);font-size:var(--fs-3);outline:none;}
 .lm-range{font-family:var(--mono);font-size:var(--fs-3);}
 .lm-assay:focus,.lm-range:focus{border-color:var(--accent);}
 .lm-sel{background:var(--surface2);}
@@ -465,7 +474,11 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
   .lm-toolbar .seg{flex:1 1 100%;}
   .lm-toolbar .seg button{flex:1;}
 }
-.well .w-val{font-size:clamp(10px,calc(var(--wpx,38px)*.24),15px);}   /* no reading under 10px: below that the well hides it (.lm-tiny) */
+/* The text of a well follows its size in whole steps of the type scale (10 / 12 / 13 / 15px), never a fractional 14.4px: grid[data-wv] is set where the size is. Under 10px the well hides it (.lm-tiny). */
+.well-grid[data-wv="2"] .w-val{font-size:var(--fs-3);}
+.well-grid[data-wv="3"] .w-val,.well-grid[data-wv="3"] .w-conc{font-size:var(--fs-3);}
+.well-grid[data-wv="4"] .w-val{font-size:var(--fs-5);}
+.well-grid[data-wv="4"] .w-conc{font-size:var(--fs-4);}
 
 
 /* Motion here is decoration: nothing it conveys is lost when it is switched off, and a
@@ -493,9 +506,6 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
 .content{padding:18px 28px 32px;}
 .bn-wrap{max-width:1500px;margin:0 auto;}
 .tab-fill{flex:1 1 auto;min-width:8px;}
-.tab-setup{align-self:center;display:inline-flex;align-items:center;gap:6px;height:30px;margin-left:8px;padding:0 12px;border:1px solid var(--border2);border-radius:var(--r-1);background:var(--surface2);color:var(--text2);font-family:var(--sans);font-size:var(--fs-3);font-weight:600;cursor:pointer;flex:none;white-space:nowrap;}
-.tab-setup:hover{border-color:var(--accent);color:var(--text);}
-.tab-setup svg{flex:none;}
 .bn-top{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px;margin-bottom:14px;}
 .bn-id{display:flex;flex-wrap:wrap;align-items:center;gap:2px 14px;min-width:0;flex:1 1 360px;}
 .bn-name{font-family:var(--sans);font-size:var(--fs-6);font-weight:600;color:var(--text);background:transparent;border:1px solid transparent;border-radius:var(--r-1);height:36px;padding:0 8px;margin-left:-8px;width:min(380px,100%);min-width:0;outline:none;}
@@ -515,7 +525,8 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
 .lm-sel{top:12px;}
 .lm-platebar{flex-wrap:nowrap;align-items:center;gap:10px 14px;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border);}
 .lm-platebar .lm-read{flex:1 1 auto;margin:0;min-width:0;justify-content:space-between;contain:none;}
-.lm-platebar .lm-read .fn{max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;overflow-wrap:normal;}
+.lm-platebar .lm-read .fn{max-width:100%;overflow:visible;text-overflow:clip;white-space:normal;overflow-wrap:anywhere;}   /* a file name is never cut: it wraps when the bar is short of room */
+.lm-platebar .lm-fmt,.lm-platebar .lm-read .btn{height:32px;box-sizing:border-box;padding-top:0;padding-bottom:0;}   /* the select and the button beside it are one 32px row */
 .lm-read .rd-l{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap;min-width:0;}
 .lm-read .rd-r{display:flex;align-items:center;gap:6px 14px;flex:none;}
 .lm-read.empty{justify-content:flex-start;flex-wrap:wrap;}
@@ -524,11 +535,11 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
 .lm-platecol .well-grid-wrap{padding:2px 0 6px;}
 @media (max-width:1100px){.lm-body,.lm-body.x384{grid-template-columns:minmax(0,1fr);}.lm-platebar{flex-wrap:wrap;}}
 .bn-empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;max-width:460px;margin:64px auto;padding:0 16px;color:var(--text2);font-size:var(--fs-4);line-height:1.55;}
-.bn-empty-i{width:52px;height:52px;border-radius:var(--r-full);background:var(--accent-dim);color:var(--accent);display:flex;align-items:center;justify-content:center;margin-bottom:8px;}
+.bn-empty-i{width:52px;height:52px;border-radius:var(--r-full);background:var(--accent-dim);color:var(--accent-ink);display:flex;align-items:center;justify-content:center;margin-bottom:8px;}
 .bn-empty-i svg{width:26px;height:26px;}
 .bn-empty b{font-size:var(--fs-6);font-weight:600;color:var(--text);}
 .bn-empty p{margin:0;}
-.bn-empty .btn{margin-top:16px;height:36px;padding-top:0;padding-bottom:0;}
+.bn-empty .btn{margin-top:16px;height:32px;padding-top:0;padding-bottom:0;}
 .bn-empty .bn-empty-alt{margin-top:4px;}
 /* Results: the numbers on the left, what they look like on the right */
 .rs-head{margin-bottom:14px;}
@@ -548,14 +559,14 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
 /* Graph: the editor takes the whole tab */
 #bg-root .ck-root{margin-top:0;}
 .bg-ybar{display:inline-flex;align-items:center;gap:8px;font-size:var(--fs-3);color:var(--text2);}
-.bg-ybar .seg button{height:36px;padding-top:0;padding-bottom:0;}
+.bg-ybar .seg button{height:32px;padding-top:0;padding-bottom:0;}
 .bg-novehicle{font-size:var(--fs-2);color:var(--text3);max-width:240px;line-height:1.35;}
 
 /* ── History: one row per analysis ───────────────────────────────────────────────────────────── */
 .bh-bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;margin-bottom:14px;}
 .bh-title{font-size:var(--fs-5);font-weight:600;color:var(--text);margin-right:auto;}
 .bh-title .sub{font-size:var(--fs-3);font-weight:500;color:var(--text2);margin-left:8px;}
-.bh-q{height:36px;box-sizing:border-box;width:min(280px,100%);padding:0 10px;border-radius:var(--r-1);border:1px solid var(--border2);background:var(--surface);color:var(--text);font-family:var(--sans);font-size:var(--fs-4);outline:none;}
+.bh-q{height:32px;box-sizing:border-box;width:min(280px,100%);padding:0 10px;border-radius:var(--r-1);border:1px solid var(--border2);background:var(--surface2);color:var(--text);font-family:var(--sans);font-size:var(--fs-3);outline:none;}
 .bh-q:focus{border-color:var(--accent);}
 .bh-list{display:flex;flex-direction:column;gap:8px;}
 .bh-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 18px;align-items:center;padding:14px 16px;border:1px solid var(--border);border-radius:var(--r-2);background:var(--surface);}
@@ -564,7 +575,7 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
 .bh-main{min-width:0;}
 .bh-name{display:flex;align-items:center;gap:8px;font-size:var(--fs-5);font-weight:600;color:var(--text);min-width:0;}
 .bh-name span.n{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.bh-pill{flex:none;font-size:var(--fs-1);font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 7px;border-radius:var(--r-full);background:var(--accent-dim);color:var(--accent);}
+.bh-pill{flex:none;font-size:var(--fs-1);font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 7px;border-radius:var(--r-full);background:var(--accent-dim);color:var(--accent-ink);}
 .bh-pill.pin{background:var(--surface3);color:var(--text2);}
 .bh-meta{margin-top:3px;font-size:var(--fs-3);color:var(--text2);}
 .bh-chips{display:flex;flex-wrap:wrap;gap:4px 6px;margin-top:8px;}
@@ -576,143 +587,14 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
 .bh-acts .btn{height:32px;padding-top:0;padding-bottom:0;}
 .bh-ic{width:32px;height:32px;border:none;border-radius:var(--r-1);background:none;color:var(--text3);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0;}
 .bh-ic:hover{background:var(--surface3);color:var(--text);}
-.bh-ic.on{color:var(--accent);}
+.bh-ic.on{color:var(--accent-ink);}
 .bh-ic svg{width:16px;height:16px;}
 .bh-foot{margin-top:12px;font-size:var(--fs-2);color:var(--text3);}
 @media (max-width:720px){.bh-row{grid-template-columns:minmax(0,1fr);}.bh-side{align-items:flex-start;flex-direction:row;justify-content:space-between;}}
 
-/* ── Setup: the same walk as Echo's, one step at a time ─────────────────────────────────────────
-   Assay · Readings · Controls · Compounds · Review, with Back / Next. Every step is a stack of titled groups (.sx-group); a field is
-   a caption over a control (.sx-f). The layout steps keep the plate beside them (.bs-two), so what is typed is seen where it lands. */
-.setup-overlay{position:fixed;inset:0;z-index:2000;background:var(--modal-backdrop);display:flex;align-items:center;justify-content:center;}
-.setup-overlay.hidden{display:none;}
-.setup-card{background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-3);width:940px;max-width:calc(100vw - 20px);height:min(780px,calc(100vh - 28px));height:min(780px,calc(100dvh - 28px));display:flex;flex-direction:column;box-shadow:var(--shadow-xl);overflow:hidden;}
-.setup-hdr{display:flex;align-items:flex-start;justify-content:space-between;padding:20px 26px 0;gap:12px;flex-shrink:0;}
-.setup-htitle{font-size:var(--fs-5);font-weight:700;color:var(--text);letter-spacing:-0.2px;}
-.setup-hsub{font-size:var(--fs-3);color:var(--text3);margin-top:3px;}
-.setup-hclose{background:none;border:none;cursor:pointer;color:var(--text3);width:36px;height:36px;border-radius:var(--r-1);display:inline-flex;align-items:center;justify-content:center;padding:0;}
-.setup-hclose:hover{color:var(--text);background:var(--surface2);}
-.setup-hclose svg{width:16px;height:16px;}
-.setup-stabs{display:flex;gap:0;padding:12px 26px 0;border-bottom:1px solid var(--border);flex-shrink:0;overflow-x:auto;}
-.setup-stab{padding:8px 16px;font-size:var(--fs-3);font-weight:600;color:var(--text3);cursor:pointer;border:none;background:none;font-family:var(--sans);border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap;display:inline-flex;align-items:center;gap:7px;}
-.setup-stab:hover{color:var(--text2);}
-.setup-stab.active{color:var(--accent);border-bottom-color:var(--accent);}
-.sx-n{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:var(--r-full);background:var(--surface3);color:var(--text3);font-size:var(--fs-1);font-weight:700;line-height:1;flex:none;}
-.setup-stab.active .sx-n{background:var(--accent);color:var(--on-accent);}
-.setup-stab.done .sx-n{background:var(--good);color:var(--on-accent);}
-.setup-sbody{flex:1;overflow-y:auto;padding:20px 26px;min-height:0;}
-.setup-pane{display:none;}
-.setup-pane.active{display:block;}
-.setup-foot{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 12px;padding:12px 26px 14px;border-top:1px solid var(--border);flex-shrink:0;}
-.sx-proj{display:flex;flex-wrap:wrap;align-items:center;gap:2px 6px;}
-.sx-nav{display:flex;gap:8px;}
-.sx-nav .btn{height:36px;padding-top:0;padding-bottom:0;display:inline-flex;align-items:center;gap:6px;}
-.sx-group{border:1px solid var(--border);border-radius:var(--r-2);background:var(--surface);margin-bottom:14px;}
-.sx-group:last-child{margin-bottom:0;}
-.sx-ghd{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:38px;padding:8px 14px;border-bottom:1px solid var(--border);background:var(--surface2);border-radius:var(--r-2) var(--r-2) 0 0;}
-.sx-gt{display:inline-flex;align-items:center;font-size:var(--fs-3);font-weight:700;color:var(--text);}
-.sx-gs,.sx-opt{font-size:var(--fs-2);color:var(--text3);font-weight:400;text-align:right;}
-.sx-req{font-size:var(--fs-1);font-weight:600;color:var(--accent);margin-left:6px;text-transform:uppercase;letter-spacing:.6px;}
-.sx-gb{display:flex;flex-direction:column;gap:14px;padding:14px;}
-.sx-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;}
-.sx-f{display:flex;flex-direction:column;gap:6px;min-width:0;}
-.sx-f>label,.sx-lbl{display:flex;align-items:center;font-size:var(--fs-3);color:var(--text2);line-height:1.3;}
-.sx-hint{font-size:var(--fs-2);color:var(--text3);line-height:1.4;}
-.sx-hint:empty{display:none;}
-.setup-card input[type="text"],.setup-card input[type="number"],.setup-card select,.setup-card textarea{box-sizing:border-box;width:100%;min-width:0;height:34px;padding:0 10px;border-radius:var(--r-1);border:1px solid var(--border2);background:var(--surface);color:var(--text);font-family:var(--sans);font-size:var(--fs-4);outline:none;}
-.setup-card textarea{height:auto;min-height:92px;padding:8px 10px;resize:vertical;line-height:1.5;}
-.setup-card input:focus,.setup-card select:focus,.setup-card textarea:focus{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-dim);}
-.sx-inline{display:flex;gap:8px;align-items:center;}
-.sx-inline>input{flex:1 1 auto;min-width:0;}
-.sx-inline>select{flex:none;width:84px;}
-.sx-btn{display:inline-flex;align-items:center;justify-content:center;height:32px;padding:0 12px;border:1px solid var(--border2);border-radius:var(--r-1);background:var(--surface2);color:var(--text2);font-family:var(--sans);font-size:var(--fs-3);font-weight:600;white-space:nowrap;cursor:pointer;}
-.sx-btn:hover{border-color:var(--accent);color:var(--text);}
-.sx-link{border:none;background:none;padding:2px 4px;border-radius:var(--r-1);color:var(--accent);font-family:var(--sans);font-size:var(--fs-3);font-weight:500;cursor:pointer;}
-.sx-link:hover{text-decoration:underline;}
-.sx-ghost{height:32px;padding:0 10px;border:none;border-radius:var(--r-1);background:none;color:var(--text3);font-family:var(--sans);font-size:var(--fs-3);cursor:pointer;}
-.sx-ghost:hover{background:var(--surface2);color:var(--poor);}
-.sx-ghost.q:hover{color:var(--text);}
-.bs-two{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:18px;align-items:start;}
-@media (max-width:860px){.bs-two{grid-template-columns:minmax(0,1fr);}}
-.bs-side{position:sticky;top:0;}
-.bs-drop{display:flex;align-items:center;gap:14px;padding:16px 18px;border:1.5px dashed var(--border2);border-radius:var(--r-2);background:var(--surface2);cursor:pointer;color:var(--text2);font-size:var(--fs-3);line-height:1.45;}
-.bs-drop:hover,.bs-drop.over{border-color:var(--accent);background:var(--accent-dim);}
-.bs-drop svg{width:26px;height:26px;color:var(--text3);flex:none;}
-.bs-drop b{display:block;color:var(--text);font-size:var(--fs-4);margin-bottom:2px;}
-.bs-plates{display:flex;flex-direction:column;gap:6px;}
-.bs-pl{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:8px 12px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--r-2);background:var(--surface);}
-.bs-pl.on{border-color:var(--accent);background:var(--accent-dim);}
-.bs-pl .nm{min-width:0;cursor:pointer;}
-.bs-pl .nm b{display:block;font-size:var(--fs-3);color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.bs-pl .nm span{display:block;font-size:var(--fs-2);color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.bs-ch{display:inline-flex;gap:6px;}
-.bs-chip{display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 9px;border-radius:var(--r-full);border:1px solid var(--border2);font-size:var(--fs-2);color:var(--text3);background:var(--surface);white-space:nowrap;}
-.bs-chip.ok{color:var(--text);}
-.bs-chip.ok::before{content:'';width:7px;height:7px;border-radius:var(--r-full);background:var(--good);}
-.bs-hand{display:none;}
-.bs-hand.open{display:block;}
-.bs-hand-wrap{overflow:auto;max-height:300px;border:1px solid var(--border);border-radius:var(--r-2);}
-.bs-hand table{border-collapse:separate;border-spacing:0;font-size:var(--fs-2);}
-.bs-hand th{position:sticky;top:0;left:0;background:var(--surface2);color:var(--text3);font-weight:600;padding:3px 4px;min-width:26px;z-index:1;}
-.bs-hand th.r{position:sticky;left:0;top:auto;}
-.bs-hand td{padding:0;}
-.bs-hand td input{width:64px !important;height:26px !important;padding:0 6px !important;border-radius:0 !important;border:0 !important;border-right:1px solid var(--border) !important;border-bottom:1px solid var(--border) !important;font-family:var(--mono) !important;font-size:var(--fs-2) !important;text-align:right;box-shadow:none !important;background:var(--surface) !important;}
-.bs-hand td input:focus{outline:2px solid var(--accent) !important;outline-offset:-2px;}
-.bs-ctl{display:grid;grid-template-columns:14px minmax(0,1fr) 150px 40px;align-items:center;gap:10px;padding:9px 0;}
-.bs-ctl+.bs-ctl{border-top:1px solid var(--border);}
-.bs-ctl i{width:14px;height:14px;border-radius:var(--r-1);border:1px solid var(--border2);}
-.bs-ctl .t b{display:block;font-size:var(--fs-3);font-weight:600;color:var(--text);}
-.bs-ctl .t span{display:block;font-size:var(--fs-2);color:var(--text3);line-height:1.35;}
-.bs-ctl input{font-family:var(--mono) !important;font-size:var(--fs-3) !important;}
-.bs-ctl .n{font-size:var(--fs-2);color:var(--text3);text-align:right;font-variant-numeric:tabular-nums;}
-.bs-ctl.bad input{border-color:var(--poor) !important;}
-.bs-mini-wrap{padding:12px;border:1px solid var(--border);border-radius:var(--r-2);background:var(--surface2);}
-.bs-mini-t{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;font-size:var(--fs-3);font-weight:600;color:var(--text);}
-.bs-mini-t span{font-weight:500;color:var(--text3);font-size:var(--fs-2);}
-.bs-mini{display:grid;gap:2px;}
-.bs-mini .l{font-size:var(--fs-1);color:var(--text3);display:flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums;line-height:1;}
-.bs-mini .w{aspect-ratio:1;border-radius:2px;background:var(--surface3);border:1px solid var(--border);box-sizing:border-box;}
-.bs-mini .w.rd{background:color-mix(in srgb,var(--accent) 22%,var(--surface3));}
-.bs-legend{display:flex;flex-direction:column;gap:5px;margin-top:10px;}
-.bs-legend div{display:flex;align-items:center;gap:8px;font-size:var(--fs-2);color:var(--text2);}
-.bs-legend i{width:11px;height:11px;border-radius:2px;border:1px solid var(--border2);flex:none;}
-.bs-legend em{margin-left:auto;font-style:normal;color:var(--text3);font-variant-numeric:tabular-nums;}
-.bs-seg{width:100%;}
-.bs-seg button{flex:1;height:34px;padding-top:0;padding-bottom:0;}
-.bs-plan{padding:10px 12px;border-radius:var(--r-2);background:var(--surface2);font-size:var(--fs-3);color:var(--text2);line-height:1.5;}
-.bs-plan b{color:var(--text);font-weight:600;}
-.bs-plan .warn{color:var(--poor);}
-.bs-dgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:12px;}
+/* ── Setup (the dialog and its pieces are the Setup kit's; these are Beacon's own) ───────────────────────── */
 #bs-dist .sx-hint{margin-top:2px;}
 #bs-dfoot{margin-top:8px;}
-.bs-cpds{display:flex;flex-direction:column;gap:2px;}
-.bs-cp{display:grid;grid-template-columns:12px minmax(0,1fr) auto;gap:8px;align-items:center;font-size:var(--fs-3);padding:3px 0;}
-.bs-cp i{width:12px;height:12px;border-radius:3px;border:1px solid var(--border2);}
-.bs-cp span.v{font-size:var(--fs-2);color:var(--text3);font-variant-numeric:tabular-nums;}
-.bs-rv{width:100%;border-collapse:collapse;font-size:var(--fs-3);}
-.bs-rv th{text-align:left;font-size:var(--fs-2);font-weight:600;color:var(--text3);padding:6px 8px;border-bottom:1px solid var(--border2);}
-.bs-rv td{padding:8px;border-bottom:1px solid var(--border);vertical-align:top;}
-.bs-rv tr:last-child td{border-bottom:none;}
-.bs-ok{color:var(--good);font-weight:700;}
-.bs-issues{display:flex;flex-direction:column;gap:8px;}
-.bs-issue{display:grid;grid-template-columns:18px minmax(0,1fr) auto;gap:10px;align-items:start;font-size:var(--fs-3);color:var(--text2);line-height:1.45;}
-.bs-issue svg{width:16px;height:16px;margin-top:1px;color:var(--mid);}
-.bs-issue.ok svg{color:var(--good);}
-.bs-issue b{color:var(--text);font-weight:600;}
-.bs-recent{display:flex;flex-direction:column;gap:4px;}
-.bs-rec{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:10px;align-items:center;padding:6px 0;font-size:var(--fs-3);}
-.bs-rec+.bs-rec{border-top:1px solid var(--border);}
-.bs-rec b{display:block;color:var(--text);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.bs-rec span{display:block;font-size:var(--fs-2);color:var(--text3);}
-@media (max-width:720px){
-  .setup-overlay{padding:0;}
-  .setup-card{border-radius:0;height:100dvh;width:100vw;max-width:none;}
-  .setup-hdr,.setup-stabs,.setup-sbody,.setup-foot{padding-left:14px;padding-right:14px;}
-  .sx-grid{grid-template-columns:minmax(0,1fr);}
-  .sx-n{display:none;}
-  .bs-ctl{grid-template-columns:14px minmax(0,1fr) 110px;}
-  .bs-ctl .n{display:none;}
-}
 /* mo-kit:begin — generated by the sync_motion tool, do not edit here */
 :root .panel.active{animation:moPane var(--dur-2) var(--ease-out) backwards;}
 @keyframes moPane{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
@@ -967,7 +849,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
 .ck-dh{display:flex;align-items:center;gap:8px;margin-bottom:4px;}
 .ck-dh i{width:12px;height:12px;border-radius:var(--r-1);border:1px solid var(--border2);flex:none;}
 .ck-dp{display:flex;align-items:center;gap:10px;margin:2px 0 2px 20px;}
-.ck-dx{width:54px;flex:none;font-size:var(--fs-2);color:var(--text3);font-variant-numeric:tabular-nums;}
+.ck-dx{width:64px;flex:none;overflow-wrap:anywhere;font-size:var(--fs-2);color:var(--text3);font-variant-numeric:tabular-nums;}
 .ck-reps{display:flex;flex-wrap:wrap;gap:4px;}
 .ck-rep{min-width:46px;height:26px;padding:0 6px;border:1px solid var(--border2);border-radius:var(--r-1);background:var(--surface);color:var(--text);font-family:var(--sans);font-size:var(--fs-2);font-variant-numeric:tabular-nums;cursor:pointer;}
 .ck-rep:hover{border-color:var(--accent);}
@@ -976,6 +858,382 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
 .ck-fitnote,.ck-warn{margin:2px 0 8px;font-size:var(--fs-2);line-height:1.45;color:var(--warn,#c47f00);}
 /* chart-kit:end */
 </style>
+<style>
+/* setup-kit:begin — generated by tools/sync_setupkit.py from tools/setupkit/setup.css; do not edit here */
+/* ── Setup: one walk, one vocabulary ─────────────────────────────────────────────────────────────
+   Every dHUB analysis that is set up before it is read opens the same dialog: numbered steps, Back / Next, titled groups
+   (.sx-group), a field is a caption over a control (.sx-f). Steps that lay a plate out keep the plate beside them (.sx-two). */
+.setup-overlay{position:fixed;inset:0;z-index:2000;background:var(--modal-backdrop);display:flex;align-items:center;justify-content:center;}
+.setup-overlay.hidden{display:none;}
+.setup-card{background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-3);width:var(--setup-w,940px);max-width:calc(100vw - 20px);height:min(780px,calc(100vh - 28px));height:min(780px,calc(100dvh - 28px));display:flex;flex-direction:column;box-shadow:var(--shadow-xl);overflow:hidden;}
+.setup-hdr{display:flex;align-items:flex-start;justify-content:space-between;padding:20px 26px 0;gap:12px;flex-shrink:0;}
+.setup-htitle{font-size:var(--fs-5);font-weight:700;color:var(--text);letter-spacing:-0.2px;}
+.setup-hsub{font-size:var(--fs-3);color:var(--text3);margin-top:3px;}
+.setup-hclose{background:none;border:none;cursor:pointer;color:var(--text3);width:36px;height:36px;border-radius:var(--r-1);display:inline-flex;align-items:center;justify-content:center;padding:0;}
+.setup-hclose:hover{color:var(--text);background:var(--surface2);}
+.setup-hclose svg{width:16px;height:16px;}
+.setup-stabs{display:flex;gap:0;padding:12px 26px 0;border-bottom:1px solid var(--border);flex-shrink:0;overflow-x:auto;overscroll-behavior-x:contain;}
+.setup-stab{padding:8px 16px;font-size:var(--fs-3);font-weight:600;color:var(--text3);cursor:pointer;border:none;background:none;font-family:var(--sans);border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap;display:inline-flex;align-items:center;gap:7px;}
+.setup-stab:hover{color:var(--text2);}
+.setup-stab.active{color:var(--accent);border-bottom-color:var(--accent);}
+.sx-n{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:var(--r-full);background:var(--surface3);color:var(--text3);font-size:var(--fs-1);font-weight:700;line-height:1;flex:none;}
+.setup-stab.active .sx-n{background:var(--accent);color:var(--on-accent);}
+.setup-stab.done .sx-n{background:var(--good);color:var(--on-accent);}
+.setup-sbody{flex:1;overflow-y:auto;overscroll-behavior-y:contain;padding:20px 26px;min-height:0;}
+.setup-pane{display:none;}
+.setup-pane.active{display:block;}
+.setup-foot{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 12px;padding:12px 26px 14px;border-top:1px solid var(--border);flex-shrink:0;}
+/* a line of its own above the buttons: squeezed beside them it had 48px and read "Echo C…" */
+.setup-fstatus{flex:1 0 100%;font-size:var(--fs-2);color:var(--text3);min-width:0;}
+.sx-proj{display:flex;flex-wrap:wrap;align-items:center;gap:2px 6px;}
+.sx-nav{display:flex;gap:8px;}
+.sx-pri,.sx-sec{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:36px;padding:0 18px;border-radius:var(--r-1);border:1px solid var(--border2);font-family:var(--sans);font-size:var(--fs-3);font-weight:600;white-space:nowrap;cursor:pointer;}
+.sx-sec{background:var(--surface2);color:var(--text);}
+.sx-sec:hover{background:var(--surface3);}
+.sx-pri{background:var(--accent);border-color:var(--accent);color:var(--on-accent);}
+.sx-pri:hover{filter:brightness(1.08);}
+.sx-pri:disabled{opacity:.4;cursor:not-allowed;}
+.sx-group{border:1px solid var(--border);border-radius:var(--r-2);background:var(--surface);margin-bottom:14px;}
+.sx-group:last-child{margin-bottom:0;}
+.sx-ghd{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:38px;padding:8px 14px;border-bottom:1px solid var(--border);background:var(--surface2);border-radius:var(--r-2) var(--r-2) 0 0;}
+.sx-gt{display:inline-flex;align-items:center;font-size:var(--fs-3);font-weight:700;color:var(--text);}
+.sx-gs,.sx-opt{font-size:var(--fs-2);color:var(--text3);font-weight:400;text-align:right;}
+.sx-req{font-size:var(--fs-1);font-weight:600;color:var(--accent);margin-left:6px;text-transform:uppercase;letter-spacing:.6px;}
+.sx-gb{display:flex;flex-direction:column;gap:14px;padding:14px;}
+.sx-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;}
+.sx-f{display:flex;flex-direction:column;gap:6px;min-width:0;}
+.sx-f>label,.sx-lbl{display:flex;align-items:center;font-size:var(--fs-3);color:var(--text2);line-height:1.3;}
+.sx-hint{font-size:var(--fs-2);color:var(--text3);line-height:1.4;}
+.sx-hint:empty{display:none;}
+.sx-gb:has(>.sx-hand:not(.open)){display:none;}
+.sx-hint .warn,.sx-plan .warn{color:var(--poor);}
+.sx-check{display:flex;gap:8px;align-items:center;font-size:var(--fs-3);color:var(--text2);cursor:pointer;}
+.setup-card input[type="text"],.setup-card input[type="number"],.setup-card select,.setup-card textarea{box-sizing:border-box;width:100%;min-width:0;height:34px;min-height:0;padding:0 10px;border-radius:var(--r-1);border:1px solid var(--border2);background:var(--surface);color:var(--text);font-family:var(--sans);font-size:var(--fs-4);outline:none;}
+.setup-card textarea{height:auto;min-height:92px;padding:8px 10px;resize:vertical;line-height:1.5;}
+.setup-card input:focus,.setup-card select:focus,.setup-card textarea:focus{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-dim);}
+.sx-inline{display:flex;gap:8px;align-items:center;}
+.sx-inline>input{flex:1 1 auto;min-width:0;}
+.sx-inline>select{flex:none;width:84px;}
+.sx-btn{display:inline-flex;align-items:center;justify-content:center;height:32px;padding:0 12px;border:1px solid var(--border2);border-radius:var(--r-1);background:var(--surface2);color:var(--text2);font-family:var(--sans);font-size:var(--fs-3);font-weight:600;white-space:nowrap;cursor:pointer;}
+.sx-btn:hover{border-color:var(--accent);color:var(--text);}
+.sx-link{border:none;background:none;padding:2px 4px;border-radius:var(--r-1);color:var(--accent);font-family:var(--sans);font-size:var(--fs-3);font-weight:500;cursor:pointer;}
+.sx-link:hover{text-decoration:underline;}
+.sx-ghost{height:32px;padding:0 10px;border:none;border-radius:var(--r-1);background:none;color:var(--text3);font-family:var(--sans);font-size:var(--fs-3);cursor:pointer;}
+.sx-ghost:hover{background:var(--surface2);color:var(--poor);}
+.sx-ghost.q:hover{color:var(--text);}
+/* the button in a tab bar that opens it */
+/* as tall as the tabs beside it (the alignment audit reads a bar's controls by their boxes); the pill is drawn inside that box */
+.tab-setup{align-self:stretch;position:relative;isolation:isolate;display:inline-flex;align-items:center;gap:6px;margin-left:8px;padding:0 12px;border:none;background:none;color:var(--text2);font-family:var(--sans);font-size:var(--fs-3);font-weight:600;cursor:pointer;flex:none;white-space:nowrap;}
+.tab-setup::before{content:"";position:absolute;z-index:-1;left:0;right:0;top:50%;height:30px;transform:translateY(-50%);border:1px solid var(--border2);border-radius:var(--r-1);background:var(--surface2);}
+.tab-setup:hover::before{border-color:var(--accent);}
+.tab-setup:hover{color:var(--text);}
+.tab-setup svg{flex:none;}
+/* a switch between a few choices, as wide as its column */
+.sx-seg{display:flex;width:100%;border:1px solid var(--border2);border-radius:var(--r-1);overflow:hidden;}
+.sx-seg button{flex:1;height:34px;padding:0 10px;border:none;background:var(--surface2);color:var(--text2);font-family:var(--sans);font-size:var(--fs-3);font-weight:600;cursor:pointer;white-space:nowrap;}
+.sx-seg button+button{border-left:1px solid var(--border2);}
+.sx-seg button.active{background:var(--accent);color:var(--on-accent);}
+.sx-two{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:18px;align-items:start;}
+@media (max-width:860px){.sx-two{grid-template-columns:minmax(0,1fr);}}
+.sx-side{position:sticky;top:0;}
+.sx-drop{display:flex;align-items:center;gap:14px;padding:16px 18px;border:1.5px dashed var(--border2);border-radius:var(--r-2);background:var(--surface2);cursor:pointer;color:var(--text2);font-size:var(--fs-3);line-height:1.45;}
+.sx-drop:hover,.sx-drop.over{border-color:var(--accent);background:var(--accent-dim);}
+.sx-drop svg{width:26px;height:26px;color:var(--text3);flex:none;}
+.sx-drop b{display:block;color:var(--text);font-size:var(--fs-4);margin-bottom:2px;}
+.sx-plates{display:flex;flex-direction:column;gap:6px;}
+.sx-pl{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:8px 12px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--r-2);background:var(--surface);}
+.sx-pl.on{border-color:var(--accent);background:var(--accent-dim);}
+.sx-pl .nm{min-width:0;cursor:pointer;}
+.sx-pl .nm b{display:block;font-size:var(--fs-3);color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.sx-pl .nm span{display:block;font-size:var(--fs-2);color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.sx-ch{display:inline-flex;gap:6px;}
+.sx-chip{display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 9px;border-radius:var(--r-full);border:1px solid var(--border2);font-size:var(--fs-2);color:var(--text3);background:var(--surface);white-space:nowrap;}
+.sx-chip.ok{color:var(--text);}
+.sx-chip.ok::before{content:'';width:7px;height:7px;border-radius:var(--r-full);background:var(--good);}
+/* a plate of typed values: paste a block into any cell, arrows move */
+.sx-hand{display:none;}
+.sx-hand.open{display:block;}
+.sx-hand-wrap{overflow:auto;max-height:300px;border:1px solid var(--border);border-radius:var(--r-2);}
+.sx-hand table{border-collapse:separate;border-spacing:0;font-size:var(--fs-2);}
+.sx-hand th{position:sticky;top:0;left:0;background:var(--surface2);color:var(--text3);font-weight:600;padding:3px 4px;min-width:26px;z-index:1;}
+.sx-hand th.r{position:sticky;left:0;top:auto;}
+.sx-hand td{padding:0;}
+.sx-hand td input{width:64px !important;height:26px !important;padding:0 6px !important;border-radius:0 !important;border:0 !important;border-right:1px solid var(--border) !important;border-bottom:1px solid var(--border) !important;font-family:var(--mono) !important;font-size:var(--fs-2) !important;text-align:right;box-shadow:none !important;background:var(--surface) !important;}
+.sx-hand td input:focus{outline:2px solid var(--accent) !important;outline-offset:-2px;}
+/* one control: a swatch, what it is, the wells it covers (A1:D1), how many */
+.sx-ctl{display:grid;grid-template-columns:14px minmax(0,1fr) 150px 40px;align-items:center;gap:10px;padding:9px 0;}
+.sx-ctl+.sx-ctl{border-top:1px solid var(--border);}
+.sx-ctl i{width:14px;height:14px;border-radius:var(--r-1);border:1px solid var(--border2);}
+.sx-ctl .t b{display:block;font-size:var(--fs-3);font-weight:600;color:var(--text);}
+.sx-ctl .t span{display:block;font-size:var(--fs-2);color:var(--text3);line-height:1.35;}
+.sx-ctl input{font-family:var(--mono) !important;font-size:var(--fs-3) !important;}
+.sx-ctl .n{font-size:var(--fs-2);color:var(--text3);text-align:right;font-variant-numeric:tabular-nums;}
+.sx-ctl.bad input{border-color:var(--poor) !important;}
+/* the plate, small: what the layout is, as it is typed */
+.sx-mini-wrap{padding:12px;border:1px solid var(--border);border-radius:var(--r-2);background:var(--surface2);}
+.sx-mini-t{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;font-size:var(--fs-3);font-weight:600;color:var(--text);}
+.sx-mini-t span{font-weight:500;color:var(--text3);font-size:var(--fs-2);}
+.sx-mini{display:grid;gap:2px;}
+.sx-mini .l{font-size:var(--fs-1);color:var(--text3);display:flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums;line-height:1;}
+.sx-mini .w{aspect-ratio:1;border-radius:2px;background:var(--surface3);border:1px solid var(--border);box-sizing:border-box;}
+.sx-mini .w.rd{background:color-mix(in srgb,var(--accent) 22%,var(--surface3));}
+.sx-legend{display:flex;flex-direction:column;gap:5px;margin-top:10px;}
+.sx-legend div{display:flex;align-items:center;gap:8px;font-size:var(--fs-2);color:var(--text2);}
+.sx-legend i{width:11px;height:11px;border-radius:2px;border:1px solid var(--border2);flex:none;}
+.sx-legend em{margin-left:auto;font-style:normal;color:var(--text3);font-variant-numeric:tabular-nums;}
+.sx-plan{padding:10px 12px;border-radius:var(--r-2);background:var(--surface2);font-size:var(--fs-3);color:var(--text2);line-height:1.5;}
+.sx-plan b{color:var(--text);font-weight:600;}
+.sx-dgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:12px;}
+.sx-rv{width:100%;border-collapse:collapse;font-size:var(--fs-3);}
+.sx-rv th{text-align:left;font-size:var(--fs-2);font-weight:600;color:var(--text3);padding:6px 8px;border-bottom:1px solid var(--border2);}
+.sx-rv td{padding:8px;border-bottom:1px solid var(--border);vertical-align:top;}
+.sx-rv tr:last-child td{border-bottom:none;}
+.sx-ok{color:var(--good);font-weight:700;}
+.sx-issues{display:flex;flex-direction:column;gap:8px;}
+.sx-issue{display:grid;grid-template-columns:18px minmax(0,1fr) auto;gap:10px;align-items:start;font-size:var(--fs-3);color:var(--text2);line-height:1.45;}
+.sx-issue svg{width:16px;height:16px;margin-top:1px;color:var(--mid);}
+.sx-issue.ok svg{color:var(--good);}
+.sx-issue b{color:var(--text);font-weight:600;}
+.sx-recent{display:flex;flex-direction:column;gap:4px;}
+.sx-rec{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:10px;align-items:center;padding:6px 0;font-size:var(--fs-3);}
+.sx-rec+.sx-rec{border-top:1px solid var(--border);}
+.sx-rec b{display:block;color:var(--text);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.sx-rec span{display:block;font-size:var(--fs-2);color:var(--text3);}
+@media (max-width:720px){
+  .setup-overlay{padding:0;}
+  .setup-card{border-radius:0;height:100dvh;width:100vw;max-width:none;}
+  .setup-hdr,.setup-stabs,.setup-sbody,.setup-foot{padding-left:14px;padding-right:14px;}
+  .sx-grid{grid-template-columns:minmax(0,1fr);}
+  .sx-n{display:none;}
+  .sx-ctl{grid-template-columns:14px minmax(0,1fr) 110px;}
+  .sx-ctl .n{display:none;}
+}
+/* setup-kit:end */
+
+/* Beacon's layer over the Setup kit (the kit is generated; these are what it does not carry yet, see the audit report — move them into tools/setupkit/setup.css and delete this block). */
+.setup-htitle{font-size:var(--fs-6);}
+.setup-hclose{width:28px;height:28px;}
+.sx-n{color:var(--text2);}
+.sx-ok,.bs-ok{color:var(--good-ink);}
+.sx-link{min-height:24px;display:inline-flex;align-items:center;color:var(--accent-ink);text-decoration:underline;text-decoration-color:var(--border2);text-underline-offset:3px;}
+.sx-inline .sx-link{min-height:32px;}
+.setup-card input[type="text"],.setup-card input[type="number"],.setup-card select{height:32px;background:var(--surface2);font-size:var(--fs-3);}
+.sx-seg button,.bs-seg button{height:32px;}
+</style>
+<script>
+/* setup-kit-js:begin — generated by tools/sync_setupkit.py from tools/setupkit/setup.js; do not edit here */
+// The Setup dialog every dHUB analysis opens with: numbered steps, Back / Next, titled groups. An app says what its steps are
+// (a key, a label, a function that draws the step into its pane) and what its footer holds; the kit owns everything that
+// must look and behave the same in each app — the dialog, the focus trap, Escape, the numbered tabs that turn green when a
+// step is done, the buttons, and the small pieces most steps are made of (group, field, switch, drop zone, plate list,
+// the plate drawn small, a control row, a review list).
+//   var K = SetupKit.create({ id:'bs', title:'Beacon', sub:'Set up your analysis', steps:[{key:'assay', label:'Assay', render:fn, live:fn, done:fn, focus:false}],
+//                              foot:[{label:'Clear all', title:'…', quiet:false, fn:fn}], nextLabel:fn(i, last), finish:fn, onOpen:fn, onClose:fn, wire:fn(dialog) });
+//   An app whose steps are already in its page keeps them: a pane whose id exists is moved into the dialog, not made (ids.pane says what its id is).
+//   Optional: cardClass (a class on the card), ids {close, sub, back, next, body, pane:fn(key)} (an app that already has ids for them),
+//   status (id of a quiet line above the footer), navExtra (html after Next — a Run button), steps[].attrs / .extra (on / inside a tab), K.build().
+//   K.open(step) · K.close() · K.go(i) · K.next() · K.back() · K.refresh() · K.tabs() · K.isOpen() · K.step · K.pane(key) · K.body · K.el
+var SetupKit = (function(){
+  function esc(s){ return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+  var X = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+  var OK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+  var WARN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17v.5"/></svg>';
+  var UP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4M7.5 8.5L12 4l4.5 4.5"/><path d="M4 15v3a2 2 0 002 2h12a2 2 0 002-2v-3"/></svg>';
+
+  // ── pieces ──────────────────────────────────────────────────────────────────────────────────
+  // A titled card. `opt` is the quiet line on the right of the title ("optional — it travels with the exports").
+  function group(title, opt, body, attrs){
+    return '<section class="sx-group"' + (attrs ? ' ' + attrs : '') + '><div class="sx-ghd"><span class="sx-gt">' + title + '</span>' + (opt ? '<span class="sx-opt">' + opt + '</span>' : '') + '</div><div class="sx-gb">' + body + '</div></section>';
+  }
+  // A caption over a control, and a line of help under it.
+  function field(label, forId, control, hint, hintId){
+    return '<div class="sx-f"><label' + (forId ? ' for="' + forId + '"' : '') + '>' + label + '</label>' + control + (hint != null ? '<div class="sx-hint"' + (hintId ? ' id="' + hintId + '"' : '') + '>' + hint + '</div>' : '') + '</div>';
+  }
+  // A switch between a few choices: items [[value, text]], the active one by value; each button carries data-<attr>.
+  function seg(id, items, active, attr, label){
+    return '<div class="sx-seg" id="' + id + '" role="group"' + (label ? ' aria-label="' + esc(label) + '"' : '') + '>' + items.map(function(x){
+      return '<button type="button" data-' + (attr || 'v') + '="' + esc(x[0]) + '"' + (x[2] ? ' title="' + esc(x[2]) + '"' : '') + ' class="' + (String(x[0]) === String(active) ? 'active' : '') + '">' + x[1] + '</button>';
+    }).join('') + '</div>';
+  }
+  function drop(id, title, text){ return '<div class="sx-drop" id="' + id + '" role="button" tabindex="0">' + UP + '<div><b>' + title + '</b>' + text + '</div></div>'; }
+  // A plate in the list of plates: its name and what it holds, chips for what has been read (items [[text, count]]), a remove button.
+  function plateRow(i, on, name, sub, chips, del){
+    return '<div class="sx-pl' + (on ? ' on' : '') + '"><div class="nm" data-plate="' + i + '"><b>' + esc(name) + '</b><span>' + esc(sub) + '</span></div><div class="sx-ch">' +
+      chips.map(function(c){ return '<span class="sx-chip' + (c[1] ? ' ok' : '') + '">' + esc(c[0]) + (c[1] ? ' · ' + c[1] : '') + '</span>'; }).join('') + '</div>' +
+      '<button class="sx-ghost" data-delplate="' + i + '" title="Remove this plate" aria-label="Remove ' + esc(name) + '">' + esc(del) + '</button></div>';
+  }
+  // The plate, small. cell(r, c) → { bg: css colour or '', rd: has readings, t: tooltip }. wells are the same on every app: rows A…, columns 1….
+  function mini(o){
+    var rows = o.rows, cols = o.cols, h = '<div class="sx-mini" style="grid-template-columns:14px repeat(' + cols + ',1fr)"><span></span>', r, c;
+    for (c = 0; c < cols; c++) h += '<span class="l">' + (cols > 12 && c % 2 ? '' : c + 1) + '</span>';
+    for (r = 0; r < rows; r++) {
+      h += '<span class="l">' + String.fromCharCode(65 + r) + '</span>';
+      for (c = 0; c < cols; c++) {
+        var x = o.cell(r, c) || {};
+        h += '<span class="w' + (x.rd ? ' rd' : '') + '"' + (x.bg ? ' style="background:' + x.bg + ';"' : '') + (x.t ? ' title="' + esc(x.t) + '"' : '') + '></span>';
+      }
+    }
+    return '<div class="sx-mini-t">' + esc(o.title || '') + '<span>' + esc(o.sub || '') + '</span></div>' + h + '</div>' + legend(o.legend || [], o.empty);
+  }
+  // items [[colour, text, count]]
+  function legend(items, empty){
+    return items.length ? '<div class="sx-legend">' + items.map(function(x){ return '<div><i style="background:' + x[0] + '"></i>' + esc(x[1]) + '<em>' + x[2] + '</em></div>'; }).join('') + '</div>'
+      : '<div class="sx-hint" style="margin-top:8px">' + (empty || 'Nothing is marked on this plate yet.') + '</div>';
+  }
+  // One control row: swatch, name and what it is for, the box that takes A1:D1, how many wells.
+  function ctlRow(key, color, name, hint, ph){
+    return '<div class="sx-ctl" data-k="' + esc(key) + '"><i style="background:' + color + '"></i><div class="t"><b>' + esc(name) + '</b><span>' + esc(hint) + '</span></div><input type="text" data-role="' + esc(key) + '" placeholder="' + esc(ph || 'e.g. A1:D1') + '" aria-label="Wells of ' + esc(name) + '" spellcheck="false" autocomplete="off"><span class="n"></span></div>';
+  }
+  // The Review step's list. items [[level 1|2|3, html]] sorted by level; nothing in it says everything is there.
+  function issues(items, okText){
+    return '<div class="sx-issues">' + (items.length ? items.slice().sort(function(a, b){ return a[0] - b[0]; }).map(function(x){ return '<div class="sx-issue">' + WARN + '<div>' + x[1] + '</div></div>'; }).join('')
+      : '<div class="sx-issue ok">' + OK + '<div><b>' + (okText || 'Everything the results need is there.') + '</b></div></div>') + '</div>';
+  }
+  // "A1:D1" for a set of wells: a rectangle is one range, anything else is runs along rows, joined when consecutive rows repeat them.
+  function rangeStr(wells, pos){
+    if (!wells.length) return '';
+    var by = {}; wells.forEach(function(p){ var q = rc(p); (by[q.r] = by[q.r] || []).push(q.c); });
+    var rows = Object.keys(by).map(Number).sort(function(a, b){ return a - b; }), items = [];
+    rows.forEach(function(r){
+      var cs = by[r].sort(function(a, b){ return a - b; }), runs = [], s = cs[0], prev = cs[0];
+      for (var i = 1; i <= cs.length; i++) { if (cs[i] !== prev + 1) { runs.push([s, prev]); s = cs[i]; } prev = cs[i]; }
+      items.push({ r: r, key: runs.map(function(x){ return x[0] + '-' + x[1]; }).join(','), runs: runs });
+    });
+    var out = [], i = 0;
+    while (i < items.length) {
+      var j = i; while (j + 1 < items.length && items[j + 1].key === items[i].key && items[j + 1].r === items[j].r + 1) j++;
+      items[i].runs.forEach(function(x){ var a = pos(items[i].r, x[0]), b = pos(items[j].r, x[1]); out.push(a === b ? a : a + ':' + b); });
+      i = j + 1;
+    }
+    return out.join(', ');
+  }
+  function rc(w){ var m = /^([A-P])(\d+)$/.exec(String(w || '')); return m ? { r: m[1].charCodeAt(0) - 65, c: +m[2] - 1 } : { r: 0, c: 0 }; }
+  function pos(r, c){ return String.fromCharCode(65 + r) + (c + 1); }
+  // Files dragged onto the dialog: the drop zone lights up and handle(FileList) takes them.
+  function dropFiles(d, handle){
+    var has = function(e){ return e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], 'Files') >= 0; };
+    d.addEventListener('dragover', function(e){ if (has(e)) { e.preventDefault(); var z = e.target.closest && e.target.closest('.sx-drop'); if (z) z.classList.add('over'); } });
+    d.addEventListener('dragleave', function(e){ var z = e.target.closest && e.target.closest('.sx-drop'); if (z) z.classList.remove('over'); });
+    d.addEventListener('drop', function(e){ if (!has(e)) return; e.preventDefault(); var z = d.querySelector('.sx-drop'); if (z) z.classList.remove('over'); handle(e.dataTransfer.files); });
+  }
+  // Values typed into a plate: a table of boxes. get(p) → the value shown; the app commits on change and reads data-p / data-r / data-c.
+  function handGrid(rows, cols, get){
+    var h = '<div class="sx-hand-wrap"><table><thead><tr><th></th>', r, c;
+    for (c = 0; c < cols; c++) h += '<th>' + (c + 1) + '</th>';
+    h += '</tr></thead><tbody>';
+    for (r = 0; r < rows; r++) {
+      h += '<tr><th class="r">' + String.fromCharCode(65 + r) + '</th>';
+      for (c = 0; c < cols; c++) { var p = pos(r, c), v = get(p); h += '<td><input type="text" inputmode="decimal" data-p="' + p + '" data-r="' + r + '" data-c="' + c + '" aria-label="' + p + '" value="' + (v === undefined || v === null ? '' : esc(String(v))) + '"></td>'; }
+      h += '</tr>';
+    }
+    return h + '</tbody></table></div>';
+  }
+  // Arrow keys / Enter walk the typed grid; a block pasted from Excel fills from the cell it lands on. commit(input) stores one cell.
+  function handKeys(root, e, inp){
+    var d = { ArrowDown: [1, 0], ArrowUp: [-1, 0], Enter: [1, 0], ArrowRight: [0, 1], ArrowLeft: [0, -1] }[e.key]; if (!d) return;
+    if ((e.key === 'ArrowRight' && inp.selectionEnd < inp.value.length) || (e.key === 'ArrowLeft' && inp.selectionStart > 0)) return;
+    var t = root.querySelector('input[data-r="' + (+inp.dataset.r + d[0]) + '"][data-c="' + (+inp.dataset.c + d[1]) + '"]');
+    if (t) { e.preventDefault(); t.focus(); t.select(); }
+  }
+  function handPaste(root, e, inp, commit){
+    var txt = (e.clipboardData || window.clipboardData).getData('text') || '', rows = txt.replace(/\r/g, '').replace(/\n+$/, '').split('\n').map(function(l){ return l.split('\t'); });
+    if (rows.length === 1 && rows[0].length === 1) return;
+    e.preventDefault();
+    var r0 = +inp.dataset.r, c0 = +inp.dataset.c, last = null;
+    rows.forEach(function(row, ri){ row.forEach(function(cell, ci){ var t = root.querySelector('input[data-r="' + (r0 + ri) + '"][data-c="' + (c0 + ci) + '"]'); if (t) { t.value = cell.trim(); commit(t); last = t; } }); });
+    if (last) last.focus();
+  }
+
+  // ── the dialog ──────────────────────────────────────────────────────────────────────────────
+  function create(o){
+    var id = o.id, steps = o.steps, ids = o.ids || {}, K = { step: 0, from: null, built: false };
+    function el(x){ return document.getElementById(x); }
+    function paneId(key){ return ids.pane ? ids.pane(key) : id + '-p-' + key; }
+    var idClose = ids.close || id + '-close', idBack = ids.back || id + '-back', idNext = ids.next || id + '-next', idBody = ids.body || id + '-body';
+    function build(){
+      var d = document.createElement('div'); d.id = id; d.className = 'setup-overlay hidden';
+      var have = {}; steps.forEach(function(s){ var e = el(paneId(s.key)); if (e) have[s.key] = e; });
+      d.innerHTML = '<div class="setup-card' + (o.cardClass ? ' ' + o.cardClass : '') + '" role="dialog" aria-modal="true" aria-labelledby="' + id + '-title" data-step="' + steps[0].key + '">' +
+        '<div class="setup-hdr"><div><div class="setup-htitle" id="' + id + '-title">' + esc(o.title) + '</div><div class="setup-hsub"' + (ids.sub ? ' id="' + ids.sub + '"' : '') + '>' + esc(o.sub || '') + '</div></div><button class="setup-hclose" id="' + idClose + '" aria-label="Close setup" title="Close (Esc)">' + X + '</button></div>' +
+        '<div class="setup-stabs" role="tablist">' + steps.map(function(s, i){ return '<button class="setup-stab" role="tab" data-i="' + i + '" data-tab="' + esc(s.key) + '"' + (s.attrs ? ' ' + s.attrs : '') + '><span class="sx-n">' + (i + 1) + '</span>' + esc(s.label) + (s.extra || '') + '</button>'; }).join('') + '</div>' +
+        '<div class="setup-sbody" id="' + idBody + '">' + steps.map(function(s){ return have[s.key] ? '<div data-adopt="' + esc(s.key) + '"></div>' : '<div class="setup-pane" id="' + paneId(s.key) + '"></div>'; }).join('') + '</div>' +
+        '<div class="setup-foot">' + (o.status ? '<div class="setup-fstatus" id="' + o.status + '"></div>' : '') + '<div class="sx-proj">' + (o.foot || []).map(function(b, i){ return '<button class="sx-ghost' + (b.quiet ? ' q' : '') + '" data-foot="' + i + '"' + (b.title ? ' title="' + esc(b.title) + '"' : '') + '>' + esc(b.label) + '</button>'; }).join('') + '</div>' +
+        '<div class="sx-nav"><button class="sx-sec" id="' + idBack + '">&#8249; Back</button><button class="sx-pri" id="' + idNext + '">Next &#8250;</button>' + (o.navExtra || '') + '</div></div></div>';
+      document.body.appendChild(d);
+      steps.forEach(function(s){ var h = have[s.key], at = h && d.querySelector('[data-adopt="' + s.key + '"]'); if (h && at) { h.classList.add('setup-pane'); at.replaceWith(h); } });
+      K.el = d; K.body = el(idBody);
+      var down = null;   // a press that began inside the card and ended on the backdrop (selecting text) is not a click on the backdrop
+      d.addEventListener('mousedown', function(e){ down = e.target; });
+      d.addEventListener('click', function(e){
+        var from = down; down = null;
+        if (e.target === d) { if (from === null || from === d) K.close(); return; }
+        var t = e.target.closest && e.target.closest('button'); if (!t) return;
+        if (t.id === idClose) K.close();
+        else if (t.id === idBack) K.back();
+        else if (t.id === idNext) K.next();
+        else if (t.classList.contains('setup-stab')) K.go(+t.dataset.i);
+        else if (t.dataset.foot !== undefined) o.foot[+t.dataset.foot].fn(K);
+      });
+      d.addEventListener('keydown', function(e){
+        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); K.close(); return; }
+        if (e.key === 'Tab') {   // keep Tab inside the dialog
+          var f = Array.prototype.filter.call(d.querySelectorAll('button,input,select,textarea,[tabindex]:not([tabindex="-1"])'), function(x){ return !x.disabled && x.offsetParent !== null; });
+          if (!f.length) return; var a = f[0], z = f[f.length - 1];
+          if (e.shiftKey && document.activeElement === a) { e.preventDefault(); z.focus(); } else if (!e.shiftKey && document.activeElement === z) { e.preventDefault(); a.focus(); }
+        }
+      });
+      if (o.wire) o.wire(d, K);
+      K.built = true;
+    }
+    K.isOpen = function(){ return !!K.el && !K.el.classList.contains('hidden'); };
+    K.build = function(){ if (!K.built) build(); return K; };
+    K.pane = function(key){ return el(paneId(key)); };
+    K.open = function(step){
+      if (!K.built) build();
+      K.from = document.activeElement;
+      if (o.onOpen) o.onOpen(K);
+      K.el.classList.remove('hidden');
+      K.go(typeof step === 'number' ? step : (o.startStep ? o.startStep(K) : 0));
+    };
+    K.close = function(){
+      if (!K.isOpen()) return;
+      K.el.classList.add('hidden');
+      if (o.onClose) o.onClose(K);
+      try { if (K.from && K.from.focus) K.from.focus(); } catch (e) {}
+    };
+    K.hide = function(){ if (K.el) K.el.classList.add('hidden'); };      // away for a moment, without the close hook
+    K.show = function(){ if (K.el) K.el.classList.remove('hidden'); };
+    K.go = function(i){
+      i = Math.max(0, Math.min(steps.length - 1, i)); K.step = i;
+      K.el.querySelector('.setup-card').dataset.step = steps[i].key;
+      K.el.querySelectorAll('.setup-stab').forEach(function(t, k){ t.classList.toggle('active', k === i); t.setAttribute('aria-selected', k === i); });
+      K.el.querySelectorAll('.setup-pane').forEach(function(p, k){ p.classList.toggle('active', k === i); });
+      el(idBack).style.visibility = i === 0 ? 'hidden' : '';
+      el(idNext).innerHTML = (o.nextLabel ? o.nextLabel(i, i === steps.length - 1) : (i === steps.length - 1 ? 'Done' : 'Next')) + ' &#8250;';
+      steps[i].render(K);
+      K.tabs();
+      K.body.scrollTop = 0;
+      if (steps[i].focus !== false) {
+        var f = K.pane(steps[i].key).querySelector('input:not([type=checkbox]),select,textarea');
+        if (f) setTimeout(function(){ try { f.focus({ preventScroll: true }); } catch (e) {} }, 0);
+      }
+    };
+    K.back = function(){ K.go(K.step - 1); };
+    // Draw the step again where it is: what the person has scrolled to and typed into stays.
+    K.render = function(){ steps[K.step].render(K); K.tabs(); };
+    K.next = function(){ if (K.step >= steps.length - 1) { K.close(); if (o.finish) o.finish(K); } else K.go(K.step + 1); };
+    // A change made inside a step redraws only the parts that report (the plates, the map, the summary), never the fields being typed in.
+    K.refresh = function(){ var s = steps[K.step]; (s.live || s.render)(K); K.tabs(); };
+    K.tabs = function(){
+      K.el.querySelectorAll('.setup-stab').forEach(function(t, k){ t.classList.toggle('done', !!(steps[k].done && steps[k].done(K)) && k !== K.step); });
+    };
+    return K;
+  }
+  return { create: create, esc: esc, group: group, field: field, seg: seg, drop: drop, plateRow: plateRow, mini: mini, legend: legend, ctlRow: ctlRow, issues: issues, rangeStr: rangeStr, pos: pos, rc: rc,
+           dropFiles: dropFiles, handGrid: handGrid, handKeys: handKeys, handPaste: handPaste, OK: OK, WARN: WARN, X: X };
+})();
+/* setup-kit-js:end */
+</script>
 </head>
 <body>
 
@@ -1028,11 +1286,13 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </div>
 
 <div class="tabs" id="tabs">
-  <button class="tab active" data-tab="plate" onclick="switchTab('plate')" title="The plate: what each well is, and its mBRET"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8" cy="10" r="1.3"/><circle cx="12" cy="10" r="1.3"/><circle cx="16" cy="10" r="1.3"/><circle cx="8" cy="14.5" r="1.3"/><circle cx="12" cy="14.5" r="1.3"/><circle cx="16" cy="14.5" r="1.3"/></svg>Plate</button>
-  <button class="tab" data-tab="results" onclick="switchTab('results')" title="Plate quality, controls, dose&ndash;response and the export"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 19h16"/><circle cx="7" cy="15" r="1.2" fill="currentColor" stroke="none"/><circle cx="11" cy="9" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="13" r="1.2" fill="currentColor" stroke="none"/><circle cx="19" cy="6" r="1.2" fill="currentColor" stroke="none"/></svg>Results <span class="tab-n" id="tab-res-n"></span></button>
-  <button class="tab" data-tab="graph" onclick="switchTab('graph')" title="Make the figure: grouped bars or dose&ndash;response curves, colours, error bars, PNG at 1200 dpi and PDF"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19h16"/><rect x="5" y="11" width="3" height="8" rx=".6"/><rect x="10.5" y="6" width="3" height="13" rx=".6"/><rect x="16" y="9" width="3" height="10" rx=".6"/></svg>Graph</button>
-  <button class="tab" data-tab="history" onclick="switchTab('history')" title="Every analysis you have made, kept under its name"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.2"/><path d="M12 7.5V12l3 2"/></svg>History<span class="tab-n" id="bh-n"></span></button>
-  <button class="tab" data-tab="guide" onclick="switchTab('guide')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6.2C10.4 5 8.2 4.5 4.5 4.5v13c3.7 0 5.9.5 7.5 1.7"/><path d="M12 6.2c1.6-1.2 3.8-1.7 7.5-1.7v13c-3.7 0-5.9.5-7.5 1.7"/><path d="M12 6.2v13"/></svg>Guide</button>
+  <div class="tablist" role="tablist" aria-label="Beacon">
+  <button class="tab active" data-tab="plate" role="tab" aria-selected="true" tabindex="0" onclick="switchTab('plate')" title="The plate: what each well is, and its mBRET"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8" cy="10" r="1.3"/><circle cx="12" cy="10" r="1.3"/><circle cx="16" cy="10" r="1.3"/><circle cx="8" cy="14.5" r="1.3"/><circle cx="12" cy="14.5" r="1.3"/><circle cx="16" cy="14.5" r="1.3"/></svg>Plate</button>
+  <button class="tab" data-tab="results" role="tab" aria-selected="false" tabindex="-1" onclick="switchTab('results')" title="Plate quality, controls, dose&ndash;response and the export"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 19h16"/><circle cx="7" cy="15" r="1.2" fill="currentColor" stroke="none"/><circle cx="11" cy="9" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="13" r="1.2" fill="currentColor" stroke="none"/><circle cx="19" cy="6" r="1.2" fill="currentColor" stroke="none"/></svg>Results <span class="tab-n" id="tab-res-n"></span></button>
+  <button class="tab" data-tab="graph" role="tab" aria-selected="false" tabindex="-1" onclick="switchTab('graph')" title="Make the figure: grouped bars or dose&ndash;response curves, colours, error bars, PNG at 1200 dpi and PDF"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19h16"/><rect x="5" y="11" width="3" height="8" rx=".6"/><rect x="10.5" y="6" width="3" height="13" rx=".6"/><rect x="16" y="9" width="3" height="10" rx=".6"/></svg>Graph</button>
+  <button class="tab" data-tab="history" role="tab" aria-selected="false" tabindex="-1" onclick="switchTab('history')" title="Every analysis you have made, kept under its name"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.2"/><path d="M12 7.5V12l3 2"/></svg>History<span class="tab-n" id="bh-n"></span></button>
+  <button class="tab" data-tab="guide" role="tab" aria-selected="false" tabindex="-1" onclick="switchTab('guide')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6.2C10.4 5 8.2 4.5 4.5 4.5v13c3.7 0 5.9.5 7.5 1.7"/><path d="M12 6.2c1.6-1.2 3.8-1.7 7.5-1.7v13c-3.7 0-5.9.5-7.5 1.7"/><path d="M12 6.2v13"/></svg>Guide</button>
+  </div>
   <div class="tab-indicator" id="tab-indicator"></div>
   <span class="tab-fill" aria-hidden="true"></span>
   <button class="tab-setup" id="bs-open" onclick="bsOpen()" title="Set up the analysis: name, readings, controls and compounds"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h9M19 7h1M4 17h1M11 17h9"/><circle cx="16" cy="7" r="2.2"/><circle cx="8" cy="17" r="2.2"/></svg>Setup</button>
@@ -1082,6 +1342,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
           <button class="lm-link" onclick="loadTestData('gain')">Protein&ndash;protein demo (2 plates)</button>
           <button class="lm-link" onclick="loadTestData('displacement')">Tracer displacement demo</button>
         </div>
+        <div class="bc-demo" id="bc-recent"></div>
         <div class="well-grid-wrap"><div id="well-grid" class="well-grid"></div></div>
       </div>
 
@@ -1167,10 +1428,12 @@ var _beaconToastT = null;
 // beaconAsk(title, msg, opts, cb) resolves cb(true) only when the affirmative was pressed, and
 // Escape or the backdrop always resolve false — a modal must be dismissible without a Cancel.
 // With opts.input it is a prompt and hands back the text, or null.
-var _beaAskCb = null, _beaAskInput = false;
+var _beaAskCb = null, _beaAskInput = false, _beaAskFrom = null;
 function beaconAskClose(ok){
   var b = document.getElementById('bea-ask'); if (!b) return;
   b.style.display = 'none';
+  var back = _beaAskFrom; _beaAskFrom = null;
+  try { if (back && back.focus && document.contains(back)) back.focus(); } catch (e) {}
   var cb = _beaAskCb, inp = document.getElementById('bea-ask-in');
   _beaAskCb = null;
   if (!cb) return;
@@ -1185,19 +1448,17 @@ function beaconAsk(title, msg, opts, cb){
     b.id = 'bea-ask';
     b.style.cssText = 'position:fixed;inset:0;z-index:99998;display:none;align-items:center;'
       + 'justify-content:center;padding:20px;background:rgba(16,20,34,.45);';
-    b.innerHTML = '<div style="width:100%;max-width:420px;background:var(--surface,#fff);color:var(--text,#111);'
+    b.innerHTML = '<div role="dialog" aria-modal="true" aria-labelledby="bea-ask-t" aria-describedby="bea-ask-m" style="width:100%;max-width:420px;background:var(--surface,#fff);color:var(--text,#111);'
       + 'border:1px solid var(--border2,rgba(0,0,0,.13));border-radius:var(--r-3,12px);'
       + 'box-shadow:var(--shadow-lg,0 12px 40px rgba(0,0,0,.25));padding:18px 20px 16px;">'
-      + '<div id="bea-ask-t" style="font-size:var(--fs-5,15px);font-weight:600;margin-bottom:8px;"></div>'
+      + '<div id="bea-ask-t" style="font-size:var(--fs-6,17px);font-weight:700;margin-bottom:8px;"></div>'
       + '<div id="bea-ask-m" style="font-size:var(--fs-3,13px);line-height:1.55;white-space:pre-wrap;color:var(--text2,#555);"></div>'
       + '<input id="bea-ask-in" style="display:none;width:100%;margin-top:12px;font:inherit;font-size:var(--fs-3,13px);'
       + 'padding:7px 10px;border:1px solid var(--border2,rgba(0,0,0,.13));border-radius:var(--r-1,5px);'
       + 'background:var(--surface,#fff);color:var(--text,#111);box-sizing:border-box;">'
       + '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;flex-wrap:wrap;">'
-      + '<button id="bea-ask-no" style="font:inherit;font-size:var(--fs-3,13px);padding:7px 14px;cursor:pointer;'
-      + 'border:1px solid var(--border2,rgba(0,0,0,.13));border-radius:var(--r-1,5px);background:none;color:var(--text2,#555);"></button>'
-      + '<button id="bea-ask-ok" style="font:inherit;font-size:var(--fs-3,13px);padding:7px 14px;cursor:pointer;'
-      + 'border:1px solid var(--border2,rgba(0,0,0,.13));border-radius:var(--r-1,5px);background:none;color:var(--text,#111);"></button>'
+      + '<button id="bea-ask-no" class="btn btn-sec"></button>'
+      + '<button id="bea-ask-ok" class="btn btn-primary"></button>'
       + '</div></div>';
     document.body.appendChild(b);
     b.addEventListener('click', function(e){ if (e.target === b) beaconAskClose(false); });
@@ -1205,8 +1466,17 @@ function beaconAsk(title, msg, opts, cb){
     document.getElementById('bea-ask-ok').onclick = function(){ beaconAskClose(true); };
     document.getElementById('bea-ask-in').onkeydown = function(e){ if (e.key === 'Enter') beaconAskClose(true); };
     document.addEventListener('keydown', function(e){
-      if (e.key === 'Escape' && b.style.display === 'flex') beaconAskClose(false);
-    });
+      if (b.style.display !== 'flex') return;
+      if (e.key === 'Escape') beaconAskClose(false);
+      else if (e.key === 'Tab') {   // keep Tab inside the dialog: it is modal
+        var f = Array.prototype.filter.call(b.querySelectorAll('button,input'), function(x){ return x.offsetParent !== null && !x.disabled; });
+        if (!f.length) return;
+        var a = f[0], z = f[f.length - 1];
+        if (!b.contains(document.activeElement)) { e.preventDefault(); a.focus(); }
+        else if (e.shiftKey && document.activeElement === a) { e.preventDefault(); z.focus(); }
+        else if (!e.shiftKey && document.activeElement === z) { e.preventDefault(); a.focus(); }
+      }
+    }, true);
   }
   document.getElementById('bea-ask-t').textContent = title || '';
   document.getElementById('bea-ask-m').textContent = msg || '';
@@ -1218,9 +1488,9 @@ function beaconAsk(title, msg, opts, cb){
   no.textContent = opts.no || 'Cancel';
   no.style.display = opts.only ? 'none' : '';
   ok.textContent = opts.ok || 'OK';
-  ok.style.borderColor = opts.danger ? 'var(--danger,#c04040)' : 'var(--border2,rgba(0,0,0,.13))';
-  ok.style.color = opts.danger ? 'var(--danger,#c04040)' : 'var(--text,#111)';
+  ok.className = opts.danger ? 'btn btn-sec btn-danger' : 'btn btn-primary';
   _beaAskCb = cb || null;
+  _beaAskFrom = document.activeElement && document.activeElement !== document.body ? document.activeElement : null;
   b.style.display = 'flex';
   setTimeout(function(){ try { (_beaAskInput ? inp : ok).focus(); } catch(e){} }, 0);
 }
@@ -1235,12 +1505,15 @@ function beaconToast(msg, kind){
       + 'box-shadow:var(--shadow-md,0 4px 18px rgba(0,0,0,.18));font-size:13px;line-height:1.45;'
       + 'opacity:0;pointer-events:none;transition:opacity var(--dur-1,120ms) var(--ease,ease),'
       + 'transform var(--dur-1,120ms) var(--ease,ease);';
+    t.setAttribute('role', 'status'); t.setAttribute('aria-live', 'polite'); t.setAttribute('aria-atomic', 'true');
     document.body.appendChild(t);
   }
+  // (the live-region role is set before the text changes, so the new text is what is announced)
   t.textContent = msg;
   // --accent is the shared blue every control wears, so an error bordered in it is not marked
   // at all. --danger is the token that means this went wrong, and it is theme-aware.
-  t.style.borderColor = (kind === 'err') ? 'var(--danger,#c04040)' : 'var(--border2,rgba(0,0,0,.13))';
+  t.setAttribute('role', kind === 'err' ? 'alert' : 'status'); t.setAttribute('aria-live', kind === 'err' ? 'assertive' : 'polite');   // an error interrupts, a confirmation waits its turn
+  t.style.borderColor = (kind === 'err') ? 'var(--danger)' : 'var(--border2,rgba(0,0,0,.13))';
   t.style.opacity = '1';
   t.style.transform = 'translate(-50%,0)';
   clearTimeout(_beaconToastT);
@@ -1357,6 +1630,44 @@ var PlateEngine = (function(){
     while (lines.length && !lines[lines.length - 1]) lines.pop();
     return lines;
   }
+  // Where blocks of compounds start when nobody says: after the last column (or row) that holds a control. Controls sit along an
+  // edge — a column (or row) with two or more of them is part of that edge, one stray well is not, it is slid past. The width left
+  // to the series is the default number of points (2–12). `run` is 'rows' when a series runs along a row.
+  function freeStart(dims, controls, run){
+    var cc = -1, rr = -1, cn = {}, rn = {};
+    list(controls).forEach(function(p){ var q = rc(p); if (!q) return; cn[q.c] = (cn[q.c] || 0) + 1; rn[q.r] = (rn[q.r] || 0) + 1; });
+    Object.keys(cn).forEach(function(c){ if (cn[c] >= 2) cc = Math.max(cc, +c); });
+    Object.keys(rn).forEach(function(r){ if (rn[r] >= 2) rr = Math.max(rr, +r); });
+    var c0 = run === 'rows' ? cc + 1 : 0, r0 = run === 'cols' ? rr + 1 : 0;
+    var span = run === 'rows' ? dims.c - c0 : dims.r - r0;
+    if (span < 4) { c0 = 0; r0 = 0; span = run === 'rows' ? dims.c : dims.r; }
+    return { c0: c0, r0: r0, pts: Math.max(2, Math.min(12, span)), at: id(r0, c0) };
+  }
+  // Compounds as blocks of `reps` lines by `pts` points, one after the other from (r0, c0): a block starts where the last ended,
+  // one band further along; one that would land on a blocked well slides along until it clears it, and when the plate has no more
+  // room that way the next group of blocks starts beside the first. o: { reps, pts, run, r0, c0, need, blocked(well) }. A block
+  // is [{ p: well, i: its point }]; blocks come back in the order they were placed.
+  function blockPlan(dims, o){
+    var reps = Math.max(1, o.reps || 1), pts = o.pts, run = o.run, r0 = o.r0 || 0, c0 = o.c0 || 0, need = o.need, used = {}, out = [];
+    function blockWells(line, grp){
+      var w = [];
+      for (var a = 0; a < reps; a++) for (var b = 0; b < pts; b++) {
+        var r = run === 'rows' ? r0 + line + a : r0 + grp * pts + b, c = run === 'rows' ? c0 + grp * pts + b : c0 + line + a;
+        if (r >= dims.r || c >= dims.c) return null;
+        var p = id(r, c);
+        if (used[p] || (o.blocked && o.blocked(p))) return null;
+        w.push({ p: p, i: b });
+      }
+      return w;
+    }
+    var lines = run === 'rows' ? dims.r - r0 : dims.c - c0, cursor = 0, grp = 0, guard = 0;
+    while (out.length < need && guard++ < 3000 && grp < 40) {
+      if (cursor + reps > lines) { grp++; cursor = 0; continue; }
+      var w = blockWells(cursor, grp);
+      if (w) { out.push(w); w.forEach(function(x){ used[x.p] = 1; }); cursor += reps; } else cursor++;
+    }
+    return out;
+  }
   // The next name in a run: EDA-099 → EDA-100, Compound A → Compound B, anything else → "… 2".
   function nextName(s){
     s = String(s || '').trim(); if (!s) return '';
@@ -1367,7 +1678,8 @@ var PlateEngine = (function(){
   }
   return { id: id, rc: rc, uniq: uniq, rect: rect, line: line, box: box, isRect: isRect, rangeText: rangeText,
            parseRange: parseRange, seriesDir: seriesDir, seriesPlan: seriesPlan, seriesConc: seriesConc,
-           splitOfShape: splitOfShape, bandPlan: bandPlan, sortZones: sortZones, pasteList: pasteList, nextName: nextName };
+           splitOfShape: splitOfShape, bandPlan: bandPlan, sortZones: sortZones, pasteList: pasteList, nextName: nextName,
+           freeStart: freeStart, blockPlan: blockPlan };
 })();
 // ═══ PLATE ENGINE — END ═════════════════════════════════════════════════════════════════════
 
@@ -1898,7 +2210,7 @@ var RDR = (function () {
         var t = (rows[u] || []).map(str).filter(function (x) { return x; });
         if (t.length) { label = t[0]; break; }
       }
-      if (got) out.push({ label: label, rows: h > 8 ? 16 : 8, cols: n > 12 ? 24 : 12, n: got, vals: vals });
+      if (got) out.push({ r: r, label: label, rows: h > 8 ? 16 : 8, cols: n > 12 ? 24 : 12, n: got, vals: vals });
       lastEnd = r + h; r += h + 1;
     }
     return out;
@@ -1943,6 +2255,39 @@ var RDR = (function () {
     });
     return found;
   }
+  // A GloMax export (GloMax Discover / Explorer, "Export to Excel"): one workbook per run. The first sheet holds the
+  // protocol's settings, "Results" holds one lettered grid per reading — each under its own heading in column A
+  // ("Luminescence", "Fluorescence") — with "Protocol: …" and "Result: <the run's name>" at the top, and "Results By
+  // Well" repeats them well by well. A double read (HiBiT luminescence, then CellTiter-Fluor fluorescence, on the
+  // same plate) is two grids on that one sheet. null when the workbook is not one.
+  function glomax(wb) {
+    var sn = null;
+    wb.SheetNames.forEach(function (n) { if (!sn && /^results$/i.test(n)) sn = n; });
+    if (!sn) return null;
+    var rows = aoa(wb.Sheets[sn]), top = rows.slice(0, 6).map(function (r) { return r.map(str).join('|'); }).join('|');
+    var rm = /Result:\s*([^|]*)/.exec(top), pm = /Protocol:\s*([^|]*)/.exec(top);
+    if (!rm || !pm) return null;
+    var bl = blocks(rows), prev = -1, ch = [];
+    bl.forEach(function (b) {
+      var head = '';
+      for (var u = b.r - 1; u > prev && u >= b.r - 6 && !head; u--) { var t = str((rows[u] || [])[0]); if (t && !/:$/.test(t)) head = t; }
+      prev = b.r + (b.rows || 0);
+      // A BRET reading is a section of three grids: the ratio under "BRET", then "Donor:" and "Acceptor:" named in column B
+      // of their own header row.
+      var own = str((rows[b.r] || [])[1]).replace(/:\s*$/, ''), lab = /^reading$/i.test(own) ? '' : own;
+      var kind = /donor/i.test(lab) ? 'donor' : /accept/i.test(lab) ? 'acceptor' : /lumin/i.test(head) ? 'lum' : /fluor/i.test(head) ? 'fluor' : /\bBRET\b/i.test(head) ? 'bret' : /absorb|\bOD\b/i.test(head) ? 'abs' : 'other';
+      ch.push({ kind: kind, label: lab || head || b.label, rows: b.rows, cols: b.cols, n: b.n, vals: b.vals });
+    });
+    if (!ch.length) return null;
+    return { name: rm[1].trim(), protocol: pm[1].trim(), sheet: sn, channels: ch };
+  }
+  // The grid a one-signal app reads from a GloMax plate (its luminescence, else the first grid that is not fluorescence) and the
+  // fluorescence of the same plate beside it, when it has one — a double read. null `via` for a fluorescence-only file.
+  function glomaxSignal(G) {
+    var c = G.channels, sig = c.filter(function (x) { return x.kind === 'lum'; })[0] || c.filter(function (x) { return x.kind !== 'fluor'; })[0] || c[0];
+    var via = sig.kind === 'fluor' ? null : c.filter(function (x) { return x.kind === 'fluor'; })[0] || null;
+    return { sig: sig, via: via };
+  }
   // One plate as a workbook of its own — its grid sheet and its settings sheet, under the plain names — so
   // code that reads one reader file per plate reads it unchanged.
   function plateBook(wb, p) {
@@ -1976,7 +2321,7 @@ var RDR = (function () {
     }
     return out;
   }
-  return { plates: plates, blocks: blocks, expand: expand, plateBook: plateBook };
+  return { plates: plates, blocks: blocks, expand: expand, plateBook: plateBook, glomax: glomax, glomaxSignal: glomaxSignal };
 })();
 // ═══ READER PLATES — END ═══
 function extractPheraProtocolFields(rows) {
@@ -2062,8 +2407,20 @@ function bParseGrid(text){
   var spaced = !hasTab && !hasSemi && all.some(function(l){ return /[\d.]\s+[-+.\d]/.test(l.trim()); });
   var sep = hasTab ? '\t' : (hasSemi ? ';' : (spaced ? /\s+/ : ','));
   var decComma = sep !== ',';
-  function cells(l){ return (spaced ? l.trim() : l).split(sep).map(function(x){ x = x.trim().replace(/^"(.*)"$/, '$1'); return decComma ? x.replace(/(\d),(\d)/g, '$1.$2') : x; }); }
-  function num(x){ if (x === undefined || x === '') return null; var v = Number(x); return isFinite(v) ? v : null; }
+  function cells(l){ return (spaced ? l.trim() : l).split(sep).map(function(x){ return x.trim().replace(/^"(.*)"$/, '$1'); }); }
+  // A comma is a thousands separator when it is followed by exactly three digits all the way ("12,345", "1,234,567": Excel's own format for a count)
+  // and a decimal comma otherwise ("1234,5", "0,25"); "1.234,5" is the European spelling of 1234.5. Reading "12,345" as 12.345 made a count a
+  // thousand times too small, and a ratio of two channels formatted differently was wrong with nothing to say so.
+  function num(x){
+    if (x === undefined || x === '') return null;
+    if (decComma && typeof x === 'string') {
+      var t = x.replace(/[\s\u00a0\u202f]/g, '');
+      if (/^-?\d{1,3}(\.\d{3})+,\d+$/.test(t)) x = t.replace(/\./g, '').replace(',', '.');
+      else if (/^-?\d{1,3}(,\d{3})+(\.\d+)?$/.test(t)) x = t.replace(/,/g, '');
+      else if (/^-?\d*,\d+$/.test(t)) x = t.replace(',', '.');
+    }
+    var v = Number(x); return isFinite(v) ? v : null;
+  }
   function numeric(g){ return g.some(function(x){ return num(x) !== null; }); }
   // Blank-line groups are the grids; one group is split further when it is plainly two stacked.
   var grids = groups.map(function(g){ return g.map(cells); });
@@ -2113,6 +2470,7 @@ function bGridVals(g, rows, cols, at){
   var h = g.block.length, w = g.w;
   if (h === rows && w === cols) at = { r: 0, c: 0 };
   var r0 = at ? at.r : 0, c0 = at ? at.c : 0;
+  if (h > 16 || w > 24) return { error: 'That block is ' + h + ' × ' + w + ' — Beacon reads 96- and 384-well plates (8 × 12 and 16 × 24); a ' + (h > 16 && w > 24 ? '1536-well' : 'bigger') + ' plate has to be cut into 384-well blocks first.' };
   if (r0 + h > rows || c0 + w > cols) return { error: 'That block is ' + h + ' × ' + w + (r0 || c0 ? ' and starts at ' + bPos(r0, c0) : '') + ' — it does not fit a ' + (rows * cols) + '-well plate (' + rows + ' × ' + cols + ').' + (r0 || c0 ? ' Select the well its top-left corner goes in.' : '') };
   g.block.forEach(function(row, ri){ for (var ci = 0; ci < w; ci++) { var pos = bPos(r0 + ri, c0 + ci), v = row[ci]; if (v === null || v === undefined) clear.push(pos); else vals[pos] = v; } });
   return { vals: vals, clear: clear };
@@ -2197,7 +2555,7 @@ function bOtherChannel(ch){ return ch === 'donor' ? 'acceptor' : 'donor'; }
 // ── Files ───────────────────────────────────────────────────────────────────────────────────
 async function bHandleFiles(list, into){
   var files = Array.from(list).filter(function(f){ return /\.(xlsx?|csv|tsv|txt)$/i.test(f.name); });
-  if (!files.length) { beaconToast('That is not a reader export — Beacon reads a PHERAstar .xlsx, or .csv / .txt grids, or values pasted from Excel (⌘V).', 'err'); return; }
+  if (!files.length) { beaconToast('That is not a reader export — Beacon reads a PHERAstar or GloMax .xlsx, or .csv / .txt grids, or values pasted from Excel (⌘V).', 'err'); return; }
   files.sort(function(a, b){ return a.name.localeCompare(b.name, undefined, { numeric: true }); });
   bMark();
   var touched = [], bad = [], why = '';
@@ -2207,8 +2565,9 @@ async function bHandleFiles(list, into){
       if (/\.xlsx?$/i.test(f.name)) {
         if (!window.XLSX) { beaconToast('The Excel reader did not load — reconnect and reload to read a reader file.', 'err'); bDropMark(); return; }
         var wb = XLSX.read(await f.arrayBuffer(), { type: 'array', cellDates: false, raw: true });
-        var r = bParseWorkbook(wb), rp = r.plates.length ? [] : RDR.plates(wb);
-        if (r.plates.length) got = bPlaceReadings(r.plates, f.name, r.meta, r.metaRows, files.length === 1 ? { into: into } : null);
+        var G = RDR.glomax(wb), r = G ? { plates: [] } : bParseWorkbook(wb), rp = r.plates.length || G ? [] : RDR.plates(wb);
+        if (G) got = bPlaceGlomax(G, f.name, files.length === 1 ? into : undefined);
+        else if (r.plates.length) got = bPlaceReadings(r.plates, f.name, r.meta, r.metaRows, files.length === 1 ? { into: into } : null);
         else if (rp.length > 1) got = bPlaceReaderPlates(rp, f.name, files.length === 1 ? into : undefined);
         else {
           // not a PHERAstar list: a sheet of values, read like a paste
@@ -2250,6 +2609,28 @@ function bPlaceReaderPlates(rp, srcName, into){
     });
   });
   return placed;
+}
+// A GloMax export (RDR.glomax): a BRET protocol writes the ratio, then a Donor and an Acceptor grid, named in the file — both
+// channels at once. Two other grids (two luminescence readings) are donor then acceptor unless the label says; the ratio grid is
+// not read (Beacon computes it); one grid is the channel the plate is waiting for, as a lone grid is.
+function bPlaceGlomax(G, srcName, into){
+  var cs = G.channels.filter(function(c){ return c.kind !== 'bret'; }), x = { donor: {}, acceptor: {}, rows: 8, cols: 12, sheet: '' };
+  cs.forEach(function(c){ x.rows = Math.max(x.rows, c.rows); x.cols = Math.max(x.cols, c.cols); });
+  var named = { donor: cs.filter(function(c){ return c.kind === 'donor'; })[0], acceptor: cs.filter(function(c){ return c.kind === 'acceptor'; })[0] };
+  if (named.donor || named.acceptor) {
+    if (named.donor) x.donor = named.donor.vals;
+    if (named.acceptor) x.acceptor = named.acceptor.vals;
+  } else if (cs.length >= 2) {
+    cs.slice(0, 2).forEach(function(c, j){
+      var ch = bChannelOf(c.label) || (j === 0 ? 'donor' : 'acceptor');
+      if (Object.keys(x[ch]).length) ch = bOtherChannel(ch);
+      x[ch] = c.vals;
+    });
+  } else if (cs.length === 1) {
+    var dims = { r: cs[0].rows, c: cs[0].cols };
+    return [bPlaceChannel(bChannelOf(cs[0].label) || bChannelOf(srcName) || bWaitingChannel(dims) || 'donor', cs[0].vals, [], dims, srcName, into)];
+  } else return [];
+  return bPlaceReadings([x], srcName, null, null, into !== undefined ? { into: into } : null);
 }
 // Grids from a file or a paste: two grids are donor then acceptor; one is the channel its name
 // says, or the one the plate is waiting for.
@@ -2344,6 +2725,7 @@ function bSetCh(ch){ BM_CH = BM_CH === ch ? null : ch; bRenderRead(); }
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 var BM_SEL = new Set();        // selected well positions on the plate on screen
 var _bAnchor = null;           // {r,c} — where the last selection started; Shift extends from it
+var _bKeyAt = null;            // {r,c} — the well the arrow keys are on (null after a pointer selection: they start from the anchor)
 var _bDrag = null;
 var _bActive = false;          // the last press was on the plate, so the keys act on it
 var BM_MODE = null;            // 'cpd' | 'trc' | 'ctl'; null = inferred from the selection
@@ -2485,7 +2867,7 @@ function _bDragTo(hit){
   var g = document.getElementById('well-grid');
   g.addEventListener('pointerdown', function(e){
     if (e.button !== 0 || !bPl()) return;
-    _bActive = true;
+    _bActive = true; _bKeyAt = null;
     var ae = document.activeElement; if (ae && ae !== document.body && ae.blur) ae.blur();   // keys act on the plate now, not the last field typed in
     var dm = bDims();
     if (e.target.closest('.well-corner')) { e.preventDefault(); _bAnchor = { r: 0, c: 0 }; bSetSel(_bRect({ r: 0, c: 0 }, { r: dm.r - 1, c: dm.c - 1 })); return; }
@@ -2521,6 +2903,19 @@ function _bDragTo(hit){
   function end(){ if (_bDrag) { _bDrag = null; _bPt = null; bPrefill(); bRenderPanel(); } }
   g.addEventListener('pointerup', end);
   g.addEventListener('pointercancel', end);
+  // The plate for a keyboard: Tab onto it, arrows move one well, Shift+arrows extend the selection from where it started, Esc clears.
+  // (Selecting wells used to be possible only with a pointer, or by typing a range into the box above the form.)
+  g.setAttribute('tabindex', '0'); g.setAttribute('role', 'group'); g.setAttribute('aria-label', 'Plate wells — arrow keys select a well, Shift and arrow keys extend the selection, Escape clears it');
+  g.addEventListener('keydown', function(e){
+    if (e.target !== g || e.metaKey || e.ctrlKey || e.altKey) return;
+    var d = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] }[e.key]; if (!d || !bPl()) return;
+    e.preventDefault(); _bActive = true;
+    var dm = bDims(), cur = _bKeyAt || _bAnchor || { r: 0, c: 0 };
+    var nx = { r: Math.max(0, Math.min(dm.r - 1, cur.r + d[0])), c: Math.max(0, Math.min(dm.c - 1, cur.c + d[1])) };
+    if (e.shiftKey) { if (!_bAnchor) _bAnchor = cur; bSetSel(_bRect(_bAnchor, nx)); } else { _bAnchor = nx; bSetSel(new Set([bPos(nx.r, nx.c)])); }
+    _bKeyAt = nx;
+    var w = g.querySelector('.well[data-pos="' + bPos(nx.r, nx.c) + '"]'); if (w && w.scrollIntoView) w.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  });
   // Double-click takes everything the well belongs to: all the controls of its kind, or the whole compound.
   g.addEventListener('dblclick', function(e){
     var w = e.target.closest('.well'), pl = bPl(); if (!w || !pl) return;
@@ -2687,6 +3082,8 @@ function bApplyDose(kind){
   if (!plan) { beaconToast('These wells are all controls — there is nothing to make a dose series of.'); return; }
   if (!(f.top > 0)) { document.getElementById('lm-top').focus(); beaconToast('Give the series a top concentration.', 'err'); return; }
   if (plan.sp.n > 1 && !(f.fac > 1)) { document.getElementById('lm-fac').focus(); beaconToast('The dilution factor has to be above 1.', 'err'); return; }
+  var hiC = f.top * f.unit, loC = hiC / Math.pow(plan.sp.n > 1 ? f.fac : 1, plan.sp.n - 1);
+  if (!(isFinite(hiC) && isFinite(loC) && loC > 1e-9)) { document.getElementById('lm-fac').focus(); beaconToast('That series runs down to ' + (isFinite(loC) ? 'less than a femtomolar' : 'a number no plate holds') + ' — check the top concentration and the dilution factor.', 'err'); return; }
   bMark();
   var fac = plan.sp.n > 1 ? f.fac : 1, names = kind === 'cpd' ? bPlanNames(plan.zones.length, plan) : null;
   if (names) state.queue = state.queue.slice(names.took || 0);
@@ -2789,7 +3186,7 @@ function bRenderSteps(){
   var tTxt = !kd.trc ? 'Its titration series' : bShapeOf(pl, bWellsOf(function(m){ return m.k === 'trc'; })).pts + ' points';
   var cur = !bComplete(pl) ? 1 : (BM_SEL.size ? { ctl: 2, cpd: 3, trc: 4 }[bMode()] : (kd.flat ? (ser.length ? 0 : 3) : 2));
   function step(i, done, lbl, txt, opt){
-    return '<button class="lm-step' + (done ? ' done' : opt ? ' opt' : '') + (cur === i ? ' cur' : '') + '" onclick="bStepGo(' + i + ')"><span class="st-i">' + (done ? '&#10003;' : i) + '</span><span class="st-t"><b>' + lbl + '</b><span>' + esc(txt) + '</span></span></button>';
+    return '<button class="lm-step' + (done ? ' done' : opt ? ' opt' : '') + (cur === i ? ' cur' : '') + '" onclick="bStepGo(' + i + ')"><span class="st-i">' + (done ? '<i class="b-ck" aria-hidden="true"></i>' : i) + '</span><span class="st-t"><b>' + lbl + '</b><span>' + esc(txt) + '</span></span></button>';
   }
   el.style.setProperty('--n', disp ? 4 : 3);
   el.innerHTML = step(1, nRead > 0 && nRead === P, 'Readings', rTxt) + step(2, !!base, 'Controls', cTxt, true) + step(3, ser.length > 0, 'Compounds', dTxt, true) + (disp ? step(4, kd.trc > 0, 'Tracer', tTxt) : '');
@@ -2834,7 +3231,7 @@ function bRenderPanel(){
     var roles = document.getElementById('lm-roles');
     roles.innerHTML = BM_ROLES.map(function(r){
       var on = Array.from(BM_SEL).every(function(p){ return pl.map[p] && pl.map[p].k === r.key; }), k = bWellsOf(function(x){ return x.k === r.key; }).length;
-      return '<button type="button" class="bc-role' + (on ? ' on' : '') + '" onclick="bMarkRole(\'' + r.key + '\')" title="' + esc(r.hint) + '"><i style="background:' + r.color + '"></i><span>' + esc(bRoleLabel(r.key)) + '</span>' + (on ? '<em>✓ marked</em>' : k ? '<em>' + k + '</em>' : '') + '</button>';
+      return '<button type="button" class="bc-role' + (on ? ' on' : '') + '" onclick="bMarkRole(\'' + r.key + '\')" title="' + esc(r.hint) + '"><i style="background:' + r.color + '"></i><span>' + esc(bRoleLabel(r.key)) + '</span>' + (on ? '<em><i class="b-ck" aria-hidden="true"></i> marked</em>' : k ? '<em>' + k + '</em>' : '') + '</button>';
     }).join('');
     txt = 'Click what these wells are. Each plate is corrected against its own no-ligand wells.';
   } else if (form && isDose) {
@@ -2913,6 +3310,13 @@ function bRenderRead(){
   var pl = bPl(), dm = document.getElementById('bc-demo');
   el.onclick = null; el.onkeydown = null; el.removeAttribute('role'); el.removeAttribute('tabindex');
   if (dm) dm.style.display = pl && state.plates.length === 1 && !bHasReads(pl) && !Object.keys(pl.map).length ? 'flex' : 'none';
+  // A reload (or a closed tab) starts on an empty plate; the analysis it was on is in History, one click away.
+  var rc = document.getElementById('bc-recent');
+  if (rc) {
+    var last = pl && state.plates.length === 1 && !bHasReads(pl) && !Object.keys(pl.map).length && typeof BH !== 'undefined' && BH && BH.list.length ? BH.list.slice().sort(function(a, b){ return b.updated - a.updated; })[0] : null;
+    rc.style.display = last ? 'flex' : 'none';
+    rc.innerHTML = last ? '<span>Where you left off:</span><button class="lm-link" onclick="bhOpen(\'' + esc(last.id) + '\')">' + esc(last.name) + '</button><span>' + esc(bhWhen(last.updated)) + '</span>' : '';
+  }
   if (!pl) { el.innerHTML = ''; el.className = 'lm-read'; return; }
   var nd = Object.keys(pl.donor).length, na = Object.keys(pl.acceptor).length;
   var want = !nd ? 'donor' : !na ? 'acceptor' : null;
@@ -2928,12 +3332,12 @@ function bRenderRead(){
   el.className = 'lm-read';
   function ch(k, label, n){
     var on = BM_CH === k || (!BM_CH && want === k);
-    return '<button type="button" class="bc-ch' + (n ? ' has' : '') + (on ? ' tgt' : '') + '" onclick="bSetCh(\'' + k + '\')" title="' + (n ? esc(label) + ' is read — click to aim ⌘V at it and replace it' : 'Waiting for this channel — ⌘V and a dropped file go here') + '">' + (n ? '<b>✓</b>' : '<b>·</b>') + esc(label) + '<em>' + (n ? n + ' wells' : 'missing') + '</em></button>';
+    return '<button type="button" class="bc-ch' + (n ? ' has' : '') + (on ? ' tgt' : '') + '" onclick="bSetCh(\'' + k + '\')" title="' + (n ? esc(label) + ' is read — click to aim ⌘V at it and replace it' : 'Waiting for this channel — ⌘V and a dropped file go here') + '">' + (n ? '<b><i class="b-ck" aria-hidden="true"></i></b>' : '<b>·</b>') + esc(label) + '<em>' + (n ? n + ' wells' : 'missing') + '</em></button>';
   }
   var md = pl.meta || {}, bits = [md['Test Name'], md['Date']].filter(function(x){ return x; }).map(String);
   el.innerHTML = '<div class="rd-l"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V9z"/><path d="M14 3v6h6"/></svg>' +
     ch('donor', 'Donor 460 nm', nd) + ch('acceptor', 'Acceptor 610 nm', na) +
-    '<span class="fn" title="' + esc(pl.file || '') + '">' + esc(pl.file ? pl.file : 'typed by hand') + (bits.length ? ' · ' + esc(bits.join(' · ')) : '') + '</span></div>' +
+    '<span class="fn" title="' + esc((pl.file || '') + (bits.length ? ' · ' + bits.join(' · ') : '')) + '">' + esc(pl.file ? pl.file : 'typed by hand') + (bits.length ? ' · ' + esc(bits.join(' · ')) : '') + '</span></div>' +
     '<div class="rd-r"><button class="lm-link" onclick="bPickFiles(' + state.plate + ')">Replace</button>' +
     '<button class="lm-link" onclick="bPasteButton()" title="Paste values copied from Excel — into the channel marked above">Paste values</button></div>';
 }
@@ -2973,7 +3377,7 @@ function _bCellPx(cols, rows){
     if (px === last && grid.style.getPropertyValue('--wpx') === px + 'px') return;
     last = px;
     grid.style.setProperty('--wpx', px + 'px');
-    grid.classList.toggle('lm-tiny', px < 24);
+    grid.classList.toggle('lm-tiny', px < 24); grid.dataset.wv = px < 30 ? 1 : px < 38 ? 2 : px < 48 ? 3 : 4;
     grid.style.gridTemplateColumns = grid.dataset.lbl + 'px repeat(' + cols + ', ' + px + 'px)';
     grid.querySelectorAll('.well').forEach(function(w){ w.style.width = px + 'px'; w.style.height = px + 'px'; });
   }
@@ -3068,7 +3472,7 @@ function bRenderGrid(){
     });
   }
   grid.style.setProperty('--wpx', cellPx + 'px');
-  grid.classList.toggle('lm-tiny', cellPx < 24);
+  grid.classList.toggle('lm-tiny', cellPx < 24); grid.dataset.wv = cellPx < 30 ? 1 : cellPx < 38 ? 2 : cellPx < 48 ? 3 : 4;
   grid.innerHTML = html;
 }
 function bRenderHead(){
@@ -3151,7 +3555,7 @@ function bHasVehicle(){ return bReadyPlates().some(function(pl){ return Object.k
 // The numbers a figure and a Prism table are both made from: every compound's replicates, well by well, at each concentration
 // (nM), each plate's wells already corrected against its own baseline; with `rel` every value is divided by the vehicle mean.
 function bDoseData(rel){
-  var plates = bReadyPlates(), groups = [], maxC = 0;
+  var plates = bReadyPlates(), groups = [], maxC = 0, noVeh = false;
   state.series.forEach(function(s){
     var on = plates.filter(function(pl){ return Object.keys(pl.map).some(function(p){ return pl.map[p].s === s.id; }); });
     if (!on.length) return;
@@ -3164,15 +3568,19 @@ function bDoseData(rel){
         else if (m.k === 'veh') { v = bVal(pl, p, true); if (v !== null) veh.push(v); }
       });
     });
-    var vm = veh.length ? meanOf(veh) : null, scale = rel && vm ? 1 / vm : 1;
+    var vm = veh.length ? meanOf(veh) : null, scale = rel && vm > 0 ? 1 / vm : 1;
+    if (rel && !(vm > 0)) noVeh = true;
     var pts = Object.keys(by).map(function(k){ return by[k]; }).sort(function(a, b){ return b.c - a.c; });
     pts.forEach(function(g){ maxC = Math.max(maxC, g.c); g.reps.forEach(function(r){ r.v = r.v * scale; }); });
     groups.push({ s: s, pts: pts });
   });
+  // "Relative to the vehicle" needs a vehicle that is above the baseline: a vehicle at or below it (no assay window) divides by zero or flips every sign.
+  // Rather than draw those numbers under a title that says "relative", give the corrected mBU and say so (D.rel is what was drawn).
+  if (rel && noVeh) return bDoseData(false);
   return { groups: groups, maxC: maxC, rel: !!rel };
 }
 function bGraphDoc(){
-  var plates = bReadyPlates(), rel = BG_Y === 'rel' && bHasVehicle(), D = bDoseData(rel), groups = D.groups, maxC = D.maxC;
+  var plates = bReadyPlates(), D = bDoseData(BG_Y === 'rel' && bHasVehicle()), rel = D.rel, groups = D.groups, maxC = D.maxC;
   var u = bGraphUnit(maxC);
   // x is written in the unit the top concentration calls for; the fit works in nM, so it converts back
   function fnOf(r){ if (!r || !r.fit) return null; var P = r.fit.params, vf = bValFn(); return { fn: function(x){ return vf(Math.log10(x * u[1]), P[0], P[1], P[2], P[3]); } }; }
@@ -3211,21 +3619,21 @@ function _bPrismBlock(rel){
     });
     return row;
   });
-  return { aoa: [top, sub].concat(rows), merges: merges, rel: !!rel };
+  return { aoa: [top, sub].concat(rows), merges: merges, rel: !!D.rel };
 }
 function copyPrism(){
-  var rel = bHasVehicle(), b = _bPrismBlock(rel);
+  var b = _bPrismBlock(bHasVehicle()), rel = !!(b && b.rel);
   if (!b) { beaconToast('No compound has a dose series yet — mark one on the Plate tab, then copy it for Prism.', 'err'); return; }
   var txt = b.aoa.map(function(r){ return r.map(function(c){ return String(c).replace(/[\t\r\n]+/g, ' '); }).join('\t'); }).join('\n');
-  var done = function(){ beaconToast('Copied for Prism — ' + (rel ? 'BRET relative to the vehicle' : 'corrected mBU (no vehicle wells are marked)') + ', concentration in nM, every compound’s replicates side by side. Paste into an XY table.'); };
+  var done = function(){ beaconToast('Copied for Prism — ' + (rel ? 'BRET relative to the vehicle' : 'corrected mBU (' + (bHasVehicle() ? 'the vehicle wells are not above the baseline' : 'no vehicle wells are marked') + ')') + ', concentration in nM, every compound’s replicates side by side. Paste into an XY table.'); };
   if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(done).catch(function(){ beaconToast('The browser did not allow writing to the clipboard — use the Excel workbook’s Prism Copy sheet.', 'err'); });
   else beaconToast('The browser has no clipboard here — use the Excel workbook’s Prism Copy sheet.', 'err');
 }
 // The Y axis choice lives in the editor's own toolbar (its slot), so there is one row of controls above the figure, not two.
 function bGraphSlot(el){
-  var v = bHasVehicle();
+  var v = bHasVehicle() && bDoseData(true).rel, mk = bHasVehicle();
   el.innerHTML = v ? '<span class="bg-ybar"><span>Y axis</span><span class="seg" role="group" aria-label="Y axis"><button type="button" data-y="rel"' + (BG_Y === 'rel' ? ' class="active"' : '') + '>Relative to vehicle</button><button type="button" data-y="corr"' + (BG_Y === 'corr' ? ' class="active"' : '') + '>Corrected mBU</button></span></span><span class="ck-sep"></span>'
-    : '<span class="bg-novehicle">No vehicle wells are marked, so the Y axis is corrected mBU. Mark the vehicle (DMSO) wells to plot relative to it.</span><span class="ck-sep"></span>';
+    : '<span class="bg-novehicle">' + (mk ? 'The vehicle wells are not above the no-ligand baseline, so there is nothing to be relative to: the Y axis is corrected mBU.' : 'No vehicle wells are marked, so the Y axis is corrected mBU. Mark the vehicle (DMSO) wells to plot relative to it.') + '</span><span class="ck-sep"></span>';
   el.querySelectorAll('[data-y]').forEach(function(b){ b.onclick = function(){ BG_Y = b.dataset.y; if (_bgKit) _bgKit.refresh(); }; });
 }
 function bGraphShow(){
@@ -3316,7 +3724,7 @@ function bFits(){
         // A midpoint outside the doses tested is a bound, not a measurement: it fits its own half at a high R² and reaches the paper looking measured.
         o.bound = lg > xMax + 1e-9 ? '>' : lg < xMin - 1e-9 ? '<' : '';
         o.limit = o.bound === '>' ? Math.pow(10, xMax) : o.bound === '<' ? Math.pow(10, xMin) : null;
-        if (tr && tr.kd > 0 && tr.T > 0) o.ki = o.ec50 / (1 + tr.T / tr.kd);
+        if (tr && tr.kd > 0 && tr.T > 0 && !o.bound) o.ki = o.ec50 / (1 + tr.T / tr.kd);   // a bound on the IC50 is a bound on nothing else: no Ki is made from a number nobody measured
       }
       out.push(o);
     });
@@ -3381,7 +3789,7 @@ function renderResults(){
   if (!RS_SEL || !fits.some(function(f){ return f.key === RS_SEL; })) RS_SEL = fits.length ? (fits.filter(function(f){ return f.fit; })[0] || fits[0]).key : null;
   var head = '<div class="rs-head"><div class="rs-title">Results<span class="sub">' + esc(bAnalysisName() ? bAnalysisName() + ' · ' : '') + bPlural(P, 'plate') + ' · ' + (disp ? 'tracer displacement' : 'protein–protein') + '</span></div><div class="rs-acts">' +
     (pooled ? '<div class="seg" id="rs-per" role="group" aria-label="Replicate plates"><button class="' + (RS_PER ? '' : 'active') + '" onclick="rsSetPer(false)" title="The same name on several plates is one compound: its replicates pool">Pooled</button><button class="' + (RS_PER ? 'active' : '') + '" onclick="rsSetPer(true)" title="One row per compound per plate">Per plate</button></div>' : '') +
-    '<div class="rs-menu"><button class="btn btn-sec" id="rs-exp-btn" onclick="rsTogglePop(event,\'rs-exp\')" aria-haspopup="true">Export &#9662;</button><div class="rs-pop" id="rs-exp" role="menu">' +
+    '<div class="rs-menu"><button class="btn btn-sec" id="rs-exp-btn" onclick="rsTogglePop(event,\'rs-exp\')" aria-haspopup="true">Export <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button><div class="rs-pop" id="rs-exp" role="menu">' +
     '<button role="menuitem" onclick="rsCloseExport();generateOutputXLSX()"><b>Excel workbook</b><span>Results, every well of every plate, Prism tables, the protocol</span></button>' +
     '<button role="menuitem" onclick="rsCloseExport();copyPrism()"><b>Copy for Prism</b><span>Concentration (nM) down one column, every compound’s replicates beside it — paste into a Prism XY table</span></button>' +
     '<button role="menuitem" onclick="rsCloseExport();exportPlateMBretXLSX()"><b>Plate mBRET (.xlsx)</b><span>Every well of every plate, raw and corrected</span></button>' +
@@ -3435,7 +3843,7 @@ function renderResults(){
     cD += '<div class="rs-tbl"><table><thead><tr><th>Compound</th><th class="num">' + pn + '</th>' + (hasKi ? '<th class="num">Ki</th>' : '') + '<th class="num">Hill</th><th class="num">Bottom → top<span class="hu"> mBU</span></th><th class="num">R²</th><th class="num">Points</th><th>Plates</th></tr></thead><tbody>';
     fits.forEach(function(f){
       var r2c = !f.fit ? '' : f.r2 >= 0.9 ? 'badge-good' : f.r2 >= 0.7 ? 'badge-mid' : 'badge-poor';
-      cD += '<tr class="' + (f.key === RS_SEL ? 'on' : '') + '" data-k="' + esc(f.key) + '" aria-selected="' + (f.key === RS_SEL) + '" onclick="rsPick(this.dataset.k)"><td><b>' + esc(f.name) + '</b></td>';
+      cD += '<tr class="' + (f.key === RS_SEL ? 'on' : '') + '" data-k="' + esc(f.key) + '" aria-selected="' + (f.key === RS_SEL) + '" tabindex="' + (f.key === RS_SEL ? 0 : -1) + '" onclick="rsPick(this.dataset.k)" onkeydown="if((event.key===\'Enter\'||event.key===\' \')&&event.target===this){event.preventDefault();rsPick(this.dataset.k)}"><td><b>' + esc(f.name) + '</b></td>';
       if (f.fit) {
         cD += '<td class="num"><b>' + bUnitText(f) + '</b></td>' + (hasKi ? '<td class="num">' + (f.ki ? bFmtConc(f.ki) : '–') + '</td>' : '') +
           '<td class="num">' + f.hill.toFixed(2) + '</td><td class="num">' + bFmtNum(f.bottom, 0) + ' → ' + bFmtNum(f.top, 0) + '</td><td class="num"><span class="badge ' + r2c + '">' + f.r2.toFixed(3) + '</span></td>';
@@ -3492,7 +3900,8 @@ function rsPick(k, scroll){
   var fits = bFits(), sel = fits.filter(function(f){ return f.key === k; })[0]; if (!sel) return;
   RS_SEL = k;
   document.querySelectorAll('#rs-root .rs-tbl tbody tr[data-k]').forEach(function(tr){
-    var on = tr.dataset.k === k; tr.classList.toggle('on', on); tr.setAttribute('aria-selected', on);
+    var on = tr.dataset.k === k, had = document.activeElement === tr; tr.classList.toggle('on', on); tr.setAttribute('aria-selected', on); tr.tabIndex = on ? 0 : -1;
+    if (on && (had || (document.activeElement && document.activeElement.closest && document.activeElement.closest('#rs-root .rs-tbl')))) tr.focus({ preventScroll: true });   // the keys walk the compounds: the focus walks with them
     if (on && scroll) tr.scrollIntoView({ block: 'nearest' });
   });
   var t = document.getElementById('rs-curve-t'); if (t) t.innerHTML = rsCurveTitle(sel, bPotencyName());
@@ -3740,8 +4149,9 @@ function generateOutputXLSX(){
   state.plates.forEach(function(pl){ if (pl.metaRows && pl.metaRows.length && !seen[pl.file]) { seen[pl.file] = 1; n++; XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(_sanitizeAoa(pl.metaRows)), ('PHERAstar Protocol' + (n > 1 ? ' ' + n : '')).slice(0, 31)); } });
   function prismSheet(blk, name){ if (!blk) return; var ws = XLSX.utils.aoa_to_sheet(_sanitizeAoa(blk.aoa)); if (blk.merges.length) ws['!merges'] = blk.merges; XLSX.utils.book_append_sheet(wb, ws, name); }
   var hv = bHasVehicle();
-  prismSheet(_bPrismBlock(hv), 'Prism Copy');              // BRET relative to the vehicle (corrected mBU when no vehicle is marked)
-  if (hv) prismSheet(_bPrismBlock(false), 'Prism (mBU)');   // the same, in corrected mBU
+  var pcb = _bPrismBlock(hv);
+  prismSheet(pcb, 'Prism Copy');              // BRET relative to the vehicle (corrected mBU when no usable vehicle is marked)
+  if (pcb && pcb.rel) prismSheet(_bPrismBlock(false), 'Prism (mBU)');   // the same, in corrected mBU
   prismSheet(_bPrismTracer(), 'Prism (tracer)');
   XLSX.writeFile(wb, _bFileStem() + '.xlsx');
 }
@@ -3813,7 +4223,7 @@ function loadTestData(mode){
 var activeTab = 'plate';
 var tabIndicator = document.getElementById('tab-indicator');
 function switchTab(name){
-  document.querySelectorAll('.tab').forEach(function(t){ t.classList.toggle('active', t.dataset.tab === name); });
+  document.querySelectorAll('.tab').forEach(function(t){ t.classList.toggle('active', t.dataset.tab === name); var on = t.dataset.tab === name; t.setAttribute('aria-selected', on); t.tabIndex = on ? 0 : -1; });
   document.querySelectorAll('.panel').forEach(function(p){ p.classList.toggle('active', p.id === 'panel-' + name); });
   activeTab = name;
   updateIndicator();
@@ -3829,6 +4239,12 @@ function updateIndicator(){
   tabIndicator.style.width = activeEl.offsetWidth + 'px';
   tabIndicator.classList.add('ready');
 }
+document.getElementById('tabs').addEventListener('keydown', function(e){   // the tab row is one stop; ← → Home End move along it (docs/UI.md › Tabs)
+  var t = e.target; if (!t.classList || !t.classList.contains('tab')) return;
+  var all = Array.prototype.slice.call(document.querySelectorAll('.tab')), i = all.indexOf(t), n = e.key === 'ArrowRight' ? i + 1 : e.key === 'ArrowLeft' ? i - 1 : e.key === 'Home' ? 0 : e.key === 'End' ? all.length - 1 : -1;
+  if (n < 0) return; e.preventDefault(); n = (n + all.length) % all.length; switchTab(all[n].dataset.tab); all[n].focus();
+});
+document.querySelectorAll('.tab svg,.tab-setup svg').forEach(function(sv){ sv.setAttribute('aria-hidden', 'true'); });   // the words say it
 window.addEventListener('load', updateIndicator);
 window.addEventListener('resize', updateIndicator);
 
@@ -3866,6 +4282,7 @@ function bhLoad(){
   }).catch(function(e){ BH.broken = e; BH.loaded = true; bhSync(); });
 }
 function bhSync(){
+  if (typeof bRenderRead === 'function') bRenderRead();
   var n = document.getElementById('bh-n'); if (n) n.textContent = BH.list.length ? String(BH.list.length) : '';
   if (activeTab === 'history') bhRender();
   if (typeof bsRecent === 'function') bsRecent();
@@ -3909,7 +4326,7 @@ function bhOpen(id){
 function bAfterChangeQuiet(){ state.rev++; bRenderAll(); }
 function bhDelete(id){
   var rec = BH.list.filter(function(r){ return r.id === id; })[0]; if (!rec) return;
-  beaconAsk('Remove “' + rec.name + '” from History?', 'Its readings and layout are deleted from this browser. Export the workbook first if you need the numbers.' + (id === state.hid ? ' It is the analysis open now: it stays open, and the next change saves it again as a new entry.' : ''), { ok: 'Remove', danger: true }, function(ok){
+  beaconAsk('Delete “' + rec.name + '” from History?', 'Its readings and layout are deleted from this browser. Export the workbook first if you need the numbers.' + (id === state.hid ? ' It is the analysis open now: it stays open, and the next change saves it again as a new entry.' : ''), { ok: 'Delete', danger: true }, function(ok){
     if (!ok) return;
     bhReq('readwrite', function(st){ return st.delete(id); }).then(function(){ BH.list = BH.list.filter(function(r){ return r.id !== id; }); if (id === state.hid) state.hid = null; bhSync(); });
   });
@@ -3951,7 +4368,7 @@ function bhRender(){
       '<div class="bh-side"><div class="bh-when">' + bhWhen(r.updated) + '</div><div class="bh-acts">' +
       '<button class="bh-ic' + (r.pinned ? ' on' : '') + '" data-a="pin" data-id="' + esc(r.id) + '" title="' + (r.pinned ? 'Unpin' : 'Pin to the top') + '" aria-label="Pin">' + ic.pin + '</button>' +
       '<button class="bh-ic" data-a="ren" data-id="' + esc(r.id) + '" title="Rename" aria-label="Rename">' + ic.ren + '</button>' +
-      '<button class="bh-ic" data-a="del" data-id="' + esc(r.id) + '" title="Remove from History" aria-label="Remove">' + ic.del + '</button>' +
+      '<button class="bh-ic" data-a="del" data-id="' + esc(r.id) + '" title="Delete from History" aria-label="Delete">' + ic.del + '</button>' +
       '<button class="btn ' + (r.id === state.hid ? 'btn-sec' : 'btn-primary') + '" data-a="open" data-id="' + esc(r.id) + '">' + (r.id === state.hid ? 'Show' : 'Open') + '</button></div></div></div>';
   });
   if (!shown.length) h += '<div class="bn-empty" style="margin:30px auto"><p>Nothing in History matches “' + esc(BH.q) + '”.</p></div>';
@@ -3981,76 +4398,60 @@ function bhRender(){
 // it opens, and anything done in the dialog is already on the plate when it closes.
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 var BS = { step: 0, built: false, all: true, dist: 'order', assign: null, hand: false, ch: 'donor', mode: 'cpd', form: { top: 10, unit: 'µM', fac: 3, pts: null, reps: 2, dir: 'right', run: 'rows', start: '', names: '' }, from: null };
-var BS_STEPS = [['assay', 'Assay'], ['readings', 'Readings'], ['controls', 'Controls'], ['compounds', 'Compounds'], ['review', 'Review']];
-var BS_X = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+// The dialog, its tabs, Back / Next and Escape are the Setup kit's (tools/setupkit); Beacon says what the steps are.
+var bsK = null;
+function bsKit(){
+  return bsK || (bsK = SetupKit.create({
+    id: 'bs', title: 'Beacon', sub: 'Set up your NanoBRET analysis',
+    steps: [
+      { key: 'assay', label: 'Assay', render: function(){ bsAssay(); }, done: function(){ return !!bAnalysisName(); } },
+      { key: 'readings', label: 'Readings', render: function(){ bsReadings(); }, live: function(){ bsPlatesList(); }, focus: false, done: function(){ return bReadyPlates().length > 0; } },
+      { key: 'controls', label: 'Controls', render: function(){ bsControls(); }, live: function(){ bsMiniInto('bs-mini-c'); bsCtlCounts(); }, done: function(){ var pl = bPl(), kd = bKinds(); return !!(pl && bBase(pl)) || kd.flat > 0; } },
+      { key: 'compounds', label: 'Compounds', render: function(){ bsCompounds(); }, live: function(){ bsMiniInto('bs-mini-p'); bsPlanText(); bsCpdList(); }, done: function(){ return state.series.length > 0; } },
+      { key: 'review', label: 'Review', render: function(){ bsReview(); }, live: function(){ bsReview(); } }
+    ],
+    foot: [
+      { label: 'Clear all', title: 'Start over: every plate, reading, layout and the name are cleared', fn: function(){ bsClearAll(); } },
+      { label: 'History', quiet: true, fn: function(){ bsClose(); switchTab('history'); } }
+    ],
+    nextLabel: function(i, last){ return last ? (bReadyPlates().length ? 'Show results' : 'Open the plate') : 'Next'; },
+    startStep: function(){ return bReadyPlates().length || Object.keys(bPl() ? bPl().map : {}).length ? 4 : 0; },
+    onOpen: function(){ _bActive = false; setTimeout(function(){ var d = bsEl('bs'); if (d && !d.classList.contains('hidden') && !d.contains(document.activeElement)) { var t = d.querySelector('.setup-stab.active'); if (t) t.focus(); } }, 30); },
+    onClose: function(){ BS.hand = false; bAfterChange(); },
+    finish: function(){ switchTab(bReadyPlates().length ? 'results' : 'plate'); },
+    wire: function(d){ bsWire(d); bsA11y(d); }
+  }));
+}
 function bsEl(id){ return document.getElementById(id); }
-function bsBuild(){
-  var d = document.createElement('div'); d.id = 'bs'; d.className = 'setup-overlay hidden';
-  d.innerHTML = '<div class="setup-card" role="dialog" aria-modal="true" aria-labelledby="bs-title" data-step="assay">' +
-    '<div class="setup-hdr"><div><div class="setup-htitle" id="bs-title">Beacon</div><div class="setup-hsub">Set up your NanoBRET analysis</div></div><button class="setup-hclose" id="bs-close" onclick="bsClose()" aria-label="Close setup" title="Close (Esc)">' + BS_X + '</button></div>' +
-    '<div class="setup-stabs" role="tablist">' + BS_STEPS.map(function(x, i){ return '<button class="setup-stab" role="tab" data-i="' + i + '" onclick="bsGo(' + i + ')"><span class="sx-n">' + (i + 1) + '</span>' + x[1] + '</button>'; }).join('') + '</div>' +
-    '<div class="setup-sbody" id="bs-body">' + BS_STEPS.map(function(x){ return '<div class="setup-pane" id="bs-p-' + x[0] + '"></div>'; }).join('') + '</div>' +
-    '<div class="setup-foot"><div class="sx-proj"><button class="sx-ghost" onclick="bsClearAll()" title="Start over: every plate, reading, layout and the name are cleared">Clear all</button><button class="sx-ghost q" onclick="bsClose();switchTab(\'history\')">History</button></div>' +
-    '<div class="sx-nav"><button class="btn btn-sec" id="bs-back" onclick="bsGo(BS.step-1)">&#8249; Back</button><button class="btn btn-primary" id="bs-next" onclick="bsNext()">Next &#8250;</button></div></div></div>';
-  document.body.appendChild(d);
-  d.addEventListener('click', function(e){ if (e.target === d) bsClose(); });
+// What the kit's dialog does not do yet: the tabs name their panels and are one tab stop moved by the arrows; Esc closes it and Tab stays in it even when the
+// focus is on the page behind (the kit hears them only from inside).
+function bsA11y(d){
+  function sync(){ d.querySelectorAll('.setup-stab').forEach(function(t){ t.tabIndex = t.getAttribute('aria-selected') === 'true' ? 0 : -1; var k = t.dataset.tab; t.id = 'bs-t-' + k; var p = bsEl('bs-p-' + k); if (p) { t.setAttribute('aria-controls', 'bs-p-' + k); p.setAttribute('role', 'tabpanel'); p.setAttribute('aria-labelledby', 'bs-t-' + k); } }); }
+  sync();
+  new MutationObserver(sync).observe(d, { subtree: true, attributes: true, attributeFilter: ['aria-selected', 'class'] });
   d.addEventListener('keydown', function(e){
-    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); bsClose(); return; }
-    if (e.key === 'Tab') {   // keep Tab inside the dialog
-      var f = Array.prototype.filter.call(d.querySelectorAll('button,input,select,textarea,[tabindex]:not([tabindex="-1"])'), function(x){ return !x.disabled && x.offsetParent !== null; });
-      if (!f.length) return; var a = f[0], z = f[f.length - 1];
-      if (e.shiftKey && document.activeElement === a) { e.preventDefault(); z.focus(); } else if (!e.shiftKey && document.activeElement === z) { e.preventDefault(); a.focus(); }
-    }
-  });
-  bsWire(d);
-  BS.built = true;
+    var t = e.target; if (!t.getAttribute || t.getAttribute('role') !== 'tab') return;
+    var tabs = Array.prototype.slice.call(d.querySelectorAll('.setup-stab')), i = tabs.indexOf(t);
+    var n = e.key === 'ArrowRight' ? i + 1 : e.key === 'ArrowLeft' ? i - 1 : e.key === 'Home' ? 0 : e.key === 'End' ? tabs.length - 1 : -1;
+    if (n < 0 || n >= tabs.length) return; e.preventDefault(); bsGo(n); setTimeout(function(){ tabs[n].focus(); }, 40);
+  }, true);
 }
-function bsOpen(step){
-  if (!BS.built) bsBuild();
-  BS.from = document.activeElement; _bActive = false;
-  bsEl('bs').classList.remove('hidden');
-  bsGo(typeof step === 'number' ? step : (bReadyPlates().length || Object.keys(bPl() ? bPl().map : {}).length ? 4 : 0));
-}
-function bsClose(){
-  var d = bsEl('bs'); if (!d || d.classList.contains('hidden')) return;
-  d.classList.add('hidden'); BS.hand = false;
-  bAfterChange();
-  try { if (BS.from && BS.from.focus) BS.from.focus(); } catch (e) {}
-}
-function bsNext(){ if (BS.step >= BS_STEPS.length - 1) { bsClose(); switchTab(bReadyPlates().length ? 'results' : 'plate'); } else bsGo(BS.step + 1); }
-function bsGo(i){
-  i = Math.max(0, Math.min(BS_STEPS.length - 1, i)); BS.step = i;
-  var card = bsEl('bs').querySelector('.setup-card'); card.dataset.step = BS_STEPS[i][0];
-  bsEl('bs').querySelectorAll('.setup-stab').forEach(function(t, k){ t.classList.toggle('active', k === i); t.setAttribute('aria-selected', k === i); });
-  bsEl('bs').querySelectorAll('.setup-pane').forEach(function(p, k){ p.classList.toggle('active', k === i); });
-  bsEl('bs-back').style.visibility = i === 0 ? 'hidden' : '';
-  bsEl('bs-next').innerHTML = i === BS_STEPS.length - 1 ? (bReadyPlates().length ? 'Show results &#8250;' : 'Open the plate &#8250;') : 'Next &#8250;';
-  bsRenderStep();
-  bsEl('bs-body').scrollTop = 0;
-  var f = bsEl('bs-p-' + BS_STEPS[i][0]).querySelector('input:not([type=checkbox]),select,textarea'); if (f && i !== 1) setTimeout(function(){ try { f.focus({ preventScroll: true }); } catch (e) {} }, 0);
-}
-function bsRenderStep(){
-  var k = BS_STEPS[BS.step][0];
-  ({ assay: bsAssay, readings: bsReadings, controls: bsControls, compounds: bsCompounds, review: bsReview })[k]();
-  bsTabs();
-}
-function bsTabs(){
-  var pl = bPl(), rd = bReadyPlates().length, kd = bKinds();
-  var done = [!!bAnalysisName(), rd > 0, !!(pl && bBase(pl)) || kd.flat > 0, state.series.length > 0, false];
-  bsEl('bs').querySelectorAll('.setup-stab').forEach(function(t, k){ t.classList.toggle('done', !!done[k] && k !== BS.step); });
-}
-function bsRefresh(){ bsRenderStepLive(); bsTabs(); }
-// A change made inside a step redraws only the parts that report (the plates, the map, the summary), never the fields being typed in.
-function bsRenderStepLive(){
-  var k = BS_STEPS[BS.step][0];
-  if (k === 'readings') bsPlatesList();
-  else if (k === 'controls') { bsMiniInto('bs-mini-c'); bsCtlCounts(); }
-  else if (k === 'compounds') { bsMiniInto('bs-mini-p'); bsPlanText(); bsCpdList(); }
-  else if (k === 'review') bsReview();
-}
+document.addEventListener('keydown', function(e){
+  var d = document.getElementById('bs'); if (!d || d.classList.contains('hidden')) return;
+  var ask = document.getElementById('bea-ask'); if (ask && ask.style.display === 'flex') return;
+  if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); bsClose(); return; }
+  if (e.key === 'Tab' && !d.contains(document.activeElement)) { e.preventDefault(); var t = d.querySelector('.setup-stab.active') || d.querySelector('button'); if (t) t.focus(); }
+}, true);
+function bsOpen(step){ bsKit().open(step); }
+function bsClose(){ if (bsK) bsK.close(); }
+function bsNext(){ bsKit().next(); }
+function bsGo(i){ bsKit().go(i); }
+function bsRenderStep(){ bsKit().render(); }
+function bsTabs(){ if (bsK && bsK.built) bsK.tabs(); }
+function bsRefresh(){ bsKit().refresh(); }
 function bsPlateChips(){
   if (state.plates.length < 2) return '';
-  return '<div class="seg bs-seg" role="group" aria-label="Plate">' + state.plates.map(function(pl, i){ return '<button type="button" class="' + (i === state.plate ? 'active' : '') + '" data-plate="' + i + '">' + esc(bShortPlate(i)) + '</button>'; }).join('') + '</div>';
+  return '<div class="sx-seg" role="group" aria-label="Plate">' + state.plates.map(function(pl, i){ return '<button type="button" class="' + (i === state.plate ? 'active' : '') + '" data-plate="' + i + '">' + esc(bShortPlate(i)) + '</button>'; }).join('') + '</div>';
 }
 // ── 1 · Assay ───────────────────────────────────────────────────────────────────────────────
 function bsAssay(){
@@ -4061,14 +4462,14 @@ function bsAssay(){
       '<div class="sx-f"><label for="bs-assay">Assay</label><select id="bs-assay"><option value="gain"' + (disp ? '' : ' selected') + '>Protein–protein</option><option value="displacement"' + (disp ? ' selected' : '') + '>Tracer displacement</option></select><div class="sx-hint" id="bs-assay-hint"></div></div>' +
     '</div></div></section>' +
     '<section class="sx-group"><div class="sx-ghd"><span class="sx-gt">Plate</span><span class="sx-gs">a file or a paste sets it by itself</span></div><div class="sx-gb"><div class="sx-f"><label>Format of ' + esc(bPlateName(state.plate)) + '</label>' +
-      '<div class="seg bs-seg" id="bs-fmt" role="group" aria-label="Plate format"><button type="button" data-f="96">96-well</button><button type="button" data-f="384">384-well</button></div><div class="sx-hint">Changing it clears that plate’s readings and layout (⌘Z brings them back).</div></div></div></section>' +
+      '<div class="sx-seg" id="bs-fmt" role="group" aria-label="Plate format"><button type="button" data-f="96">96-well</button><button type="button" data-f="384">384-well</button></div><div class="sx-hint">Changing it clears that plate’s readings and layout (⌘Z brings them back).</div></div></div></section>' +
     '<section class="sx-group"><div class="sx-ghd"><span class="sx-gt">About this assay</span><span class="sx-opt">optional — it travels with the exports and the History entry</span></div><div class="sx-gb"><div class="sx-grid">' +
       '<div class="sx-f"><label for="bs-i-target">Protein pair / target</label><input id="bs-i-target" data-info="target" type="text" placeholder="e.g. BRD4–VHL" value="' + esc(inf.target || '') + '"></div>' +
       '<div class="sx-f"><label for="bs-i-cell">Cell line</label><input id="bs-i-cell" data-info="cell" type="text" placeholder="e.g. HEK293" value="' + esc(inf.cell || '') + '"></div>' +
       '<div class="sx-f"><label for="bs-i-time">Time point (h)</label><input id="bs-i-time" data-info="time" type="text" placeholder="e.g. 2" value="' + esc(inf.time || '') + '"></div>' +
       '<div class="sx-f"><label for="bs-i-lig">HaloTag ligand / tracer</label><input id="bs-i-lig" data-info="ligand" type="text" placeholder="e.g. HaloTag NanoBRET 618, 100 nM" value="' + esc(inf.ligand || '') + '"></div>' +
     '</div><div class="sx-f"><label for="bs-i-note">Notes</label><input id="bs-i-note" data-info="note" type="text" placeholder="Anything worth keeping with the numbers" value="' + esc(inf.note || '') + '"></div></div></section>' +
-    '<section class="sx-group" id="bs-recent-g"><div class="sx-ghd"><span class="sx-gt">Recent analyses</span><button class="sx-link" onclick="bsClose();switchTab(\'history\')">All of History</button></div><div class="sx-gb"><div class="bs-recent" id="bs-recent"></div></div></section>';
+    '<section class="sx-group" id="bs-recent-g"><div class="sx-ghd"><span class="sx-gt">Recent analyses</span><button class="sx-link" onclick="bsClose();switchTab(\'history\')">All of History</button></div><div class="sx-gb"><div class="sx-recent" id="bs-recent"></div></div></section>';
   bsAssayHints(); bsRecent();
   if (pl) bsEl('bs-fmt').querySelectorAll('button').forEach(function(b){ b.classList.toggle('active', +b.dataset.f === (pl.cols > 12 ? 384 : 96)); });
 }
@@ -4082,17 +4483,17 @@ function bsRecent(){
   var el = bsEl('bs-recent'); if (!el) return;
   var g = bsEl('bs-recent-g'), list = BH.list.filter(function(r){ return r.id !== state.hid; }).slice(0, 3);
   if (g) g.style.display = list.length ? '' : 'none';
-  el.innerHTML = list.map(function(r){ return '<div class="bs-rec"><div><b>' + esc(r.name) + '</b><span>' + esc(bPlural(r.plates, 'plate') + ' · ' + bPlural(r.compounds.length, 'compound')) + '</span></div><span>' + bhWhen(r.updated) + '</span><button class="sx-btn" onclick="bhOpen(\'' + esc(r.id) + '\')">Open</button></div>'; }).join('');
+  el.innerHTML = list.map(function(r){ return '<div class="sx-rec"><div><b>' + esc(r.name) + '</b><span>' + esc(bPlural(r.plates, 'plate') + ' · ' + bPlural(r.compounds.length, 'compound')) + '</span></div><span>' + bhWhen(r.updated) + '</span><button class="sx-btn" onclick="bhOpen(\'' + esc(r.id) + '\')">Open</button></div>'; }).join('');
 }
 function bsClearAll(){ bsEl('bs').classList.add('hidden'); bClearAll(); setTimeout(function(){ if (!bHasAnything()) bsOpen(0); else bsEl('bs').classList.remove('hidden'); }, 60); }
 // ── 2 · Readings ────────────────────────────────────────────────────────────────────────────
 function bsReadings(){
   bsEl('bs-p-readings').innerHTML =
     '<section class="sx-group"><div class="sx-ghd"><span class="sx-gt">Reader files</span><span class="sx-gs"><button class="sx-link" onclick="loadTestData(\'gain\');bsRefresh()">Protein–protein demo</button> · <button class="sx-link" onclick="loadTestData(\'displacement\');bsRefresh()">Tracer displacement demo</button></span></div><div class="sx-gb">' +
-      '<div class="bs-drop" id="bs-drop" role="button" tabindex="0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4M7.5 8.5L12 4l4.5 4.5"/><path d="M4 15v3a2 2 0 002 2h12a2 2 0 002-2v-3"/></svg><div><b>Drop the Excel files or click to choose them</b>PHERAstar “Table End point” .xlsx, or .csv / .txt grids. Every plate in a file is read; a second file becomes the next plate.</div></div>' +
-      '<div class="bs-plates" id="bs-plates"></div></div></section>' +
+      '<div class="sx-drop" id="bs-drop" role="button" tabindex="0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4M7.5 8.5L12 4l4.5 4.5"/><path d="M4 15v3a2 2 0 002 2h12a2 2 0 002-2v-3"/></svg><div><b>Drop the Excel files or click to choose them</b>PHERAstar “Table End point” .xlsx, or .csv / .txt grids. Every plate in a file is read; a second file becomes the next plate.</div></div>' +
+      '<div class="sx-plates" id="bs-plates"></div></div></section>' +
     '<section class="sx-group"><div class="sx-ghd"><span class="sx-gt">Paste from Excel</span><span class="sx-gs" id="bs-paste-for"></span></div><div class="sx-gb"><div class="sx-f"><textarea id="bs-paste" rows="3" spellcheck="false" placeholder="Copy the donor grid in Excel, click here and paste (⌘V) — then the acceptor. Two grids at once, or a “Well” table, work too."></textarea><div class="sx-hint">Row letters and a header row are recognised; a decimal comma is a decimal.</div></div></div></section>' +
-    '<section class="sx-group"><div class="sx-ghd"><span class="sx-gt">Or type the values</span><button class="sx-link" id="bs-hand-tog">' + (BS.hand ? 'Hide the grid' : 'Show the grid') + '</button></div><div class="sx-gb bs-hand' + (BS.hand ? ' open' : '') + '" id="bs-hand"></div></section>';
+    '<section class="sx-group"><div class="sx-ghd"><span class="sx-gt">Or type the values</span><button class="sx-link" id="bs-hand-tog">' + (BS.hand ? 'Hide the grid' : 'Show the grid') + '</button></div><div class="sx-gb sx-hand' + (BS.hand ? ' open' : '') + '" id="bs-hand"></div></section>';
   bsPlatesList(); if (BS.hand) bsHand();
 }
 function bsPlatesList(){
@@ -4100,23 +4501,16 @@ function bsPlatesList(){
   var pf = bsEl('bs-paste-for'); if (pf) { var pl0 = bPl(), want = pl0 ? (!Object.keys(pl0.donor).length ? 'donor' : !Object.keys(pl0.acceptor).length ? 'acceptor' : null) : 'donor'; pf.textContent = bPlateName(state.plate) + (want ? ' · waiting for the ' + want : ' · both channels read'); }
   el.innerHTML = state.plates.map(function(pl, i){
     var nd = Object.keys(pl.donor).length, na = Object.keys(pl.acceptor).length;
-    return '<div class="bs-pl' + (i === state.plate ? ' on' : '') + '"><div class="nm" data-plate="' + i + '"><b>' + esc(bPlateName(i)) + '</b><span>' + esc((pl.cols > 12 ? '384-well' : '96-well') + (pl.file ? ' · ' + pl.file : (nd || na ? ' · typed or pasted' : ' · empty'))) + '</span></div>' +
-      '<div class="bs-ch"><span class="bs-chip' + (nd ? ' ok' : '') + '">Donor' + (nd ? ' · ' + nd : '') + '</span><span class="bs-chip' + (na ? ' ok' : '') + '">Acceptor' + (na ? ' · ' + na : '') + '</span></div>' +
+    return '<div class="sx-pl' + (i === state.plate ? ' on' : '') + '"><div class="nm" data-plate="' + i + '"><b>' + esc(bPlateName(i)) + '</b><span>' + esc((pl.cols > 12 ? '384-well' : '96-well') + (pl.file ? ' · ' + pl.file : (nd || na ? ' · typed or pasted' : ' · empty'))) + '</span></div>' +
+      '<div class="sx-ch"><span class="sx-chip' + (nd ? ' ok' : '') + '">Donor' + (nd ? ' · ' + nd : '') + '</span><span class="sx-chip' + (na ? ' ok' : '') + '">Acceptor' + (na ? ' · ' + na : '') + '</span></div>' +
       '<button class="sx-ghost" data-delplate="' + i + '" title="Remove this plate" aria-label="Remove ' + esc(bPlateName(i)) + '">' + (state.plates.length > 1 ? 'Remove' : (nd || na ? 'Empty' : '')) + '</button></div>';
   }).join('') + '<div><button class="sx-btn" data-addplate="1">+ Add a plate</button></div>';
 }
 function bsHand(){
   var el = bsEl('bs-hand'), pl = bPl(); if (!el || !pl) return;
-  var ch = BS.ch, h = '<div class="sx-inline" style="justify-content:space-between"><div class="seg bs-seg" style="max-width:260px" role="group" aria-label="Channel"><button type="button" data-ch="donor" class="' + (ch === 'donor' ? 'active' : '') + '">Donor 460 nm</button><button type="button" data-ch="acceptor" class="' + (ch === 'acceptor' ? 'active' : '') + '">Acceptor 610 nm</button></div><span class="sx-hint">' + esc(bPlateName(state.plate)) + ' · type, paste a block from Excel into any cell, ↑ ↓ ← → move</span></div>';
-  h += '<div class="bs-hand-wrap"><table><thead><tr><th></th>';
-  for (var c = 0; c < pl.cols; c++) h += '<th>' + (c + 1) + '</th>';
-  h += '</tr></thead><tbody>';
-  for (var r = 0; r < pl.rows; r++) {
-    h += '<tr><th class="r">' + String.fromCharCode(65 + r) + '</th>';
-    for (var c2 = 0; c2 < pl.cols; c2++) { var p = bPos(r, c2), v = pl[ch][p]; h += '<td><input type="text" inputmode="decimal" data-p="' + p + '" data-r="' + r + '" data-c="' + c2 + '" aria-label="' + p + '" value="' + (v === undefined ? '' : esc(String(v))) + '"></td>'; }
-    h += '</tr>';
-  }
-  el.innerHTML = h + '</tbody></table></div>';
+  var ch = BS.ch;
+  el.innerHTML = '<div class="sx-inline" style="justify-content:space-between">' + SetupKit.seg('bs-chan', [['donor', 'Donor 460 nm'], ['acceptor', 'Acceptor 610 nm']], ch, 'ch', 'Channel').replace('class="sx-seg"', 'class="sx-seg" style="max-width:260px"') +
+    '<span class="sx-hint">' + esc(bPlateName(state.plate)) + ' · type, paste a block from Excel into any cell, ↑ ↓ ← → move</span></div>' + SetupKit.handGrid(pl.rows, pl.cols, function(p){ return pl[ch][p]; });
 }
 var _bsHandT = 0;
 function bsHandCommit(inp){
@@ -4128,80 +4522,36 @@ function bsHandCommit(inp){
 var _bsMarked = 0;
 function bMarkOnce(){ if (Date.now() - _bsMarked > 5000) { _bUndo.push(_bSnap()); _bRedo = []; bSyncUndo(); } _bsMarked = Date.now(); }
 function bsRefreshPlatesOnly(){ var tabs = bsEl('bs').querySelectorAll('.setup-stab'); bsPlatesList(); bsTabs(); }
-function bsHandPaste(e, inp){
-  var txt = (e.clipboardData || window.clipboardData).getData('text') || '', rows = txt.replace(/\r/g, '').replace(/\n+$/, '').split('\n').map(function(l){ return l.split('\t'); });
-  if (rows.length === 1 && rows[0].length === 1) return;
-  e.preventDefault();
-  var r0 = +inp.dataset.r, c0 = +inp.dataset.c, el = bsEl('bs-hand'), last = null;
-  rows.forEach(function(row, ri){ row.forEach(function(cell, ci){ var t = el.querySelector('input[data-r="' + (r0 + ri) + '"][data-c="' + (c0 + ci) + '"]'); if (t) { t.value = cell.trim(); bsHandCommit(t); last = t; } }); });
-  if (last) last.focus();
-}
-function bsHandKey(e, inp){
-  var d = { ArrowDown: [1, 0], ArrowUp: [-1, 0], Enter: [1, 0], ArrowRight: [0, 1], ArrowLeft: [0, -1] }[e.key]; if (!d) return;
-  if ((e.key === 'ArrowRight' && inp.selectionEnd < inp.value.length) || (e.key === 'ArrowLeft' && inp.selectionStart > 0)) return;
-  var t = bsEl('bs-hand').querySelector('input[data-r="' + (+inp.dataset.r + d[0]) + '"][data-c="' + (+inp.dataset.c + d[1]) + '"]');
-  if (t) { e.preventDefault(); t.focus(); t.select(); }
-}
+function bsHandPaste(e, inp){ SetupKit.handPaste(bsEl('bs-hand'), e, inp, bsHandCommit); }
+function bsHandKey(e, inp){ SetupKit.handKeys(bsEl('bs-hand'), e, inp); }
 
 // ── the plate, small: what the layout is, as it is typed ───────────────────────────────────
-function bsMiniHtml(pl){
-  if (!pl) return '';
-  var cols = pl.cols, rows = pl.rows, h = '<div class="bs-mini" style="grid-template-columns:14px repeat(' + cols + ',1fr)"><span></span>';
-  for (var c = 0; c < cols; c++) h += '<span class="l">' + (cols > 12 && c % 2 ? '' : c + 1) + '</span>';
-  for (var r = 0; r < rows; r++) {
-    h += '<span class="l">' + String.fromCharCode(65 + r) + '</span>';
-    for (var c2 = 0; c2 < cols; c2++) {
-      var p = bPos(r, c2), m = pl.map[p], bg = '', cls = 'w' + (pl.donor[p] !== undefined && pl.acceptor[p] !== undefined ? ' rd' : '');
-      if (m && bIsFlat(m.k)) bg = 'background:' + bRole(m.k).color + ';';
-      else if (m && m.k === 'trc') bg = 'background:' + BM_TRACER_COLOR + ';';
-      else if (m && m.k === 'cpd') bg = 'background:rgb(' + bColor(m.s).join(',') + ');';
-      h += '<span class="' + cls + '" style="' + bg + '" title="' + p + (m ? ' · ' + (m.k === 'cpd' ? ((bSeriesById(m.s) || { name: '' }).name) : m.k === 'trc' ? 'tracer' : bRoleLabel(m.k)) + (m.c !== undefined ? ' · ' + bFmtConc(m.c) : '') : '') + '"></span>';
-    }
-  }
-  return h + '</div>';
-}
-function bsLegendHtml(pl){
-  if (!pl) return '';
-  var out = [];
-  BM_ROLES.forEach(function(r){ var n = Object.keys(pl.map).filter(function(p){ return pl.map[p].k === r.key; }).length; if (n) out.push('<div><i style="background:' + r.color + '"></i>' + esc(bRoleLabel(r.key)) + '<em>' + n + '</em></div>'); });
-  bSeriesOnPlate(pl).forEach(function(x){ out.push('<div><i style="background:rgb(' + bColor(x.s.id).join(',') + ')"></i>' + esc(x.s.name) + '<em>' + x.wells.length + '</em></div>'); });
-  var tr = Object.keys(pl.map).filter(function(p){ return pl.map[p].k === 'trc'; }).length; if (tr) out.push('<div><i style="background:' + BM_TRACER_COLOR + '"></i>Tracer<em>' + tr + '</em></div>');
-  return out.length ? '<div class="bs-legend">' + out.join('') + '</div>' : '<div class="sx-hint" style="margin-top:8px">Nothing is marked on this plate yet.</div>';
-}
 function bsMiniInto(id){
   var el = bsEl(id); if (!el) return;
-  var pl = bPl();
-  el.innerHTML = '<div class="bs-mini-t">' + esc(bPlateName(state.plate)) + '<span>' + (pl ? (pl.cols > 12 ? '384' : '96') + '-well · readings in blue' : '') + '</span></div>' + bsMiniHtml(pl) + bsLegendHtml(pl);
-}
-// "A1:D1" for a set of wells: a rectangle is one range, anything else is runs along rows, joined when consecutive rows repeat them.
-function bsRangeStr(wells){
-  if (!wells.length) return '';
-  var by = {}; wells.forEach(function(p){ var q = PlateEngine.rc(p); (by[q.r] = by[q.r] || []).push(q.c); });
-  var rows = Object.keys(by).map(Number).sort(function(a, b){ return a - b; }), items = [];
-  rows.forEach(function(r){
-    var cs = by[r].sort(function(a, b){ return a - b; }), runs = [], s = cs[0], prev = cs[0];
-    for (var i = 1; i <= cs.length; i++) { if (cs[i] !== prev + 1) { runs.push([s, prev]); s = cs[i]; } prev = cs[i]; }
-    items.push({ r: r, key: runs.map(function(x){ return x[0] + '-' + x[1]; }).join(','), runs: runs });
-  });
-  var out = [], i = 0;
-  while (i < items.length) {
-    var j = i; while (j + 1 < items.length && items[j + 1].key === items[i].key && items[j + 1].r === items[j].r + 1) j++;
-    items[i].runs.forEach(function(x){ var a = bPos(items[i].r, x[0]), b = bPos(items[j].r, x[1]); out.push(a === b ? a : a + ':' + b); });
-    i = j + 1;
+  var pl = bPl(), lg = [];
+  if (pl) {
+    BM_ROLES.forEach(function(r){ var n = Object.keys(pl.map).filter(function(p){ return pl.map[p].k === r.key; }).length; if (n) lg.push([r.color, bRoleLabel(r.key), n]); });
+    bSeriesOnPlate(pl).forEach(function(x){ lg.push(['rgb(' + bColor(x.s.id).join(',') + ')', x.s.name, x.wells.length]); });
+    var tr = Object.keys(pl.map).filter(function(p){ return pl.map[p].k === 'trc'; }).length; if (tr) lg.push([BM_TRACER_COLOR, 'Tracer', tr]);
   }
-  return out.join(', ');
+  el.innerHTML = !pl ? '' : SetupKit.mini({ rows: pl.rows, cols: pl.cols, title: bPlateName(state.plate), sub: (pl.cols > 12 ? '384' : '96') + '-well · readings in blue', legend: lg, cell: function(r, c){
+    var p = bPos(r, c), m = pl.map[p], bg = '';
+    if (m && bIsFlat(m.k)) bg = bRole(m.k).color; else if (m && m.k === 'trc') bg = BM_TRACER_COLOR; else if (m && m.k === 'cpd') bg = 'rgb(' + bColor(m.s).join(',') + ')';
+    return { bg: bg, rd: pl.donor[p] !== undefined && pl.acceptor[p] !== undefined, t: p + (m ? ' · ' + (m.k === 'cpd' ? ((bSeriesById(m.s) || { name: '' }).name) : m.k === 'trc' ? 'tracer' : bRoleLabel(m.k)) + (m.c !== undefined ? ' · ' + bFmtConc(m.c) : '') : '') };
+  } });
 }
+function bsRangeStr(wells){ return SetupKit.rangeStr(wells, bPos); }
 function bsTargets(){ return BS.all && state.plates.length > 1 ? state.plates : [bPl()]; }
 // ── 3 · Controls ────────────────────────────────────────────────────────────────────────────
 function bsControls(){
   var multi = state.plates.length > 1;
-  bsEl('bs-p-controls').innerHTML = '<div class="bs-two"><div>' +
+  bsEl('bs-p-controls').innerHTML = '<div class="sx-two"><div>' +
     '<section class="sx-group"><div class="sx-ghd"><span class="sx-gt">Where the controls are</span><span class="sx-opt">all optional — mark the ones you have</span></div><div class="sx-gb">' +
       (multi ? '<div class="sx-f">' + bsPlateChips() + '<label style="margin-top:8px;gap:8px;cursor:pointer"><input type="checkbox" id="bs-all"' + (BS.all ? ' checked' : '') + '> The same wells on every plate</label></div>' : '') +
       '<div id="bs-ctls">' + BM_ROLES.map(function(r){
-        return '<div class="bs-ctl" data-k="' + r.key + '"><i style="background:' + r.color + '"></i><div class="t"><b>' + esc(bRoleLabel(r.key)) + '</b><span>' + esc(r.hint) + '</span></div><input type="text" data-role="' + r.key + '" placeholder="e.g. A1:D1" aria-label="Wells of ' + esc(bRoleLabel(r.key)) + '" spellcheck="false" autocomplete="off"><span class="n"></span></div>';
+        return '<div class="sx-ctl" data-k="' + r.key + '"><i style="background:' + r.color + '"></i><div class="t"><b>' + esc(bRoleLabel(r.key)) + '</b><span>' + esc(r.hint) + '</span></div><input type="text" data-role="' + r.key + '" placeholder="e.g. A1:D1" aria-label="Wells of ' + esc(bRoleLabel(r.key)) + '" spellcheck="false" autocomplete="off"><span class="n"></span></div>';
       }).join('') + '</div><div class="sx-hint">Type wells or ranges — <b>A1:D1</b>, <b>E1:F1, H2</b> — and press Enter or leave the box. Empty clears that control. Drag on the plate itself for anything irregular.</div></div></section></div>' +
-    '<div class="bs-side"><div class="bs-mini-wrap" id="bs-mini-c"></div></div></div>';
+    '<div class="sx-side"><div class="sx-mini-wrap" id="bs-mini-c"></div></div></div>';
   bsCtlFill(); bsMiniInto('bs-mini-c');
 }
 function bsCtlFill(){
@@ -4215,7 +4565,7 @@ function bsCtlFill(){
 }
 function bsCtlCounts(){
   var pl = bPl(); if (!pl || !bsEl('bs-ctls')) return;
-  bsEl('bs-ctls').querySelectorAll('.bs-ctl').forEach(function(row){ var n = Object.keys(pl.map).filter(function(p){ return pl.map[p].k === row.dataset.k; }).length; row.querySelector('.n').textContent = n ? n + ' wells' : ''; });
+  bsEl('bs-ctls').querySelectorAll('.sx-ctl').forEach(function(row){ var n = Object.keys(pl.map).filter(function(p){ return pl.map[p].k === row.dataset.k; }).length; row.querySelector('.n').textContent = n ? n + ' wells' : ''; });
 }
 function bsSetRole(key, text, inp){
   var txt = String(text || '').trim(), row = inp.parentNode, targets = bsTargets();
@@ -4236,65 +4586,37 @@ function bsSetRole(key, text, inp){
 function bsCompounds(){
   var disp = state.assayMode === 'displacement', f = BS.form, trc = BS.mode === 'trc' && disp, free = bsFree();
   if (!f.names && !BS.namesTouched && state.series.length) f.names = state.series.map(function(x){ return x.name; }).join('\n');
-  bsEl('bs-p-compounds').innerHTML = '<div class="bs-two"><div>' +
-    (disp ? '<div class="seg bs-seg" id="bs-mode" role="group" aria-label="What is placed" style="margin-bottom:14px"><button type="button" data-m="cpd" class="' + (trc ? '' : 'active') + '">Compounds</button><button type="button" data-m="trc" class="' + (trc ? 'active' : '') + '">Tracer titration</button></div>' : '') +
+  bsEl('bs-p-compounds').innerHTML = '<div class="sx-two"><div>' +
+    (disp ? '<div class="sx-seg" id="bs-mode" role="group" aria-label="What is placed" style="margin-bottom:14px"><button type="button" data-m="cpd" class="' + (trc ? '' : 'active') + '">Compounds</button><button type="button" data-m="trc" class="' + (trc ? 'active' : '') + '">Tracer titration</button></div>' : '') +
     (trc ? '' : '<section class="sx-group"><div class="sx-ghd"><span class="sx-gt">Compounds</span><span class="sx-opt">one name per line — paste a column from Excel</span></div><div class="sx-gb"><div class="sx-f"><textarea id="bs-names" rows="4" spellcheck="false" placeholder="Compound A&#10;Compound B&#10;…  (left empty they are named Compound A, B, C…)">' + esc(f.names) + '</textarea><div class="sx-hint" id="bs-names-n"></div></div></div></section>') +
     '<section class="sx-group"><div class="sx-ghd"><span class="sx-gt">' + (trc ? 'Tracer titration' : 'Dose series') + '</span><span class="sx-opt">the same for every compound</span></div><div class="sx-gb"><div class="sx-grid">' +
       '<div class="sx-f"><label for="bs-top">Top concentration</label><div class="sx-inline"><input id="bs-top" type="number" step="any" min="0" value="' + f.top + '"><select id="bs-unit">' + ['mM', 'µM', 'nM', 'pM'].map(function(u){ return '<option' + (u === f.unit ? ' selected' : '') + '>' + u + '</option>'; }).join('') + '</select></div></div>' +
       '<div class="sx-f"><label for="bs-fac">Dilution factor</label><input id="bs-fac" type="number" step="any" min="1.01" value="' + f.fac + '"><div class="sx-hint">3 = threefold between neighbours</div></div>' +
       '<div class="sx-f"><label for="bs-pts">Points</label><input id="bs-pts" type="number" step="1" min="2" max="24" placeholder="auto: ' + free.pts + '" value="' + (f.pts || '') + '"><div class="sx-hint">auto = the free wells after the controls</div></div>' +
-      (trc ? '' : '<div class="sx-f"><label>Replicates per compound</label><div class="seg bs-seg" id="bs-reps" role="group">' + [1, 2, 3, 4].map(function(n){ return '<button type="button" data-n="' + n + '" class="' + (f.reps === n ? 'active' : '') + '">' + n + '</button>'; }).join('') + '</div></div>') +
-      '<div class="sx-f"><label>Highest concentration at</label><div class="seg bs-seg" id="bs-dir" role="group"><button type="button" data-d="right" class="' + (f.dir === 'right' ? 'active' : '') + '">The ' + (f.run === 'rows' ? 'left' : 'top') + '</button><button type="button" data-d="left" class="' + (f.dir === 'left' ? 'active' : '') + '">The ' + (f.run === 'rows' ? 'right' : 'bottom') + '</button></div></div>' +
-      '<div class="sx-f"><label>The series runs</label><div class="seg bs-seg" id="bs-run" role="group"><button type="button" data-r="rows" class="' + (f.run === 'rows' ? 'active' : '') + '">Along the rows</button><button type="button" data-r="cols" class="' + (f.run === 'cols' ? 'active' : '') + '">Down the columns</button></div></div>' +
+      (trc ? '' : '<div class="sx-f"><label>Replicates per compound</label><div class="sx-seg" id="bs-reps" role="group">' + [1, 2, 3, 4].map(function(n){ return '<button type="button" data-n="' + n + '" class="' + (f.reps === n ? 'active' : '') + '">' + n + '</button>'; }).join('') + '</div></div>') +
+      '<div class="sx-f"><label>Highest concentration at</label><div class="sx-seg" id="bs-dir" role="group"><button type="button" data-d="right" class="' + (f.dir === 'right' ? 'active' : '') + '">The ' + (f.run === 'rows' ? 'left' : 'top') + '</button><button type="button" data-d="left" class="' + (f.dir === 'left' ? 'active' : '') + '">The ' + (f.run === 'rows' ? 'right' : 'bottom') + '</button></div></div>' +
+      '<div class="sx-f"><label>The series runs</label><div class="sx-seg" id="bs-run" role="group"><button type="button" data-r="rows" class="' + (f.run === 'rows' ? 'active' : '') + '">Along the rows</button><button type="button" data-r="cols" class="' + (f.run === 'cols' ? 'active' : '') + '">Down the columns</button></div></div>' +
       '<div class="sx-f"><label for="bs-start">Start at</label><input id="bs-start" type="text" placeholder="auto: ' + free.at + '" value="' + esc(f.start) + '" spellcheck="false" autocomplete="off"><div class="sx-hint">the first well of the first block</div></div>' +
     '</div>' + (state.plates.length > 1 ? (trc ? '<label style="display:flex;gap:8px;align-items:center;font-size:var(--fs-3);color:var(--text2);cursor:pointer"><input type="checkbox" id="bs-all2"' + (BS.all ? ' checked' : '') + '> The same layout on every plate</label>' :
-      '<div class="sx-f" style="margin-top:12px"><label>' + state.plates.length + ' plates</label><div class="seg bs-seg" id="bs-dist-seg" role="group"><button type="button" data-g="order" class="' + (BS.dist === 'order' ? 'active' : '') + '">Fill the plates in order</button><button type="button" data-g="same" class="' + (BS.dist === 'same' ? 'active' : '') + '">The same on every plate</button></div><div class="sx-hint">' + (BS.dist === 'order' ? 'Different compounds on each plate: the first plate takes as many as its layout holds, the rest go on the next plate in the same order and set-up.' : 'Replicate plates: every plate gets the same compounds, and their replicates pool in Results.') + '</div></div>') : '') +
-    '<div class="bs-plan" id="bs-plan"></div><div id="bs-dist"></div><div class="sx-inline"><button class="btn btn-primary" id="bs-place" style="height:36px;padding-top:0;padding-bottom:0">' + (trc ? 'Place the titration' : 'Place compounds') + '</button><button class="sx-link" id="bs-unplace">Clear ' + (trc ? 'the tracer' : 'the compounds') + '</button></div></div></section>' +
-    '</div><div class="bs-side"><div class="bs-mini-wrap" id="bs-mini-p"></div></div></div>';
+      '<div class="sx-f" style="margin-top:12px"><label>' + state.plates.length + ' plates</label><div class="sx-seg" id="bs-dist-seg" role="group"><button type="button" data-g="order" class="' + (BS.dist === 'order' ? 'active' : '') + '">Fill the plates in order</button><button type="button" data-g="same" class="' + (BS.dist === 'same' ? 'active' : '') + '">The same on every plate</button></div><div class="sx-hint">' + (BS.dist === 'order' ? 'Different compounds on each plate: the first plate takes as many as its layout holds, the rest go on the next plate in the same order and set-up.' : 'Replicate plates: every plate gets the same compounds, and their replicates pool in Results.') + '</div></div>') : '') +
+    '<div class="sx-plan" id="bs-plan"></div><div id="bs-dist"></div><div class="sx-inline"><button class="btn btn-primary" id="bs-place">' + (trc ? 'Place the titration' : 'Place compounds') + '</button><button class="sx-link" id="bs-unplace">Clear ' + (trc ? 'the tracer' : 'the compounds') + '</button></div></div></section>' +
+    '</div><div class="sx-side"><div class="sx-mini-wrap" id="bs-mini-p"></div></div></div>';
   bsPlanText(); bsMiniInto('bs-mini-p');
 }
 // Where blocks start by default: after the last column (or row) that holds a control, the width left to the series as the default number of points.
 function bsFree(pl){
   pl = pl || bPl(); if (!pl) return { c0: 0, r0: 0, pts: 10, at: 'A1' };
-  var run = BS.form.run, cc = -1, rr = -1;
-  // controls sit along an edge: a column (or row) with two or more of them is part of that edge, one stray well is not — it is slid past
-  var cn = {}, rn = {};
-  Object.keys(pl.map).forEach(function(p){ if (!bIsFlat(pl.map[p].k)) return; var q = PlateEngine.rc(p); cn[q.c] = (cn[q.c] || 0) + 1; rn[q.r] = (rn[q.r] || 0) + 1; });
-  Object.keys(cn).forEach(function(c){ if (cn[c] >= 2) cc = Math.max(cc, +c); });
-  Object.keys(rn).forEach(function(r){ if (rn[r] >= 2) rr = Math.max(rr, +r); });
-  var c0 = run === 'rows' ? cc + 1 : 0, r0 = run === 'cols' ? rr + 1 : 0;
-  var span = run === 'rows' ? pl.cols - c0 : pl.rows - r0;
-  if (span < 4) { c0 = 0; r0 = 0; span = run === 'rows' ? pl.cols : pl.rows; }
-  return { c0: c0, r0: r0, pts: Math.max(2, Math.min(12, span)), at: bPos(r0, c0) };
+  return PlateEngine.freeStart({ r: pl.rows, c: pl.cols }, Object.keys(pl.map).filter(function(p){ return bIsFlat(pl.map[p].k); }), BS.form.run);
 }
 function bsNames(){ return PlateEngine.pasteList(BS.form.names).filter(function(x){ return x; }); }
-// The placement: compounds are blocks of `reps` lines by `pts` points. A block starts where the last ended, one band further along; when the plate runs out of bands the next group of blocks starts beside the first. Controls are never overwritten.
+// The placement (PlateEngine.blockPlan): compounds are blocks of `reps` lines by `pts` points, each after the last; controls are never overwritten.
 function bsPlan(pl, want){
-  var f = BS.form, fr = bsFree(pl), trc = BS.mode === 'trc' && state.assayMode === 'displacement', pts = f.pts || fr.pts, reps = trc ? 1 : f.reps, run = f.run, out = { blocks: [], pts: pts, reps: reps, miss: 0, need: 0 };
+  var f = BS.form, fr = bsFree(pl), trc = BS.mode === 'trc' && state.assayMode === 'displacement', pts = f.pts || fr.pts, reps = trc ? 1 : f.reps, out = { blocks: [], pts: pts, reps: reps, miss: 0, need: 0 };
   var names = bsNames(), need = trc ? 1 : want != null ? want : Math.max(names.length, 1);
   var start = f.start ? PlateEngine.parseRange(f.start, { r: pl.rows, c: pl.cols }) : null, r0 = fr.r0, c0 = fr.c0;
   if (start && start.length) { var q = PlateEngine.rc(start[0]); r0 = q.r; c0 = q.c; }
-  var used = {};
-  // a block of `reps` lines starting `line` lines in, in the `grp`-th group of blocks along the series' own axis
-  function blockWells(line, grp){
-    var w = [];
-    for (var a = 0; a < reps; a++) for (var b = 0; b < pts; b++) {
-      var r = run === 'rows' ? r0 + line + a : r0 + grp * pts + b, c = run === 'rows' ? c0 + grp * pts + b : c0 + line + a;
-      if (r >= pl.rows || c >= pl.cols) return null;
-      var p = bPos(r, c), m = pl.map[p]; if ((m && bIsFlat(m.k)) || used[p]) return null;
-      w.push({ p: p, i: b });
-    }
-    return w;
-  }
-  // The next block goes right after the last; one that would land on a control slides along until it clears it, and when the plate
-  // has no more room that way the next group of blocks starts beside the first.
-  var lines = run === 'rows' ? pl.rows - r0 : pl.cols - c0, cursor = 0, grp = 0, placed = 0, guard = 0;
-  while (placed < need && guard++ < 3000 && grp < 40) {
-    if (cursor + reps > lines) { grp++; cursor = 0; continue; }
-    var w = blockWells(cursor, grp);
-    if (w) { out.blocks.push(w); w.forEach(function(x){ used[x.p] = 1; }); placed++; cursor += reps; } else cursor++;
-  }
-  out.need = need; out.miss = need - placed;
+  out.blocks = PlateEngine.blockPlan({ r: pl.rows, c: pl.cols }, { reps: reps, pts: pts, run: f.run, r0: r0, c0: c0, need: need, blocked: function(p){ var m = pl.map[p]; return !!(m && bIsFlat(m.k)); } });
+  out.need = need; out.miss = need - out.blocks.length;
   return out;
 }
 // How many compounds this plate takes with the layout asked for (blocks of `reps` lines by `pts` points around its own controls).
@@ -4350,7 +4672,7 @@ function bsDistBoxes(){
   var el = bsEl('bs-dist'); if (!el) return;
   if (!bsOrdered()) { el.innerHTML = ''; return; }
   var sp = bsSplit();
-  el.innerHTML = '<div class="bs-dgrid">' + state.plates.map(function(pl, i){
+  el.innerHTML = '<div class="sx-dgrid">' + state.plates.map(function(pl, i){
     return '<div class="sx-f"><label for="bs-pl-' + i + '"><b>' + esc(bPlateName(i)) + '</b></label><textarea id="bs-pl-' + i + '" data-pl="' + i + '" rows="' + Math.max(3, Math.min(8, sp.per[i].length + 1)) + '" spellcheck="false" placeholder="Nothing goes on this plate">' + esc(sp.per[i].join('\n')) + '</textarea><div class="sx-hint" id="bs-dn-' + i + '"></div></div>';
   }).join('') + '</div><div class="sx-hint" id="bs-dfoot"></div>';
   bsDistNotes();
@@ -4410,13 +4732,13 @@ function bsReview(){
       if (!Object.keys(pl.map).some(function(p){ return pl.map[p].k === 'veh'; })) issues.push([warn, '<b>' + esc(nm) + '</b> has no vehicle wells: no Z′, and the figure cannot be relative to the vehicle.', 2]);
       if (!ser.length) issues.push([warn, '<b>' + esc(nm) + '</b> has no compounds — Results will show the plate and its controls only.', 2]);
     }
-    return '<tr><td><b>' + esc(nm) + '</b><div class="sx-hint">' + (pl.cols > 12 ? '384' : '96') + '-well' + (pl.file ? ' · ' + esc(pl.file) : '') + '</div></td><td>' + (nd && na ? '<span class="bs-ok">&#10003;</span> ' + Math.max(nd, na) + ' wells' : nd || na ? (nd ? 'Donor only' : 'Acceptor only') : '–') + '</td><td>' + (roles.length ? roles.map(function(r){ return esc(r.tag); }).join(' · ') : '–') + '</td><td>' + (ser.length ? bPlural(ser.length, 'compound') + (function(){ var sh = bShapeOf(pl, ser[0].wells); return '<div class="sx-hint">' + sh.pts + ' pts × ' + sh.reps + ' · ' + bFmtConc(sh.hi) + ' → ' + bFmtConc(sh.lo) + '</div>'; })() : '–') + '</td></tr>';
+    return '<tr><td><b>' + esc(nm) + '</b><div class="sx-hint">' + (pl.cols > 12 ? '384' : '96') + '-well' + (pl.file ? ' · ' + esc(pl.file) : '') + '</div></td><td>' + (nd && na ? '<span class="sx-ok">&#10003;</span> ' + Math.max(nd, na) + ' wells' : nd || na ? (nd ? 'Donor only' : 'Acceptor only') : '–') + '</td><td>' + (roles.length ? roles.map(function(r){ return esc(r.tag); }).join(' · ') : '–') + '</td><td>' + (ser.length ? bPlural(ser.length, 'compound') + (function(){ var sh = bShapeOf(pl, ser[0].wells); return '<div class="sx-hint">' + sh.pts + ' pts × ' + sh.reps + ' · ' + bFmtConc(sh.hi) + ' → ' + bFmtConc(sh.lo) + '</div>'; })() : '–') + '</td></tr>';
   }).join('');
   bFits().forEach(function(f){ if (!f.fit && f.pts.length < 4 && f.pts.length) issues.push([warn, '<b>' + esc(f.name) + '</b> has ' + f.pts.length + ' concentrations — shown as bars in the Graph, not fitted.', 3]); });
   var seenI = {}; issues = issues.filter(function(x){ var k = x[1]; if (seenI[k]) return false; seenI[k] = 1; return true; });
-  el.innerHTML = '<section class="sx-group"><div class="sx-ghd"><span class="sx-gt">' + esc(bAnalysisName() || 'Untitled analysis') + '</span><span class="sx-gs">' + esc(bMetaText()) + '</span></div><div class="sx-gb"><table class="bs-rv"><thead><tr><th>Plate</th><th>Readings</th><th>Controls</th><th>Compounds</th></tr></thead><tbody>' + rows + '</tbody></table></div></section>' +
-    '<section class="sx-group"><div class="sx-ghd"><span class="sx-gt">Before you read the results</span></div><div class="sx-gb"><div class="bs-issues">' +
-      (issues.length ? issues.map(function(x){ return '<div class="bs-issue">' + x[0] + '<div>' + x[1] + '</div></div>'; }).join('') : '<div class="bs-issue ok">' + ok + '<div><b>Everything the results need is there.</b></div></div>') + '</div></div></section>';
+  el.innerHTML = '<section class="sx-group"><div class="sx-ghd"><span class="sx-gt">' + esc(bAnalysisName() || 'Untitled analysis') + '</span><span class="sx-gs">' + esc(bMetaText()) + '</span></div><div class="sx-gb"><table class="sx-rv"><thead><tr><th>Plate</th><th>Readings</th><th>Controls</th><th>Compounds</th></tr></thead><tbody>' + rows + '</tbody></table></div></section>' +
+    '<section class="sx-group"><div class="sx-ghd"><span class="sx-gt">Before you read the results</span></div><div class="sx-gb"><div class="sx-issues">' +
+      (issues.length ? issues.map(function(x){ return '<div class="sx-issue">' + x[0] + '<div>' + x[1] + '</div></div>'; }).join('') : '<div class="sx-issue ok">' + ok + '<div><b>Everything the results need is there.</b></div></div>') + '</div></div></section>';
   bsEl('bs-next').innerHTML = bReadyPlates().length ? 'Show results &#8250;' : 'Open the plate &#8250;';
 }
 // ── events ──────────────────────────────────────────────────────────────────────────────────
@@ -4453,9 +4775,9 @@ function bsWire(d){
   });
   d.addEventListener('paste', function(e){ var t = e.target; if (t.closest && t.closest('#bs-hand') && t.dataset.p) bsHandPaste(e, t); });
   d.addEventListener('click', function(e){
-    var t = e.target.closest('button, .bs-drop, [data-plate]'); if (!t) return;
+    var t = e.target.closest('button, .sx-drop, [data-plate]'); if (!t) return;
     if (t.id === 'bs-drop') { bPickFiles(state.plate); return; }
-    if (t.dataset.plate !== undefined && !t.classList.contains('bs-pl')) { state.plate = +t.dataset.plate; BM_SEL = new Set(); bAfterChange(); bsRenderStep(); return; }
+    if (t.dataset.plate !== undefined && !t.classList.contains('sx-pl')) { state.plate = +t.dataset.plate; BM_SEL = new Set(); bAfterChange(); bsRenderStep(); return; }
     if (t.dataset.addplate) { bAddPlate(); bsRenderStep(); return; }
     if (t.dataset.delplate !== undefined) { var i = +t.dataset.delplate; if (state.plates.length > 1) bDelPlate(i); else { var pl = state.plates[0]; if (bHasReads(pl)) { bMark(); pl.donor = {}; pl.acceptor = {}; pl.file = ''; pl.fkey = ''; pl.meta = null; pl.metaRows = null; bAfterChange(); } } bsRenderStep(); return; }
     if (t.id === 'bs-hand-tog') { BS.hand = !BS.hand; bsReadings(); return; }
@@ -4470,10 +4792,7 @@ function bsWire(d){
     if (t.id === 'bs-place') { bsPlace(); return; }
     if (t.id === 'bs-unplace') { bsUnplace(); return; }
   });
-  var drop = function(e){ return e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], 'Files') >= 0; };
-  d.addEventListener('dragover', function(e){ if (drop(e)) { e.preventDefault(); var z = e.target.closest && e.target.closest('.bs-drop'); if (z) z.classList.add('over'); } });
-  d.addEventListener('dragleave', function(e){ var z = e.target.closest && e.target.closest('.bs-drop'); if (z) z.classList.remove('over'); });
-  d.addEventListener('drop', function(e){ if (!drop(e)) return; e.preventDefault(); var z = d.querySelector('.bs-drop'); if (z) z.classList.remove('over'); bHandleFiles(e.dataTransfer.files).then(function(){ bsRefresh(); }); });
+  SetupKit.dropFiles(d, function(files){ bHandleFiles(files).then(function(){ bsRefresh(); }); });
 }
 function bsInfoSave(){ if (BH.loaded) bhTouch(); }
 // A reader file chosen or dropped while the dialog is open lands on the plate and the dialog follows.

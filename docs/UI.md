@@ -282,30 +282,48 @@ hides it when embedding). 48px min-height, `--surface`, one bottom border:
 ```
 `.app-name` = `--fs-5`/600. `.app-sub` = `--fs-2`/`--text2`.
 
-**Button** — three kinds and no more. Pill radius (`--r-4`), 32px high, `--fs-3`:
+**Button** — three kinds and no more. `--r-1` corners (a lab record, not a toy: decided 2026-10-21 after a
+cross-app measurement found `--r-1` and 32px on most apps and pills on four), 32px high, `--fs-3`. A
+filter chip or a status badge is the only pill (`--r-full`). Hover changes `background`/`color` (a
+`filter` or `opacity` hover is not in the transition list and snaps); `:focus-visible` shows the ring below:
 | kind | look |
 |---|---|
 | primary | `background:var(--accent)`, white text, 600 |
 | default | `1px solid var(--border2)`, `--text2`, transparent; hover → `--surface2` and `--text` |
 | danger | same as default until hover, then `--danger` |
 
-**Input / select / textarea** — `--surface2` fill, `1px solid var(--border2)`, `--r-2`, 7px 11px,
-`--fs-3`. Focus: `border-color:var(--accent)`. Never a browser-default outline left visible.
+**Input / select / textarea** — 32px high (textarea: the same padding), `--surface2` fill, `1px solid var(--border2)`,
+`--r-1`, `--fs-3`. Focus: `border-color:var(--accent)` **and** the ring below. Never a browser-default
+outline left visible, never an input with no accessible name (a `<label>`, `aria-label`, or `aria-labelledby`).
 
-**Tabs** — a row of text buttons over a 1px `--border` rail; the active one is `--text`/600 with a
-2px `--accent` bottom border. Not pills, not boxes.
+**Focus ring** — one rule in every app: `:focus-visible{outline:2px solid var(--accent);outline-offset:2px}`.
+A control that sets `outline:none` must draw an equivalent ring (a 2px accent box-shadow or border) on
+`:focus-visible`. Anything with a click handler is a `<button>` or has `tabindex="0"`, a `role`, and Enter/Space.
+
+**Tabs** — a row of `<button role="tab" aria-selected>` (roving `tabindex`, ←/→ move) over a 1px
+`--border` rail; the active one is `--text`/600 with a 2px `--accent` bottom border. Not pills, not boxes,
+never a `div` with an `onclick`.
 
 **Card** — `--surface`, `1px solid var(--border)`, `--r3`, `--shadow-xs`; hover lifts 3px and goes
 to `--shadow-md`. A card header is `--fs-2`/700/uppercase/1.3px in `--text3`.
 
 **Panel** — the same surface without the hover: a titled box inside a screen.
 
-**Table** — header row `--fs-2`/700/uppercase/`--text3`, cells `--fs-3`, rows separated by
+**Table** — header row `--fs-2`/700/`--text3` (uppercase only where no header holds a unit: `text-transform:uppercase` turns µ into Greek capital Mu, so "Per sample (µL)" read "(ML)" — millilitres — in Archive), cells `--fs-3`, rows separated by
 `1px solid var(--border)` and nothing else. Numbers in `--mono` with `font-variant-numeric:
 tabular-nums`. Wide tables scroll inside their own `overflow-x:auto`, never the page.
 
 **Modal** — backdrop `rgba(0,0,0,.45)` (dark: `.65`), panel `--surface`, `--r3`, `--shadow-lg`,
-title `--fs-6`/700, actions bottom-right with the primary last.
+title `--fs-6`/700, a 28px close button with `aria-label="Close"`, actions bottom-right with the primary last.
+Behaviour (Echo's Setup is the reference): `role="dialog" aria-modal="true" aria-labelledby`, focus moves in on
+open, Tab is trapped, Esc closes, focus returns to the control that opened it. A toast is `role="status"`
+(`aria-live="polite"`; errors `role="alert"`).
+
+**Words** — the same action has the same word in every app: **Export** (a file out), **Import** (a file in),
+**Copy** (to the clipboard), **Clear** (empties what you typed), **Remove** (an item from a list),
+**Delete** (destroys a record, always confirmed in-app). **Cancel** plus a primary verb; **Close** only on a
+read-only panel. Sentence case for buttons, tabs and headings (no CSS `text-transform` on a heading).
+µ is U+00B5; dates on screen `19 Oct 2026`, in records ISO; decimal point.
 
 **Badge** — `--mono`, `--fs-1`, 700, uppercase, `--r-4`, tinted background at ~16% of its semantic
 colour.

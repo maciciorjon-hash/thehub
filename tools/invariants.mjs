@@ -58,13 +58,17 @@
 //       every step           from — in the Review and in the created record alike, for a step
 //                            with no volume calculator that says what it adds too. (a step that
 //                            added liquid was invisible; the read started from 111, not 123)
+//   I29 the volume table     Every row of the Review's "What is in the well", read off the DOM, adds up to the total above it — a step that
+//       adds up              replaces the medium says so and gives its total, one that starts from a volume of its own says so, a read on its own
+//                            copy says so — for every design and every ordered pair of volume-changing library modules. (the Endurazine step that
+//                            replaces the medium was missing: 75 → "+25" → 100 → "+10" → 100)
 //   I24 the Review's plate   Edit on the Review's plate map opens it, and what is changed there
 //       is editable          is the plate the experiment is created with. ("no plate map here")
 //   I25 a moved day moves    Moving a day from its header moves every step dated that day, and
 //       all of it            the later days follow only when asked; moving one step moves that
 //                            step alone. (the day's first step moved and its siblings stayed)
 //   I26 the proposed code    The code the New-experiment window proposes has one shape per type:
-//                            PREFIX_TYPEDATE[_POI], and for D2B PREFIX_[POI_]D2B_DATE — with or
+//                            PREFIX_TYPEDATE[_POI] (TYPE is the preset's own codeTag when it names one), and for D2B PREFIX_[POI_]D2B_DATE — with or
 //                            without a POI. (a D2B with no POI came out D2B20260929, the only
 //                            code of its type with no underscore)
 //   I27 a signature is one   A design's "edited" stamp and a Methods paragraph's "stale" stamp are compared as text, so the
@@ -126,7 +130,9 @@
 //   B8 tree shapes            A tree in the wrong shape still draws every screen. (LB-8)
 //   B9 restore                Restore never offers an export as a notebook backup. (LB-21)
 //   B10 mixes close           Every transfection/spike table's parts add up to its total, however
-//                            small the stocks make the DNA. (LB-23, LB-24)
+//                            small the stocks make the DNA. (LB-23, LB-24) With a competitor series: the
+//                            tubes make what the wells take plus what the next tube takes, every well
+//                            gets the same DNA, and switched off the block is the one without it.
 //   B11 imported replicate    An imported copy does not join the set it came from. (LB-9)
 //   B12 concentrations        _fmtConc → _parseConcNM round-trips; a series reads as one either
 //                            way. (LB-10, LB-28)
@@ -182,6 +188,13 @@
 //                            made of plasmids has Plate · Plasmids (· Compounds): naming wells and blocks is a fold under the selection, not a step.
 //   B43 plates side by side  The plate cards of a run are ~34 px a well at most and sit in ONE row of equal cards (.xp-track), never wrapped: a fifth plate
 //                            used to take the whole free row and come out twice the size of the others; the step text (13 px) and the tick (20 px) are in T15.
+//   B54 plate labels      Words round the plate: select wells and a dashed + sits beside the plate on all four sides over exactly the selected columns/rows; a label
+//                            is typed, edited, removed and undone; a wider one stacks outside a narrower one; nothing written round the plate sits on a well, a header or
+//                            another label; the card, the PNG, the print table and a copied layout all carry it. (the plate map could not say what a column was)
+//   B53 time course       Time Course is Kinetic degradation with the compound left open: type KD (Tempo still takes it), code tag TC, the same steps, waits and measures,
+//                            no compound of the lab's own named in the prose, and an experiment from it keeps the 900 min / 5 min run and its plate.
+//   B55 spark ns tc      The SPARK NS Time Course: one 96-well plate, six pairs of columns (no OA, OA high, OA low, then the same three with a PROTAC series, 7 pts + DMSO), OA on every well at t = 0
+//                            and the PROTAC at 3 h, read to 18 h (1080 min); drawn from the setup with its words round the plate; every calculator on the wells the map says.
 //   B52 one list of         The Compounds step has ONE box for every compound to test, a line each (a column from Excel). The names flow onto the compound
 //       compounds           blocks of the plates there are as you type, in reading order, plate by plate; a paste or leaving the box also adds the plates the
 //                            list needs with the same layout (a layout that carries the compound on its wells, with no blocks, gets blocks on the copy), names
@@ -450,8 +463,9 @@ async function suite(opts) {
       openQuick(key, v.o);
       // I9 — the dates the preview lists, read off the screen it draws.
       const promised = [...document.querySelectorAll('#nm-preview .nm-pv-row')].map(r => {
-        const m = (r.querySelector('.nm-pv-day') || {}).textContent.match(/(\d{2})\/(\d{2})\/(\d{4})/);
-        return m ? `${m[3]}-${m[2]}-${m[1]}` : null; }).filter(Boolean);
+        // on screen a date is `1 Oct 2026` (docs/UI.md, 2026-10-21); the record is ISO
+        const m = (r.querySelector('.nm-pv-day') || {}).textContent.match(/(\d{1,2}) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\d{4})/);
+        return m ? `${m[3]}-${String(['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].indexOf(m[2]) + 1).padStart(2, '0')}-${m[1].padStart(2, '0')}` : null; }).filter(Boolean);
       const A = await created(() => createExperiment());
       closeNew();
       designFrom(key, v.o);
@@ -1045,6 +1059,50 @@ async function suite(opts) {
     });
   }
 
+  // ── I29 the volume table adds up, as it is drawn ──
+  // The Review's "What is in the well" listed only the steps that ADD, so the Endurazine step that
+  // replaces the medium (100 → 90 µL) was missing and the compounds after it read "+10 µL, 100 µL"
+  // under a 100 µL line; the transfection that replaced the seeding medium read "+25 µL". Read off
+  // the DOM, every row is checked against the total drawn before it, for every design and every
+  // pair or triple of volume-changing library modules.
+  if (run('I29')) {
+    const num = t => { const m = String(t).match(/-?\d+(?:\.\d+)?/); return m ? parseFloat(m[0]) : NaN; };
+    const audit = (cs) => {
+      const ps = dsPseudo(DS), ch = dsChain(ps);
+      const box = document.createElement('div'); box.innerHTML = dsChainHtml(DS, ps, ch);
+      const rows = [...box.querySelectorAll('.ds-crow')];
+      const should = ch.filter(x => x.add > 0 || x.set).length;
+      tick('I29');
+      if (rows.length !== should) bad('I29', cs, `${should} steps change the well and the table draws ${rows.length}`);
+      // every step that puts something in the well is named, whatever it does to the total
+      ch.filter(x => x.add > 0 || x.set).forEach(x => { if (!rows.some(r => r.querySelector('.n').textContent === (x.b.title || '\u2014'))) bad('I29', cs, `"${x.b.title}" changes the well and is not in the table`); });
+      let run = 0;
+      rows.forEach(r => {
+        const name = r.querySelector('.n').textContent, v = r.querySelector('.v').textContent, t = r.querySelector('.t').textContent;
+        const note = (r.querySelector('.note') || {}).textContent || '', term = /^\(/.test(t), tot = num(t);
+        if (!(tot > 0)) { bad('I29', cs, `"${name}" ends with "${t}"`); return; }
+        if (/replaces/.test(v)) { if (!/Aspirates|^$/.test(note) && note) bad('I29', cs, `"${name}" replaces the medium and says "${note}"`); run = tot; return; }
+        let base = run;
+        const fr = note.match(/Starts from (\d+(?:\.\d+)?)/); if (fr) base = parseFloat(fr[1]);
+        if (Math.abs(base + num(v) - tot) > (tot >= 100 ? 0.55 : 0.26)) bad('I29', cs, `"${name}": ${nfmt(base)} + ${num(v)} is not ${tot} — the table says ${v} → ${t} under a total of ${run}${note ? ' (' + note + ')' : ''}`);
+        if (term && !/own copy/.test(note)) bad('I29', cs, `"${name}" is a read on its own copy and does not say so`);
+        if (!term) run = tot;
+      });
+    };
+    for (const key of KEYS) await guard('I29', key, async () => { designFrom(key, {}); audit(key); dsClose(); });
+    // Library modules, composed by hand: a seeding, then each one, then each ordered pair of the ones that move the volume.
+    const seed = STEP_LIBRARY.find(sp => sp.id === 'lib:seed');
+    const vol = STEP_LIBRARY.filter(sp => sp.calc && CALC_KINDS[sp.calc] && (VOL_ADD[sp.calc] || sp.calc === 'mixparts'));
+    const seqs = [];
+    STEP_LIBRARY.forEach(sp => seqs.push([seed, sp]));
+    vol.forEach(a => vol.forEach(b => seqs.push([seed, a, b])));
+    for (const sq of seqs) await guard('I29', sq.map(x => x.id).join(' → '), async () => {
+      dsOpen({ mode: 'exp', pid: PID, sid: SID }); DS.startDate = START;
+      sq.forEach(sp => DS.mods.push(dsSyncMod(dsMod(sp), DS.setup, true)));
+      audit(sq.map(x => x.id).join(' → ')); dsClose();
+    });
+  }
+
   // ── I24 the Review's plate map can be edited, and the edit is the plate created ──
   if (run('I24')) {
     for (const key of KEYS) await guard('I24', key, async () => {
@@ -1113,7 +1171,7 @@ async function suite(opts) {
       const code = el('nm-code').value, d = dateCompact(el('nm-date').value), pr = projPrefix(projById(NM_TARGET.pid));
       closeNew();
       tick('I26');
-      const want = pr + '_' + (type === 'D2B' ? ((poi ? poi + '_' : '') + 'D2B_' + d) : (type + d + (poi ? '_' + poi : '')));
+      const want = pr + '_' + (type === 'D2B' ? ((poi ? poi + '_' : '') + 'D2B_' + d) : (presetCodeTag(key) + d + (poi ? '_' + poi : '')));   // a curated preset may name its own letters (TC on KD); the type stays
       if (code !== want) bad('I26', key + ' / poi=' + (poi || 'none'), `proposed "${code}", expected "${want}"`);
     });
   }
@@ -2698,6 +2756,15 @@ async function suite(opts) {
       if (names(e.morePlates[0]).join() !== names(e.plate).join()) bad('B52', 'same', '"the same on every plate" left plate 2 with other compounds');
       plCpdMode('order'); await sleep(40);
       if (names(e.morePlates[0]).join() !== list.slice(cap, cap * 2).join()) bad('B52', 'order again', 'going back to a different slice per plate did not refill plate 2');
+      // several names on a line (commas, semicolons) are several compounds, and the box is tidied to a line each; 1,2-x stays whole
+      await type('Cmp1, Cmp2; Cmp3,  Cmp4\n1,2-propanediol', true);
+      if (_cpdNames(expCpdText(e)).join('|') !== 'Cmp1|Cmp2|Cmp3|Cmp4|1,2-propanediol') bad('B52', 'commas', 'a line of comma-separated names was not read as separate compounds: ' + _cpdNames(expCpdText(e)).join('|'));
+      if (document.getElementById('pl-cpd-ta').value !== 'Cmp1\nCmp2\nCmp3\nCmp4\n1,2-propanediol') bad('B52', 'tidy', 'the box was not tidied to one compound per line: ' + JSON.stringify(document.getElementById('pl-cpd-ta').value));
+      if (!/5 compounds/.test(document.getElementById('pl-cpd-plan').textContent)) bad('B52', 'count', 'the plan does not count 5 compounds: ' + document.getElementById('pl-cpd-plan').textContent.slice(0, 80));
+      // one Done: the last step has no second one beside the dialog's own
+      const dones = Array.from(document.querySelectorAll('#plate-modal button')).filter(b => b.textContent.trim() === 'Done' && b.offsetParent);
+      if (dones.length !== 1) bad('B52', 'done', 'the plate window shows ' + dones.length + ' Done buttons, expected 1');
+      await type(list.join('\n'), true);
       // undo takes the added plates away again
       lbUndo(); await sleep(60);
       closePlateEditor();
@@ -2719,6 +2786,213 @@ async function suite(opts) {
       e3.plate.wells = {}; e3.plate.groups = {}; openPlateEditor('exp:' + e3.id); await sleep(60); plSetMode('dose'); plRender();
       if (!/No compound blocks/.test((document.getElementById('pl-cpd-plan') || {}).textContent || '')) bad('B52', 'no blocks', 'a plate with no compound blocks does not say so');
       closePlateEditor();
+    });
+
+    // B53 — Time Course is Kinetic degradation with the compound left open.
+    if (run('B53')) await guard('B53', 'time course', async () => {
+      const P = (LB.data.projects || []).find(p => (p.sections || []).length);
+      const key = 'KD_TIMECOURSE', tpl = LB.data.presets[key], kd = LB.data.presets.KD;
+      if (!tpl) { bad('B53', 'preset', 'the Time Course preset is not in the notebook'); return; }
+      if (tpl.name !== 'Time Course (HiBiT reporter)' || presetBase(key) !== 'KD') bad('B53', 'identity', 'name ' + tpl.name + ', type ' + presetBase(key) + ' (want Time Course (HiBiT reporter) on KD, so Tempo still takes it)');
+      if (presetCodeTag(key) !== 'TC' || presetCodeTag('KD') !== 'KD') bad('B53', 'code', 'code tags are ' + presetCodeTag(key) + ' / ' + presetCodeTag('KD') + ', expected TC / KD');
+      if (!/presetCodeTag/.test(String(nmUpdateCode))) bad('B53', 'code', 'the New-experiment code does not use the preset\'s code tag');
+      // the same plate, waits and calculators as the kinetic preset: only the words about the compound differ
+      const a = tpl.blocks, b = kd.blocks;
+      if (a.length !== b.length) bad('B53', 'steps', 'Time Course has ' + a.length + ' steps, Kinetic degradation ' + b.length);
+      else a.forEach((x, i) => {
+        const y = b[i], cx = x.calc || {}, cy = y.calc || {};
+        if ((x.dayOffset || 0) !== (y.dayOffset || 0) || (x.waitMin || 0) !== (y.waitMin || 0)) bad('B53', 'timing ' + x.title, 'day ' + x.dayOffset + ' / wait ' + x.waitMin + ' differs from ' + y.dayOffset + ' / ' + y.waitMin);
+        if (cx.kind !== cy.kind) bad('B53', 'calc ' + x.title, 'calculator ' + cx.kind + ' vs ' + cy.kind);
+        const ix = Object.assign({}, cx.inputs), iy = Object.assign({}, cy.inputs); delete ix.name; delete iy.name; delete ix.minVolUL; delete iy.minVolUL;
+        if (_canonJSON(ix) !== _canonJSON(iy)) bad('B53', 'measures ' + x.title, 'inputs ' + _canonJSON(ix) + ' differ from ' + _canonJSON(iy)); });
+      // generic: no compound of the lab's own in the steps
+      const text = a.map(x => [x.title, x.html, x.pub].join(' ')).join(' ') + ' ' + tpl.title;
+      if (/\bOA\b|oligomycin|antimycin/i.test(text)) bad('B53', 'generic', 'the preset names a compound: ' + (text.match(/\bOA\b|oligomycin|antimycin/i) || [])[0]);
+      if (!/compound/i.test(text)) bad('B53', 'wording', 'the preset does not say "compound"');
+      // an experiment made from it keeps the setup questions of the kinetic type and its plate
+      const su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup || {})));
+      if (su.runMin !== 900 || su.intervalMin !== 5) bad('B53', 'setup', 'run ' + su.runMin + ' min / interval ' + su.intervalMin + ' min, expected 900 / 5');
+      const before = new Set(Object.keys(LB.data.experiments));
+      buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-10-01', type: presetBase(key), title: 'INV time course', code: 'INV_B53', setup: su, plate: true });
+      const e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); if (!e) { bad('B53', 'create', 'no experiment was made'); return; }
+      clean.push(e); openExp(e.id); tick('B53');
+      if (e.type !== 'KD') bad('B53', 'type', 'the experiment is type ' + e.type + ', not KD');
+      if (!e.plate) bad('B53', 'plate', 'no plate map on a Time Course');
+      const en = (e.blocks || []).find(x => /Endurazine/.test(x.title || '')); if (en && en.waitMin !== 150) bad('B53', 'wait', 'Endurazine equilibration is ' + en.waitMin + ' min, expected 150');
+    });
+
+    // B55 — SPARK NS time course: OA at t = 0, a PROTAC series at 3 h, read to 18 h, on one 96-well plate.
+    if (run('B55')) await guard('B55', 'spark ns time course', async () => {
+      const P = (LB.data.projects || []).find(p => (p.sections || []).length);
+      const key = 'KD_TC_SPARKNS', tpl = LB.data.presets[key], gen = LB.data.presets.KD_TIMECOURSE;
+      if (!tpl || !gen) { bad('B55', 'preset', 'the SPARK NS time course (or the generic one it follows) is not in the notebook'); return; }
+      if (presetBase(key) !== 'KD' || presetCodeTag(key) !== 'TC' || tpl.layout !== 'tcoa96') bad('B55', 'identity', 'type ' + presetBase(key) + ', tag ' + presetCodeTag(key) + ', layout ' + tpl.layout);
+      // the same first three steps as the generic Time Course, then OA, a read, the PROTAC, a read
+      const T = tpl.blocks.map(b => b.title).join(' | ');
+      if (!/^Seeding \| LgBiT.*\| Endurazine medium \| Pre-read \+ OA addition \| Kinetic read . OA alone \| PROTAC addition at 3 h \| Kinetic read . after the PROTAC$/.test(T)) bad('B55', 'steps', 'the steps read ' + T);
+      for (let i = 0; i < 3; i++) { const b = tpl.blocks[i], g = gen.blocks[i];
+        if (b && g && ((b.dayOffset || 0) !== (g.dayOffset || 0) || (b.waitMin || 0) !== (g.waitMin || 0))) bad('B55', 'timing ' + b.title, 'day ' + b.dayOffset + ' wait ' + b.waitMin + ' vs ' + g.dayOffset + ' / ' + g.waitMin); }
+      const oa = tpl.blocks.find(b => /OA alone/.test(b.title)); if (!oa || oa.waitMin !== 180) bad('B55', 'three hours', 'the read before the PROTAC waits ' + (oa && oa.waitMin) + ' min, expected 180');
+      const su0 = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup || {})));
+      if (su0.runMin !== 1080 || su0.intervalMin !== 5 || String(su0.format) !== '96' || +su0.nPlates !== 1) bad('B55', 'setup', 'run ' + su0.runMin + ' / ' + su0.intervalMin + ' min, format ' + su0.format + ', plates ' + su0.nPlates + ' (want 1080 = 3 h + 15 h, 5, 96, 1)');
+      // the map, drawn from the setup
+      const L = PLATE_LAYOUTS.find(x => x.id === 'tcoa96'); if (!L) { bad('B55', 'layout', 'no tcoa96 layout'); return; }
+      const col = (id) => +id.slice(1), row = (id) => id.charCodeAt(0) - 65, pair = (id) => Math.floor((col(id) - 1) / 2);
+      let p = L.build(su0);
+      if (Object.keys(p.wells).length !== 96) bad('B55', 'wells', Object.keys(p.wells).length + ' wells, expected 96');
+      if (p.types.length !== 6) bad('B55', 'types', p.types.length + ' well types, expected 6');
+      const want = ['a0', 'a1', 'a2', 'p1', 'p2', 'p0'];   // none, high, low | high + PROTAC, low + PROTAC, none + PROTAC
+      Object.entries(p.wells).forEach(([id, w]) => {
+        if (w.typeId !== want[pair(id)]) bad('B55', 'pairs ' + id, 'well ' + id + ' is ' + w.typeId + ', expected ' + want[pair(id)]);
+        const prot = col(id) >= 7;
+        if (!prot && (w.compound || w.conc)) bad('B55', 'no protac ' + id, 'a well that takes the vehicle at 3 h carries ' + (w.compound || w.conc));
+        if (prot && row(id) < 7 && !w.conc) bad('B55', 'series ' + id, 'a PROTAC well has no concentration'); });
+      const A7 = p.wells.A7, G11 = p.wells.G11, H9 = p.wells.H9;
+      if (!A7 || A7.conc !== '10 \u00b5M' || !G11 || G11.conc !== '13.7 nM' || !H9 || H9.label !== 'DMSO') bad('B55', 'series', 'A7 ' + (A7 && A7.conc) + ', G11 ' + (G11 && G11.conc) + ', H9 ' + (H9 && H9.label) + ' (want 10 \u00b5M, 13.7 nM, DMSO)');
+      const E = p.edges || [], has = (side, a, b, re) => E.some(n => n.side === side && n.a === a && n.b === b && re.test(n.text));
+      if (!has('t', 0, 5, /^Vehicle at 3 h$/) || !has('t', 6, 11, /^PROTAC at 3 h$/) || !has('t', 0, 11, /from t = 0/)) bad('B55', 'time labels', 'the 3 h and t = 0 are not named over their columns: ' + E.filter(n => n.side === 't' && n.b - n.a > 1).map(n => n.a + '-' + n.b + ' ' + n.text).join(' | '));
+      const labs = ['No OA', '1 / 10', '0.1 / 1', '1 / 10', '0.1 / 1', 'No OA'];
+      labs.forEach((t, i) => { if (!has('t', i * 2, i * 2 + 1, new RegExp('^' + t.replace(/[/.]/g, '\\$&') + '$'))) bad('B55', 'pair labels', 'columns ' + (i * 2 + 1) + '\u2013' + (i * 2 + 2) + ' are not labelled "' + t + '"'); });
+      if (E.filter(n => n.side === 'r' && n.a === n.b).length !== 8) bad('B55', 'row labels', 'expected a concentration (or DMSO) beside each of the 8 rows');
+      // a different series, a named PROTAC and another OA follow the setup
+      p = L.build(Object.assign({}, su0, { topUM: 5, df: 2, nConc: 5, compounds: 'SNS-1', oligoHi: 2 }));
+      if (p.wells.A7.conc !== '5 \u00b5M' || p.wells.E7.conc !== '313 nM' || p.wells.F7.label !== 'DMSO' || p.wells.G7 || p.wells.H11) bad('B55', 'setup follows', 'A7 ' + p.wells.A7.conc + ', E7 ' + p.wells.E7.conc + ', F7 ' + (p.wells.F7 && p.wells.F7.label) + ', G7 ' + JSON.stringify(p.wells.G7));
+      if (p.wells.A7.compound !== 'SNS-1') bad('B55', 'name', 'the PROTAC on the plate is ' + p.wells.A7.compound + ', not the one listed');
+      if (!p.types.some(t => /2 \/ 10/.test(t.name)) || !(p.edges || []).some(n => /^2 \/ 10$/.test(n.text))) bad('B55', 'oa follows', 'oligomycin 2 did not reach the types and the labels');
+      // an experiment made from it: one 96-well plate; every well takes the OA, only the PROTAC wells take the PROTAC
+      const before = new Set(Object.keys(LB.data.experiments));
+      buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-10-01', type: presetBase(key), title: 'INV spark ns tc', code: 'INV_B55', setup: su0, plate: true });
+      const e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); if (!e) { bad('B55', 'create', 'no experiment was made'); return; }
+      clean.push(e); openExp(e.id); tick('B55');
+      if (!e.plate || Object.keys(e.plate.wells).length !== 96 || !(e.plate.edges || []).length) bad('B55', 'plate', 'the experiment has no 96-well map with its labels');
+      const nw = (re) => { const b = (e.blocks || []).find(x => re.test(x.title)); return b && b.calc && b.calc.inputs && b.calc.inputs.nWells; };
+      if (nw(/OA addition/) !== 96) bad('B55', 'OA wells', 'the OA goes into ' + nw(/OA addition/) + ' wells, expected all 96');
+      if (nw(/PROTAC addition/) !== 42) bad('B55', 'PROTAC wells', 'the PROTAC series is counted for ' + nw(/PROTAC addition/) + ' wells, expected 42 (7 rows \u00d7 6 columns)');
+      if (nw(/Endurazine/) !== 96) bad('B55', 'wells', 'Endurazine is made for ' + nw(/Endurazine/) + ' wells, expected 96');
+      const txt = document.body.innerText; if (/\{\{[^}]*\}\}/.test(txt)) bad('B55', 'tokens', 'an unfilled token on the page: ' + (txt.match(/\{\{[^}]*\}\}/) || [])[0]);
+    });
+
+    // B54 — words round the plate: what a column or a row is, written beside it.
+    if (run('B54')) await guard('B54', 'plate labels', async () => {
+      const P = (LB.data.projects || []).find(p => (p.sections || []).length);
+      const key = 'NB_BIO_RTX96', tpl = LB.data.presets[key];
+      const su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup || {})));
+      const before = new Set(Object.keys(LB.data.experiments));
+      buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-10-01', type: 'NB', title: 'INV labels', code: 'INV_B54', setup: su, plate: true });
+      const e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); if (!e) { bad('B54', 'create', 'no experiment was made'); return; }
+      clean.push(e); openExp(e.id); tick('B54');
+      const hit = (a, b) => a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
+      const q = s => [...document.querySelectorAll(s)];
+      const sel = async (r0, r1, c0, c1) => { PL.sel = {}; for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) PL.sel[wellIdOf(r, c)] = 1; plRender(); await sleep(40); };
+      const key1 = ev => ({ key: ev, preventDefault() {}, stopPropagation() {} });
+      const say = async (side, a, b, text, id) => { if (!id) { if (side === 't' || side === 'b') await sel(0, 0, a, b); else await sel(a, b, 0, 0); } plEdgeOpen(side, a, b, id || null); const i = document.getElementById('pl-note-in'); i.value = text; plEdgeKey(key1('Enter')); await sleep(40); };
+      openPlateEditor('exp:' + e.id); await sleep(80);
+      // the + offers: four sides, over exactly the selection; none without one
+      await sel(0, -1, 0, -1);
+      if (q('.pl-ng').length) bad('B54', 'no selection', 'the dashed + is offered with nothing selected');
+      await sel(2, 4, 2, 3);
+      const want = ['t-2-3', 'b-2-3', 'l-2-4', 'r-2-4'], have = q('.pl-ng').map(n => n.getAttribute('data-g')).sort();
+      if (want.slice().sort().join() !== have.join()) bad('B54', 'offer', 'selection C3:E4 should offer ' + want.join(' ') + ', the plate offers ' + have.join(' '));
+      // type: one label over the columns, one over everything (it goes outside), one beside the rows, one under, one on the right
+      await say('t', 2, 3, '+ MG132');
+      const p = plCur();
+      if (!p.edges || p.edges.length !== 1 || p.edges[0].text !== '+ MG132') { bad('B54', 'typed', 'Enter did not store the label: ' + JSON.stringify(p.edges)); return; }
+      await say('t', 0, 11, 'Compound A');
+      await say('t', 2, 3, 'Second on the same columns');
+      await say('l', 2, 4, 'HEK293 + ligand');
+      await say('b', 0, 11, 'Dose: 3-fold from 1 µM');
+      await say('r', 0, 7, 'n = 3');
+      const nt = q('#pl-grid .pl-nt'), byText = t => nt.find(n => n.textContent.trim() === t);
+      if (nt.length !== 6) { bad('B54', 'drawn', nt.length + ' labels drawn, expected 6'); return; }
+      const row = n => parseInt(n.style.gridRow, 10);
+      if (!(row(byText('Compound A')) < row(byText('+ MG132')))) bad('B54', 'stack', 'the wide label is not outside the narrow one (rows ' + row(byText('Compound A')) + ' / ' + row(byText('+ MG132')) + ')');
+      if (row(byText('Second on the same columns')) === row(byText('+ MG132'))) bad('B54', 'same columns', 'two labels over the same columns share a row');
+      // nothing written round the plate sits on a well, a header, or another label
+      const solid = [...q('#pl-grid .pl-w'), ...q('#pl-grid .pl-colh'), ...q('#pl-grid .pl-rowh'), ...q('#pl-grid .pl-cl')].map(n => n.getBoundingClientRect());
+      const nr = nt.map(n => n.getBoundingClientRect());
+      nr.forEach((r, i) => {
+        if (solid.some(s => hit(r, s))) bad('B54', 'on the plate', 'label "' + nt[i].textContent.trim() + '" sits on a well or a header');
+        nr.forEach((r2, j) => { if (j > i && hit(r, r2)) bad('B54', 'overlap', 'labels "' + nt[i].textContent.trim() + '" and "' + nt[j].textContent.trim() + '" overlap'); });
+      });
+      // beside means beside: above the column numbers, left of the row letters, right of the last column, under the last row
+      const colh = q('#pl-grid .pl-colh')[0].getBoundingClientRect(), rowh = q('#pl-grid .pl-rowh')[0].getBoundingClientRect(), lastW = q('#pl-grid .pl-w').pop().getBoundingClientRect();
+      const rOf = t => byText(t).getBoundingClientRect();
+      if (rOf('Compound A').bottom > colh.top + 1) bad('B54', 'above', 'a label over the columns is not above the column numbers');
+      if (rOf('HEK293 + ligand').right > rowh.left + 1) bad('B54', 'left', 'a label beside the rows is not left of the row letters');
+      if (rOf('n = 3').left < lastW.right - 1) bad('B54', 'right', 'a label on the right is not right of the last column');
+      if (rOf('Dose: 3-fold from 1 µM').top < lastW.bottom - 1) bad('B54', 'below', 'a label under the plate is not under the last row');
+      // it spans what it was written over
+      const c3 = q('#pl-grid .pl-colh')[2].getBoundingClientRect(), c4 = q('#pl-grid .pl-colh')[3].getBoundingClientRect(), mg = rOf('+ MG132');
+      if (Math.abs(mg.left - c3.left) > 2 || Math.abs(mg.right - c4.right) > 2) bad('B54', 'span', 'the label over columns 3–4 spans ' + Math.round(mg.left) + '–' + Math.round(mg.right) + ', the columns ' + Math.round(c3.left) + '–' + Math.round(c4.right));
+      // edit, remove, undo
+      const id = p.edges.find(n => n.text === '+ MG132').id;
+      await say('t', 2, 3, '+ MG132 10 µM', id);
+      if (p.edges.find(n => n.id === id).text !== '+ MG132 10 µM') bad('B54', 'edit', 'editing a label did not change it');
+      await say('t', 2, 3, '', id);
+      if (p.edges.length !== 5) bad('B54', 'remove', 'an empty label should remove it: ' + p.edges.length + ' left');
+      lbUndo(); await sleep(60);
+      if (plCur().edges.length !== 6) bad('B54', 'undo', 'undo did not bring the removed label back (' + plCur().edges.length + ')');
+      // a mouse press elsewhere keeps what was typed
+      await sel(0, 0, 2, 3); plEdgeOpen('t', 2, 3, null); document.getElementById('pl-note-in').value = 'kept'; document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); await sleep(40);
+      if (!plCur().edges.some(n => n.text === 'kept')) bad('B54', 'click away', 'clicking away lost what was typed');
+      // beyond the plate is not drawn, whatever format it is switched to
+      if (plateEdges({ format: '24', edges: [{ id: 'z', side: 't', a: 10, b: 11, text: 'x' }, { id: 'y', side: 'l', a: 3, b: 9, text: 'y' }] }).items.length !== 1) bad('B54', 'range', 'a label past the last column is still drawn, or one running past the last row is dropped');
+      // move, pull an end, drop on the other side, re-cover from a selection; a press that does not travel still edits
+      await say('t', 9, 9, 'drag me');
+      const noteOf = t => q('#pl-grid .pl-nt').find(n => n.textContent.trim() === t), edge = t => plCur().edges.find(n => n.text === t);
+      const mouse = (type, x, y, tgt) => (tgt || document).dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: x, clientY: y, button: 0 }));
+      const centre = r => [(r.left + r.right) / 2, (r.top + r.bottom) / 2];
+      const colX = i => centre(q('#pl-grid .pl-colh')[i].getBoundingClientRect())[0];
+      const wellsB = () => { const r = q('#pl-grid .pl-w').map(n => n.getBoundingClientRect()); return Math.max(...r.map(x => x.bottom)); };
+      const drag = async (el0, x1, y1) => { const [x0, y0] = centre(el0.getBoundingClientRect()); mouse('mousedown', x0, y0, el0); mouse('mousemove', x1, y1); mouse('mouseup', x1, y1); await sleep(40); };
+      let nd = noteOf('drag me'), yy = centre(nd.getBoundingClientRect())[1];
+      await drag(nd, colX(6), yy);
+      if (edge('drag me').a !== 6 || edge('drag me').b !== 6) bad('B54', 'move', 'dragging a label from column 10 to column 7 left it over ' + edge('drag me').a + '–' + edge('drag me').b);
+      await drag(noteOf('drag me').querySelector('[data-h=b]'), colX(8), yy);
+      if (edge('drag me').a !== 6 || edge('drag me').b !== 8) bad('B54', 'pull end', 'pulling the right end to column 9 gave ' + edge('drag me').a + '–' + edge('drag me').b);
+      await drag(noteOf('drag me').querySelector('[data-h=a]'), colX(5), yy);
+      if (edge('drag me').a !== 5 || edge('drag me').b !== 8) bad('B54', 'pull start', 'pulling the left end to column 6 gave ' + edge('drag me').a + '–' + edge('drag me').b);
+      await drag(noteOf('drag me'), centre(noteOf('drag me').getBoundingClientRect())[0], wellsB() + 20);
+      if (edge('drag me').side !== 'b' || edge('drag me').a !== 5 || edge('drag me').b !== 8) bad('B54', 'other side', 'dropping a label under the plate left it on ' + edge('drag me').side + ' over ' + edge('drag me').a + '–' + edge('drag me').b);
+      noteOf('drag me').click(); await sleep(20);
+      if (PLE.open) { bad('B54', 'click after drag', 'the click that ends a drag opened the label for editing'); plEdgeClose(); }
+      await sleep(450);
+      const dn = noteOf('drag me'), dr = centre(dn.getBoundingClientRect()); mouse('mousedown', dr[0], dr[1], dn); mouse('mouseup', dr[0], dr[1]); dn.click(); await sleep(40);
+      if (!PLE.open || PLE.open.id !== edge('drag me').id) bad('B54', 'click', 'a press that did not travel did not open the label for editing'); plEdgeClose();
+      await sel(0, 0, 1, 2); plEdgeOpen('b', 5, 8, edge('drag me').id);
+      if (document.getElementById('pl-np-cov').style.display === 'none') bad('B54', 'cover offered', 'a selection that is elsewhere is not offered as the label\'s new cover');
+      plEdgeCover(); plEdgeKey(key1('Enter')); await sleep(40);
+      if (edge('drag me').a !== 1 || edge('drag me').b !== 2) bad('B54', 'cover', '"Cover the selection" gave ' + edge('drag me').a + '–' + edge('drag me').b + ', expected 1–2');
+      await say('b', 1, 2, '', edge('drag me').id);
+      // a phone has no spare column (the empty ones go): the grid must still be a track list, with the labels still beside the plate
+      const wide0 = window._plWide, pc = plCur(), kept = pc.edges; pc.edges = kept.filter(n => n.side === 't' || n.side === 'b'); window._plWide = () => false; plRender(); await sleep(40);
+      const gridEl = document.getElementById('pl-grid'), tracks = getComputedStyle(gridEl).gridTemplateColumns.trim().split(/\s+/).length, geoN = PL.gg.geo.Lc + 1 + 12 + PL.gg.geo.R;
+      window._plWide = wide0; pc.edges = kept; plRender(); await sleep(40);
+      if (tracks !== geoN) bad('B54', 'narrow', 'with no spare columns the plate grid has ' + tracks + ' column tracks, its layout says ' + geoN + ' (an invalid template is dropped and the old one stays)');
+      closePlateEditor(); await sleep(80);
+      const E = LB.data.experiments[e.id];   // an undo puts the record back as a new object
+      // the card on the experiment page
+      openExp(e.id); await sleep(120);
+      const card = document.querySelector('.exp-plates .blk-plate');
+      if (!card) { bad('B54', 'card', 'no plate card'); return; }
+      const cn = [...card.querySelectorAll('.pl-nt')], cw = [...card.querySelectorAll('.pp-w')].map(n => n.getBoundingClientRect());
+      if (cn.length !== (E.plate.edges || []).length) bad('B54', 'card', 'the card shows ' + cn.length + ' labels, the plate has ' + (E.plate.edges || []).length);
+      cn.forEach(n => { const r = n.getBoundingClientRect(); if (cw.some(w => hit(r, w))) bad('B54', 'card on wells', 'label "' + n.textContent.trim() + '" sits on a well of the card'); });
+      // the PNG grows to hold them, on both axes
+      const size = pl => { const o = HTMLCanvasElement.prototype.toBlob; let s = null; HTMLCanvasElement.prototype.toBlob = function (cb) { s = [this.width, this.height]; cb(null); }; try { plateToPNG(pl, 't.png'); } finally { HTMLCanvasElement.prototype.toBlob = o; } return s; };
+      const bare = JSON.parse(JSON.stringify(E.plate)); delete bare.edges;
+      const s0 = size(bare), s1 = size(E.plate);
+      if (!s0 || !s1 || s1[0] <= s0[0] || s1[1] <= s0[1]) bad('B54', 'png', 'the PNG does not grow for its labels: ' + JSON.stringify(s0) + ' → ' + JSON.stringify(s1));
+      // the print table is still a rectangle, and says every label
+      const div = document.createElement('div'); div.innerHTML = printPlateHtml(E.plate, 'Plate', {});
+      const tbl = div.querySelector('table.pk-g'); if (!tbl) { bad('B54', 'print', 'no print table'); return; }
+      const occ = []; [...tbl.rows].forEach((tr, r) => { occ[r] = occ[r] || []; let c = 0; [...tr.cells].forEach(td => { while (occ[r][c]) c++; for (let i = 0; i < td.rowSpan; i++) { occ[r + i] = occ[r + i] || []; for (let j = 0; j < td.colSpan; j++) occ[r + i][c + j] = 1; } c += td.colSpan; }); });
+      const rowsOcc = occ.slice(0, tbl.rows.length), widths = rowsOcc.map(o => o.length), holes = rowsOcc.filter(o => Array.from(o).some(v => !v)).length;
+      if (new Set(widths).size !== 1 || holes) bad('B54', 'print table', 'the print table is not a rectangle: row widths ' + [...new Set(widths)].join('/') + ', ' + holes + ' rows with holes');
+      const ptxt = tbl.textContent; E.plate.edges.forEach(n => { if (ptxt.indexOf(n.text.slice(0, 8)) < 0) bad('B54', 'print text', 'the print table lacks "' + n.text + '"'); });
+      // a layout copied to the next plate brings them, as copies
+      const t2 = newPlate('96'); _plCopyLayout(E.plate, t2);
+      if (!t2.edges || t2.edges.length !== E.plate.edges.length || t2.edges === E.plate.edges) bad('B54', 'copy', 'a copied layout does not carry its labels (or shares them with the source)');
     });
 
     // B28 — a date typed into Repeat is a real day or it is refused.
@@ -2929,6 +3203,52 @@ async function suite(opts) {
         const sp = Object.assign({}, CALC_KINDS.spike.defaults, { stockUM: st, nWells: 4 }), sr = tbl(CALC_KINDS.spike.compute(sp));
         if (sr.length === 3) { const need = num(sr[0][1]), stk = num(sr[1][1]), dil = num(sr[2][1]);
           if (Math.abs(stk + dil - need) > Math.max(0.05, need * 0.002)) bad('B10', 'spike stock ' + st, `${stk} + ${dil} ≠ ${need} µL`); }
+      }
+      // A competitor series (HA-DELE1 against a pair): the mixes still close, the tubes make what the
+      // wells take plus what the next tube takes, and every well receives the same DNA however
+      // little of the competitor is in it. Off, the block is exactly the one without it.
+      const tbls = h => { const d = document.createElement('div'); d.innerHTML = h; return [...d.querySelectorAll('table.cc-tbl')].map(t => [...t.querySelectorAll('tr')].slice(1)); };
+      const base = Object.assign({}, CALC_KINDS.nbtx.defaults, { donorNames: 'NL', acceptorNames: 'HT', acceptorNg: 50, ratios: '10', donorStock: 100, acceptorStock: 100, carrierStock: 100,
+        excess: 1.2, minVolUL: 0.25, nPair: 3, nPairCtrl: 6, nDonor: 3, nAcceptor: 3, nMock: 0, nUntr: 3 });
+      for (const [df, n, top, tubeUL] of [[3, 8, 300, 3], [2, 5, 200, 2], [10, 4, 400, 4]]) {
+        tick('B10');
+        const v = Object.assign({}, base, { compOn: true, compName: 'HA', compNg: top, compStock: 100, compDf: df, compN: n, compReps: 3, compTubeUL: tubeUL });
+        const cs = _nbtxConditions(v), ngT = _nbtxDnaNg(v), doses = cs.filter(c => c.key === 'comp');
+        const tag = `comp ${top} ng 1:${df} × ${n}`;
+        if (doses.length !== n) bad('B10', tag, `${doses.length} dose conditions, not ${n}`);
+        doses.forEach((c, i) => { if (Math.abs(c.c - +(top / Math.pow(df, i)).toPrecision(3)) > 1e-9 || c.tube !== i + 1) bad('B10', tag, `dose ${i + 1} is ${c.c} ng, tube ${c.tube}`); });
+        if (cs.slice(0, n).some(c => c.key !== 'comp') || cs.filter(c => c.key === 'pair').length !== 1) bad('B10', tag, 'the doses are not conditions 1..n ahead of the pair without competitor');
+        cs.filter(c => !c.noMix).forEach(c => { const got = (c.d || 0) + (c.a || 0) + (c.key === 'comp' ? top : c.carrier);
+          if (Math.abs(got - ngT) > 1e-6) bad('B10', tag + ' · ' + c.name, `a well of this condition receives ${got} ng, the others ${ngT}`); });
+        const [series, mix] = tbls(CALC_KINDS.nbtx.compute(v, {}));
+        if (!series || !mix || series.length !== n) { bad('B10', tag, 'no series table with one row per tube'); continue; }
+        const need = tubeUL * 3 * 1.2, cell = (tr, i) => { const b = tr.children[i].querySelector('b'); return b ? num(b.textContent) : 0; };
+        const c1 = top / tubeUL, cStock = v.carrierStock;
+        series.forEach((tr, i) => { const from = cell(tr, 2), car = cell(tr, 3), om = cell(tr, 4), tot = cell(tr, 5);
+          if (Math.abs(from + car + om - tot) > Math.max(0.05, tot * 0.003)) bad('B10', tag + ' · tube ' + (i + 1), `${from} + ${car} + ${om} ≠ ${tot} µL`);
+          // the carrier is what is pipetted from its stock to bring the filler to the tube's DNA: its ng are the filler's
+          if (i > 0 && Math.abs(car * cStock - (tot - from) * c1 * (car ? 1 : 0)) > Math.max(0.05, tot * c1 * 0.003)) bad('B10', tag + ' · tube ' + (i + 1), `${car} µL of ${cStock} ng/µL is not the ${((tot - from) * c1).toFixed(1)} ng the filler holds`);
+          // a serial dilution is the same step every time: every tube the same volume, every transfer the same
+          const next = series[i + 1], took = next ? cell(next, 2) : tot / df;
+          if (Math.abs(tot - took - need) > Math.max(0.05, need * 0.01)) bad('B10', tag + ' · tube ' + (i + 1), `${tot} µL made, ${took} taken on, ${need} µL needed for its wells`);
+          if (Math.abs(tot - cell(series[0], 5)) > 0.011) bad('B10', tag + ' · tube ' + (i + 1), `${tot} µL, tube 1 is ${cell(series[0], 5)} µL: a serial dilution makes every tube the same`);
+          if (i > 1 && Math.abs(from - cell(series[1], 2)) > 0.011) bad('B10', tag + ' · tube ' + (i + 1), `takes ${from} µL from the tube before, tube 2 takes ${cell(series[1], 2)} µL`); });
+        // every tube states its DNA total, the same in all of them: c1 ng/µL, and tube volume × c1 ng in the tube
+        series.forEach((tr, i) => { const m = /DNA total:[^()]*·\s*([\d.,]+)\s*ng\/µL\s*\(([\d.,]+)\s*ng in the tube\)/.exec(tr.children[1].textContent);
+          if (!m) { bad('B10', tag + ' · tube ' + (i + 1), 'no "DNA total" line in the tube cell'); return; }
+          const tot = cell(tr, 5);
+          if (Math.abs(num(m[1]) - c1) > c1 * 0.003 || Math.abs(num(m[2]) - tot * c1) > Math.max(0.5, tot * c1 * 0.003)) bad('B10', tag + ' · tube ' + (i + 1), `DNA total says ${m[1]} ng/µL, ${m[2]} ng; ${c1} ng/µL × ${tot} µL = ${(tot * c1).toFixed(1)} ng`); });
+        // the carrier stock is an input: a stock twice as strong pipettes half the carrier and takes more Opti-MEM down
+        const v2 = Object.assign({}, v, { carrierStock: v.carrierStock * 2 }), s2 = tbls(CALC_KINDS.nbtx.compute(v2, {}))[0];
+        if (s2 && s2.length > 1) { const c0 = cell(series[1], 3), c2 = cell(s2[1], 3), o0 = cell(series[1], 4), o2 = cell(s2[1], 4);
+          if (!(c0 > 0) || Math.abs(c2 * 2 - c0) > Math.max(0.05, c0 * 0.02) || !(o2 > o0)) bad('B10', tag, `doubling the carrier stock moved tube 2's carrier from ${c0} to ${c2} µL and its Opti-MEM from ${o0} to ${o2} µL`); }
+        mix.forEach(tr => { const td = [...tr.children]; if (/no complex|short by/.test(tr.textContent)) return;
+          const m = td.length, tot = num(td[m - 1].querySelector('b').textContent), om = num(td[m - 2].textContent), fu = num(td[m - 3].textContent);
+          let dna = 0; td.slice(2, m - 3).forEach(c => { const x = /→\s*([\d.,]+)\s*µL/.exec(c.textContent); const b = c.querySelector('b'); dna += x ? num(x[1]) : (b ? num(b.textContent) : 0); });
+          if (Math.abs(dna + fu + om - tot) > Math.max(0.05, tot * 0.002)) bad('B10', tag + ' · ' + td[1].textContent.slice(0, 20), `${dna.toFixed(2)} + ${fu} + ${om} ≠ ${tot} µL`); });
+        // Off, it is the block without it.
+        const off = Object.assign({}, v, { compOn: false });
+        if (_nbtxConditions(off).some(c => c.key === 'comp') || CALC_KINDS.nbtx.compute(off, {}) !== CALC_KINDS.nbtx.compute(base, {}) || _nbtxDnaNg(off) !== _nbtxDnaNg(base)) bad('B10', tag, 'a competitor that is switched off still changes the block');
       }
     });
 
