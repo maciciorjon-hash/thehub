@@ -167,6 +167,10 @@
 //                             luminescence). Readings distorted well by well and divided back give exactly the curves of the undistorted plate;
 //                             off, the distortion shows; a viability file is not a plate (no group, tagged in the list); a plate with no viability
 //                             reading is an error in Review and left out of the run; the Raw CSV carries both readings.
+//   E64 one file, two assays  A GloMax file with luminescence and fluorescence feeds a HiBiT panel (reading: luminescence) and a viability panel (reading:
+//                             fluorescence) of one multi-assay run, as two independent assays on the same files: each panel gets exactly the curves of a
+//                             plain run on that reading alone, the plate view keeps both (named for the assay, never one overwriting the other) and finds
+//                             each plate's own fit, a panel asking for a reading the file lacks says so, two panels on the same reading are still refused.
 //
 //   E71 one run, one answer   Run Analysis pressed twice in one tick (or while a run is fitting) runs ONCE: every output file and every normalisation audit
 //                             once, not twice. Two Echo files whose columns differ stop the run on screen — "The analysis stopped" with the reason — instead of
@@ -2569,6 +2573,95 @@ if (run('E63')) await guard('E63', async () => {
   check('E63', 'the Raw CSV carries Signal and Viability_Reading only when the option is on', /Viability_Reading/.test(R.B.hdr) && /Viability_Reading/.test(R.D.hdr) && !/Viability_Reading/.test(R.A.hdr) && !/Viability_Reading/.test(R.C.hdr), { b: R.B.hdr, a: R.A.hdr });
   check('E63', 'the run records the option and the normalisation audit says the figures are ratios', R.B.p && R.B.p.viabNorm === true && R.A.p.viabNorm === false && R.B.aud && R.B.aud.viab === true, { p: R.B.p && R.B.p.viabNorm, aud: R.B.aud && R.B.aud.viab });
   check('E63', 'no page errors', !errs.length, errs);
+  await c.close();
+});
+
+if (run('E64')) await guard('E64', async () => {
+  const c = await browser.newContext({ viewport: { width: 1440, height: 900 } }); const q = await c.newPage(); const errs = []; q.on('pageerror', e => errs.push(e.message));
+  await q.goto('file://' + FILE); await q.waitForTimeout(1200);
+  await q.evaluate(() => { loadTestData(); }); await q.waitForTimeout(900);
+  const R = await q.evaluate(async () => {
+    const mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', LET = 'ABCDEFGHIJKLMNOP';
+    const fac = (ri, ci) => 0.6 + ((ri * 7 + ci * 3) % 11) / 10;
+    const plates = _TEST_READERS.map(r => { const bc = r.name.replace(/\.[^.]+$/, ''); return { bc, w: _parsePHERAstarXLS(Uint8Array.from(atob(r.b64), c => c.charCodeAt(0)).buffer, bc, '') }; });
+    const val = (pl, ri, ci) => pl.w[ri * 24 + ci].measurement;
+    const glo = (fname, name, chans) => {
+      const aoa = [[], [, , , 'Protocol: HiBiT + CellTiter-Fluor'], [, , , 'Result: ' + name], [], [], []];
+      chans.forEach(ch => {
+        aoa.push([ch.label]); aoa.push(['', 'Emission Filter:', '', '495-505']); aoa.push(['', 'Excitation Filter:', '', 'AFC 405 nm']);
+        aoa.push(['', 'Reading:', '', 1, '', ...Array.from({ length: 24 }, (_, i) => i + 1)]);
+        for (let ri = 0; ri < 16; ri++) aoa.push(['', '', '', '', LET[ri], ...Array.from({ length: 24 }, (_, ci) => { const v = ch.fn(ri, ci); return v === null ? '' : v; })]);
+        aoa.push([]);
+      });
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([[], [, , , 'x'], [], [], [], [], ['Executed by:', , , 'PC\\user'], [, 'Instrument Name:', , 'Test GloMax'], [], [], [], [], [], [], [], [], ['Parameters:'], [, 'Plate Type:', , '384 well']]), 'x');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Results');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([[], [, , , 'Protocol: x'], [, , , 'Result: ' + name]]), 'Results By Well');
+      return new File([XLSX.write(wb, { type: 'array', bookType: 'xlsx' })], fname, { type: mime });
+    };
+    const bare = (fname, fn) => {
+      const aoa = [['', ...Array.from({ length: 24 }, (_, i) => i + 1)]];
+      for (let ri = 0; ri < 16; ri++) aoa.push([LET[ri], ...Array.from({ length: 24 }, (_, ci) => { const v = fn(ri, ci); return v === null ? '' : v; })]);
+      const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Data');
+      return new File([XLSX.write(wb, { type: 'array', bookType: 'xlsx' })], fname, { type: mime });
+    };
+    // luminescence = the bundled plate; fluorescence = the same plate distorted well by well, so the two assays give different curves
+    const lumF = pl => (ri, ci) => val(pl, ri, ci);
+    const fluF = pl => (ri, ci) => { const v = val(pl, ri, ci); return v === null ? null : v * fac(ri, ci); };
+    const q3 = v => { const n = Number(v); return isFinite(n) ? n.toPrecision(3) : String(v); };
+    const snap = (rows, type) => Object.fromEntries((rows || []).filter(r => !type || r._assayType === type).map(r => [r.Protein + '|' + r.Sample_ID, q3(r.DC50_nM) + '|' + q3(r.Dmax_pct)]));
+    const both = {}, lumOnly = {}, fluOnly = {}, lumGlo = {};
+    plates.forEach(p => { both[p.bc + '.xlsx'] = glo(p.bc + '.xlsx', p.bc, [{ label: 'Fluorescence', fn: fluF(p) }, { label: 'Luminescence', fn: lumF(p) }]); lumOnly[p.bc + '.xlsx'] = bare(p.bc + '.xlsx', lumF(p)); lumGlo[p.bc + '.xlsx'] = glo(p.bc + '.xlsx', p.bc, [{ label: 'Luminescence', fn: lumF(p) }]); fluOnly[p.bc + '.xlsx'] = bare(p.bc + '.xlsx', fluF(p)); });
+    const out = {};
+    // the multi-assay run: HiBiT on the luminescence, viability on the fluorescence, the same files, no prefixes
+    document.getElementById('p-assay-type').value = 'hibit';
+    openSetupModal(); const cb = document.getElementById('multi-assay-chk'); cb.checked = true; toggleMultiAssay();
+    const setv = (id, v) => { const e = document.getElementById(id); e.value = v; e.dispatchEvent(new Event('change')); };
+    setv('mat-type-0', 'hibit'); setv('mat-read-0', 'lum'); setv('mat-ctrl-0', 'B12-O12'); updateMatPanel(0);
+    setv('mat-type-1', 'ctg'); setv('mat-read-1', 'fluor'); setv('mat-ctrl-1', 'B12-O12'); updateMatPanel(1);
+    const multi = async (files, name) => { readerFiles = files; window._plateAssay = null; window._plateAssign = {}; document.getElementById('p-assay').value = name; document.getElementById('log-panel').innerHTML = ''; _lastResultsData = null; try { await runPipeline(); } catch (e) {} return _lastResultsData || []; };
+    // references: the same two panels over plain grids (no GloMax marker, so the reading choice is moot): HiBiT on the luminescence values,
+    // viability on the fluorescence values, and viability on the luminescence values
+    out.refLum = snap(await multi(lumOnly, 'E64-ref-lum'), 'hibit');
+    out.refFlu = snap(await multi(fluOnly, 'E64-ref-flu'), 'ctg');
+    out.refLumCtg = snap(await multi(lumOnly, 'E64-ref-lumctg'), 'ctg');
+    const rows = await multi(both, 'E64-multi');
+    out.hibit = snap(rows, 'hibit'); out.ctg = snap(rows, 'ctg');
+    out.keys = Object.keys(window._plateData || {}); out.owner = window._plateAssay;
+    out.fits = out.keys.map(k => { const pd = window._plateData[k], w = Object.values(pd).find(x => x && x.s && x.s !== 'CTRL' && x.p); const f = w ? _plFit(w.s, w.p, k) : null; return { k, type: f && f._assayType, panel: f && f._panel }; });
+    out.cfg = (window._lastAnalysisParams.matConfigs || []).map(m => m.reading);
+    out.log = document.getElementById('log-panel').innerText;
+    // the same two panels, but reading the luminescence-only files: the viability panel has nothing to read
+    readerFiles = lumGlo; document.getElementById('log-panel').innerHTML = ''; _lastResultsData = null;
+    try { await runPipeline(); } catch (e) {}
+    out.noFlu = { log: document.getElementById('log-panel').innerText, ui: (document.getElementById('results-panel')?.innerText || '').replace(/\s+/g, ' ').slice(0, 300) };
+    // automatic reads the luminescence: panel 1 back to automatic gives the HiBiT curves on the viability panel too
+    setv('mat-read-1', ''); setv('mat-type-1', 'ctg'); updateMatPanel(1);
+    out.auto = snap(await multi(both, 'E64-auto'), 'ctg');
+    // the same type and reading twice is still refused; the same type with two readings is not
+    setv('mat-type-1', 'hibit'); setv('mat-read-1', 'lum'); updateMatPanel(1);
+    readerFiles = both; _lastResultsData = null; document.getElementById('log-panel').innerHTML = '';
+    try { await runPipeline(); } catch (e) {}
+    out.dup = (document.getElementById('results-panel')?.innerText || '').replace(/\s+/g, ' ').slice(0, 300);
+    setv('mat-read-1', 'fluor');
+    _lastResultsData = null; try { await runPipeline(); } catch (e) {}
+    out.twoReads = { n: (_lastResultsData || []).length, keys: Object.keys(window._plateData || {}).slice(0, 3) };
+    cb.checked = false; toggleMultiAssay();
+    return out;
+  });
+  const diff = (a, b) => Object.keys(Object.assign({}, a, b)).filter(k => a[k] !== b[k]).slice(0, 4).map(k => k + ': ' + a[k] + ' vs ' + b[k]);
+  const same = (a, b) => { const ka = Object.keys(a), kb = Object.keys(b); return ka.length > 0 && ka.length === kb.length && ka.every(k => a[k] === b[k]); };
+  check('E64', 'the references exist and differ (the fluorescence is a different assay from the luminescence)', Object.keys(R.refLum).length > 10 && !same(R.refLum, R.refFlu), { l: Object.keys(R.refLum).length, f: Object.keys(R.refFlu).length });
+  check('E64', 'the HiBiT panel (reading: luminescence) gives exactly the curves of a plain run on the luminescence alone', same(R.hibit, R.refLum), { n: [Object.keys(R.hibit).length, Object.keys(R.refLum).length], diff: diff(R.hibit, R.refLum) });
+  check('E64', 'the viability panel (reading: fluorescence) gives exactly the curves of a plain run on the fluorescence alone, from the same files', same(R.ctg, R.refFlu), { n: [Object.keys(R.ctg).length, Object.keys(R.refFlu).length], diff: diff(R.ctg, R.refFlu) });
+  check('E64', 'the panels record their reading and the log says which one each reads', R.cfg[0] === 'lum' && R.cfg[1] === 'fluor' && /luminescence reading/.test(R.log) && /fluorescence reading/.test(R.log), { cfg: R.cfg });
+  check('E64', 'the plate view keeps every plate once per assay, named for it, instead of one overwriting the other', R.keys.length === 12 && R.keys.filter(k => / · HiBiT$/.test(k)).length === 6 && R.keys.filter(k => / · Viability$/.test(k)).length === 6, R.keys);
+  check('E64', 'each plate of the plate view finds the fit of its own assay', R.fits.length === 12 && R.fits.every(f => (/ · HiBiT$/.test(f.k) ? f.type === 'hibit' : f.type === 'ctg')), R.fits);
+  check('E64', 'a panel that reads a reading the files do not have says so, and the run stops with that reason', /None of the reader files has a fluorescence reading|no fluorescence reading in this GloMax file/.test(R.noFlu.log), { log: R.noFlu.log.split(/\n/).filter(l => /rror|reading|None/.test(l)).slice(-6), ui: R.noFlu.ui });
+  check('E64', 'automatic reads the luminescence of a file that holds both', same(R.auto, R.refLumCtg), { n: [Object.keys(R.auto).length, Object.keys(R.refLumCtg).length], diff: diff(R.auto, R.refLumCtg) });
+  check('E64', 'two panels of one type and one reading are still refused, and the message names the reading', /Two assay panels both analyse hibit/.test(R.dup) && /luminescence/.test(R.dup), R.dup);
+  check('E64', 'two panels of one type with different readings are allowed (12 plates in the view)', R.twoReads.n > 10 && R.twoReads.keys.length === 3, R.twoReads);
+  check('E64', 'no page errors', !errs.length, errs);
   await c.close();
 });
 

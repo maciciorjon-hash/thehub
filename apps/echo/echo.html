@@ -2882,6 +2882,7 @@ async function _runPipeline() {
     // every run. The merge step below says it once, from the parsed rows, and tells the two apart.)
 
     let results;
+  window._plateAssay = null;
     if (document.getElementById('multi-assay-chk')?.checked) {
       // ── Multi-assay mode: run once per assay type, merge results ──
       const matConfigs = collectMultiAssayConfigs();
@@ -2891,25 +2892,26 @@ async function _runPipeline() {
       // pivot, which is keyed by compound and assay type, kept only the last of each.
       { const seen = new Set();
         for (const mc of matConfigs) {
-          const k = mc.type + '|' + (mc.prefix || '').toLowerCase();
-          if (seen.has(k)) throw new Error('Two assay panels both analyse ' + mc.type + (mc.prefix ? ' for the files starting “' + mc.prefix + '”' : ' for all the plate files') + ', so every compound would appear twice. Give each panel its own assay type or file prefix, or remove one.');
+          const k = mc.type + '|' + (mc.prefix || '').toLowerCase() + '|' + (mc.reading || '');
+          if (seen.has(k)) throw new Error('Two assay panels both analyse ' + mc.type + (mc.prefix ? ' for the files starting “' + mc.prefix + '”' : ' for all the plate files') + (mc.reading ? ' (' + _READ_NAME[mc.reading] + ')' : '') + ', so every compound would appear twice. Give each panel its own assay type, file prefix or reading, or remove one.');
           seen.add(k);
         } }
       const mergedResults = [];
-      const allPlateData = {};
+      const panelPlates = [];   // per panel: the plates it analysed and their Smart DMSO notes, merged below
       window._runScreens = matConfigs.map((mc, i) => _screenMeta(i, mc.type, mc.role, mc.target, mc.cell, mc.time, mc.prefix));
       downloadBlobs = [];
       for (let mi = 0; mi < matConfigs.length; mi++) {
         const mc = matConfigs[mi];
         log('─'.repeat(32));
-        log(`Multi-assay [${mi+1}/${matConfigs.length}]: ${mc.type} (prefix: "${mc.prefix||'all'}")`, 'head');
+        log(`Multi-assay [${mi+1}/${matConfigs.length}]: ${mc.type} (prefix: "${mc.prefix||'all'}"${mc.reading ? ', ' + _READ_NAME[mc.reading] + ' reading' : ''})`, 'head');
         // Filter reader files by prefix
         const matReaderFiles = mc.prefix
           ? Object.fromEntries(Object.entries(readerFiles).filter(([n])=>n.toLowerCase().startsWith(mc.prefix.toLowerCase())))
           : {...readerFiles};
         if (!Object.keys(matReaderFiles).length) { log(`  No reader files matched prefix "${mc.prefix}" — skipping`, 'warn'); continue; }
         const origReaderFiles = readerFiles;
-        readerFiles = matReaderFiles;
+        readerFiles = matReaderFiles; _readChannel = mc.reading || '';
+        window._smartInfo = {};
         try {
           const typeResults = await runAnalysisJS(
             assayId+'_'+mc.type, mc.ctrl||ctrlRange, skipRows,
@@ -2923,12 +2925,25 @@ async function _runPipeline() {
           typeResults.forEach(r => { r._panel = mi; });
           (window._notFitted || []).forEach(n => { if (n.panel == null) n.panel = mi; });
           mergedResults.push(...typeResults);
-          Object.assign(allPlateData, window._plateData || {});
+          panelPlates.push({ panel: mi, plates: window._plateData || {}, smart: window._smartInfo || {} });
         } finally {
-          readerFiles = origReaderFiles;
+          readerFiles = origReaderFiles; _readChannel = '';
         }
       }
-      window._plateData = allPlateData;
+      // Two panels reading the same plate (one GloMax file, its luminescence and its fluorescence) would overwrite each other's
+      // wells in the plate view, so a plate seen by more than one panel is named for the assay that read it.
+      { const seenBy = {}, allPlateData = {}, smart = {}, owner = {};
+        panelPlates.forEach(pp => Object.keys(pp.plates).forEach(k => { seenBy[k] = (seenBy[k] || 0) + 1; }));
+        const aname = { hibit: 'HiBiT', displacement: 'Displacement', gain: 'Gain-of-Signal', ctg: 'Viability' };
+        panelPlates.forEach(pp => {
+          const mc = matConfigs[pp.panel], tag = ' · ' + (aname[mc.type] || mc.type) + (matConfigs.filter(m => m.type === mc.type).length > 1 ? ' ' + (pp.panel + 1) : '');
+          Object.keys(pp.plates).forEach(k => {
+            const nk = seenBy[k] > 1 ? k + tag : k;
+            allPlateData[nk] = pp.plates[k]; owner[nk] = pp.panel;
+            if (pp.smart[k]) smart[nk] = pp.smart[k];
+          });
+        });
+        window._plateData = allPlateData; window._smartInfo = smart; window._plateAssay = owner; }
       results = mergedResults;
       window._lastAssayType = 'multi';
       window._lastAnalysisParams = {...window._lastAnalysisParams, assayType:'multi', multiAssay:true, matConfigs};
@@ -4105,7 +4120,12 @@ function _readerNum(v) {
 // fluorescence has no signal of its own — .glomax.viabOnly — so it is a viability file when "Normalise to viability" is on,
 // and an ordinary reading when it is off.
 function _glomaxWells(G, barcode) {
-  const { sig, via } = RDR.glomaxSignal(G);
+  let { sig, via } = RDR.glomaxSignal(G);
+  if (_readChannel) {
+    const c = G.channels.filter(x => x.kind === _readChannel)[0];
+    if (!c) throw new Error('no ' + _READ_NAME[_readChannel] + ' reading in this GloMax file');
+    sig = c; if (c.kind === 'fluor') via = null;
+  }
   const L = 'ABCDEFGHIJKLMNOP', wells = [];
   for (let ri = 0; ri < 16; ri++) for (let ci = 0; ci < 24; ci++) {
     const k = L[ri] + (ci + 1), sv = sig.vals[k];
@@ -4114,7 +4134,7 @@ function _glomaxWells(G, barcode) {
     wells.push(w);
   }
   if (!wells.some(w => w.measurement !== null)) throw new Error('no plate readings found in the sheet');
-  wells.glomax = { name: G.name, protocol: G.protocol, signal: sig.label || sig.kind, viability: via ? (via.label || 'Fluorescence') : '', viabOnly: sig.kind === 'fluor' };
+  wells.glomax = { name: G.name, protocol: G.protocol, signal: sig.label || sig.kind, viability: via ? (via.label || 'Fluorescence') : '', viabOnly: sig.kind === 'fluor' && !_readChannel };
   return wells;
 }
 function _parsePHERAstarXLS(ab, barcode, a1CellRef) {
@@ -4122,6 +4142,10 @@ function _parsePHERAstarXLS(ab, barcode, a1CellRef) {
   { const G = typeof RDR !== 'undefined' ? RDR.glomax(wb) : null; if (G) return _glomaxWells(G, barcode); }
   const ws = wb.Sheets[wb.SheetNames[0]];
   const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+// A multi-assay panel can name the reading it analyses ('lum' | 'fluor'; '' = automatic, as above), so one GloMax file with
+// both feeds a HiBiT panel with its luminescence and a viability panel with its fluorescence, each as an assay of its own.
+let _readChannel = '';
+const _READ_NAME = { lum: 'luminescence', fluor: 'fluorescence' };
   const _sheetRange = XLSX.utils.decode_range(ws['!ref'] || 'A1');
   const _sheetR0 = _sheetRange.s.r; // 0-based Excel row where sheet used-range starts
   const _sheetC0 = _sheetRange.s.c; // 0-based Excel col where sheet used-range starts
@@ -4503,6 +4527,7 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
   // said so: its raw counts would otherwise sit beside other plates' ratios.
   window._viabInfo = null;
   if (viabNorm) {
+  if (!readerRaw.length && _readChannel) throw new Error('None of the reader files has a ' + _READ_NAME[_readChannel] + ' reading (a GloMax export with that reading is needed).');
     const vmap = new Map(), vsrc = {}, vpl = {};
     if (viabRaw.length) {
       const RV = await _resolvePlatesAsync(_echoPlates(echoData), _viabOk, window._viabAssign, async f => _sheetTexts(_readerBuf[f.file]));
@@ -10885,7 +10910,7 @@ async function _hxCommit() {
   Object.assign(rec, { assayId, groups, n: data.length, nCompounds: new Set(data.map(r => r.Sample_ID)).size, nFlag: data.filter(r => r.Flag === 'Yes').length, params, assayType: window._lastAssayType || null, fp, pk,
     form: window._runForm || rec.form || null, matPanels: window._runMat || rec.matPanels || 0,
     screens: window._runScreens || rec.screens || null });
-  const blob = { id: aid, data, plateData: window._plateData || null, smart: window._smartInfo || null, normAudits: window._normAudits || null, notFitted: window._notFitted || [] };
+  const blob = { id: aid, data, plateData: window._plateData || null, plateAssay: window._plateAssay || null, smart: window._smartInfo || null, normAudits: window._normAudits || null, notFitted: window._notFitted || [] };
   rec.bytes = JSON.stringify(blob).length; rec.u = now;
   set.name = assayId.trim() || set.name; set.updated = now; set.nPlates = window._plateData ? Object.keys(window._plateData).length : set.nPlates;
   await _hxPutRetry(async () => { await _hxPut('blobs', blob); await _hxPut('runs', rec); await _hxPut('sets', set); });
@@ -11150,6 +11175,7 @@ async function hxReanalyse(id) {
     echoToast('Fetching the input files of ' + run.assayId + ' from the cloud…');
     try { f = await ehDownloadFiles(set); renderHistoryTab(); } catch (e) { echoToast('Could not fetch the input files from the cloud: ' + ((e && (e.code || e.message)) || e), 'err'); return; }
   }
+    window._plateAssay = blob.plateAssay || null;
   if (!f) { echoToast('The input files of this dataset were not kept (too large, or dropped to make room).', 'warn'); return; }
   const ok = await echoRestore({ v: ECHO_SESSION_V, savedAt: new Date(run.ts).toISOString(), matPanels: run.matPanels || 0, files: { echo: f.echo, readers: f.readers, smiles: f.smiles }, form: run.form || {}, qc: {}, view: {}, hadResults: false }, { run: false });
   if (ok) { openSetupModal(); switchSetupTab('analysis'); echoToast('Input files and settings of ' + run.assayId + ' v' + run.ver + ' are in Setup. Change what you want and press Run.'); }
@@ -12388,6 +12414,8 @@ function plateMouseMove(e) {
   if (w) {
     inner += `<div style="font-size:11px;margin-top:3px;line-height:1.7;">`;
     if (w.ctrl) inner += `<span style="color:var(--accent3);">Control well</span><br>`;
+  const pa = window._plateAssay && window._plateAssay[bc];
+  if (pa != null) { const r = rows.find(x => x._panel === pa); if (r) return r; }
     if (_plIsCpd(w)) inner += row('Compound', `<b>${esc(w.s)}</b>`);
     if (w.p) inner += row('Group', esc(w.p));
     if (w.c != null) inner += row('Concentration', _cvFmtConc(Math.pow(10, w.c + 9)));
@@ -13010,6 +13038,8 @@ function addAssayType() {
       <div class="sx-lbl">Binding parameters <span class="sx-opt">optional · enables Ki</span></div>
       <div class="setup-2col">
         <div class="sx-f"><label for="mat-tracer-conc-${idx}">Tracer [L]</label>
+      <div class="sx-f"><label for="mat-read-${idx}">GloMax reading <span class="pinfo" data-tip="For a GloMax file that holds two readings of the same plate (luminescence and fluorescence). Choose which one this panel analyses, so one file can feed a HiBiT degradation panel (luminescence) and a viability panel (fluorescence), each with its own controls, fit and results. Automatic reads the luminescence." tabindex="0" role="img" aria-label="Explanation">?</span></label>
+        <select id="mat-read-${idx}"><option value="">Automatic (luminescence)</option><option value="lum">Luminescence</option><option value="fluor">Fluorescence</option></select></div>
           <div class="sx-inline"><input type="number" id="mat-tracer-conc-${idx}" placeholder="e.g. 5" step="any" oninput="updateMatKiPreview(${idx})"><select id="mat-tracer-unit-${idx}" class="sx-unit" aria-label="Tracer unit" oninput="updateMatKiPreview(${idx})"><option>nM</option><option>µM</option></select></div></div>
         <div class="sx-f"><label for="mat-tracer-kd-${idx}">Tracer Kd</label>
           <div class="sx-inline"><input type="number" id="mat-tracer-kd-${idx}" placeholder="e.g. 50" step="any" oninput="updateMatKiPreview(${idx})"><select id="mat-kd-unit-${idx}" class="sx-unit" aria-label="Tracer Kd unit" oninput="updateMatKiPreview(${idx})"><option>nM</option><option>µM</option></select></div></div>
@@ -13145,6 +13175,7 @@ function collectMultiAssayConfigs() {
   return configs;
 }
 
+      reading:(gv('read')||'').trim(),
 // A vertical wheel over a wide results table scrolls it sideways. Two things were wrong with
 // this, and they compounded:
 //   · it was reading and writing .tbl-wrap, which has no overflow of its own — the scroller is
