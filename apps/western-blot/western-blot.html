@@ -2991,11 +2991,13 @@ function loadImageFile(pi,file){
       try{
         var buf=fr.result;
         var ifds=UTIF.decode(buf); UTIF.decodeImage(buf,ifds[0]);
-        var rgba=UTIF.toRGBA8(ifds[0]);
         var w=ifds[0].width, h=ifds[0].height;
+        var rgba=_tiff16To8(ifds[0]), wide=!!rgba;
+        if(!rgba) rgba=UTIF.toRGBA8(ifds[0]);
         var c=document.createElement('canvas'); c.width=w; c.height=h;
         c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(rgba.buffer),w,h),0,0);
-        finishLoad(pi, downscaleCanvas(c));
+        if(wide) toast('16-bit picture: scaled to 8 bits over its own range (a straight line, so ratios between bands are kept)');
+        finishLoad(pi, downscaleCanvas(c), wide);
       }catch(err){ toast('Could not decode TIFF'); }
     };
     fr.readAsArrayBuffer(file);
@@ -3014,7 +3016,23 @@ function downscaleCanvas(c){
   d.getContext('2d').drawImage(c,0,0,d.width,d.height);
   return d.toDataURL('image/png');
 }
-function finishLoad(pi,dataUrl){ FIG.panels[pi].src=dataUrl; FIG.panels[pi].crop=null; save(); openCrop(pi); }
+function finishLoad(pi,dataUrl,wide){ FIG.panels[pi].src=dataUrl; FIG.panels[pi].crop=null; FIG.panels[pi].bits16=wide?true:undefined; save(); openCrop(pi); }
+// A 16-bit scan (ChemiDoc, Odyssey, a camera's raw) is not a picture with a high byte to throw away: its values sit anywhere in
+// 0-65535, and UTIF's toRGBA8 keeps only the top 8 bits, so a gel that uses 0-4000 became 16 grey levels and the bands could not be
+// measured. Here the picture is stretched linearly from its darkest to its brightest value (one line, so a band twice as strong
+// stays twice as strong). WhiteIsZero files are inverted as the format says. Returns RGBA, or null for anything that is not 16-bit.
+function _tiff16To8(d){
+  var bps=d.t258&&d.t258[0], spp=(d.t277&&d.t277[0])||1;
+  if(bps!==16||(spp!==1&&spp!==3&&spp!==4)||!d.data||d.data.length<d.width*d.height*spp*2) return null;
+  var n=d.width*d.height, dv=new DataView(d.data.buffer,d.data.byteOffset,d.data.byteLength), use=spp===1?1:3, mn=65535, mx=0, i, k, v;
+  for(i=0;i<n;i++) for(k=0;k<use;k++){ v=dv.getUint16((i*spp+k)*2,true); if(v<mn) mn=v; if(v>mx) mx=v; }
+  var sc=255/Math.max(1,mx-mn), inv=d.t262&&d.t262[0]===0, out=new Uint8ClampedArray(n*4);
+  for(i=0;i<n;i++){
+    for(k=0;k<3;k++){ v=dv.getUint16((i*spp+(spp===1?0:k))*2,true); v=Math.round((v-mn)*sc); out[i*4+k]=inv?255-v:v; }
+    out[i*4+3]=255;
+  }
+  return out;
+}
 
 /* ── Crop ── */
 var _crop={pi:null,img:null,scale:1,rect:null,drag:null};
@@ -3621,12 +3639,25 @@ function dnMeasure(G,q,f){
   }
   return out;
 }
-function _dnLoad(pi){ var p=FIG.panels[pi]; return new Promise(function(res,rej){ if(!_bIsData(p.cropped)){ rej(); return; } var im=new Image(); im.onload=function(){ res(im); }; im.onerror=rej; im.src=p.cropped; }); }
+// Levels and invert are for the eye: a window that clips the faint bands and the strong ones is the one thing a densitometry
+// number must not be taken through. The crop is cut again from the original, straightened and cropped the same way but with
+// no levels and no invert, whenever the figure carries either. (Before, the numbers were read off the levelled picture.)
+function _dnLevelled(p){ var a=_adjOf(p); return a.lo>0||a.hi<255||a.inv; }
+function _dnLoad(pi){ var p=FIG.panels[pi]; return new Promise(function(res,rej){
+  if(!_bIsData(p.cropped)){ rej(); return; }
+  var a=_adjOf(p), mk=function(url){ var im=new Image(); im.onload=function(){ res(im); }; im.onerror=rej; im.src=url; };
+  if(!_dnLevelled(p)||!p.crop||!_bIsData(p.src)){ mk(p.cropped); return; }
+  var o=new Image(); o.onload=function(){
+    var full=_adjCanvas(o,{rot:a.rot,lo:0,hi:255,inv:false},1), c=p.crop, out=document.createElement('canvas'); out.width=Math.round(c.w); out.height=Math.round(c.h);
+    out.getContext('2d').drawImage(full,c.x,c.y,c.w,c.h,0,0,out.width,out.height); mk(out.toDataURL('image/png')); };
+  o.onerror=rej; o.src=p.src; }); }
+// A box and polarity stored before this (v absent) were found on the levelled picture; with an inversion the bands were the other way round.
+function _dnMigrate(p){ if(p.quant&&p.quant.v!==2){ if(_adjOf(p).inv) p.quant.dark=!(p.quant.dark!==false); p.quant.v=2; } }
 function openQuant(pi){
   var p=FIG.panels[pi]; if(!p||!_bIsData(p.cropped)){ toast('Add and crop a blot image first'); return; }
   _dnLoad(pi).then(function(im){
     DN.pi=pi; DN.img=im; DN.G=_dnGrey(im);
-    if(!p.quant){ var dark=_dnDarkAuto(DN.G), a=_dnAuto(DN.G,dark); p.quant={y0:a.y0,y1:a.y1,dark:dark}; save(); }
+    if(!p.quant){ var dark=_dnDarkAuto(DN.G), a=_dnAuto(DN.G,dark); p.quant={y0:a.y0,y1:a.y1,dark:dark,v:2}; save(); } else if(p.quant.v!==2){ _dnMigrate(p); save(); }
     if(DN.lc==null||!FIG.panels[DN.lc]||DN.lc===pi){ DN.lc=null; FIG.panels.forEach(function(q,i){ if(DN.lc==null&&i!==pi&&_bIsData(q.cropped)&&/actin|gapdh|tubulin|vinculin|loading|histone|\bh3\b|hsp90|lamin|ponceau|total/i.test(_stripHtml(q.prot))) DN.lc=i; }); }
     el('dn-back').classList.add('open'); _dnDraw();
   },function(){ toast('Could not read this panel'); });
@@ -3664,12 +3695,12 @@ function _dnTable(res,lc){
       return '<tr><td>'+(i+1)+'</td><td class="nm">'+esc(_dnLaneName(i))+'</td><td>'+_dnFmt(r.vol)+'</td>'+(lcRes?'<td>'+_dnFmt(lcRes[i]?lcRes[i].vol:null)+'</td><td>'+(norm[i]==null?'—':norm[i].toPrecision(3))+'</td>':'')
         +'<td><b>'+(rel==null?'—':rel.toFixed(2))+'</b></td><td>'+(r.sat>0.005?'<span class="dn-sat" title="'+Math.round(r.sat*100)+'% of the box is at the end of the scale: this number is a floor">saturated</span>':'')+'</td></tr>'; }).join('');
     el('dn-tbl').innerHTML='<thead><tr><th>#</th><th>Lane</th><th>Signal</th>'+(lcRes?'<th>Loading</th><th>Ratio</th>':'')+'<th>Relative</th><th></th></tr></thead><tbody>'+rows+'</tbody>';
-    el('dn-note').textContent='Signal: integrated over the box, minus the median of the rows just above and below it in each lane. Relative: to '+_dnLaneName(ref)+(lcRes?', after dividing by '+(_stripHtml(FIG.panels[lc].prot)||'the loading control')+' in the same lane':'')+'.';
+    el('dn-note').textContent='Signal: integrated over the box, minus the median of the rows just above and below it in each lane. Relative: to '+_dnLaneName(ref)+(lcRes?', after dividing by '+(_stripHtml(FIG.panels[lc].prot)||'the loading control')+' in the same lane':'')+'.'+(_dnLevelled(FIG.panels[DN.pi])?' Measured on the original picture: the levels and invert set for the figure are not applied.':'')+(FIG.panels[DN.pi].bits16?' The scan was 16-bit, scaled to 8 bits in a straight line.':'');
   });
 }
 function _dnFmt(v){ if(v==null||!isFinite(v)) return '—'; if(v===0) return '0'; return v>=1e6?(v/1e6).toFixed(2)+'M':v>=1e3?(v/1e3).toFixed(1)+'k':v.toFixed(0); }
 function _dnMeasurePanel(i){ var p=FIG.panels[i]; if(!p||!_bIsData(p.cropped)) return Promise.resolve(null);
-  return _dnLoad(i).then(function(im){ var G=_dnGrey(im); if(!p.quant){ var dark=_dnDarkAuto(G), a=_dnAuto(G,dark); p.quant={y0:a.y0,y1:a.y1,dark:dark}; save(); } return dnMeasure(G,p.quant); },function(){ return null; }); }
+  return _dnLoad(i).then(function(im){ var G=_dnGrey(im); if(!p.quant){ var dark=_dnDarkAuto(G), a=_dnAuto(G,dark); p.quant={y0:a.y0,y1:a.y1,dark:dark,v:2}; save(); } else if(p.quant.v!==2){ _dnMigrate(p); save(); } return dnMeasure(G,p.quant); },function(){ return null; }); }
 function dnSetDark(v){ FIG.panels[DN.pi].quant.dark=(v!=='light'); save(); _dnDraw(); }
 function dnSetLc(v){ DN.lc=v===''?null:+v; _dnDraw(); }
 function dnSetRef(v){ DN.ref=+v||0; _dnDraw(); }
