@@ -47,10 +47,10 @@ var ChartKitCore = (function(){
       bar: { width: 1, gap: 1.1, inner: 0.12, border: 1, shade: false },
       err: { type: 'sd', cap: 3, w: 1, dir: 'up' },
       pts: { show: false, size: 1.8 },
-      xy: { marker: 'circle', msize: 2.8, lw: 1.4, fit: true, points: true, open: false, dash: false },
+      xy: { marker: 'circle', msize: 2.8, lw: 1.4, fit: true, points: true, open: false, dash: false, extend: false },
       ref: { show: true, y: null, dash: true, w: 0.9, label: true },
       legend: { show: true, size: 9, swatch: 9, pos: 'auto' },
-      hidden: {}, omit: {}, pos: {}, margin: { l: 0, r: 0, t: 0, b: 0 },
+      hidden: {}, seen: {}, omit: {}, pos: {}, margin: { l: 0, r: 0, t: 0, b: 0 },
       snap: true, grid2: false
     };
   }
@@ -361,7 +361,8 @@ var ChartKitCore = (function(){
       vis.forEach(function(it){
         var ink = it.color, pts = it.pts.filter(function(p){ return p.x > 0 && p.st.n; });
         if (spec.xy.fit && it.fit && it.fit.fn && pts.length > 1) {
-          var a = Math.pow(10, d0), b = Math.pow(10, d1), poly = [];
+          // A fit is drawn over the doses that were measured and stops at the first and last point; past them it is a guess, not a result. (Style › "Extend the fit across the whole axis" draws it over the axis.)
+          var px0 = pts.map(function(p){ return p.x; }), a = spec.xy.extend ? Math.pow(10, d0) : Math.min.apply(null, px0), b = spec.xy.extend ? Math.pow(10, d1) : Math.max.apply(null, px0), poly = [];
           for (var k = 0; k <= 160; k++) { var xx = a * Math.pow(b / a, k / 160), yy = it.fit.fn(xx); if (fin(yy)) poly.push([xPx(xx), yPx(yy)]); }
           data.push({ t: 'path', pts: poly, stroke: ink, sw: spec.xy.lw, dash: spec.xy.dash ? '5 3' : '', el: 'fit:' + it.id, clip: true });
         }

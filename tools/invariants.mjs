@@ -1623,6 +1623,17 @@ async function suite(opts) {
         rows.forEach(r => delete r.curve);
         if (expHasCurves(e) || nHead(_pubCurvesFill(pubText(e), e))) bad('R8', key, 'curves remain after the fits were removed');
       });
+      // The fit is drawn over the doses tested: from the first to the last point, not across the 0.35-decade margin of the axis (alone and overlaid).
+      await guard('R8', 'fit span', async () => {
+        const c = mkCurve(1e-7, false), num = (svg, re) => [...svg.matchAll(re)].map(m => +m[1]);
+        const one = rcvSvg(c), ov = rcvOverlaySvg([{ name: 'A', detail: '', curve: c }, { name: 'B', detail: '', curve: mkCurve(3e-8, false) }], {});
+        for (const [lbl, svg] of [['alone', one], ['overlaid', ov]]) {
+          tick('R8');
+          const pl = /<polyline points="([^"]+)"/.exec(svg), px = pl ? pl[1].trim().split(/\s+/).map(q => +q.split(',')[0]) : [], cx = [...svg.matchAll(/<circle[^>]* cx="([\d.]+)"[^>]* cy="([\d.]+)"/g)].filter(m => +m[2] < 270).map(m => +m[1]);   // not the legend's swatches, which sit under the plot
+          if (!px.length || !cx.length) { bad('R8', lbl, 'no fitted line or no points to compare'); continue; }
+          if (Math.abs(Math.min(...px) - Math.min(...cx)) > 1.2 || Math.abs(Math.max(...px) - Math.max(...cx)) > 1.2) bad('R8', lbl, `the fitted line runs ${Math.min(...px)}–${Math.max(...px)} but the points ${Math.min(...cx)}–${Math.max(...cx)}`);
+        }
+      });
       // The layout follows the count: one curve alone, two to six overlaid, more than six one panel each.
       await guard('R8', 'layout', async () => {
         const m = made[0], e = m.e, rows = e.integration.results[0].rows;

@@ -29,6 +29,9 @@
 //                               (each plate its own compounds); "the same on every plate" gives replicate plates; boxes edited by hand win, and what fits nowhere waits.
 //   B20 a drag reaches         A drag that runs past the edge of the plate (or crosses the gaps and labels) ends on the edge well, and one held at the window's edge scrolls the page by itself,
 //                               so the last rows of a plate taller than the window can be drawn.
+//   B21 two controls on      A plate can carry more than one vehicle (Vehicle 2–4, named by the person), and each compound says which one it is divided by. The Normalisation tab exists only while two vehicles have wells; the divisor
+//       one plate            is the mean of the named vehicle's wells on the compound's own plates (each corrected against its plate's baseline), so the relative values, the Prism copy and the figure follow it; "closest" reads the
+//                            layout; undo, History and the snapshot keep the choice; a vehicle whose wells were cleared stops being a reference; the workbook says which control each compound used.
 //
 // Usage (repo root):  node tools/analysis_invariants.mjs [--only=C1,C3] [--file-bca=path] [--verbose]
 import { chromium } from 'playwright';
@@ -627,6 +630,57 @@ if (run('B20')) await guard('B20', async () => {
   check('B20', 'a drag held at the bottom edge scrolls the page by itself', mid.top > 100, mid);
   check('B20', 'and one carried past the plate ends on the edge: A2 to H12 is 88 wells, not the wells the pointer last crossed', a.n === 88 && a.r1 === 7 && a.c1 === 11 && a.r0 === 0 && a.c0 === 1, a);
   check('B20', 'a drag that wanders out over the labels and comes back ends exactly where it was released (B3 to C5 = 6 wells)', b.n === 6 && b.r0 === 1 && b.r1 === 2 && b.c0 === 2 && b.c1 === 4, b);
+  await ctx.close();
+});
+
+if (run('B21')) await guard('B21', async () => {
+  const { ctx, pg } = await open('/apps/beacon/beacon.html');
+  const r = await pg.evaluate(async () => {
+    const o = {}, wait = ms => new Promise(r => setTimeout(r, ms));
+    loadTestData('gain');
+    o.tab0 = document.getElementById('tab-norm').hidden; o.g0 = bVehGroups();
+    const mean = (pl, key) => { const v = []; Object.keys(pl.map).forEach(p => { if (pl.map[p].k === key) { const x = bVal(pl, p, true); if (x !== null) v.push(x); } }); return v; };
+    const meanAll = key => { const v = [].concat(...state.plates.map(pl => mean(pl, key))); return v.reduce((a, c) => a + c, 0) / v.length; };
+    const vehA = meanAll('veh');   // rows A–H of column 2 before the split
+    state.plates.forEach(pl => ['E', 'F', 'G', 'H'].forEach(r => { if (pl.map[r + '2']) pl.map[r + '2'] = { k: 'veh2' }; }));
+    bAfterChange();
+    o.tab1 = !document.getElementById('tab-norm').hidden; o.g1 = bVehGroups();
+    const first = id => bDoseData(true).groups.filter(g => g.s.id === id)[0].pts[0].reps[0].v;
+    const vehOld = meanAll('veh'), veh2 = meanAll('veh2');
+    const c0 = first('s3');
+    nmSet('s3', 'veh2');
+    const c1 = first('s3');
+    o.ratio = [c1 / c0, vehOld / veh2];
+    o.otherUnchanged = first('s1') === bDoseData(true).groups[0].pts[0].reps[0].v;
+    o.refs1 = state.series.map(s => bRefOf(s));
+    // closest: A, B sit beside the upper vehicle, C, D beside the lower
+    state.series.forEach(s => delete s.ref); nmMatch();
+    o.match = state.series.map(s => bRefOf(s));
+    // undo, snapshot, History's restore
+    bAddVehicle(); const snap = _bSnap();
+    nmSet('s1', 'veh2'); o.changed = bRefOf(state.series[0]); bUndo(); o.afterUndo = state.series.map(s => bRefOf(s));
+    nmSet('s1', 'veh2'); _bRestore(snap); o.restored = state.series.map(s => bRefOf(s)); o.nVeh = state.nVeh;
+    // a name, shown everywhere the role is
+    nmRename('veh2', 'DMSO 0.5 %'); o.label = bRoleLabel('veh2'); switchTab('results'); await wait(200); o.inQuality = /DMSO 0\.5 %/.test(document.getElementById('rs-root').innerText);
+    // the figure's axis says it is relative to each compound's own vehicle; the workbook sheet says which one
+    o.yTitle = bGraphDoc().yTitle; o.aoa = _bNormAoa().map(x => x.slice(0, 3).join('|'));
+    // the Prism copy follows the divisor
+    nmAll('veh'); const p1 = _bPrismBlock(true).aoa[2][1]; nmAll('veh2'); const p2 = _bPrismBlock(true).aoa[2][1]; o.prism = [p1, p2];
+    // clear the second vehicle's wells: the tab goes, and a compound that named it goes back to the first
+    state.plates.forEach(pl => Object.keys(pl.map).forEach(p => { if (pl.map[p].k === 'veh2') delete pl.map[p]; }));
+    bAfterChange(); o.keys = [...document.querySelectorAll('.tab:not([hidden])')].map(t => t.dataset.tab); o.tab2 = document.getElementById('tab-norm').hidden; o.refs2 = state.series.map(s => bRefOf(s)); o.rel2 = bDoseData(true).rel;
+    return o;
+  });
+  check('B21', 'one vehicle: no Normalisation tab', r.tab0 === true && JSON.stringify(r.g0) === '["veh"]', r);
+  check('B21', 'a second vehicle with wells shows the tab', r.tab1 === true && JSON.stringify(r.g1) === '["veh","veh2"]', r);
+  check('B21', 'naming the second vehicle for a compound divides it by that vehicle\'s mean instead (ratio = old mean / new mean), and leaves the others alone', Math.abs(r.ratio[0] - r.ratio[1]) < 1e-9 && r.otherUnchanged, r.ratio);
+  check('B21', '"Match to the closest control" puts A and B on the upper vehicle and C and D on the lower', JSON.stringify(r.match) === '["veh","veh","veh2","veh2"]', r.match);
+  check('B21', 'undo takes a choice back; the snapshot (and so History) brings it back with the number of vehicles on offer (a third, once the second has wells)', JSON.stringify(r.afterUndo) === '["veh","veh","veh2","veh2"]' && JSON.stringify(r.restored) === '["veh","veh","veh2","veh2"]' && r.changed === 'veh2' && r.nVeh === 3, r);
+  check('B21', 'a name given to a vehicle is used on the Results tab', r.label === 'DMSO 0.5 %' && r.inQuality, r);
+  check('B21', 'the figure says each compound is relative to its own vehicle, and the workbook lists the control of every compound', /its vehicle/.test(r.yTitle) && r.aoa.length === 6 && /veh|Vehicle|DMSO/.test(r.aoa[2]), { y: r.yTitle, aoa: r.aoa });
+  check('B21', 'the Prism copy follows the divisor (the same compound gives a different relative number against the other vehicle)', r.prism[0] !== r.prism[1] && r.prism[0] > 0 && r.prism[1] > 0, r.prism);
+  check('B21', 'the tab row skips the hidden Normalisation tab', !r.keys.includes('norm'), r.keys);
+  check('B21', 'clearing the second vehicle\'s wells hides the tab and sends its compounds back to the first vehicle, and the figure stays relative', r.tab2 === true && r.refs2.every(k => k === 'veh') && r.rel2 === true, { tab2: r.tab2, refs2: r.refs2, rel2: r.rel2 });
   await ctx.close();
 });
 

@@ -205,6 +205,8 @@
 //
 //   E79 an intermediate is   The Planner's prep table says what the snapped transfer REALLY makes: the Echo moves whole 2.5 nL drops, so 1 uM from a 10 mM Source over a
 //       what its drops make  30 uL pre-fill (ideal 3.0 nL) is made with 2.5 nL and comes out 0.83 uM (-17 %), warned about; 10 uM (30.03 nL -> 30 nL) is exact and is not.
+//   E80 a fit stops where  The curve of a compound is drawn from its first to its last tested dose (Curves tab, PNG/PDF), not across the whole axis: the polyline's ends sit on _xmin and _xmax even when
+//       the points stop    the axis is wider (zoomed out); the thumbnail's curve ends on its first and last point instead of 15 % past them.
 //
 // Usage (repo root):  node tools/echo_invariants.mjs [--only=E1,E7] [--file=path/to/echo.html] [--verbose]
 import { chromium } from 'playwright';
@@ -2944,6 +2946,38 @@ if (run('E79')) await guard('E79', async () => {
   r = await out(10);
   check('E79', '10 uM: made as listed (30 nL, 9.99 uM), no warning', r.cells && /^9\.99 µM$/.test(r.cells[3]) && !/from the listed concentration/.test(r.text), r.cells);
   await c.close();
+});
+
+
+if (run('E80')) await guard('E80', async () => {
+  await BACK_TO_ANALYSIS();
+  await runWith({});
+  await pg.waitForTimeout(1500);
+  const r = await E(() => {
+    const row = (_lastResultsData || []).find(x => _cvFitted(x) && isFinite(x._xmin) && isFinite(x._xmax) && x._xmax > x._xmin), o = {};
+    if (!row) return { none: true };
+    // record the longest polyline the Curves painter strokes: that is the curve
+    const proto = CanvasRenderingContext2D.prototype, mt = proto.moveTo, lt = proto.lineTo, bp = proto.beginPath; let cur = [], best = [];
+    proto.beginPath = function () { if (cur.length > best.length) best = cur; cur = []; return bp.apply(this, arguments); };
+    proto.moveTo = function (x, y) { cur.push(x); return mt.apply(this, arguments); };
+    proto.lineTo = function (x, y) { cur.push(x); return lt.apply(this, arguments); };
+    const cv = document.createElement('canvas'); cv.style.width = '600px'; cv.style.height = '380px'; document.body.appendChild(cv);
+    let L = null;
+    try { L = drawMultiCurve(cv, [row], { xlo: row._xmin - 2, xhi: row._xmax + 2, ylo: -20, yhi: 130 }); } finally { proto.beginPath = bp; proto.moveTo = mt; proto.lineTo = lt; if (cur.length > best.length) best = cur; cv.remove(); }
+    const px = x => L.pL + L.pw * (x - L.xlo) / (L.xhi - L.xlo);
+    o.axisWider = L.xlo < row._xmin - 1 && L.xhi > row._xmax + 1;
+    o.ends = [Math.min(...best), Math.max(...best)]; o.want = [px(row._xmin), px(row._xmax)]; o.n = best.length;
+    // the thumbnail: its polyline spans _xmin.._xmax
+    const svg = makeCurveSVG(row), m = /<polyline[^>]*points="([^"]+)"/.exec(svg);
+    if (m) { const xs = m[1].trim().split(/\s+/).map(q => +q.split(',')[0]); o.thumb = [Math.min(...xs), Math.max(...xs)]; o.thumbPts = (svg.match(/<circle/g) || []).length; }
+    return o;
+  });
+  check('E80', 'there is a fitted curve to look at', !r.none, r);
+  if (!r.none) {
+    check('E80', 'the axis is wider than the data in this check (otherwise it proves nothing)', r.axisWider, r);
+    check('E80', 'the Curves painter strokes the fit from the first to the last tested dose, not to the axis edges', r.n > 100 && Math.abs(r.ends[0] - r.want[0]) < 1.5 && Math.abs(r.ends[1] - r.want[1]) < 1.5, r);
+    check('E80', 'the thumbnail\'s curve starts and ends inside the plot (on its first and last point), not at the plot edges', !r.thumb || (r.thumb[0] > 40 && r.thumb[1] < 190), r);
+  }
 });
 
 await browser.close();
