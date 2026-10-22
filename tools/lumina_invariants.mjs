@@ -569,6 +569,28 @@ try {
   check('L20 Hit Finder reads that table back as the same compounds with the same potencies (a bounded fit keeps its bound)', back.n === t.ec.length && mism.length === 0 && back.pot.every(p => p[2] === 'exact' || p[2] === '>' || p[2] === '<' || p[2] === 'n.d.'), JSON.stringify({ n: back.n, mism: mism.slice(0, 3), assay: back.assay }));
   await hp.close();
 }
+// L21 — the run has a name (Echo's Assay ID): typed in Setup it is in the name of every export, on the Methods sheet, on the result set for Labbook,
+// and in the session, so a 72 h and a 144 h read of one plate are two runs with two names.
+{
+  await ev(() => { state.assayId = ''; lsOpen(0); });
+  await page.waitForTimeout(150);
+  await page.fill('#ls-assayid', 'CTG20261022_72h');
+  const a = await ev(() => ({ id: state.assayId, stem: _lmFileStem(), sess: lmSession().assayId }));
+  check('L21 the Assay ID typed in Setup is the run\'s name, in the file stem and in the session', a.id === 'CTG20261022_72h' && a.stem === 'CTG20261022_72h' && a.sess === 'CTG20261022_72h', JSON.stringify(a));
+  await ev(() => lsClose());
+  const c1 = await capture(() => exportResultsCSV()), c2 = await capture(() => exportRawCSV());
+  check('L21 the results CSV and the raw CSV are named after the Assay ID', /^CTG20261022_72h_Results_/.test(c1.name) && /^CTG20261022_72h_RawData_/.test(c2.name), c1.name + ' | ' + c2.name);
+  const xl = await ev(() => { var nm = null, was = XLSX.writeFile, ws = XLSX.utils.aoa_to_sheet; XLSX.writeFile = function(wb, n){ nm = n; XLSX.writeFile = was; window.__wb = wb; }; exportXLSX(); XLSX.writeFile = was; var p = window.__wb && window.__wb.Sheets['Data Analysis Protocol']; return { name: nm, id: p ? XLSX.utils.sheet_to_json(p, { header: 1 }).filter(function(r){ return r[0] === 'Assay ID'; }).map(function(r){ return r[1]; })[0] : null }; });
+  check('L21 the workbook is named after the Assay ID and its Methods sheet says it', xl.name && /^CTG20261022_72h_Results_.*\.xlsx$/.test(xl.name) && xl.id === 'CTG20261022_72h', JSON.stringify(xl));
+  const lbl = await ev(() => { var got = null; var par = window.parent, was = par.openApp; par.openApp = function(a, b, c, ctx){ got = ctx; }; try { sendResultsToLabbook(); } finally { par.openApp = was; } return got && got.results[0] && { id: got.results[0].assayId, label: got.results[0].label, sess: got.results[0].session.assayId }; });
+  check('L21 the result set sent to Labbook carries the Assay ID in its label and its session', lbl === null ? true : (lbl && lbl.id === 'CTG20261022_72h' && lbl.label.indexOf('CTG20261022_72h') === 0 && lbl.sess === 'CTG20261022_72h'), JSON.stringify(lbl));
+  const saved = await ev(() => lmSession());
+  await ev(() => { state.assayId = ''; });
+  await ev(s => lmLoadSession(JSON.parse(JSON.stringify(s)), null), saved);
+  check('L21 opening the saved analysis again brings the Assay ID back', (await ev(() => state.assayId)) === 'CTG20261022_72h');
+  await ev(() => { state.assayId = ''; });
+  check('L21 without an Assay ID the exports keep the plate\'s name', (await ev(() => _lmFileStem())) !== 'CTG20261022_72h');
+}
 check('no page or console errors', errs.length === 0, errs.slice(0, 3).join(' | '));
 await browser.close();
 if (findings.length) { console.log(findings.join('\n')); console.log(`\n${findings.length} finding(s), ${passed} checks passed.`); process.exit(1); }

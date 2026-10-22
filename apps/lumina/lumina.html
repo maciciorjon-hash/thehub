@@ -1465,6 +1465,7 @@ var state = {
   plates: [{ signal: {}, file: '', name: '' }],   // what each plate owns: its reader values, and its name (empty = "Plate N"; nameSrc 'file' = taken from the reader file, 'user' = typed)
   plate: 0,                 // the plate on screen
   names: [],                // names[n-1] = what compound n is called; empty = "Compound n"
+  assayId: '',              // the name of this run (Echo's Assay ID): in every export's file name and Methods sheet, and on the result set sent to Labbook. Two reads of one plate (72 h, 144 h) are told apart by it
   ctrlWells: new Set(),     // pos set — 100% control, same wells on every plate
   zeroCtrlWells: new Set(), // pos set, for displacement assay 0% control
   excluded: new Set(),      // 'plateIndex:pos' — readings left out of their curve. The wells stay on the plate and in every raw export (flagged); only the fit stops using them.
@@ -1555,7 +1556,7 @@ function _lmCurveOf(r){
 // "Edit in Lumina" works from any device — the notebook holds the analysis, not just its numbers.
 function lmSession(){
   return {
-    v: 1, assay: document.getElementById('assay-type').value, format: state.format,
+    v: 1, assay: document.getElementById('assay-type').value, assayId: state.assayId || '', format: state.format,
     layout: JSON.parse(JSON.stringify(state.layout)),
     plates: state.plates.map(function(p){ var o = { signal: Object.assign({}, p.signal), file: p.file || '', name: p.name || '', nameSrc: p.nameSrc || '' }; if (p.viab) { o.viab = Object.assign({}, p.viab); o.viabFile = p.viabFile || ''; } return o; }),
     viabNorm: !!state.viabNorm,
@@ -1588,6 +1589,7 @@ function lmLoadSession(sess, link){
   state.viabNorm = !!sess.viabNorm;
   state.plate = 0;
   state.names = _lmArr(sess.names).map(function(n){ return n == null ? '' : String(n); });
+  state.assayId = typeof sess.assayId === 'string' ? sess.assayId : '';
   state.ctrlWells = new Set(_lmArr(sess.ctrl).map(String)); state.zeroCtrlWells = new Set(_lmArr(sess.zero).map(String));
   state.excluded = new Set(_lmArr(sess.excluded).map(String));
   LM_SEL = new Set(); LM_MODE = null;
@@ -1635,7 +1637,7 @@ function lgGraphShow(){
   document.getElementById('lg-root').style.display = has ? '' : 'none';
   if (!has) return;
   var rev = state.fitSig + '|' + state.fitResults.length;
-  if (!_lgKit) _lgKit = ChartKit.mount(document.getElementById('lg-root'), { key: 'lumina', doc: lgGraphDoc, filename: function(){ var f = state.plates[0] && state.plates[0].file; return 'lumina-' + (f ? String(f).replace(/\.[^.]+$/, '') : 'figure'); }, toast: toast });
+  if (!_lgKit) _lgKit = ChartKit.mount(document.getElementById('lg-root'), { key: 'lumina', doc: lgGraphDoc, filename: function(){ if (state.assayId) return _lmFileStem() + '_figure'; var f = state.plates[0] && state.plates[0].file; return 'lumina-' + (f ? String(f).replace(/\.[^.]+$/, '') : 'figure'); }, toast: toast });
   else if (_lgRev !== rev) _lgKit.refresh();
   _lgRev = rev;
 }
@@ -1652,7 +1654,8 @@ function sendResultsToLabbook(){
       source: 'Lumina',
       origin: 'lumina',
       session: lmSession(),
-      label: lab.potency.split(' ')[0] + ' · ' + rows.length + ' compound' + (rows.length===1?'':'s') + ' · by hand',
+      assayId: state.assayId || '',
+      label: (state.assayId ? state.assayId + ' · ' : '') + lab.potency.split(' ')[0] + ' · ' + rows.length + ' compound' + (rows.length===1?'':'s') + ' · by hand',
       assay: t,
       potencyLabel: lab.potency,
       effectLabel: lab.effect,
@@ -3620,7 +3623,7 @@ function lsGo(i){ lsKit().go(i); }
 function lsLive(){ if (lsK && lsK.isOpen()) lsK.refresh(); }
 function lsClearAll(){
   lmMark();
-  state.layout = { grads: [], zones: [] }; state.plates = [_lmNewPlate()]; state.plate = 0; state.names = [];
+  state.layout = { grads: [], zones: [] }; state.plates = [_lmNewPlate()]; state.plate = 0; state.names = []; state.assayId = '';
   state.ctrlWells = new Set(); state.zeroCtrlWells = new Set(); state.excluded = new Set(); state.lbLink = null;
   LM_SEL = new Set(); LM_MODE = null; LS.form.names = ''; LS.touched = false; LS.same = false;
   resetAnalysisOutputs(); lmAfterChange(); lsGo(0);
@@ -3638,6 +3641,7 @@ function lsAssay(){
   var t = lsEl('assay-type').value;
   lsK.pane('assay').innerHTML =
     SetupKit.group('Assay', '', '<div class="sx-grid">' +
+      SetupKit.field('Assay ID', 'ls-assayid', '<input type="text" id="ls-assayid" value="' + esc(state.assayId || '') + '" placeholder="e.g. CTG20261022_72h" autocomplete="off" spellcheck="false">', 'Names this run. It goes in the name of every file you export and on the result set in Labbook. Two reads of one plate (72 h, 144 h) are two runs: give each its own.', 'ls-assayid-hint') +
       SetupKit.field('Assay type', 'ls-assay', '<select id="ls-assay">' + ['hibit', 'ctg', 'displacement', 'gain'].map(function(k){ return '<option value="' + k + '"' + (k === t ? ' selected' : '') + '>' + ASSAY_NAMES[k] + '</option>'; }).join('') + '</select>', esc(lsAssayHint(t)), 'ls-assay-hint') +
       SetupKit.field('Plate format', '', SetupKit.seg('ls-fmt', [[96, '96-well'], [384, '384-well']], state.format, 'f', 'Plate format'), 'Changing it clears the layout and the readings (⌘Z brings them back).') +
     '</div>') +
@@ -3832,6 +3836,7 @@ function lsReview(){
   else if (!S) issues.push([1, 'The gradient has no <b>compounds</b> on it yet — make them in Compounds.']);
   if (!state.ctrlWells.size) issues.push([2, 'No <b>' + esc(lsCtlTexts().c[0].toLowerCase()) + '</b> wells: the readings stay raw counts, and the % settings of the fit stand aside.']);
   if (disp && !state.zeroCtrlWells.size) issues.push([2, 'A displacement assay needs <b>0 % control</b> wells to scale the readings between the two controls.']);
+  if (!state.assayId) issues.push([3, 'No <b>Assay ID</b>: the exports are named after the plate. Name the run in Assay (e.g. CTG20261022_72h) so a 72 h and a 144 h read of one plate stay apart.']);
   if (S && _lmNamedCount() < S * P) issues.push([3, '<b>' + (S * P - _lmNamedCount()) + '</b> of ' + S * P + ' compounds have no name (they are called Compound 1, 2, 3…). Name them in the list on the Plate tab.']);
   state.layout.grads.forEach(function(g){ var r = _lmGradRange(g); if (r.n < 4) issues.push([3, 'A gradient of <b>' + r.n + ' points</b> is too short for a fitted ' + L.ec50Name + '.']); });
   var seen = {}; issues = issues.filter(function(x){ if (seen[x[1]]) return false; seen[x[1]] = 1; return true; });
@@ -3845,6 +3850,7 @@ function lsWire(d){
   d.addEventListener('input', function(e){
     var t = e.target, f = LS.form;
     if (t.id === 'ls-paste') { var txt = t.value; if (txt && lmPasteReadings(txt)) { t.value = ''; lsK.refresh(); } return; }
+    if (t.id === 'ls-assayid') { state.assayId = t.value.trim(); return; }
     if (t.id === 'ls-names') { f.names = t.value; LS.touched = true; lsPlanText(); }
     else if (t.id === 'ls-top') { f.top = parseFloat(t.value); lsPlanText(); }
     else if (t.id === 'ls-fac') { f.fac = parseFloat(t.value); lsPlanText(); }
@@ -4654,7 +4660,7 @@ function renderResults(){
   var R = state.fitResults, body = document.getElementById('rs-body'); if (!body) return;
   document.getElementById('tab-res-n').textContent = R.length || '';
   var nf = R.filter(function(r){ return r.flagged; }).length;
-  document.getElementById('rs-title').innerHTML = R.length ? R.length + ' curve' + (R.length === 1 ? '' : 's') + (nf ? '<span class="sub">' + nf + ' flagged</span>' : '') : 'Results';
+  document.getElementById('rs-title').innerHTML = R.length ? R.length + ' curve' + (R.length === 1 ? '' : 's') + (state.assayId ? '<span class="sub">' + esc(state.assayId) + '</span>' : '') + (nf ? '<span class="sub">' + nf + ' flagged</span>' : '') : 'Results';
   document.getElementById('rs-acts').style.display = R.length ? '' : 'none';
   var wrap = document.getElementById('results-table-wrap');
   if (!R.length) {
@@ -4728,7 +4734,7 @@ function _buildLuminaPrismAOA(asFraction){
 }
 // A file is named after the plate when there is one plate and it has a name; Lumina otherwise.
 function _lmFileStem(){
-  var nm = state.plates.length === 1 && state.plates[0].name ? state.plates[0].name : 'Lumina';
+  var nm = state.assayId ? state.assayId : state.plates.length === 1 && state.plates[0].name ? state.plates[0].name : 'Lumina';
   return nm.replace(/[\\/:*?"<>|]+/g, '_').replace(/\s+/g, '_');
 }
 // A CSV cell: quoted when it holds a comma, a quote or a line break, and a leading = + - @ made
@@ -4784,6 +4790,7 @@ function exportXLSX(){
   (state.rawRows||[]).forEach(function(r){ rawAoA.push(_rawRow(r)); });
   var protoAoA = [
     ['Lumina — Analysis Protocol'],
+    ['Assay ID', state.assayId || ''],
     ['Assay type', lmAssayText(state.assayType)],
     ['Plate format', state.format + '-well'],
     ['Plates', state.plates.map(function(pl, i){ return lmPlateName(i) + (pl.file ? ' (' + pl.file + ')' : ''); }).join('; ')],

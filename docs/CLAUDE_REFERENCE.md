@@ -8285,3 +8285,12 @@ Jon: *"construye lo que quedó pendiente."* Everything the first delivery left f
 **Tests**: `tools/hitfinder_invariants.mjs` H26 sensitivity · H27 efficiency · H28 screen health · H29 report · H30 Labbook · H31 one door in · H32 cloud; `L20` in Lumina; H23 now audits Sensitivity and Health at six widths. Each proven by putting its bug back (12 mutations, all caught): relax the wrong way, re-score nothing, LE constant, unread MPO property = 0, plain SD, plain mean, CSS variables in a PDF plot, symbols untranslated, a results row sent to Labbook, DC50>range not a bound, cloud write before read, a forgotten cleared call.
 
 **Left for later**: Z′ and plate controls (the Screen record would need them from Echo), CNS MPO's ClogD/pKa from a predictor, a sensitivity view that moves two gates together, Lumina's own `Send to Hit Finder` for multi-plate files (it sends one table; plates become groups).
+
+## Lumina: the run has a name, the Assay ID (2026-10-22)
+
+Jon (Spanish): Lumina needs an assay title like Dose Response, for traceability; a CTG read at 72 h and again at 144 h are the same experiment but two result sets, and a name tells them apart. And the name goes in the export files too.
+
+- **`state.assayId`**, typed in Setup › Assay (**Assay ID**, Echo's own label). Not undoable, not part of `lmDataId` (renaming a run must not make a second copy in Labbook). In `lmSession` (so *Edit in Lumina* brings it back), cleared by *Clear all*.
+- **`_lmFileStem()` is the Assay ID** when there is one (else the single plate's name, else `Lumina`): the results CSV and workbook, the raw CSV, the Plot and curve PNGs, the Graph figure (`<id>_figure`) and Hit Finder's `name`. The workbook's *Data Analysis Protocol* sheet has an `Assay ID` row, the result set sent to Labbook has `assayId` and its label starts with it, and the Results header shows it.
+- Review lists a missing Assay ID as a note (level 3), never a stop. Invariant **L21** in `tools/lumina_invariants.mjs`, proven by putting the old stem back.
+- **Left for later**: Beacon has the same need (its exports are named after the plate too).
