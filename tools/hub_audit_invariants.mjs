@@ -87,6 +87,8 @@ if (run('H1')) {
                               ['a session store that throws', "Object.defineProperty(window,'sessionStorage',{get(){throw new DOMException('denied','SecurityError')}});"]]) {
     for (const mode of ['visitor', 'admin']) {
       const { context, page, errs } = await open({ mode, init });
+      // the Hub fades in once auth answers (or after 1.5 s at the latest); a loaded runner needs longer than the fixed settle in open()
+      await page.waitForFunction(() => { const h = document.getElementById('hub-home'); return h && +getComputedStyle(h).opacity === 1; }, null, { timeout: 8000 }).catch(() => {});
       const r = await page.evaluate(() => ({ home: +getComputedStyle(document.getElementById('hub-home')).opacity, cards: document.querySelectorAll('.card,.ld-card').length, rail: document.querySelectorAll('#ws-rail .ws-item').length, open: typeof openApp }));
       if (r.home !== 1 || r.open !== 'function' || r.cards < 5) bad('H1', `${name} (${mode}): the Hub did not draw: ${JSON.stringify(r)}`);
       else if (mode === 'admin' && !r.rail) bad('H1', `${name} (admin): no rail`);
