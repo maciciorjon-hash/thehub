@@ -64,6 +64,7 @@ window.__escapeAudit = (opts = {}) => {
     if (!a || a === document.body || a === document.documentElement) continue;
     const ar = a.getBoundingClientRect();
     if (ar.width === 0 || ar.height === 0) continue;
+    if (it._text && ar.width <= 2 && ar.height <= 2) continue;   // visually-hidden text (.sr-only: 1×1, clipped) is not painted, so it cannot stick out of anything
     const acs = getComputedStyle(a);
     const bw = s => parseFloat(acs['border' + s + 'Width']) || 0;
     for (const r of rects) {
