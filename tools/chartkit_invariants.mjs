@@ -38,6 +38,7 @@
 //       the points stop     whole axis" brings the old drawing back; the Y range of the figure is unchanged either way.
 //   K21 nothing until       A figure with several compounds starts with none drawn, each with a tick beside its name (Data tab) and a hint where the figure is; ticking draws it, Show all / Hide all work, choices
 //       it is ticked        survive a refresh of the same data and new data starts unticked again; a lone compound, and a host with its own chooser (drawAll), are drawn at once.
+//   K22 open on request     Ticking a compound does not list its replicates: they open when its name or the arrow beside it is clicked (and close the same way), for that compound only.
 //
 //   node tools/chartkit_invariants.mjs        exit 1 on any finding
 import { chromium } from 'playwright';
@@ -220,6 +221,19 @@ check('K21 Show all draws every compound, Hide all none, and a tick survives a r
 check('K21 data that gains a compound leaves the ticks as they were and starts the new one unticked', JSON.stringify(k21.two) === '[true,true]' && JSON.stringify(k21.grown) === '[true,false,true]', JSON.stringify({ two: k21.two, grown: k21.grown }));
 check('K21 a lone compound is drawn at once, and so is every compound of a host with its own chooser', JSON.stringify(k21.lone) === '[false]' && k21.own.every(h => !h), JSON.stringify({ lone: k21.lone, own: k21.own }));
 
+await page.goto(URL_ + '?kind=xy&hide=1');
+const k22 = await ev(() => {
+  const root = document.getElementById('root'), o = {}, dp = () => root.querySelectorAll('.ck-dp').length, tick = i => root.querySelectorAll('.ck-tick')[i];
+  tick(0).click(); tick(1).click(); o.afterTick = dp();
+  root.querySelectorAll('.ck-name')[0].click(); o.afterName = dp(); o.open0 = root.querySelectorAll('.ck-dg')[0].querySelectorAll('.ck-dp').length; o.open1 = root.querySelectorAll('.ck-dg')[1].querySelectorAll('.ck-dp').length;
+  root.querySelectorAll('.ck-chev')[1].click(); o.afterArrow = [root.querySelectorAll('.ck-dg')[0].querySelectorAll('.ck-dp').length, root.querySelectorAll('.ck-dg')[1].querySelectorAll('.ck-dp').length];
+  root.querySelectorAll('.ck-chev')[0].click(); o.closed = root.querySelectorAll('.ck-dg')[0].querySelectorAll('.ck-dp').length;
+  return o;
+});
+check('K22 ticking compounds lists no replicates', k22.afterTick === 0, JSON.stringify(k22));
+check('K22 the name opens its compound\'s replicates, and only its own', k22.open0 > 0 && k22.open1 === 0, JSON.stringify(k22));
+check('K22 the arrow opens another compound\'s, and closes an open one', k22.afterArrow[0] > 0 && k22.afterArrow[1] > 0 && k22.closed === 0, JSON.stringify(k22));
+
 // ═════ the editor inside the apps (what a person actually meets) ═════
 const APPS = {
   echo: { file: 'apps/echo/echo.html', kit: '_egKit', root: '#eg-root', load: async pg => { await pg.evaluate(() => loadTestData()); await pg.waitForTimeout(600); await pg.evaluate(() => runPipeline()); await pg.waitForFunction(() => typeof _lastResultsData !== 'undefined' && _lastResultsData && _lastResultsData.length > 0, null, { timeout: 120000 }); await pg.waitForTimeout(500); await pg.evaluate(() => document.querySelector('[data-tab="graph"]').click()); } },
@@ -336,7 +350,7 @@ for (const name of Object.keys(APPS)) {
     check('K17 ' + name + ' ' + w + '×' + h + ': the whole figure and panel are inside the window, and the figure is as large as the room allows (4 page shapes)', bad.length === 0, bad.slice(0, 2).join(' | '));
   }
   // K19 — a dose label wider than its column wraps; it never sticks out of its box (CI's font draws 0.0000693 wider than 54px)
-  { const r = await E(() => { const tb = document.querySelector('.ck-tabs button[data-tab="data"]'); if (tb) tb.click(); const xs = [...document.querySelectorAll('.ck-dx')].filter(e => e.getBoundingClientRect().width > 0); xs.forEach(e => { e.textContent = '0.000000069300'; }); return { n: xs.length, wide: xs.filter(e => e.scrollWidth > e.clientWidth + 0.5).length }; });
+  { const r = await E(() => { const tb = document.querySelector('.ck-tabs button[data-tab="data"]'); if (tb) tb.click(); document.querySelectorAll('.ck-chev:not(.open)').forEach(b => b.click()); const xs = [...document.querySelectorAll('.ck-dx')].filter(e => e.getBoundingClientRect().width > 0); xs.forEach(e => { e.textContent = '0.000000069300'; }); return { n: xs.length, wide: xs.filter(e => e.scrollWidth > e.clientWidth + 0.5).length }; });
     check('K19 ' + name + ': a long dose label stays inside its box (' + r.n + ' labels)', r.n > 0 && r.wide === 0, JSON.stringify(r)); }
   await pg.setViewportSize({ width: 1280, height: 800 });
   // K15 — narrow windows

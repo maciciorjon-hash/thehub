@@ -1316,7 +1316,12 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
 .ck-name:hover{color:var(--accent-ink,var(--accent));}
 .ck-dg{margin-bottom:12px;}
 .ck-dg.off{opacity:.55;}
-.ck-dh{display:flex;align-items:center;gap:8px;margin-bottom:4px;}
+.ck-dh{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px;}
+.ck-dl{display:flex;align-items:center;gap:8px;min-width:0;flex:1 1 auto;}
+.ck-chev{flex:none;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border:none;background:none;border-radius:var(--r-1);color:var(--text3);cursor:pointer;}
+.ck-chev:hover{color:var(--text);background:var(--surface3);}
+.ck-chev svg{transition:transform var(--dur-1,.15s);}
+.ck-chev.open svg{transform:rotate(90deg);}
 .ck-dh i{width:12px;height:12px;border-radius:var(--r-1);border:1px solid var(--border2);flex:none;}
 .ck-dp{display:flex;align-items:center;gap:10px;margin:2px 0 2px 20px;}
 .ck-dx{width:64px;flex:none;overflow-wrap:anywhere;font-size:var(--fs-2);color:var(--text3);font-variant-numeric:tabular-nums;}
@@ -16937,7 +16942,7 @@ var ChartKit = (function(){
 
   function mount(root, opts){
     opts = opts || {};
-    var KEY = 'ck2:' + (opts.key || 'chart'), spec, doc = { items: [] }, scene = null, sel = null, tab = 'data', undo = [], redo = [], lastUndoKey = '', lastUndoAt = 0, dpi = 1200, saveT = 0, drag = null;
+    var KEY = 'ck2:' + (opts.key || 'chart'), spec, doc = { items: [] }, scene = null, sel = null, tab = 'data', undo = [], redo = [], lastUndoKey = '', lastUndoAt = 0, dpi = 1200, saveT = 0, drag = null, openItems = {};
     try { spec = C.withDefaults(JSON.parse(localStorage.getItem(KEY) || 'null')); } catch (e) { spec = C.withDefaults(null); }
 
     root.classList.add('ck-root'); root.setAttribute('tabindex', '-1');
@@ -17127,9 +17132,10 @@ var ChartKit = (function(){
       return head + its.map(function(it, ii){
         var hid = spec.hidden[it.id], col = C.itemColor(spec, it, ii, its.length);
         var failed = !hid && fitFailed().some(function(f){ return f.id === it.id; });
-        return '<div class="ck-dg' + (hid ? ' off' : '') + '"><div class="ck-dh"><input type="checkbox" class="ck-tick" data-a="toggleitem" data-id="' + esc(it.id) + '"' + (hid ? '' : ' checked') + ' aria-label="Draw ' + esc(it.name) + '"><i style="background:' + col + '"></i><button type="button" class="ck-name" data-pick="bar:' + esc(it.id) + '">' + esc(it.name) + '</button></div>' +
+        var open = !!openItems[it.id];
+        return '<div class="ck-dg' + (hid ? ' off' : '') + '"><div class="ck-dh"><span class="ck-dl"><input type="checkbox" class="ck-tick" data-a="toggleitem" data-id="' + esc(it.id) + '"' + (hid ? '' : ' checked') + ' aria-label="Draw ' + esc(it.name) + '"><i style="background:' + col + '"></i><button type="button" class="ck-name" data-a="openitem" data-id="' + esc(it.id) + '" aria-expanded="' + open + '">' + esc(it.name) + '</button></span><button type="button" class="ck-chev' + (open ? ' open' : '') + '" data-a="openitem" data-id="' + esc(it.id) + '" aria-expanded="' + open + '" aria-label="' + (open ? 'Hide' : 'Show') + ' the replicates of ' + esc(it.name) + '"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button></div>' +
           (failed ? '<div class="ck-fitnote">Too few points left to refit — its curve is not drawn.</div>' : '') +
-          (hid ? '' : (it.points || []).map(function(p){ return '<div class="ck-dp"><span class="ck-dx">' + esc(p.label != null ? p.label : p.x) + '</span><span class="ck-reps">' + (p.reps || []).map(function(r){ var off = spec.omit[r.id]; return '<button type="button" class="ck-rep' + (off ? ' off' : '') + '" data-omit="' + esc(r.id) + '" title="' + (off ? 'Omitted — click to put it back' : 'Click to omit') + '">' + esc(C.fin(r.v) ? String(+(+r.v).toPrecision(4)) : '–') + '</button>'; }).join('') + '</span></div>'; }).join('')) + '</div>';
+          (!open ? '' : (it.points || []).map(function(p){ return '<div class="ck-dp"><span class="ck-dx">' + esc(p.label != null ? p.label : p.x) + '</span><span class="ck-reps">' + (p.reps || []).map(function(r){ var off = spec.omit[r.id]; return '<button type="button" class="ck-rep' + (off ? ' off' : '') + '" data-omit="' + esc(r.id) + '" title="' + (off ? 'Omitted — click to put it back' : 'Click to omit') + '">' + esc(C.fin(r.v) ? String(+(+r.v).toPrecision(4)) : '–') + '</button>'; }).join('') + '</span></div>'; }).join('')) + '</div>';
       }).join('');
     }
 
@@ -17169,6 +17175,7 @@ var ChartKit = (function(){
       else if (a === 'setcolor') { pushUndo('col'); spec.colors[d.id] = d.c; draw(); renderSel(); if (tab === 'colors' || tab === 'data') renderPanel(); save(); }
       else if (a === 'resetcolor') { pushUndo('col'); delete spec.colors[d.id]; draw(); renderSel(); renderPanel(); save(); }
       else if (a === 'hideitem') { pushUndo('hide'); spec.hidden[d.id] = !spec.hidden[d.id]; if (!spec.hidden[d.id]) delete spec.hidden[d.id]; if (sel && itemOf(sel) === d.id) sel = null; draw(); renderSel(); renderPanel(); save(); }
+      else if (a === 'openitem') { openItems[d.id] = !openItems[d.id]; renderPanel(); }
       else if (a === 'showall' || a === 'hideall') { pushUndo('hide'); (doc.items || []).forEach(function(it){ if (a === 'showall') delete spec.hidden[it.id]; else spec.hidden[it.id] = true; }); if (a === 'hideall') sel = null; draw(); renderSel(); renderPanel(); save(); }
       else if (a === 'hideleg') { pushUndo('leg'); spec.legend.show = false; sel = null; draw(); renderSel(); renderPanel(); save(); }
       else if (a === 'resetpos') { if (sel) { pushUndo('pos'); delete spec.pos[sel.indexOf('leg:') === 0 ? 'legend' : sel]; draw(); overlay(); save(); } }
@@ -17258,7 +17265,7 @@ var ChartKit = (function(){
       try { doc = opts.doc ? opts.doc() || { items: [] } : { items: [] }; } catch (e) { doc = { items: [] }; }
       // different data: what was done to the old data (omitted replicates, colours, positions, retyped titles) goes
       if (doc.sig !== undefined && lastSig !== null && doc.sig !== lastSig) {
-        spec.omit = {}; spec.hidden = {}; spec.seen = {}; spec.colors = {}; spec.pos = {}; spec.ref.y = null; spec.title.forEach(function(t){ t.text = null; }); spec.xTitle.text = null; spec.yTitle.text = null; undo = []; redo = []; sel = null;
+        openItems = {}; spec.omit = {}; spec.hidden = {}; spec.seen = {}; spec.colors = {}; spec.pos = {}; spec.ref.y = null; spec.title.forEach(function(t){ t.text = null; }); spec.xTitle.text = null; spec.yTitle.text = null; undo = []; redo = []; sel = null;
       }
       if (doc.sig !== undefined) lastSig = doc.sig;
       adoptItems();
