@@ -87,9 +87,11 @@ if (run('H1')) {
                               ['a session store that throws', "Object.defineProperty(window,'sessionStorage',{get(){throw new DOMException('denied','SecurityError')}});"]]) {
     for (const mode of ['visitor', 'admin']) {
       const { context, page, errs } = await open({ mode, init });
-      // the Hub fades in once auth answers (or after 1.5 s at the latest); a loaded runner needs longer than the fixed settle in open()
-      await page.waitForFunction(() => { const h = document.getElementById('hub-home'); return h && +getComputedStyle(h).opacity === 1; }, null, { timeout: 8000 }).catch(() => {});
-      const r = await page.evaluate(() => ({ home: +getComputedStyle(document.getElementById('hub-home')).opacity, cards: document.querySelectorAll('.card,.ld-card').length, rail: document.querySelectorAll('#ws-rail .ws-item').length, open: typeof openApp }));
+      // The Hub fades in once auth answers (1.5 s at the latest). The admin lands inside an app (Labbook), and then #hub-home is hidden by design:
+      // "drawn" is the home at full opacity OR an app view at full opacity, and a loaded runner needs longer than the fixed settle in open().
+      const drawn = () => { const h = document.getElementById('hub-home'); if (h && +getComputedStyle(h).opacity === 1) return 1; return document.body.classList.contains('in-app') && [...document.querySelectorAll('.app-view')].some(v => v.style.display !== 'none' && +getComputedStyle(v).opacity === 1) ? 1 : 0; };
+      await page.waitForFunction(drawn, null, { timeout: 8000 }).catch(() => {});
+      const r = await page.evaluate(() => ({ home: (() => { const h = document.getElementById('hub-home'); if (h && +getComputedStyle(h).opacity === 1) return 1; return document.body.classList.contains('in-app') && [...document.querySelectorAll('.app-view')].some(v => v.style.display !== 'none' && +getComputedStyle(v).opacity === 1) ? 1 : 0; })(), cards: document.querySelectorAll('.card,.ld-card').length, rail: document.querySelectorAll('#ws-rail .ws-item').length, open: typeof openApp }));
       if (r.home !== 1 || r.open !== 'function' || r.cards < 5) bad('H1', `${name} (${mode}): the Hub did not draw: ${JSON.stringify(r)}`);
       else if (mode === 'admin' && !r.rail) bad('H1', `${name} (admin): no rail`);
       else ok();
@@ -360,6 +362,7 @@ if (run('H12')) {
     const { context, page } = await open({ mode: 'visitor' });
     await page.evaluate(() => { tryUnlock(APP_UNLOCK_WORDS.lumina); });
     await page.reload({ waitUntil: 'load' }); await page.waitForTimeout(600);
+    await page.waitForFunction(() => typeof _unlockedApps !== 'undefined' && _unlockedApps.has('lumina'), null, { timeout: 6000 }).catch(() => {});   // a slow runner reads the store later
     const r = await page.evaluate(() => ({ has: _unlockedApps.has('lumina'), others: Array.from(_unlockedApps).filter(x => x !== 'lumina') }));
     r.has && !r.others.length ? ok() : bad('H12', 'an unlock made under the current epoch did not survive a reload: ' + JSON.stringify(r));
     await context.close();

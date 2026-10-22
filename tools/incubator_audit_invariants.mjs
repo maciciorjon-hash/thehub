@@ -79,7 +79,7 @@ try {
       set('cf-baseline', 'HCT116'); if (!v.typed) set('cf-passage', v.passage || '5'); set('cf-interval', v.interval || '3'); set('cf-limit', v.limit || '30'); if (v.seeded) set('cf-seeded', v.seeded); if (v.myco) set('cf-myco', v.myco);
       saveCellForm(); const n1 = Object.keys(STORE.get().incubator).length, t = document.getElementById('toast').textContent; if (n1 === n0) closeCellForm(); return { added: n1 - n0, toast: t };
       }, v); };
-    for (const [k, v] of [['passage -5', { passage: '-5' }], ['passage 1.5', { passage: '1.5' }], ['passage 1e999 typed', { typed: '1e999' }], ['passage text typed', { typed: 'abc' }], ['interval 0', { interval: '0' }], ['interval 366', { interval: '366' }], ['limit -1', { limit: '-1' }], ['future split', { seeded: '2026-10-22' }], ['future myco', { myco: '2026-10-22' }]]) {
+    for (const [k, v] of [['passage -5', { passage: '-5' }], ['passage 1.5', { passage: '1.5' }], ['passage 1e999 typed', { typed: '1e999' }], ['passage text typed', { typed: 'abc' }], ['interval 0', { interval: '0' }], ['interval 366', { interval: '366' }], ['limit -1', { limit: '-1' }], ['future split', { seeded: '2099-01-01' }], ['future myco', { myco: '2099-01-01' }]]) {
       const r = await tryForm(v); check('IN3', `the culture form refuses ${k} with a message and stores nothing`, r.added === 0 && r.toast.length > 8, JSON.stringify(r));
     }
     const ok = await tryForm({ passage: '7', interval: '', limit: '' }); check('IN3', 'a whole passage with the other two left empty is stored', ok.added === 1, JSON.stringify(ok));
