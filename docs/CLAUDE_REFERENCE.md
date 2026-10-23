@@ -7108,8 +7108,7 @@ raw and ProNect's own `NormKinetic`), `raw_kinetic.csv` (wells are *columns* in 
 metadata rows Cell Type/Target/Compound/Concentration/Unit/Time, time in minutes first) and
 `norm_kinetic.csv` (its ~100 junk trailing rows are ignored). The layout travels with the file.
 Anything else goes through the generic readers (`tpReadTables`: time down / across, blocks, long).
-**The GloMax export has not been delivered**; a GloMax reader waits for a real file — do not invent
-one. A blank or `OVRFLW` reading is `null`, never 0; a time axis that does not increase is an error,
+**The GloMax time-course CSV arrived 2026-10-23** and is read (see *Tempo reads GloMax and gets a Setup*). A blank or `OVRFLW` reading is `null`, never 0; a time axis that does not increase is an error,
 never a silent sort.
 
 **Normalisation is ProNect's, verified against the real files** (all 80 sample wells, worst-well
@@ -7191,7 +7190,7 @@ Edit, Update and the `extra` sanitiser. **K14 is the escape/runtime/alignment au
 each put back and caught. Phone sweep: 0 findings on Chromium over 64 screens (390, 844×390, 320,
 375, both themes); WebKit has one advisory (an ellipsed flag).
 
-**Open.** The GloMax export. What `BLANK` is. A kinetic metric group in Hit Finder (needs the
+**Open.** What `BLANK` is. A kinetic metric group in Hit Finder (needs the
 canonical columns first). A kinetic overlay in Labbook's Results. Assistant notes (`tools/assist/kb/`).
 Showing it to non-admins.
 
@@ -7590,6 +7589,16 @@ Jon (Spanish): the setups and plate drawings are at a good point; Labbook needs 
 - **Plan line** (`_plCpdPlanInner`): "12 compounds · 3 per plate → 4 plates (you have 1)", a row per plate (click to open it: *n of cap*, the names), planned plates marked *new*, **Add N plates with this layout**, duplicates and overflow in `.warn`. **Same on every plate** (`e.cpdMode==='same'`, replicate plates) shows when there are ≥2 plates; it never adds plates, and says what does not fit.
 - **The list is the record:** a block past the end of the list loses its name; a name typed or pasted on a block goes back into the list (`_plCpdAdopt`: the names the plates hold in a row from the first block, the waiting tail kept), so hand edits and the list never disagree. With no list yet the box is prefilled from the names the plates already carry. Not for the Designer's plate (`ds:`) or block plates (`blk:`).
 - **B52** (cap blocks made by hand, typing adds no plate, commit makes 3 plates at 3 per plate, plate 3 holds one name, layout copied, list stored, plan says 3 plates, block rename reaches the list, *same*/*order*, viability layout without blocks, empty plate says so) fails with plate adding removed (1 finding), and with write-back plus the block rebuild removed (2). Not done: readout copies (24 h + 72 h) are still counted by the setup's `nPlates`, not by the editor's plates; `seed.nPlates` does not follow a second plate.
+
+## Tempo reads GloMax and gets a Setup (2026-10-23)
+
+Jon: *Tempo has no setup menu like Dose Response and does not recognise GloMax time-course files* (example `TC20261020.csv`, dropped in the repo root; a copy is in the gitignored `tools/fixtures/tempo/glomax_timecourse.csv`).
+
+**The file.** A title line, `Execution date, Instrument Name, Serial Number, Firmware Ver, Software ver, Plate Type, Plate ID, Status` and its row, `Protocol, Iterations, Interval` and its row, `Results, <readout>, <settings>`, then `Iteration, TimeInMinutes, A:1 … H:12` and one row per iteration; every row padded with commas to the width of the data. Wells are columns labelled `row:column` (the generic detectors failed because `tpWellId` did not accept the colon — it does now, so `A:1` is a well in any table). The clock is the reader's own (0, 5.0, 10.0 … 1071.8), not the nominal interval. **No layout**: the file says nothing about which wells are vehicle, background or compound. `tpParseGloMax` (engine block, called from `tpReadTables` after ProNect) reads one plate per `Results` block (two readouts = two plates, named `<file> · <readout>`), takes the unit from the time header (`TimeInMinutes/Seconds/Hours`), keeps the header in `plate.meta` (instrument, serial, plate type, execution date, status, protocol, iterations, interval, readout, settings), and says an incomplete status or a short file in `plate.notes`. A blank/`OVRFLW` is `null`; a clock that does not increase is an error. The file works for XLSX too (same rows). The real plate (96 wells, 215 reads, Luminescence) rises ~4× in the treated columns — it is not a degradation plate, so the curves from any layout are only a demonstration.
+
+**Setup.** `tools/setupkit` (the dialog Echo, Lumina and Beacon run on) now also goes into Tempo (`sync_setupkit.py` target; CSS vars `--shadow-xl --modal-backdrop --mid --poor` added; toast/tip/dialog/drop-veil z-index raised above the dialog's 2000). Five steps, `tps*` in Tempo's UI: **Reads** (drop/choose, plate list with chips Wells · Reads · Layout, Assay ID = the plate's name, paste from Excel through `tpPasteTable`) · **Time** (time zero, T0 reads, subtract background, what was read) · **Controls** (range boxes `A1:H2`, a row letter, a column number: vehicle, background, blank, left out; the plate drawn small beside) · **Compounds** (names, top concentration and unit, dilution factor, points, replicates, which end is highest, along rows or down columns, start well, count, target; *Place compounds* writes names and concentrations on the wells, controls in the way are kept) · **Review** (what is missing, last button *Fit curves* or *Open the plate*). It writes into the plate the Plate tab edits (`tpUndoMark`, so ⌘Z undoes either), and **the fit runs once, when the dialog closes** (`tpsRefit`; a changed setting refits every plate). `tpsRoleOf` adds a fourth role to `tpRole`'s three: **none** (reads but nothing says what is in the well) — `tpRole` would call it vehicle, so Review warns and the small plate shows it as "No role yet". A reader file with no layout opens Setup at Controls by itself (`tpAddFiles`); the Setup button is in the tab bar (kit `.tab-setup`) and the empty state. Not built: a "rank by" headline selector (`TP_DEFAULTS.headline` is still not read anywhere), gradients by dragging on the plate.
+
+**Tests.** `tools/tempo_invariants.mjs` K19 (the reader: clock, `A:1`, two readouts, units, notes, refusals, ranges; `--real` reads the real file) and K20 (Setup through the real UI: auto-open at Controls, a range that names nothing is refused, 16/8/8 controls, shrinking a range gives wells back, series from the first free well, direction, ⌘Z, Review, Fit curves lands on Curves with the compounds, reopen seeds from the plate, nothing leaves the card at 1440/1024/820). Four mutations put back and caught (no colon, nominal clock, no refit on close, role not given back).
 
 ## Current state
 

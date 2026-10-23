@@ -17,6 +17,8 @@
 // K12 hostile input: nothing throws, nothing is rendered as markup, every tab draws
 // K14 everything stays in its box: the empty state and the example plate, every tab, 1440 → 320 px, both themes — no icon or text leaves the box drawn around it,
 //     no two runs of text land on each other, nothing is cut with no way to scroll to it, no dead handler, no misaligned row (the empty-state icon that was 44px inside a button)
+// K19 a GloMax time-course file is read as it comes: the reader's own clock, A:1 labels, several readouts as several plates, missing never 0; a range of wells is parsed or refused
+// K20 Setup (Reads · Time · Controls · Compounds · Review): a layout-less file opens it at Controls, the controls and the series land on the plate, the fit runs once at the end, ⌘Z undoes, nothing leaves the card
 // K15 Analysis settings is four tabs of aligned rows: every control has a caption, sits in one column on its tab, Apply stays in view whichever tab is open, and Apply reads the tabs that are hidden
 import { chromium } from 'playwright';
 import fs from 'fs';
@@ -522,6 +524,129 @@ try {
     check('K14 a first x tick on the y axis ("100 pM") never touches the lowest y label ("0")', hit.length === 0, hit.slice(0, 3).join(' | '));
   }
 
+
+  /* ───── K19 the GloMax time-course export ───── */
+  {
+    const R = await ev(() => {
+      const out = {};
+      // the file as the GloMax writes it: every row padded with commas to the width of the data, a clock that is the reader's own (not 5.0, 10.0, …)
+      const mk = o => {
+        o = Object.assign({ n: 12, wells: ['A', 'B'].flatMap(r => [1, 2, 3, 4, 5, 6].map(c => r + ':' + c)), modes: ['Luminescence'], tcol: 'TimeInMinutes', status: 'Complete', iters: 12, interval: 5, step: 5, scale: 1 }, o);
+        const W = 2 + o.wells.length, pad = a => a.concat(Array(Math.max(0, W - a.length)).fill('')).join(','), L = [pad(['timecourse TEST']), pad([]), pad(['Execution date', 'Instrument Name', 'Serial Number', 'Firmware Ver', 'Software ver', 'Plate Type', 'Plate ID', 'Status']),
+          pad(['10/23/2026 9:44:08 AM', 'Test GloMax', '123', '1.0', '1.0', '96 Lid wells', '', o.status]), pad([]), pad(['Protocol', 'Iterations', 'Interval']), pad(['Kinetic', String(o.iters), String(o.interval)]), pad([])];
+        o.modes.forEach((m, mi) => {
+          L.push(pad(['Results', m, '"None, 0.3Sec"'])); L.push(pad([])); L.push(pad(['Iteration', o.tcol].concat(o.wells)));
+          for (let k = 0; k < o.n; k++) L.push(pad([String(k + 1), ((k * o.step + (k % 3) * 0.1) * o.scale).toFixed(o.scale < 0.1 ? 4 : 1)].concat(o.wells.map((w, wi) => k === 3 && wi === 1 ? '' : k === 4 && wi === 2 ? 'OVRFLW' : String(1000 * (mi + 1) + k * 10 + wi)))));
+          L.push(pad([]));
+        });
+        return L.join('\n');
+      };
+      const rd = (text, name) => tpReadTables([{ name: name || 'TC', rows: tpParseCSV(text) }]);
+      const a = rd(mk({})), p = a.plates[0];
+      out.n = a.plates.length; out.source = p && p.source; out.wells = p && Object.keys(p.wells).length; out.reads = p && p.times.length; out.ids = p && ['A1', 'A6', 'B6'].every(i => p.wells[i]) && !p.wells['A:1'];
+      out.clock = p && p.times.slice(0, 4).join(); out.vals = p && p.wells.A1.raw.slice(0, 3).join();
+      out.miss = p && p.wells.A2.raw[3] === null && p.wells.A3.raw[4] === null;
+      out.meta = p && p.meta && p.meta.instrument === 'Test GloMax' && p.meta.serial === '123' && p.meta.readout === 'Luminescence' && p.meta.iterations === 12 && p.meta.interval === 5 && p.meta.protocol === 'Kinetic' && /9:44/.test(p.meta.executed);
+      out.fmt = p && p.fmt.n; out.name = p && p.name;
+      // two readouts → two plates, each named for its readout, each on its own values
+      const b = rd(mk({ modes: ['Luminescence', 'Fluorescence'] }), 'TC'); out.two = b.plates.length === 2 && b.plates[0].name === 'TC · Luminescence' && b.plates[1].name === 'TC · Fluorescence' && b.plates[0].wells.A1.raw[0] === 1000 && b.plates[1].wells.A1.raw[0] === 2000;
+      // the unit is the header's: seconds and hours are converted to minutes
+      const sec = rd(mk({ tcol: 'TimeInSeconds', scale: 60 })).plates[0], hr = rd(mk({ tcol: 'TimeInHours', scale: 1 / 60 })).plates[0]; out.sec = sec && Math.abs(sec.times[2] - 10.2) < 0.06; out.hr = hr && Math.abs(hr.times[2] - 10.2) < 0.2;
+      // an incomplete run, and a protocol that asked for more iterations than the file holds, are said
+      const c = rd(mk({ status: 'Running', iters: 20 })).plates[0]; out.notes = c && c.notes.some(x => /Running/.test(x)) && c.notes.some(x => /20 iterations/.test(x));
+      // a clock that does not increase is refused, never re-sorted
+      const d = mk({}).split('\n'); const i5 = d.findIndex(l => /^6,/.test(l)); d[i5] = d[i5].replace(/^6,[^,]*/, '6,1.0'); const e = rd(d.join('\n')); out.mono = e.plates.length === 0 && /does not increase/.test(e.notes.join(' '));
+      // not a GloMax file, and too few wells: nothing is invented, nothing throws
+      const few = mk({ wells: ['A:1', 'A:2'] }); out.few = rd(few).plates.length === 0;
+      // the same A:1 labels in a plain table (time down) are wells too
+      const g = [['Time (min)', 'A:1', 'A:2', 'B:1', 'B:2']]; for (let k = 0; k < 8; k++) g.push([String(k * 5), 1000 + k, 900 + k, 800 + k, 700 + k]); const gp = tpReadTables([{ name: 'g', rows: g }]).plates[0]; out.generic = gp && Object.keys(gp.wells).sort().join() === 'A1,A2,B1,B2';
+      // ranges: a well, a rectangle, a row, a column, several; anything that names no well on the plate is null
+      const fm = { rows: 8, cols: 12 }, rg = t => { const r = tpParseRange(t, fm); return r === null ? null : r.join(' '); };
+      out.rg = [rg('A1:D1, E1:F1, H2'), rg('11') === Array.from('ABCDEFGH', r => r + '11').join(' '), rg('B').split(' ').length === 12, rg('A1:B2') === 'A1 A2 B1 B2', rg('a1 , b3'), rg(''), rg('A1:Z1'), rg('abc'), rg('A13'), rg('A1:D1;A1')];
+      return out;
+    });
+    check('K19 a GloMax time-course file is read: 12 wells A:1 → A1, the reader’s own clock, 12 reads, 96-well format by the wells it holds', R.n === 1 && R.source === 'GloMax time course' && R.wells === 12 && R.reads === 12 && R.ids && R.clock === '0,5.1,10.2,15' && R.vals === '1000,1010,1020' && R.fmt === 96 && R.name === 'TC', JSON.stringify(R));
+    check('K19 a blank or OVRFLW reading is missing (null), never 0', R.miss, JSON.stringify(R));
+    check('K19 the instrument, serial, protocol, iterations, interval, readout and date travel with the plate', R.meta, JSON.stringify(R));
+    check('K19 a protocol with two readouts is two plates, each on its own values and named for its readout', R.two, JSON.stringify(R));
+    check('K19 the time unit is the header’s (TimeInSeconds, TimeInHours → minutes)', R.sec && R.hr, JSON.stringify(R));
+    check('K19 an incomplete run and a short file are said', R.notes, JSON.stringify(R));
+    check('K19 a clock that does not increase is an error, never a silent sort; two wells are not a plate', R.mono && R.few, JSON.stringify(R));
+    check('K19 “A:1” labels are wells in any table', R.generic, JSON.stringify(R));
+    check('K19 a range is read (A1:D1, a row, a column, a rectangle, a list) and one that names nothing on the plate is refused', R.rg[0] === 'A1 B1 C1 D1 E1 F1 H2' && R.rg[1] && R.rg[2] && R.rg[3] && R.rg[4] === 'A1 B3' && R.rg[5] === '' && R.rg[6] === null && R.rg[7] === null && R.rg[8] === null && R.rg[9] === 'A1 B1 C1 D1', JSON.stringify(R.rg));
+  }
+
+  /* ───── K20 Setup: Reads · Time · Controls · Compounds · Review ───── */
+  {
+    const c6 = await browser.newContext({ viewport: { width: 1440, height: 1000 } }), pg = await c6.newPage(), e6 = [];
+    pg.on('pageerror', e => e6.push(e.message));
+    await pg.route(/^https?:/, r => r.abort()); await pg.addInitScript(() => { try { localStorage.clear(); } catch (e) {} });
+    await pg.goto('file://' + FILE); await pg.waitForFunction(() => typeof tpsOpen === 'function');
+    const r = {};
+    r.btn = await pg.evaluate(() => !!document.getElementById('tps-open') && /Set up a plate/.test(document.querySelector('#pane-plate .es-a').textContent));
+    // a layout-less reader file opens Setup at Controls by itself
+    await pg.evaluate(async () => {
+      const W = []; for (const r of 'ABCDEFGH') for (let c = 1; c <= 12; c++) W.push(r + ':' + c);
+      const pad = a => a.concat(Array(Math.max(0, 98 - a.length)).fill('')).join(','), L = [pad(['timecourse TEST']), pad([]), pad(['Execution date', 'Instrument Name', 'Status']), pad(['10/23/2026 9:44:08 AM', 'Test GloMax', 'Complete']), pad([]), pad(['Protocol', 'Iterations', 'Interval']), pad(['Kinetic', '60', '5']), pad([]), pad(['Results', 'Luminescence', '"None, 0.3Sec"']), pad([]), pad(['Iteration', 'TimeInMinutes'].concat(W))];
+      for (let k = 0; k < 60; k++) L.push(pad([String(k + 1), String(k * 5)].concat(W.map((w, i) => { const col = +w.split(':')[1], row = w.charCodeAt(0) - 65; return String(Math.round(col <= 2 ? 20000 : col === 11 ? 600 : col === 12 ? 800 : 20000 * (1 - 0.8 * (1 - Math.exp(-0.05 * (col - 2) * k / 3)) * (row % 2 ? 1 : 1)) + 800)); }))));
+      window.__glo = new File([L.join('\n')], 'TC_setup.csv', { type: 'text/csv' }); window.__msgs = await tpAddFiles([window.__glo]);
+    });
+    await pg.waitForTimeout(500);
+    r.open = await pg.evaluate(() => ({ open: tpsK.isOpen(), step: tpsK.step, wells: Object.keys(tpPlate().wells).length, none: tpsSummary(tpPlate()).none, msg: window.__msgs.join(' | ') }));
+    const setRole = async (k, v) => { await pg.fill('#tps-ctls input[data-role="' + k + '"]', v); await pg.keyboard.press('Enter'); };
+    // a range that names no well is refused and changes nothing
+    const before = await pg.evaluate(() => JSON.stringify(tpsSummary(tpPlate()).ids));
+    await setRole('veh', 'Z9'); r.bad = await pg.evaluate(b => ({ same: JSON.stringify(tpsSummary(tpPlate()).ids) === b, bad: !!document.querySelector('#tps-ctls .sx-ctl.bad'), warn: /warn/.test(document.getElementById('tp-toast').className) }), before);
+    await setRole('veh', '1:2'); await setRole('blank', '11'); await setRole('bkg', '12');
+    r.ctl = await pg.evaluate(() => { const s = tpsSummary(tpPlate()); return { veh: s.veh, bkg: s.bkg, blank: s.blank, none: s.none, vehIds: s.ids.veh.slice(0, 3).join(), mini: document.querySelectorAll('#tps-mini-c .sx-mini .w').length }; });
+    await setRole('veh', '1'); r.shrink = await pg.evaluate(() => { const s = tpsSummary(tpPlate()); return [s.veh, s.none, tpPlate().wells.A2.conc === null && !tpPlate().wells.A2.role].join(); }); await setRole('veh', '1:2');
+    await pg.fill('#tps-ctls input[data-role="out"]', 'H3'); await pg.keyboard.press('Enter'); r.out = await pg.evaluate(() => tpEx(tpPlate()).wells.join());
+    await pg.fill('#tps-ctls input[data-role="out"]', ''); await pg.keyboard.press('Enter'); r.outBack = await pg.evaluate(() => tpEx(tpPlate()).wells.length);
+    // compounds: 4 names, 2 replicates, 8 points from the first free well; the series falls from the left
+    await pg.click('#tps-next'); await pg.fill('#tps-names', 'Cpd A\nCpd B\nCpd C\nCpd D'); await pg.fill('#tps-top', '1'); await pg.selectOption('#tps-unit', 'µM'); await pg.fill('#tps-fac', '3');
+    r.plan = await pg.evaluate(() => document.getElementById('tps-plan').textContent);
+    await pg.click('#tps-place');
+    r.placed = await pg.evaluate(() => { const p = tpPlate(), s = tpsSummary(p); return { cpds: s.cpds.map(c => c.name + ':' + c.nconc + 'x' + c.reps).join(), A3: p.wells.A3.compound + '@' + p.wells.A3.conc, A10: +p.wells.A10.conc.toPrecision(4), C3: p.wells.C3.compound, none: s.none, vehKept: s.veh }; });
+    // the other direction: highest at the right
+    await pg.click('#tps-dir button[data-d="left"]'); await pg.click('#tps-place'); r.flip = await pg.evaluate(() => [tpPlate().wells.A3.conc, tpPlate().wells.A10.conc].map(v => +v.toPrecision(3)).join());
+    await pg.keyboard.press('Control+z'); // focus is not in a field after a click on a button
+    await pg.waitForTimeout(200); r.undo = await pg.evaluate(() => [tpPlate().wells.A3.conc, tpPlate().wells.A10.conc].map(v => +v.toPrecision(3)).join());
+    await pg.click('#tps-next'); r.review = await pg.evaluate(() => ({ ok: !!document.querySelector('#tps-review .sx-issue.ok, #tps-p-review .sx-issue.ok'), next: document.getElementById('tps-next').textContent.trim(), ready: tpsReady() }));
+    await pg.click('#tps-next'); await pg.waitForFunction(() => TP.ui.tab === 'curves' && !TP.ui.busy, null, { timeout: 20000 });
+    r.done = await pg.evaluate(() => ({ closed: !tpsK.isOpen(), comps: tpRes().compounds.length, names: tpRes().compounds.map(c => c.compound).join(), conc: tpRes().compounds[0].concs.length }));
+    // reopened on what the plate says
+    await pg.evaluate(() => { TPS.seeded = null; TPS.form.names = ''; TPS.form.top = 5; }); await pg.evaluate(() => tpsOpen()); r.reopen = await pg.evaluate(() => ({ step: tpsK.step, names: TPS.form.names.split('\n').join(), top: TPS.form.top, unit: TPS.form.unit, fac: TPS.form.fac, reps: TPS.form.reps }));
+    // every step stays inside the card, at three widths
+    const over = [];
+    for (const w of [1440, 1024, 820]) {
+      await pg.setViewportSize({ width: w, height: 900 });
+      for (let i = 0; i < 5; i++) {
+        await pg.evaluate(i => tpsK.go(i), i); await pg.waitForTimeout(80);
+        const o = await pg.evaluate(() => {
+          const card = document.querySelector('#tps .setup-card').getBoundingClientRect(), bad = [];
+          document.querySelectorAll('#tps .setup-pane.active *').forEach(e => { if (e.closest('svg,.sx-hand-wrap,.sx-mini')) return; const b = e.getBoundingClientRect(); if (b.width && (b.right > card.right + 1 || b.left < card.left - 1)) bad.push((e.id || e.className || e.tagName).toString().slice(0, 30)); });
+          const sb = document.getElementById('tps-body'); if (sb.scrollWidth > sb.clientWidth + 1) bad.push('body scrolls sideways');
+          return bad;
+        });
+        o.forEach(x => over.push(w + 'px step ' + (i + 1) + ': ' + x));
+      }
+    }
+    r.over = over.slice(0, 5);
+    check('K20 Setup is in the tab bar and the empty state', r.btn, JSON.stringify(r));
+    check('K20 a reader file with no layout opens Setup at Controls by itself', r.open.open && r.open.step === 2 && r.open.wells === 96 && r.open.none === 96, JSON.stringify(r.open));
+    check('K20 a range that names no well is refused out loud and changes nothing', r.bad.same && r.bad.bad && r.bad.warn, JSON.stringify(r.bad));
+    check('K20 vehicle 1:2, blank 11 and background 12 land on the plate (16 / 8 / 8), the rest has no role, and the small plate draws all 96 wells', r.ctl.veh === 16 && r.ctl.bkg === 8 && r.ctl.blank === 8 && r.ctl.none === 64 && r.ctl.vehIds === 'A1,A2,B1' && r.ctl.mini === 96, JSON.stringify(r.ctl));
+    check('K20 a well taken out of a control range goes back to “no role”, not on being vehicle', r.shrink === '8,72,true', r.shrink);
+    check('K20 a well can be left out and put back from the dialog', r.out === 'H3' && r.outBack === 0, JSON.stringify([r.out, r.outBack]));
+    check('K20 the series starts at the first well after the controls (A3), 8 points, 2 replicates, top 1 µM falling 3-fold along the row', /4 compounds/.test(r.plan) && /8 points/.test(r.plan) && /A3/.test(r.plan) && r.placed.cpds === 'Cpd A:8x2,Cpd B:8x2,Cpd C:8x2,Cpd D:8x2' && r.placed.A3 === 'Cpd A@1000' && r.placed.A10 === 0.4572 && r.placed.C3 === 'Cpd B' && r.placed.none === 0 && r.placed.vehKept === 16, JSON.stringify(r.placed) + r.plan);
+    check('K20 “highest at the right” reverses the series, and ⌘Z undoes it', r.flip === '0.457,1000' && r.undo === '1000,0.457', JSON.stringify([r.flip, r.undo]));
+    check('K20 Review says everything is there and the last button says Fit curves', r.review.ok && /Fit curves/.test(r.review.next) && r.review.ready, JSON.stringify(r.review));
+    check('K20 Fit curves closes the dialog, fits once, and lands on Curves with four compounds of eight concentrations', r.done.closed && r.done.comps === 4 && r.done.conc === 8 && r.done.names === 'Cpd A,Cpd B,Cpd C,Cpd D', JSON.stringify(r.done));
+    check('K20 Setup reopens on what the plate already says: names, top, factor, replicates; and goes to Review when it is complete', r.reopen.step === 4 && r.reopen.names === 'Cpd A,Cpd B,Cpd C,Cpd D' && r.reopen.top === 1 && r.reopen.unit === 'µM' && r.reopen.fac === 3 && r.reopen.reps === 2, JSON.stringify(r.reopen));
+    check('K20 every step stays inside the card at 1440, 1024 and 820 px', r.over.length === 0 && e6.length === 0, r.over.join(' | ') + e6.join(' | '));
+    await c6.close();
+  }
+
   /* ───── the real ProNect files, when they are here ───── */
   if (REAL) {
     const F = path.join(ROOT, 'tools/fixtures/tempo');
@@ -537,6 +662,12 @@ try {
       check('REAL Tempo’s normalisation reproduces ProNect’s NormKinetic for every sample well (limited only by the 4-digit raw RLU)', R.worst < 2e-3, JSON.stringify(R));
       check('REAL the JSON, the raw CSV and the norm CSV are the same plate: 96 / 81 / 80 wells, 180 reads, five compounds', R.wells === 96 && R.rawWells === 81 && R.normWells === 80 && R.reads === 180 && R.normReads === 180 && R.comps.split(',').length === 5, JSON.stringify(R));
     } else console.log('  (--real: tools/fixtures/tempo is not here, skipped)');
+    if (fs.existsSync(path.join(F, 'glomax_timecourse.csv'))) {
+      const gtxt = fs.readFileSync(path.join(F, 'glomax_timecourse.csv'), 'utf8');
+      const G = await ev(t => { const o = tpReadTables([{ name: 'TC', rows: tpParseCSV(t) }]), p = o.plates[0]; return { n: o.plates.length, wells: p && Object.keys(p.wells).length, reads: p && p.times.length, t1: p && p.times[1], tN: p && p.times[p.times.length - 1], A1: p && p.wells.A1.raw[0], H12: p && p.wells.H12.raw[214], readout: p && p.meta.readout, none: p && p.notes.length }; }, gtxt);
+      check('REAL the GloMax time-course file is one 96-well plate of 215 reads, 0 → 1071.8 min, Luminescence', G.n === 1 && G.wells === 96 && G.reads === 215 && G.t1 === 5 && G.tN === 1071.8 && G.A1 === 16090 && G.readout === 'Luminescence', JSON.stringify(G));
+    }
+
   }
 } catch (e) { findings.push('✗ the run stopped: ' + (e && e.stack || e)); console.log('✗ the run stopped: ' + (e && e.stack || e)); }
 
