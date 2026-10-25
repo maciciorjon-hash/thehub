@@ -19,7 +19,7 @@ var ChartKit = (function(){
 
   function mount(root, opts){
     opts = opts || {};
-    var KEY = 'ck2:' + (opts.key || 'chart'), spec, doc = { items: [] }, scene = null, sel = null, tab = 'data', undo = [], redo = [], lastUndoKey = '', lastUndoAt = 0, dpi = 1200, saveT = 0, drag = null;
+    var KEY = 'ck2:' + (opts.key || 'chart'), spec, doc = { items: [] }, scene = null, sel = null, tab = 'data', undo = [], redo = [], lastUndoKey = '', lastUndoAt = 0, dpi = 1200, saveT = 0, drag = null, openItems = {};
     try { spec = C.withDefaults(JSON.parse(localStorage.getItem(KEY) || 'null')); } catch (e) { spec = C.withDefaults(null); }
 
     root.classList.add('ck-root'); root.setAttribute('tabindex', '-1');
@@ -50,7 +50,7 @@ var ChartKit = (function(){
     // Only the style is kept between visits. What was omitted, hidden, recoloured, moved or retitled belongs to the data it
     // was done to: a replicate left out of one experiment must not be silently left out of the next.
     function persistable(){
-      var o = JSON.parse(JSON.stringify(spec)); o.omit = {}; o.hidden = {}; o.colors = {}; o.pos = {};
+      var o = JSON.parse(JSON.stringify(spec)); o.omit = {}; o.hidden = {}; o.seen = {}; o.colors = {}; o.pos = {};
       o.title.forEach(function(t){ t.text = null; }); o.xTitle.text = null; o.yTitle.text = null; o.ref.y = null;
       return o;
     }
@@ -106,6 +106,7 @@ var ChartKit = (function(){
       if (scene && scene.grew) msgs.push('The labels need more room than ' + scene.grew.askedW.toFixed(1) + ' × ' + scene.grew.askedH.toFixed(1) + ' in, so the figure is made ' + scene.grew.w.toFixed(1) + ' × ' + scene.grew.h.toFixed(1) + ' in. A larger page, a smaller legend or fewer compounds keeps the size you asked for.');
       var msg = msgs.join(' ');
       if (msg) { status.textContent = msg; status.classList.add('ck-warnline'); lastFitNote = msg; }
+      else if ((doc.items || []).length > 1 && (doc.items || []).every(function(it){ return spec.hidden[it.id]; })) { lastFitNote = 'Nothing is drawn yet — tick the compounds to show under Data.'; status.textContent = lastFitNote; status.classList.remove('ck-warnline'); }
       else if (lastFitNote && status.textContent === lastFitNote) { status.textContent = ''; status.classList.remove('ck-warnline'); lastFitNote = ''; }
     }
     function rectOf(node){ var r = node.getBoundingClientRect(), o = svg.getBoundingClientRect(), k = scale(); return { l: (r.left - o.left) / k, t: (r.top - o.top) / k, r: (r.right - o.left) / k, b: (r.bottom - o.top) / k }; }
@@ -172,7 +173,7 @@ var ChartKit = (function(){
       }
       else if (tab === 'style') {
         h = (kind === 'bars' ? '<div class="ck-grp">Bars</div><div class="ck-grid">' + fld('Width', 'bar.width', 'num', { step: 0.05, min: 0.2, max: 1.2 }) + fld('Gap between groups', 'bar.gap', 'num', { step: 0.1, min: 0, max: 4 }) + fld('Gap inside a group', 'bar.inner', 'num', { step: 0.05, min: 0, max: 1 }) + fld('Border', 'bar.border', 'num', { step: 0.25, min: 0, max: 5 }) + '</div>' + fld('Fill', 'fill', 'sel', { opts: [['solid', 'Solid'], ['tint', 'Light fill, coloured border'], ['outline', 'Outline only']] }) + fld('Shade by concentration (highest darkest)', 'bar.shade', 'bool') + fld('Show every replicate as a point', 'pts.show', 'bool')
-          : '<div class="ck-grp">Curves and points</div><div class="ck-grid">' + fld('Marker', 'xy.marker', 'sel', { opts: [['circle', 'Circle'], ['square', 'Square'], ['triangle', 'Triangle'], ['diamond', 'Diamond'], ['auto', 'One per compound']] }) + fld('Marker size', 'xy.msize', 'num', { step: 0.5, min: 1, max: 14 }) + fld('Line width', 'xy.lw', 'num', { step: 0.25, min: 0.25, max: 6 }) + '</div>' + fld('Show the fit', 'xy.fit', 'bool') + fld('Show the points', 'xy.points', 'bool') + fld('Open markers', 'xy.open', 'bool') + fld('Dashed fit', 'xy.dash', 'bool') + fld('Show every replicate beside its mean', 'pts.show', 'bool')) +
+          : '<div class="ck-grp">Curves and points</div><div class="ck-grid">' + fld('Marker', 'xy.marker', 'sel', { opts: [['circle', 'Circle'], ['square', 'Square'], ['triangle', 'Triangle'], ['diamond', 'Diamond'], ['auto', 'One per compound']] }) + fld('Marker size', 'xy.msize', 'num', { step: 0.5, min: 1, max: 14 }) + fld('Line width', 'xy.lw', 'num', { step: 0.25, min: 0.25, max: 6 }) + '</div>' + fld('Show the fit', 'xy.fit', 'bool') + fld('Extend the fit across the whole axis', 'xy.extend', 'bool') + fld('Show the points', 'xy.points', 'bool') + fld('Open markers', 'xy.open', 'bool') + fld('Dashed fit', 'xy.dash', 'bool') + fld('Show every replicate beside its mean', 'pts.show', 'bool')) +
           '<div class="ck-grp">Error bars</div>' + fld('Show', 'err.type', 'sel', { opts: [['sd', 'SD'], ['sem', 'SEM'], ['ci95', '95% CI'], ['range', 'Range'], ['none', 'None']] }) + '<div class="ck-grid">' + (kind === 'bars' ? fld('Direction', 'err.dir', 'sel', { opts: [['up', 'Up only'], ['both', 'Both ways']] }) : '') + fld('Cap', 'err.cap', 'num', { step: 0.5, min: 0, max: 16 }) + fld('Width', 'err.w', 'num', { step: 0.25, min: 0.25, max: 5 }) + '</div>' +
           '<div class="ck-grp">Legend</div>' + fld('Show', 'legend.show', 'bool') + '<div class="ck-grid">' + fld('Size', 'legend.size', 'num', { step: 0.5, min: 4, max: 40 }) + fld('Position', 'legend.pos', 'sel', { opts: [['auto', 'Auto'], ['right', 'Right of the plot'], ['below', 'Below the plot']] }) + '</div>';
       }
@@ -202,12 +203,16 @@ var ChartKit = (function(){
       var its = doc.items || [];
       if (!its.length) return '<div class="ck-hint">Nothing to plot yet.</div>';
       var anyOmit = Object.keys(spec.omit).some(function(k){ return spec.omit[k]; });
-      return '<div class="ck-note">Click a replicate to leave it out of the chart — means, error bars and fits are recalculated without it.' + (anyOmit ? ' <button type="button" class="ck-link" data-a="restoreomit">Put them all back</button>' : '') + '</div>' + its.map(function(it, ii){
+      var nOn = its.filter(function(it){ return !spec.hidden[it.id]; }).length;
+      var head = '<div class="ck-note">' + (nOn ? 'Tick a compound to draw it.' : '<b>Nothing is drawn yet.</b> Tick the compounds to show.') + ' Click a replicate to leave it out of the chart — means, error bars and fits are recalculated without it.' + (anyOmit ? ' <button type="button" class="ck-link" data-a="restoreomit">Put them all back</button>' : '') + '</div>' +
+        (its.length > 1 ? '<div class="ck-dall"><span>' + nOn + ' of ' + its.length + ' drawn</span><span class="ck-dallb"><button type="button" class="ck-link" data-a="showall">Show all</button><button type="button" class="ck-link" data-a="hideall">Hide all</button></span></div>' : '');
+      return head + its.map(function(it, ii){
         var hid = spec.hidden[it.id], col = C.itemColor(spec, it, ii, its.length);
         var failed = !hid && fitFailed().some(function(f){ return f.id === it.id; });
-        return '<div class="ck-dg' + (hid ? ' off' : '') + '"><div class="ck-dh"><i style="background:' + col + '"></i><button type="button" class="ck-name" data-pick="bar:' + esc(it.id) + '">' + esc(it.name) + '</button><button type="button" class="ck-link" data-a="hideitem" data-id="' + esc(it.id) + '">' + (hid ? 'Show' : 'Hide') + '</button></div>' +
+        var open = !!openItems[it.id];
+        return '<div class="ck-dg' + (hid ? ' off' : '') + '"><div class="ck-dh"><span class="ck-dl"><input type="checkbox" class="ck-tick" data-a="toggleitem" data-id="' + esc(it.id) + '"' + (hid ? '' : ' checked') + ' aria-label="Draw ' + esc(it.name) + '"><i style="background:' + col + '"></i><button type="button" class="ck-name" data-a="openitem" data-id="' + esc(it.id) + '" aria-expanded="' + open + '">' + esc(it.name) + '</button></span><button type="button" class="ck-chev' + (open ? ' open' : '') + '" data-a="openitem" data-id="' + esc(it.id) + '" aria-expanded="' + open + '" aria-label="' + (open ? 'Hide' : 'Show') + ' the replicates of ' + esc(it.name) + '"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button></div>' +
           (failed ? '<div class="ck-fitnote">Too few points left to refit — its curve is not drawn.</div>' : '') +
-          (hid ? '' : (it.points || []).map(function(p){ return '<div class="ck-dp"><span class="ck-dx">' + esc(p.label != null ? p.label : p.x) + '</span><span class="ck-reps">' + (p.reps || []).map(function(r){ var off = spec.omit[r.id]; return '<button type="button" class="ck-rep' + (off ? ' off' : '') + '" data-omit="' + esc(r.id) + '" title="' + (off ? 'Omitted — click to put it back' : 'Click to omit') + '">' + esc(C.fin(r.v) ? String(+(+r.v).toPrecision(4)) : '–') + '</button>'; }).join('') + '</span></div>'; }).join('')) + '</div>';
+          (!open ? '' : (it.points || []).map(function(p){ return '<div class="ck-dp"><span class="ck-dx">' + esc(p.label != null ? p.label : p.x) + '</span><span class="ck-reps">' + (p.reps || []).map(function(r){ var off = spec.omit[r.id]; return '<button type="button" class="ck-rep' + (off ? ' off' : '') + '" data-omit="' + esc(r.id) + '" title="' + (off ? 'Omitted — click to put it back' : 'Click to omit') + '">' + esc(C.fin(r.v) ? String(+(+r.v).toPrecision(4)) : '–') + '</button>'; }).join('') + '</span></div>'; }).join('')) + '</div>';
       }).join('');
     }
 
@@ -224,6 +229,7 @@ var ChartKit = (function(){
     root.addEventListener('change', function(e){
       var t = e.target;
       if (t.dataset.a === 'dpi') { dpi = +t.value; pngNote(); }
+      else if (t.dataset.a === 'toggleitem') { pushUndo('hide'); if (t.checked) delete spec.hidden[t.dataset.id]; else spec.hidden[t.dataset.id] = true; if (!t.checked && sel && itemOf(sel) === t.dataset.id) sel = null; draw(); renderSel(); renderPanel(); save(); }
       else if (t.dataset.a === 'snap') { pushUndo('snap'); spec.snap = t.checked; save(); }
       else if (t.dataset.item) { renderSel(); if (tab === 'data' || tab === 'colors') renderPanel(); }
       else if (t.dataset.p) renderPanel();
@@ -246,11 +252,13 @@ var ChartKit = (function(){
       else if (a === 'setcolor') { pushUndo('col'); spec.colors[d.id] = d.c; draw(); renderSel(); if (tab === 'colors' || tab === 'data') renderPanel(); save(); }
       else if (a === 'resetcolor') { pushUndo('col'); delete spec.colors[d.id]; draw(); renderSel(); renderPanel(); save(); }
       else if (a === 'hideitem') { pushUndo('hide'); spec.hidden[d.id] = !spec.hidden[d.id]; if (!spec.hidden[d.id]) delete spec.hidden[d.id]; if (sel && itemOf(sel) === d.id) sel = null; draw(); renderSel(); renderPanel(); save(); }
+      else if (a === 'openitem') { openItems[d.id] = !openItems[d.id]; renderPanel(); }
+      else if (a === 'showall' || a === 'hideall') { pushUndo('hide'); (doc.items || []).forEach(function(it){ if (a === 'showall') delete spec.hidden[it.id]; else spec.hidden[it.id] = true; }); if (a === 'hideall') sel = null; draw(); renderSel(); renderPanel(); save(); }
       else if (a === 'hideleg') { pushUndo('leg'); spec.legend.show = false; sel = null; draw(); renderSel(); renderPanel(); save(); }
       else if (a === 'resetpos') { if (sel) { pushUndo('pos'); delete spec.pos[sel.indexOf('leg:') === 0 ? 'legend' : sel]; draw(); overlay(); save(); } }
       else if (a === 'restoreomit') { pushUndo('omit'); spec.omit = {}; draw(); renderPanel(); save(); }
       else if (a === 'resetlayout') { pushUndo('layout'); spec.pos = {}; spec.margin = { l: 0, r: 0, t: 0, b: 0 }; draw(); renderPanel(); save(); }
-      else if (a === 'resetall') { pushUndo('all'); spec = C.withDefaults(null); sel = null; syncBar(); draw(); renderSel(); renderPanel(); save(); }
+      else if (a === 'resetall') { pushUndo('all'); spec = C.withDefaults(null); adoptItems(); sel = null; syncBar(); draw(); renderSel(); renderPanel(); save(); }
     });
 
     // ── align ──────────────────────────────────────────────────
@@ -323,13 +331,21 @@ var ChartKit = (function(){
     function exportSVG(){ if (!scene) return; X.save(new Blob([X.toSVG(scene)], { type: 'image/svg+xml' }), base() + '.svg'); toast('SVG saved.'); }
 
     var lastSig = null;
+    // A figure of thirty compounds is a smear, so a compound the kit has not met yet starts unticked and the person picks the ones to draw.
+    // One that was met keeps what was chosen, so new data never switches on something that was switched off. A lone compound is just drawn,
+    // and so is every compound of a host that has its own chooser (opts.drawAll — Echo's "Compounds in the figure").
+    function adoptItems(){
+      var its = doc.items || []; spec.seen = spec.seen || {};
+      its.forEach(function(it){ if (!spec.seen[it.id]) { spec.seen[it.id] = 1; if (its.length > 1 && !opts.drawAll) spec.hidden[it.id] = true; } });
+    }
     function refresh(){
       try { doc = opts.doc ? opts.doc() || { items: [] } : { items: [] }; } catch (e) { doc = { items: [] }; }
       // different data: what was done to the old data (omitted replicates, colours, positions, retyped titles) goes
       if (doc.sig !== undefined && lastSig !== null && doc.sig !== lastSig) {
-        spec.omit = {}; spec.hidden = {}; spec.colors = {}; spec.pos = {}; spec.ref.y = null; spec.title.forEach(function(t){ t.text = null; }); spec.xTitle.text = null; spec.yTitle.text = null; undo = []; redo = []; sel = null;
+        openItems = {}; spec.omit = {}; spec.hidden = {}; spec.seen = {}; spec.colors = {}; spec.pos = {}; spec.ref.y = null; spec.title.forEach(function(t){ t.text = null; }); spec.xTitle.text = null; spec.yTitle.text = null; undo = []; redo = []; sel = null;
       }
       if (doc.sig !== undefined) lastSig = doc.sig;
+      adoptItems();
       var slot = root.querySelector('.ck-slot'); if (slot && opts.slot) { try { opts.slot(slot); } catch (e) {} }
       draw(); renderSel(); renderTabs(); renderPanel(); syncBar();
       setTimeout(fit, 0);

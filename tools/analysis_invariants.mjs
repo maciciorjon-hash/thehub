@@ -29,6 +29,8 @@
 //                               (each plate its own compounds); "the same on every plate" gives replicate plates; boxes edited by hand win, and what fits nowhere waits.
 //   B20 a drag reaches         A drag that runs past the edge of the plate (or crosses the gaps and labels) ends on the edge well, and one held at the window's edge scrolls the page by itself,
 //                               so the last rows of a plate taller than the window can be drawn.
+//   B21 X against Y          Any wells can be normalised against any other wells: Plate › Normalise (drag X, "Normalise these wells…", drag Y, "Normalise against these wells") makes a rule drawn on the plate; a well is in one rule, never its
+//                            own control; every value is divided by the mean of its rule's wells (else the vehicle's), so the figure, the Prism copy and the workbook follow; the Normalisation tab exists only while a rule does; undo, History keep it.
 //
 // Usage (repo root):  node tools/analysis_invariants.mjs [--only=C1,C3] [--file-bca=path] [--verbose]
 import { chromium } from 'playwright';
@@ -627,6 +629,56 @@ if (run('B20')) await guard('B20', async () => {
   check('B20', 'a drag held at the bottom edge scrolls the page by itself', mid.top > 100, mid);
   check('B20', 'and one carried past the plate ends on the edge: A2 to H12 is 88 wells, not the wells the pointer last crossed', a.n === 88 && a.r1 === 7 && a.c1 === 11 && a.r0 === 0 && a.c0 === 1, a);
   check('B20', 'a drag that wanders out over the labels and comes back ends exactly where it was released (B3 to C5 = 6 wells)', b.n === 6 && b.r0 === 1 && b.r1 === 2 && b.c0 === 2 && b.c1 === 4, b);
+  await ctx.close();
+});
+
+if (run('B21')) await guard('B21', async () => {
+  const { ctx, pg } = await open('/apps/beacon/beacon.html');
+  const r = await pg.evaluate(async () => {
+    const o = {}, wait = ms => new Promise(r => setTimeout(r, ms)), rng = t => new Set(PlateEngine.parseRange(t, { r: 8, c: 12 }));
+    loadTestData('gain');
+    o.tab0 = document.getElementById('tab-norm').hidden; o.rules0 = bHasRules();
+    // a rule through the real steps: select the wells, "Normalise these wells…", select the control, "Normalise against these wells"
+    const old = bDoseData(true).groups.map(g => g.pts[0].reps[0].v);
+    bSelect(rng('E3:H12'), 'nrm'); o.panel1 = document.getElementById('lm-nrm').innerText;
+    bNormStart(); o.pending = [bMode(), BM_NX.length, BM_SEL.size]; o.idle = document.getElementById('lm-idle').innerText;
+    bSetSel(rng('H12:H12')); bNormSet(); o.overlap = bRules(state.plates[0]).length;   // a well cannot be its own control
+    bSetSel(rng('E2:H2')); o.panel2 = document.getElementById('lm-nrm').innerText; bNormSet();
+    o.rules = bRules(state.plates[0]).map(x => [x.x.length, x.y.length]); o.tab1 = !document.getElementById('tab-norm').hidden; o.pendingGone = BM_NX === null;
+    // every rep is divided by the mean of its rule's wells, or by the series' vehicle mean where it has no rule — recomputed here from the wells
+    const D = bDoseData(true), bad = [];
+    D.groups.forEach(g => {
+      const veh = []; state.plates.forEach(pl => { if (Object.keys(pl.map).some(p => pl.map[p].s === g.s.id)) Object.keys(pl.map).forEach(p => { if (pl.map[p].k === 'veh') { const x = bVal(pl, p, true); if (x !== null) veh.push(x); } }); });
+      const vm = veh.reduce((a, c) => a + c, 0) / veh.length;
+      g.pts.forEach(q => q.reps.forEach(rp => { const pl = state.plates[rp.pi], rule = pl.norm.filter(x => x.x.indexOf(rp.p) >= 0)[0]; let d = vm; if (rule) { const ys = rule.y.map(p => bVal(pl, p, true)); d = ys.reduce((a, c) => a + c, 0) / ys.length; } if (Math.abs(rp.v - bVal(pl, rp.p, true) / d) > 1e-9) bad.push(g.s.name + ' ' + rp.p); }));
+    });
+    o.bad = bad; o.changed = D.groups.map((g, i) => g.pts[0].reps[0].v !== old[i]);
+    // the plate shows the rule while the mode is open
+    bSelect(rng('E3:E3'), 'nrm'); o.nrx = document.querySelectorAll('#well-grid .well.nrx').length; o.nry = document.querySelectorAll('#well-grid .well.nry').length;
+    // a well is in one rule: a new rule takes its wells from the older one
+    bSelect(rng('E3:E5'), 'nrm'); bNormStart(); bSetSel(rng('A2:A2')); bNormSet(); o.second = bRules(state.plates[0]).map(x => x.x.length);
+    bUndo(); o.afterUndo = bRules(state.plates[0]).map(x => x.x.length);
+    // the snapshot, the second plate's copy of the layout
+    const snap = _bSnap(); bRules(state.plates[0]).length; nmDelete(0, 0); o.deleted = [bRules(state.plates[0]).length, document.getElementById('tab-norm').hidden];
+    _bRestore(snap); o.restored = bRules(state.plates[0]).length;
+    state.plate = 0; bShareLayout(); o.copied = bRules(state.plates[1]).length;
+    // the figure says what it is relative to, and the workbook lists the rules
+    o.yTitle = bGraphDoc().yTitle; o.aoa = _bNormAoa().length; o.prism = _bPrismBlock(true).aoa[2].length;
+    // the tab row skips the hidden tab once the rules are gone
+    state.plates.forEach(pl => { pl.norm = []; }); bAfterChange(); o.keys = [...document.querySelectorAll('.tab:not([hidden])')].map(t => t.dataset.tab); o.tab2 = document.getElementById('tab-norm').hidden;
+    o.back = bDoseData(true).groups.map((g, i) => g.pts[0].reps[0].v === old[i]);
+    return o;
+  });
+  check('B21', 'no rule, no Normalisation tab', r.tab0 === true && r.rules0 === false, r);
+  check('B21', 'Normalise mode offers "Normalise these wells…"; once pressed the wells wait for their control (mode stays, the side panel says so), and the control is asked for next', /Normalise these wells/.test(r.panel1) && r.pending[0] === 'nrm' && r.pending[1] === 40 && r.pending[2] === 0 && /Normalising E3.H12/.test(r.idle), { panel1: r.panel1, pending: r.pending, idle: r.idle });
+  check('B21', 'a well cannot be divided by itself: a control that overlaps the wells being normalised makes no rule', r.overlap === 0, r.overlap);
+  check('B21', 'X against Y makes one rule (40 wells against 4), ends the waiting, and shows the tab', JSON.stringify(r.rules) === '[[40,4]]' && r.pendingGone && r.tab1 && /against these wells/.test(r.panel2), { rules: r.rules, pendingGone: r.pendingGone, tab1: r.tab1, panel2: r.panel2 });
+  check('B21', 'every value is divided by the mean of the wells its rule names, or by the vehicle where it has no rule (recomputed from the wells), and only the compounds in the rule changed', r.bad.length === 0 && JSON.stringify(r.changed) === '[false,false,true,true]', { bad: r.bad.slice(0, 3), changed: r.changed });
+  check('B21', 'the plate draws the rule while Normalise is open (40 wells solid, 4 dashed)', r.nrx === 40 && r.nry === 4, { nrx: r.nrx, nry: r.nry });
+  check('B21', 'a well is in one rule: a second rule takes its wells from the first; undo gives them back', JSON.stringify(r.second) === '[37,3]' && JSON.stringify(r.afterUndo) === '[40]', { second: r.second, afterUndo: r.afterUndo });
+  check('B21', 'deleting the last rule hides the tab; the snapshot (History) brings the rule back; "Layout → all plates" copies it', JSON.stringify(r.deleted) === '[0,true]' && r.restored === 1 && r.copied === 1, { deleted: r.deleted, restored: r.restored, copied: r.copied });
+  check('B21', 'the figure says it is relative to its control, and the workbook has a Normalisation sheet', /its control/.test(r.yTitle) && r.aoa === 5 && r.prism > 2, { y: r.yTitle, aoa: r.aoa });
+  check('B21', 'with the rules gone the tab is hidden and skipped by the arrow keys, and every value is the vehicle\'s again', r.tab2 === true && !r.keys.includes('norm') && r.back.every(Boolean), { keys: r.keys, back: r.back });
   await ctx.close();
 });
 

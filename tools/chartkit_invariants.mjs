@@ -34,6 +34,12 @@
 //                               as the room allows (it is the width or the height that stops it, not a fixed size) — whatever shape the page is.
 //   K18 the defaults            One hue by default (a blue ramp), a step apart for 2 to 12 compounds; markers, lines and error-bar caps small enough not to hide the data.
 //
+//   K20 a fit stops where   A fit is drawn from its first to its last dose and not across the axis (a curve to the edge of a 6-decade axis reads as a result past the data); Style › "Extend the fit across the
+//       the points stop     whole axis" brings the old drawing back; the Y range of the figure is unchanged either way.
+//   K21 nothing until       A figure with several compounds starts with none drawn, each with a tick beside its name (Data tab) and a hint where the figure is; ticking draws it, Show all / Hide all work, choices
+//       it is ticked        survive a refresh of the same data and new data starts unticked again; a lone compound, and a host with its own chooser (drawAll), are drawn at once.
+//   K22 open on request     Ticking a compound does not list its replicates: they open when its name or the arrow beside it is clicked (and close the same way), for that compound only.
+//
 //   node tools/chartkit_invariants.mjs        exit 1 on any finding
 import { chromium } from 'playwright';
 import path from 'node:path';
@@ -180,6 +186,54 @@ await page.waitForTimeout(500);
 const saved = await ev(() => JSON.parse(localStorage.getItem('ck2:persist2') || 'null'));
 check('K8 what is stored between visits is the style (the palette) and none of the data\'s own state (omitted replicates, colours, titles)', saved && saved.palette === 'bold' && Object.keys(saved.omit).length === 0 && Object.keys(saved.colors).length === 0 && saved.title[0].text === null, JSON.stringify(saved && { palette: saved.palette, omit: saved.omit, colors: saved.colors, t: saved.title[0].text }));
 
+// ── K20 / K21 ──
+await open('xy');
+const k20 = await ev(() => {
+  const o = {}, spec = kit.spec();
+  const ends = (sc, id) => { const f = sc.prims.find(p => p.el === 'fit:' + id), mk = sc.prims.filter(p => p.el === 'pt:' + id && (p.t === 'marker' || p.t === 'circle') && !p.dash).map(p => p.cx !== undefined ? p.cx : p.x); return f ? { fit: [Math.min(...f.pts.map(q => q[0])), Math.max(...f.pts.map(q => q[0]))], pts: [Math.min(...mk), Math.max(...mk)], plot: [sc.plot.x, sc.plot.x + sc.plot.w] } : null; };
+  spec.xy.extend = false; kit.draw(); o.stop = ends(kit.scene(), 'c0');
+  spec.xy.extend = true; kit.draw(); o.extend = ends(kit.scene(), 'c0');
+  spec.xy.extend = false; kit.draw();
+  return o;
+});
+check('K20 the fit starts and ends on the first and last point, inside the plot', k20.stop && Math.abs(k20.stop.fit[0] - k20.stop.pts[0]) < 1 && Math.abs(k20.stop.fit[1] - k20.stop.pts[1]) < 1 && k20.stop.fit[0] > k20.stop.plot[0] + 3 && k20.stop.fit[1] < k20.stop.plot[1] - 3, JSON.stringify(k20.stop));
+check('K20 "Extend the fit across the whole axis" draws it from edge to edge of the plot', k20.extend && Math.abs(k20.extend.fit[0] - k20.extend.plot[0]) < 1 && Math.abs(k20.extend.fit[1] - k20.extend.plot[1]) < 1, JSON.stringify(k20.extend));
+
+await page.goto(URL_ + '?kind=xy&hide=1');
+const k21 = await ev(() => {
+  const o = {}, sc = () => kit.scene(), root = document.getElementById('root'), ticks = () => [...root.querySelectorAll('.ck-tick')];
+  o.start = { hidden: sc().items.map(i => i.hidden), fits: sc().prims.filter(p => /^fit:/.test(p.el || '')).length, ticks: ticks().map(t => t.checked), status: root.querySelector('.ck-status').textContent };
+  ticks()[1].click(); o.one = { hidden: sc().items.map(i => i.hidden), fits: sc().prims.filter(p => /^fit:/.test(p.el || '')).map(p => p.el) };
+  root.querySelector('[data-a=showall]').click(); o.all = sc().items.every(i => !i.hidden);
+  root.querySelector('[data-a=hideall]').click(); o.none = sc().items.every(i => i.hidden);
+  ticks()[2].click(); kit.refresh(); o.kept = sc().items.map(i => i.hidden);
+  // new data: the compounds already met keep their tick, a compound not seen before starts unticked
+  const el = document.createElement('div'); document.body.appendChild(el); let n = 2; const mk = () => ({ sig: 'same', title: ['T'], items: Array.from({ length: n }, (_, i) => ({ id: 'z' + i, name: 'Z' + i, points: [{ x: 1, reps: [{ id: 'q' + i, v: 1 }] }, { x: 10, reps: [{ id: 'r' + i, v: 2 }] }] })) });
+  const k = ChartKit.mount(el, { key: 'k21b', doc: mk }); o.two = k.scene().items.map(i => i.hidden);
+  k.spec().hidden = { z0: true }; delete k.spec().hidden.z1; n = 3; k.refresh(); o.grown = k.scene().items.map(i => i.hidden);
+  const el2 = document.createElement('div'); document.body.appendChild(el2); o.lone = ChartKit.mount(el2, { key: 'k21c', doc: () => ({ sig: 'l', title: ['T'], items: [{ id: 'a', name: 'A', points: [{ x: 1, reps: [{ id: 'q', v: 1 }] }] }] }) }).scene().items.map(i => i.hidden);
+  const el3 = document.createElement('div'); document.body.appendChild(el3); o.own = ChartKit.mount(el3, { key: 'k21d', drawAll: true, doc: mk }).scene().items.map(i => i.hidden);
+  return o;
+});
+check('K21 a figure with several compounds starts with none drawn, every box unticked, and says so under the figure', k21.start.hidden.every(Boolean) && k21.start.hidden.length >= 3 && k21.start.fits === 0 && k21.start.ticks.length === k21.start.hidden.length && k21.start.ticks.every(t => !t) && /tick the compounds/i.test(k21.start.status), JSON.stringify(k21.start));
+check('K21 ticking a compound draws it and only it', k21.one.hidden.filter(h => !h).length === 1 && !k21.one.hidden[1] && k21.one.fits.length === 1, JSON.stringify(k21.one));
+check('K21 Show all draws every compound, Hide all none, and a tick survives a refresh of the same data', k21.all === true && k21.none === true && k21.kept.filter(h => !h).length === 1 && !k21.kept[2], JSON.stringify({ all: k21.all, none: k21.none, kept: k21.kept }));
+check('K21 data that gains a compound leaves the ticks as they were and starts the new one unticked', JSON.stringify(k21.two) === '[true,true]' && JSON.stringify(k21.grown) === '[true,false,true]', JSON.stringify({ two: k21.two, grown: k21.grown }));
+check('K21 a lone compound is drawn at once, and so is every compound of a host with its own chooser', JSON.stringify(k21.lone) === '[false]' && k21.own.every(h => !h), JSON.stringify({ lone: k21.lone, own: k21.own }));
+
+await page.goto(URL_ + '?kind=xy&hide=1');
+const k22 = await ev(() => {
+  const root = document.getElementById('root'), o = {}, dp = () => root.querySelectorAll('.ck-dp').length, tick = i => root.querySelectorAll('.ck-tick')[i];
+  tick(0).click(); tick(1).click(); o.afterTick = dp();
+  root.querySelectorAll('.ck-name')[0].click(); o.afterName = dp(); o.open0 = root.querySelectorAll('.ck-dg')[0].querySelectorAll('.ck-dp').length; o.open1 = root.querySelectorAll('.ck-dg')[1].querySelectorAll('.ck-dp').length;
+  root.querySelectorAll('.ck-chev')[1].click(); o.afterArrow = [root.querySelectorAll('.ck-dg')[0].querySelectorAll('.ck-dp').length, root.querySelectorAll('.ck-dg')[1].querySelectorAll('.ck-dp').length];
+  root.querySelectorAll('.ck-chev')[0].click(); o.closed = root.querySelectorAll('.ck-dg')[0].querySelectorAll('.ck-dp').length;
+  return o;
+});
+check('K22 ticking compounds lists no replicates', k22.afterTick === 0, JSON.stringify(k22));
+check('K22 the name opens its compound\'s replicates, and only its own', k22.open0 > 0 && k22.open1 === 0, JSON.stringify(k22));
+check('K22 the arrow opens another compound\'s, and closes an open one', k22.afterArrow[0] > 0 && k22.afterArrow[1] > 0 && k22.closed === 0, JSON.stringify(k22));
+
 // ═════ the editor inside the apps (what a person actually meets) ═════
 const APPS = {
   echo: { file: 'apps/echo/echo.html', kit: '_egKit', root: '#eg-root', load: async pg => { await pg.evaluate(() => loadTestData()); await pg.waitForTimeout(600); await pg.evaluate(() => runPipeline()); await pg.waitForFunction(() => typeof _lastResultsData !== 'undefined' && _lastResultsData && _lastResultsData.length > 0, null, { timeout: 120000 }); await pg.waitForTimeout(500); await pg.evaluate(() => document.querySelector('[data-tab="graph"]').click()); } },
@@ -200,10 +254,12 @@ const LABELS = () => {   // every label inside the figure and on no other label;
     return [...new Set(bad)].slice(0, 4);
   };
 };
-async function openApp(name, vp) {
+async function openApp(name, vp, asMet) {
   const a = APPS[name], c = await browser.newContext({ viewport: vp || { width: 1280, height: 800 }, acceptDownloads: true }), pg = await c.newPage(), e = [];
   pg.on('pageerror', x => e.push(name + ' pageerror: ' + x.message)); pg.on('console', m => { if (m.type() === 'error') e.push(name + ' console: ' + m.text().slice(0, 140)); });
   await pg.goto('file://' + path.join(REPO, a.file)); await pg.waitForTimeout(1200); await a.load(pg); await pg.waitForTimeout(900); await pg.evaluate(LABELS);
+  // the kit starts every compound unticked; the checks about drawing tick them first, K19b asks for the kit as it is first met (asMet)
+  if (!asMet) await pg.evaluate(k => { const kit = window[k]; if (kit) { kit.spec().hidden = {}; kit.refresh(); } }, a.kit);
   return { c, pg, e, a };
 }
 const appErrs = [];
@@ -294,7 +350,7 @@ for (const name of Object.keys(APPS)) {
     check('K17 ' + name + ' ' + w + '×' + h + ': the whole figure and panel are inside the window, and the figure is as large as the room allows (4 page shapes)', bad.length === 0, bad.slice(0, 2).join(' | '));
   }
   // K19 — a dose label wider than its column wraps; it never sticks out of its box (CI's font draws 0.0000693 wider than 54px)
-  { const r = await E(() => { const tb = document.querySelector('.ck-tabs button[data-tab="data"]'); if (tb) tb.click(); const xs = [...document.querySelectorAll('.ck-dx')].filter(e => e.getBoundingClientRect().width > 0); xs.forEach(e => { e.textContent = '0.000000069300'; }); return { n: xs.length, wide: xs.filter(e => e.scrollWidth > e.clientWidth + 0.5).length }; });
+  { const r = await E(() => { const tb = document.querySelector('.ck-tabs button[data-tab="data"]'); if (tb) tb.click(); document.querySelectorAll('.ck-chev:not(.open)').forEach(b => b.click()); const xs = [...document.querySelectorAll('.ck-dx')].filter(e => e.getBoundingClientRect().width > 0); xs.forEach(e => { e.textContent = '0.000000069300'; }); return { n: xs.length, wide: xs.filter(e => e.scrollWidth > e.clientWidth + 0.5).length }; });
     check('K19 ' + name + ': a long dose label stays inside its box (' + r.n + ' labels)', r.n > 0 && r.wide === 0, JSON.stringify(r)); }
   await pg.setViewportSize({ width: 1280, height: 800 });
   // K15 — narrow windows
