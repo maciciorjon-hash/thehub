@@ -83,7 +83,7 @@ try {
       const r = await tryForm(v); check('IN3', `the culture form refuses ${k} with a message and stores nothing`, r.added === 0 && r.toast.length > 8, JSON.stringify(r));
     }
     const ok = await tryForm({ passage: '7', interval: '', limit: '' }); check('IN3', 'a whole passage with the other two left empty is stored', ok.added === 1, JSON.stringify(ok));
-    const sp = await p.evaluate(() => { const id = Object.keys(STORE.get().incubator)[0]; openDrawer(id); openSplit(id); const res = []; for (const v of ['-1', '2.5', '1e999', 'x']) { document.getElementById('sp-passage-' + id).value = v; const before = STORE.get().incubator[id].passage; confirmSplit(id); res.push(STORE.get().incubator[id].passage === before); } document.getElementById('sp-passage-' + id).value = '8'; document.getElementById('sp-date-' + id).value = '2026-10-25'; const b2 = STORE.get().incubator[id].passage; confirmSplit(id); res.push(STORE.get().incubator[id].passage === b2); return res; });
+    const sp = await p.evaluate(() => { const id = Object.keys(STORE.get().incubator)[0]; openDrawer(id); openSplit(id); const res = []; for (const v of ['-1', '2.5', '1e999', 'x']) { document.getElementById('sp-passage-' + id).value = v; const before = STORE.get().incubator[id].passage; confirmSplit(id); res.push(STORE.get().incubator[id].passage === before); } document.getElementById('sp-passage-' + id).value = '8'; document.getElementById('sp-date-' + id).value = '2099-01-01'; const b2 = STORE.get().incubator[id].passage; confirmSplit(id); res.push(STORE.get().incubator[id].passage === b2); return res; });
     check('IN3', 'the split dialog refuses a passage of -1, 2.5, 1e999, text and a date in the future', sp.every(Boolean), JSON.stringify(sp));
     await ctx.close();
   }
