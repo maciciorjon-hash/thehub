@@ -19,6 +19,13 @@
 //   BL10 sync                          a list saved here while offline goes up when the cloud is older
 //   BL11 Labbook round trip            Send to Labbook files the figure with its design; Edit in Blot opens it as it was;
 //                                      Update replaces the same file and keeps the caption written in Labbook
+//   BL13 16-bit scans                  a 16-bit TIFF that uses 0-4000 of 65535 keeps its range (scaled over its own min-max, a straight
+//                                      line), where it used to keep 16 grey levels; WhiteIsZero is inverted; 8-bit is untouched
+//   BL14 densitometry is on the original  levels and invert set for the figure do not change the numbers: the relative signals of a
+//                                      levelled and inverted panel match the gel's, and a stored box from before is migrated
+//   BL15 keyboard and names            every dialog is role=dialog with its title as its name, takes focus, keeps Tab inside, closes on Esc
+//                                      and returns focus; close buttons are named; editable labels are textboxes with a name and a
+//                                      focus ring; the steppers are named and 24px wide; the toast is role=status; the state colours exist
 //   BL12 layout                        escape, runtime and alignment audits on the figure and every dialog, 1440/1024/390,
 //                                      both themes
 //
@@ -320,6 +327,98 @@ window.addEventListener('message',function(e){ if(e.data&&e.data.type==='dhub:ac
   }
   errs.length ? bad('BL11', 'errors: ' + errs.slice(0, 3).join(' | ')) : ok();
   await ctx.close();
+});
+
+if (run('BL13')) await guard('BL13', async () => {
+  const p = await open();
+  const r = await p.evaluate(async () => {
+    function tiff(w, h, vals, photometric) { const ifdOff = 8, nEnt = 9, dataOff = ifdOff + 2 + nEnt * 12 + 4, buf = new ArrayBuffer(dataOff + w * h * 2), dv = new DataView(buf);
+      dv.setUint8(0, 0x49); dv.setUint8(1, 0x49); dv.setUint16(2, 42, true); dv.setUint32(4, ifdOff, true); dv.setUint16(ifdOff, nEnt, true); let o = ifdOff + 2;
+      const ent = (tag, type, cnt, val) => { dv.setUint16(o, tag, true); dv.setUint16(o + 2, type, true); dv.setUint32(o + 4, cnt, true); if (type === 3) dv.setUint16(o + 8, val, true); else dv.setUint32(o + 8, val, true); o += 12; };
+      ent(256, 3, 1, w); ent(257, 3, 1, h); ent(258, 3, 1, 16); ent(259, 3, 1, 1); ent(262, 3, 1, photometric); ent(273, 4, 1, dataOff); ent(277, 3, 1, 1); ent(278, 3, 1, h); ent(279, 4, 1, w * h * 2);
+      dv.setUint32(o, 0, true); for (let i = 0; i < w * h; i++) dv.setUint16(dataOff + i * 2, vals[i], true); return buf; }
+    const w = 200, h = 60, vals = new Uint16Array(w * h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) vals[y * w + x] = Math.round(300 + Math.exp(-((y - 30) ** 2) / 40) * (x > 20 && x < 80 ? 1 : x > 100 && x < 160 ? 0.5 : 0) * 3700);
+    const out = {};
+    for (const ph of [1, 0]) {
+      FIG.panels[0].src = null; loadImageFile(0, new File([tiff(w, h, vals, ph)], 'g' + ph + '.tif', { type: 'image/tiff' })); await new Promise(r => setTimeout(r, 800));
+      const im = new Image(); im.src = FIG.panels[0].src; await im.decode(); const c = document.createElement('canvas'); c.width = im.naturalWidth; c.height = im.naturalHeight; const x = c.getContext('2d'); x.drawImage(im, 0, 0);
+      const d = x.getImageData(0, 0, c.width, c.height).data; let mn = 255, mx = 0, bandMid = 0, half = 0; for (let i = 0; i < d.length; i += 4) { mn = Math.min(mn, d[i]); mx = Math.max(mx, d[i]); }
+      bandMid = d[(30 * w + 50) * 4]; half = d[(30 * w + 130) * 4]; const bg = d[(5 * w + 5) * 4];
+      out['p' + ph] = { mn, mx, bandMid, half, bg, flag: FIG.panels[0].bits16 === true }; closeCrop();
+    }
+    return out;
+  });
+  const a = r.p1, b = r.p0;
+  a.mx - a.mn >= 250 ? ok() : bad('BL13', `a 16-bit scan using 0-4000 came out spanning ${a.mn}-${a.mx} of 255`);
+  Math.abs((a.half - a.bg) / (a.bandMid - a.bg) - 0.5) < 0.03 ? ok() : bad('BL13', `a band half as strong is ${(a.half - a.bg)}/${(a.bandMid - a.bg)} of the strong one, not one half`);
+  b.mx - b.mn >= 250 && b.bandMid < b.bg ? ok() : bad('BL13', 'a WhiteIsZero 16-bit scan was not inverted and spread');
+  a.flag ? ok() : bad('BL13', 'the panel does not remember it was 16-bit');
+  await p.context().close();
+});
+
+if (run('BL14')) await guard('BL14', async () => {
+  const p = await open();
+  const amps = [0.15, 0.3, 0.6, 0.9, 0.45, 0.2, 0.05, 0.75, 0.3, 0.6, 0.15, 0.9];
+  const r = await p.evaluate(GEL + `;(async A => {
+    var g = __gel(A), img = new Image(); img.src = g; await img.decode();
+    var pn = FIG.panels[0]; pn.src = g; pn.crop = { x: 0, y: 0, w: 600, h: 120 }; pn.prot = 'T';
+    var measure = async () => { pn.quant = undefined; var r = await _dnMeasurePanel(0); return r.map(x => x.vol); };
+    pn.cropped = g; pn.adj = null; var plain = await measure();
+    var adj = { rot: 0, lo: 90, hi: 170, inv: true }, c = _adjCanvas(img, adj, 1); pn.cropped = c.toDataURL('image/png'); pn.adj = adj;
+    var shown = await measure();
+    // a box stored before the migration (no v) on an inverted panel: polarity must be flipped, the box kept
+    pn.quant = { y0: 0.3, y1: 0.7, dark: false }; var before = JSON.stringify(pn.quant); await _dnMeasurePanel(0);
+    return { plain: plain, shown: shown, migrated: pn.quant }; })(${JSON.stringify(amps)})`);
+  const rel = v => v.map(x => x / v[0]), want = amps.map(a => a / amps[0]);
+  const worst = Math.max(...rel(r.shown).map((v, i) => Math.abs(v - want[i]) / want[i]));
+  worst < 0.05 ? ok() : bad('BL14', `levels 90-170 + invert changed the relative signals by ${(worst * 100).toFixed(1)}% (got ${rel(r.shown).map(v => v.toFixed(2)).join(' ')})`);
+  const same = Math.max(...r.plain.map((v, i) => Math.abs(v - r.shown[i]) / Math.max(1, v)));
+  same < 0.02 ? ok() : bad('BL14', `the same gel gives different signals with and without levels (${(same * 100).toFixed(1)}%)`);
+  r.migrated.v === 2 && r.migrated.dark === true && r.migrated.y0 === 0.3 ? ok() : bad('BL14', 'a stored box from before was not migrated (polarity flipped, box kept): ' + JSON.stringify(r.migrated));
+  await p.context().close();
+});
+
+if (run('BL15')) await guard('BL15', async () => {
+  const p = await open();
+  await p.evaluate(GEL + `;(() => { var g = __gel([.2,.4,.6,.8,.2,.4,.6,.8,.2,.4,.6,.8]); FIG.panels[0].src = g; FIG.panels[0].cropped = g; FIG.panels[0].prot = 'BRD4'; FIG.panels[0].crop = { x: 0, y: 0, w: 600, h: 120 }; save(); render(); })()`);
+  await sleep(300);
+  const dialogs = [['crop-back', 'openCrop(0)', 'closeCrop'], ['dn-back', 'openQuant(0)', 'closeQuant'], ['mk-back', 'openMarkers(0)', 'closeMarkers'], ['hist-back', 'openHistoryModal()', 'closeHistoryModal'], ['preset-back', 'openPresetsModal()', 'closePresetsModal']];
+  for (const [id, open_, close_] of dialogs) {
+    await p.evaluate(() => { const b = document.getElementById('exp-labbook') || document.querySelector('.toolbar .btn'); b && b.focus(); });
+    const before = await p.evaluate(() => { const e = document.activeElement; e.setAttribute('data-opener', '1'); return e.tagName; });
+    await p.evaluate(open_); await sleep(500);
+    const r = await p.evaluate(id => { const b = document.getElementById(id), m = b.querySelector('.modal'), t = m.querySelector('h3'), c = b.querySelector('.iconbtn');
+      const f = [...b.querySelectorAll('button,input,select,textarea')].filter(e => e.getClientRects().length && !e.disabled);
+      return { role: m.getAttribute('role'), modal: m.getAttribute('aria-modal'), name: !!(t && m.getAttribute('aria-labelledby') === t.id), close: c && c.getAttribute('aria-label'), w: c && c.getBoundingClientRect().width, inside: b.contains(document.activeElement), n: f.length }; }, id);
+    if (r.role !== 'dialog' || r.modal !== 'true' || !r.name) bad('BL15', `${id}: role=${r.role} modal=${r.modal} named=${r.name}`); else ok();
+    if (r.close !== 'Close' || r.w < 28) bad('BL15', `${id}: the close button is "${r.close}" ${r.w}px`); else ok();
+    if (!r.inside) bad('BL15', `${id}: focus did not move into the dialog`); else ok();
+    // Tab from the last control stays inside
+    const stay = await p.evaluate(id => { const b = document.getElementById(id), f = [...b.querySelectorAll('button,input:not([type=hidden]),select,textarea,[tabindex]:not([tabindex="-1"])')].filter(e => e.getClientRects().length && !e.disabled); f[f.length - 1].focus(); document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true })); return b.contains(document.activeElement); }, id);
+    await p.keyboard.press('Tab'); const stay2 = await p.evaluate(id => document.getElementById(id).contains(document.activeElement), id);
+    if (!stay || !stay2) bad('BL15', `${id}: Tab leaves the dialog`); else ok();
+    await p.keyboard.press('Escape'); await sleep(350);
+    const back = await p.evaluate(id => ({ closed: !document.getElementById(id).classList.contains('open'), opener: document.activeElement && document.activeElement.getAttribute('data-opener') === '1' }), id);
+    if (!back.closed) bad('BL15', `${id}: Esc does not close it`); else ok();
+    if (!back.opener) bad('BL15', `${id}: focus did not go back to the control that opened it`); else ok();
+    await p.evaluate(() => document.querySelectorAll('[data-opener]').forEach(e => e.removeAttribute('data-opener')));
+    await p.evaluate(close_ + '()').catch(() => {});
+  }
+  const q = await p.evaluate(() => {
+    const labs = [...document.querySelectorAll('.lbl-in,.grp-lbl')];
+    const ring = (() => { const l = document.querySelector('.lane-cell .lbl-in'); l.focus(); const cs = getComputedStyle(l); return cs.outlineStyle !== 'none' && parseFloat(cs.outlineWidth) >= 2; })();
+    const st = [...document.querySelectorAll('.tb-step button')].map(b => ({ w: b.getBoundingClientRect().width, n: b.getAttribute('aria-label') }));
+    const inp = [...document.querySelectorAll('.tb-step input')].map(i => i.getAttribute('aria-label'));
+    const root = getComputedStyle(document.documentElement);
+    return { labs: labs.length, unnamed: labs.filter(l => l.getAttribute('role') !== 'textbox' || !l.getAttribute('aria-label')).length, ring, smallStep: st.filter(x => x.w < 24 || !x.n).length, inp: inp.filter(x => !x), toast: document.getElementById('toast').getAttribute('role'), tokens: ['--good', '--warn', '--danger', '--shadow-xs'].filter(t => !root.getPropertyValue(t).trim()) };
+  });
+  q.labs && !q.unnamed ? ok() : bad('BL15', `${q.unnamed} of ${q.labs} editable labels are not named textboxes`);
+  q.ring ? ok() : bad('BL15', 'an editable label shows no focus ring');
+  !q.smallStep && !q.inp.length ? ok() : bad('BL15', `${q.smallStep} stepper buttons are under 24px or unnamed, ${q.inp.length} unnamed number boxes`);
+  q.toast === 'status' ? ok() : bad('BL15', 'the toast is not role=status');
+  !q.tokens.length ? ok() : bad('BL15', 'tokens missing: ' + q.tokens.join(', '));
+  await p.context().close();
 });
 
 if (run('BL12')) await guard('BL12', async () => {
