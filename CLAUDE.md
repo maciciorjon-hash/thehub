@@ -17,7 +17,7 @@ docs/                    UI.md (visual standard) · CLAUDE_REFERENCE · SESSION_
 vendor/  old_stuff/ (retired apps, see its README)  Backup/ (Jon's real data backups)
 mobile/  Labbook iPhone app (Capacitor; www/ from `embed.py --profile=labbook-app`; mobile/README.md)
 ```
-Apps (id → folder): echo · deg→dora · pd→blueprint · dna→helix · pt→protein-tools · spectra→bca · cryo→iceberg · cuppa · beacon · lumina · hitfinder · tempo · ribbon · protocols→archive · cellarchive→cell-archive · incubator · labbook · blot→western-blot. Admin-only: labbook, incubator, tempo, (hitfinder unless the Data Analysis suite code). Details: reference › *Current apps*.
+Apps (id → folder): echo · deg→dora · pd→blueprint · dna→helix · pt→protein-tools · spectra→bca · cryo→iceberg · cuppa · beacon · lumina · hitfinder · tempo · ribbon · protocols→archive · cellarchive→cell-archive · incubator · labbook · blot→western-blot. Admin-only: labbook, incubator, tempo, hitfinder (Hit Finder opens for a visitor only with its own suite word, `SUITE_UNLOCK_WORDS.hitfinder`). Details: reference › *Current apps*.
 
 ## Build and CI
 

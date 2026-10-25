@@ -159,7 +159,7 @@ if (run('BA4')) await guard('BA4', async () => {
   check('BA4', 'a toast is a live region: a screen reader hears what the app says after an action', ts[0] === 'status' && ts[1] === 'polite', ts);
   await pg.evaluate("switchTab('plate')");
   await pg.focus('.tab.active'); await pg.keyboard.press('ArrowRight'); await pg.keyboard.press('ArrowRight');
-  const nav = await pg.evaluate(() => ({ sel: [...document.querySelectorAll('.tab')].map(b => b.getAttribute('aria-selected')).join(','), stops: [...document.querySelectorAll('.tab')].filter(b => b.tabIndex === 0).length, tab: activeTab, focus: document.activeElement.dataset.tab, list: document.querySelector('[role=tablist]') && [...document.querySelectorAll('[role=tablist] > .tab')].length }));
+  const nav = await pg.evaluate(() => ({ sel: [...document.querySelectorAll('.tab:not([hidden])')].map(b => b.getAttribute('aria-selected')).join(','), stops: [...document.querySelectorAll('.tab:not([hidden])')].filter(b => b.tabIndex === 0).length, tab: activeTab, focus: document.activeElement.dataset.tab, list: document.querySelector('[role=tablist]') && [...document.querySelectorAll('[role=tablist] > .tab:not([hidden])')].length }));   // the Normalisation tab is hidden until a plate carries two vehicles
   check('BA4', 'the main tabs are role=tab buttons in a tablist, one tab stop, ←/→ move along them (aria-selected follows, the focus goes with the tab)', nav.sel === 'false,false,true,false,false' && nav.stops === 1 && nav.tab === 'graph' && nav.focus === 'graph' && nav.list === 5, nav);
   await ctx.close();
 });

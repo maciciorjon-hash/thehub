@@ -56,6 +56,23 @@
 //       its box                 tag, a cell line with its knock-out) every tab, the drawer and every dialog, at 1440 / 1260 (the Hub's frame on a laptop) / 1100 /
 //                              900 / 390 px, is checked by tools/audit_escape.js: no icon or text leaves the box drawn around it, no two runs of text land on
 //                              one another, no chart label touches another, and nothing a person must read whole hides behind a sideways scroll.
+//   H26 sensitivity is the    Moving a gate in the Sensitivity view gives exactly the tiers a fresh evaluation with that threshold gives (every gate, every step, all four
+//       decision, moved          tiers); relaxing never lowers the hits and tightening never raises them; the robustness of each hit equals a brute-force count over the
+//                              variants; a step is ×1.4 on a ratio and the rule text says where the line went; the tab and the workbook sheets show the same.
+//   H27 efficiency is honest   LE = 1.37 × pDC50 ÷ heavy atoms and LLE = pDC50 − cLogP are exact for a measured potency; a bound stays an interval ("> 10 µM" can never pass an LE
+//                              gate that its ceiling misses, and cannot fail one it might meet); CNS MPO is Wager's six desirabilities, a property that cannot be read widens
+//                              the score by one instead of counting as 0 or 1, and the criterion is inactive without structures.
+//   H28 the screen has a       A reference compound measured in several runs is a control chart: limits from the median and 1.4826 × MAD (so a stepped run cannot widen its
+//       rhythm                  own limits), the Westgard rules 1-3s / 2-2s / 4-1s / 10x fire where they should and nowhere else, nothing is flagged under six runs, a bound is
+//                              counted and left out, two versions of one analysis are one run, and a run's verdict is the worst of its references.
+//   H29 the report is the      The report model carries exactly the tiers, funnel, hits and gates the screen shows; the PDF has real text, one page break per overflow and no
+//       numbers                 character outside what Helvetica can print; every plot in it is on white with no CSS variable.
+//   H30 Labbook gets tables    Send to Labbook sends two tables (the hit list and the criteria) on the tables channel and never a results row; every row is as long as its
+//       and only tables         header; numbers stay numbers and nothing starts as a formula; the same content has the same id and changed content a new one.
+//   H31 one door in            A Lumina results table, an Echo/Tempo Screen table and a file dropped on the page are read by the same readers: the same compounds, qualifiers
+//                              and potencies come out, a bound stays a bound, and sending twice does not double the screens.
+//   H32 the cloud never        Nothing is written to the cloud before its first read has landed; calls merge compound by compound (the later one wins), presets by name; a call
+//       overwrites               you cleared stays cleared on another device; a refused read leaves the app local and working.
 //
 // Usage (repo root):  node tools/hitfinder_invariants.mjs [--only=H0,H16] [--file=path/to/hitfinder.html] [--echo=path/to/echo.html] [--verbose]
 import { chromium } from 'playwright';
@@ -86,7 +103,7 @@ const HOST_HTML = `<!doctype html><html><body style="margin:0"><iframe id="frame
 var APP_INFO = { hitfinder: { name: 'Hit Finder' } }; window.__opens = []; var acked = {};
 window.addEventListener('message', function (e) { if (e.data && e.data.type === 'dhub:ack') acked[e.data.requestId] = true; });
 function openApp(id, tab, item, context) {
-  window.__opens.push({ ribbon: context && context.ribbon, id: id, source: context && context.source, echoRun: context && context.echoRun, hasTable: !!(context && context.table), tableRows: context && context.table ? context.table.length : 0, name: context && context.name });
+  window.__opens.push({ ribbon: context && context.ribbon, id: id, source: context && context.source, echoRun: context && context.echoRun, hasTable: !!(context && context.table), tableRows: context && context.table ? context.table.length : 0, name: context && context.name, tables: context && context.tables ? context.tables.map(function (t) { return { id: t.id, cols: t.columns && t.columns.length, rows: t.rows && t.rows.length }; }) : null, hasResults: !!(context && context.results) });
   var f = document.getElementById('frame-' + id); if (!f) return; if (!f.getAttribute('src')) f.src = '/__hf.html';
   var msg = { type: 'dhub:context', version: 1, source: (context && context.source) || 'hub', target: id, action: 'open', context: context, requestId: 't' + Date.now() + Math.random() };
   var n = 0; (function send() { if (acked[msg.requestId] || n >= 60) return; try { f.contentWindow.postMessage(msg, '*'); } catch (x) {} n++; setTimeout(send, 250); })();
@@ -109,11 +126,12 @@ const pg = await ctx.newPage();
 const pageErrs = [];
 pg.on('pageerror', e => pageErrs.push(String(e && e.message || e)));
 // Only this server, and SheetJS (cdnjs, or --xlsx=PATH for an offline run). Fonts and everything else stay out.
-const XLSX_LOCAL = args.xlsx ? fs.readFileSync(String(args.xlsx)) : null;
+const XLSX_LOCAL = args.xlsx ? fs.readFileSync(String(args.xlsx)) : null, JSPDF_LOCAL = args.jspdf ? fs.readFileSync(String(args.jspdf)) : null;
 await ctx.route(/^https?:/, r => {
   const u = r.request().url();
   if (u.startsWith(BASE)) return r.continue();
   if (/cdnjs\.cloudflare\.com\/ajax\/libs\/xlsx/.test(u)) return XLSX_LOCAL ? r.fulfill({ body: XLSX_LOCAL, contentType: 'text/javascript' }) : r.continue();
+  if (/cdnjs\.cloudflare\.com\/ajax\/libs\/jspdf/.test(u)) return JSPDF_LOCAL ? r.fulfill({ body: JSPDF_LOCAL, contentType: 'text/javascript' }) : r.continue();
   r.abort();
 });
 const E = (f, a) => pg.evaluate(f, a);
@@ -605,8 +623,8 @@ if (run('H8')) await guard('H8', async () => {
     out.sheetsAoa = hfSheets().map(s => s.name);
     return out;
   });
-  const want = ['Summary', 'Hits', 'All compounds', 'Criteria used', 'Funnel', 'Screens and slots', 'Decisions', 'Cherry-pick', 'Screen data', 'Provenance'];
-  check('H8', 'the file is a real workbook with the ten sheets, in this order', wbr.zip && JSON.stringify(wbr.names) === JSON.stringify(want) && JSON.stringify(wbr.sheetsAoa) === JSON.stringify(want), { names: wbr.names, zip: wbr.zip });
+  const want = ['Summary', 'Hits', 'All compounds', 'Criteria used', 'Funnel', 'Screens and slots', 'Decisions', 'Cherry-pick', 'Sensitivity', 'Robustness', 'Screen data', 'Provenance'];
+  check('H8', 'the file is a real workbook with the twelve sheets, in this order', wbr.zip && JSON.stringify(wbr.names) === JSON.stringify(want) && JSON.stringify(wbr.sheetsAoa) === JSON.stringify(want), { names: wbr.names, zip: wbr.zip });
   check('H8', 'the Hits sheet is the Hits tab: the same compounds, in the same order, ranked 1…n', wbr.nHits === wbr.counts.hit + wbr.counts.borderline && JSON.stringify(wbr.hitNames) === JSON.stringify(wbr.wantNames) && wbr.ranks.every((r, i) => r === i + 1), { got: wbr.hitNames.slice(0, 5), want: wbr.wantNames.slice(0, 5), n: wbr.nHits });
   check('H8', 'the Criteria sheet alone re-creates the criteria exactly', wbr.critRows > 0 && wbr.critSame, { rows: wbr.critRows, same: wbr.critSame });
   check('H8', 'and judging every compound with them gives the tier the workbook gives it, for all compounds', wbr.n > 20 && wbr.mismatch === 0, { n: wbr.n, mismatch: wbr.mismatch });
@@ -798,7 +816,7 @@ if (run('H21')) await guard('H21', async () => {
   await hfReset();
   const r = await E(async () => {
     const out = {}, cks = HF.uni.slice(0, 8), names = cks.map(hfName);
-    const csv = ['Compound,SMILES,MW,cLogP,TPSA,HBD,HBA,RotB,LogD',
+    const csv = ['Compound,SMILES,MW,cLogP,TPSA,HBD,HBA,RotB,Solubility',
       names[0] + ',CCO,450,3,100,2,6,5,1.1', names[1] + ',CCN,600,4,120,3,8,8,2.0', names[2] + ',CCC,800,6.5,200,7,12,14,3.2', names[3] + ',CCCC,500,5,140,5,10,10,1', names[4] + ',CCCCC,,2,90,1,4,3,0.5', 'NOT-IN-SCREENS,CCCCCC,300,1,50,1,2,1,0'].join('\n');
     HF.smiles = new Map(); hfChemReset();                              // the example brings structures of its own: start from none
     const f = new File([csv], 'structures.csv', { type: 'text/csv' });
@@ -806,7 +824,7 @@ if (run('H21')) await guard('H21', async () => {
     await new Promise(r => setTimeout(r, 400));
     out.have = HF.chem.by.size; out.status = HF.chem.status; hfChemNotice(true); hfChemNotice(true); out.notice = document.querySelectorAll('#hf-rd-note').length;
     out.mw = [hfProp(cks[0], 'mw'), hfProp(cks[4], 'mw')]; out.from = [hfPropFrom(cks[0], 'mw'), hfPropFrom(cks[4], 'mw')];
-    out.extra = (HF.chem.by.get(cks[0]).props || {})['x:LogD'];
+    out.extra = (HF.chem.by.get(cks[0]).props || {})['x:Solubility'];
     out.prof = HF_PROFILE_ORDER.map(id => [id, [0, 1, 2, 3, 4].map(i => { const r = hfProfileEval(cks[i], id); return r ? r.pass + ':' + r.viol + ':' + r.unread : null; })]);
     // a gate on the property reads the right status
     hfCritAdd('mw'); const c = HF.crit.rows.find(x => x.metric === 'mw'); c.pass = 500; c.fail = 700; hfCritPatch(c);
@@ -837,7 +855,7 @@ if (run('H21')) await guard('H21', async () => {
   check('H21', 'an unread rule is unread, not a pass: Ro5 with MW missing and nothing else wrong is "unknown", and one violation already seen still fails', P.ro5[4].startsWith('unknown:') && P.ghose[0].startsWith('unknown:'), { ro5: P.ro5[4], ghose: P.ghose[0] });
   check('H21', 'a gate on MW (pass ≤ 500, borderline ≤ 700) reads pass (450), borderline (600), fail (800), pass at the edge (500), and skip/unknown for the compound with no MW, as the policy says', JSON.stringify(r.mwStatus) === JSON.stringify(['pass', 'borderline', 'fail', 'pass', 'skip']) && r.gateIsGate && r.mwUnk === 'unknown' && r.tierUnk === true && r.mwSkip === 'skip', { mwStatus: r.mwStatus, unk: r.mwUnk, tier: r.tierUnk, skip: r.mwSkip });
   check('H21', 'the violations gate reads each compound from the numbers and names what was violated; adding it twice adds it once', r.ro5.length === 5 && /^pass:0 violations/.test(r.ro5[0]) && /^pass:1 violation: MW > 500/.test(r.ro5[1]) && /^fail:\d+ violations?: /.test(r.ro5[2]) && r.noDup === 1, { ro5: r.ro5, noDup: r.noDup });
-  check('H21', 'the Chemistry tab and the drawer draw without RDKit: the rule sets, the distributions, the property chips and the verdict pills', r.tab.profRows === 6 && r.tab.hist === 8 && /RDKit/.test(r.tab.note) && r.drawer.chips === 8 && /450/.test(r.drawer.text) && r.drawer.profs === 6, { tab: r.tab, drawer: r.drawer });
+  check('H21', 'the Chemistry tab and the drawer draw without RDKit: the rule sets, the distributions, the property chips and the verdict pills', r.tab.profRows === 6 && r.tab.hist === 8 && /RDKit/.test(r.tab.note) && r.drawer.chips === 11 && /450/.test(r.drawer.text) && r.drawer.profs === 6, { tab: r.tab, drawer: r.drawer });
   check('H21', 'the workbook carries the properties, the violations and the SMILES, with a number where the file gave one and a blank where it did not', r.cols.every(Boolean) && r.xlMw === 450 && r.xlMw4 === null, { cols: r.cols, xlMw: r.xlMw, xlMw4: r.xlMw4 });
   check('H21', 'a .smi file is "SMILES name", comments and blank lines skipped, a name may have spaces', r.smi === 'SMILES|Compound;CCO|ethanol;CCN|ethylamine extra words', r.smi);
 });
@@ -994,7 +1012,7 @@ if (run('H23')) await guard('H23', async () => {
       });
       await sp.waitForTimeout(500);
       await sp.evaluate(HF_SEED[1]); await sp.waitForTimeout(2600);                              // structures the offline run cannot fetch
-      for (const t of ['screens', 'criteria', 'hits', 'plots', 'chem', 'export']) {
+      for (const t of ['screens', 'criteria', 'hits', 'sens', 'plots', 'chem', 'export']) {
         await sp.evaluate(k => { hfTab(k); window.scrollTo(0, 0); }, t); await sp.waitForTimeout(450);
         if (t === 'chem') { const drawn = await sp.waitForSelector('.cl-grp', { timeout: 8000 }).then(() => true, () => false); await sp.waitForTimeout(300); check('H23', `the Chemistry tables were drawn at ${w}px, so they were measured`, drawn, drawn); }
         if (t === 'hits') {      // the widest thing each metric cell can hold, whatever the first rows of this data happen to say
@@ -1009,6 +1027,11 @@ if (run('H23')) await guard('H23', async () => {
       await sp.evaluate(() => { hfTab('hits'); hfOpenDrawer(HF.uni[0]); }); await sp.waitForTimeout(600); await audit('drawer');
       await sp.evaluate(() => { document.querySelector('.dr-bd').scrollTop = 99999; }); await sp.waitForTimeout(300); await audit('drawer-end');
       await sp.evaluate(() => hfCloseDrawer());
+      // the Health tab needs repeated references: the demo, with the long names a lab uses on its references
+      await sp.evaluate(() => { const o = window.hfHealthDemoRuns; window.hfHealthDemoRuns = () => { const rs = o(); rs.forEach(r => { r.assayId += '_BET_degradation_screen_plate_series_ABC_20260504'; r.screens.forEach(s => { s.cellLine += ' DCAF15 KO clone 7'; }); }); return rs; }; hfLoadHealthDemo(); document.querySelectorAll('#pane-health .tchip').forEach(b => { b.dataset.ck = b.dataset.ck; }); });
+      await sp.waitForTimeout(600); await audit('health');
+      await sp.evaluate(() => { loadHitFinderTestData(); });
+      await sp.waitForTimeout(400);
       // dialogs, with the file names a plate reader writes
       await sp.evaluate(() => {
         window.hfEchoRuns = async () => { const mk = (id, setId, name, ver) => ({ id, setId, name, groups: 'BRD2, BRD3, BRD4, BRD9 and a very long list of groups that goes on and on', ver, ts: Date.now() - id * 8.64e7, n: 138, nFlag: 7, multi: id % 2 === 0, assayType: 'hibit', screens: [{ target: 'BRD4(BD1)-NanoLuc fusion in HEK293' }] });
@@ -1083,6 +1106,291 @@ if (run('H25')) await guard('H25', async () => {
   });
   check('H25', 'Esc closes a dialog, Tab stays inside it and the focus returns to what opened it', d.open && d.wrapped && d.closed && d.back, d);
   check('H25', 'the backdrop is black at .45, a button is 32px with --r-1 corners and --fs-3 type, a field is 32px with --r-1', /rgba\(0, 0, 0, 0\.45\)/.test(d.bg) && d.btn[0] === '4px' && d.btn[1] === '32px' && d.btn[2] === '12px' && d.inp[0] === '4px' && d.inp[1] === '32px', d);
+});
+
+/* ── the second delivery: H26–H32 ── */
+// a screen whose potencies straddle the usual gates, so moving a gate moves compounds
+const H26_CSV = (() => { let s = 'Compound,DC50_nM,Dmax_%,Hill,R2\n'; for (let i = 0; i < 48; i++) s += 'S-' + String(i + 1).padStart(3, '0') + ',' + (+(18 * Math.pow(1.075, i)).toPrecision(3)) + ',' + (52 + (i * 37) % 46) + ',' + (0.7 + (i % 7) * 0.25) + ',' + (0.78 + (i % 9) * 0.025).toFixed(3) + '\n'; return s; })();
+const h26Load = () => E(async csv => { try { localStorage.removeItem('hf_crit_v1'); localStorage.removeItem('hf_dec_v1'); } catch (e) {} HF.crit = null; HF.dec = new Map(); HF.recs = []; HF.screens = new Map(); HF.arms = new Map(); HF.alias = new Map(); HF.smiles = new Map(); hfChemReset(); await hfAddFiles([new File([csv], 'sens.csv', { type: 'text/csv' })]); await new Promise(r => setTimeout(r, 200)); return HF.uni.length; }, H26_CSV);
+
+if (run('H26')) await guard('H26', async () => {
+  const n = await h26Load();
+  const r = await E(() => {
+    const out = { n: HF.uni.length, gates: 0, diffs: [], mono: [], base: null };
+    const S = hfSensGet(), base = HF.crit.rows.slice(), cnt = () => ({ hit: HF.counts.hit, borderline: HF.counts.borderline, unverified: HF.counts.unverified, rejected: HF.counts.rejected });
+    out.gates = S.gates.length; out.base = JSON.stringify(S.now) === JSON.stringify(cnt()); out.kinds = S.gates.map(g => g.c.kind).join(',');
+    const fresh = (shifts) => { HF.crit.rows = base.map((c, i) => shifts.has(c.id) ? hfSensShift(c, shifts.get(c.id)) : c); hfComputeVerdicts(); const r = cnt(), tiers = new Map(HF.uni.map(ck => [ck, HF.verdicts.get(ck).tier])); return { r, tiers }; };
+    S.gates.forEach(g => S.T.forEach(t => { const f = fresh(new Map([[g.c.id, t]])); if (JSON.stringify(f.r) !== JSON.stringify(g.per[t])) out.diffs.push([g.label, t, g.per[t], f.r]); }));
+    S.gates.forEach(g => { const d = g.c.dir; for (let i = 1; i < S.T.length; i++) { const a = g.per[S.T[i - 1]].hit, b = g.per[S.T[i]].hit; if (d === 'lower' || d === 'higher') { if (b < a) out.mono.push([g.label, S.T[i], a, b]); } } });
+    const all = t => new Map(S.gates.map(g => [g.c.id, t]));
+    out.tight = [JSON.stringify(S.tight) === JSON.stringify(fresh(all(-1)).r)]; out.loose = [JSON.stringify(S.loose) === JSON.stringify(fresh(all(1)).r)];
+    // robustness, by brute force over the same variants
+    const variants = []; S.gates.forEach(g => [-1, 1].forEach(t => variants.push(new Map([[g.c.id, t]])))); variants.push(all(-1), all(1));
+    const hitsIn = variants.map(v => { const f = fresh(v); return new Set(HF.uni.filter(ck => f.tiers.get(ck) === 'hit')); });
+    HF.crit.rows = base; hfComputeVerdicts();
+    out.robust = S.hits.map(h => { const held = 1 + hitsIn.filter(s => s.has(h.ck)).length; return held === h.held && h.total === variants.length + 1 && (h.lostBy.length === 0) === (held === h.total); });
+    out.nHits = HF.counts.hit; out.nSHits = S.hits.length;
+    out.near = S.near.every(x => HF.verdicts.get(x.ck).tier !== 'hit');
+    const pot = S.gates.find(g => g.c.metric === 'potency'); out.pot = pot ? { r: pot.rule, hits: S.T.map(t => pot.per[t].hit) } : null;
+    out.fragile = S.hits.filter(h => h.lostBy.length).length; out.joins = S.near.length;
+    return out;
+  });
+  check('H26', 'the sample screen has gates that matter (hits change as they move), so the checks below are not vacuous', r.n === 48 && r.gates >= 2 && r.pot && new Set(r.pot.hits).size > 2 && r.fragile > 0 && r.joins > 0, { n: r.n, gates: r.gates, pot: r.pot, fragile: r.fragile, joins: r.joins });
+  check('H26', 'only gates are moved (a score or an advisory cannot change a tier)', r.kinds.split(',').every(k => k === 'gate'), r.kinds);
+  check('H26', 'the step 0 row is the hit list as it stands', r.base === true, r.base);
+  check('H26', 'every gate at every step gives exactly the four tier counts a fresh evaluation with that threshold gives', r.diffs.length === 0, r.diffs.slice(0, 3));
+  check('H26', 'relaxing a gate never lowers the hits and tightening one never raises them', r.mono.length === 0, r.mono.slice(0, 3));
+  check('H26', 'every gate one step tighter / looser equals a fresh evaluation with all of them moved', r.tight[0] === true && r.loose[0] === true, r);
+  check('H26', 'the robustness of every hit equals a brute-force count over the variants; a hit that lost nothing held in all of them', r.robust.length === r.nSHits && r.nSHits === r.nHits && r.robust.every(Boolean), { robust: r.robust, nHits: r.nHits });
+  check('H26', 'a compound that is within a step of being a hit is not one now', r.near === true, r.near);
+  check('H26', 'a step on a potency is ×1.4: 100 nM becomes ~141 nM looser and ~70.8 nM tighter, and the rule text says so', r.pot && /141/.test(r.pot.r[1]) && /70\.8/.test(r.pot.r[-1]) && /100/.test(r.pot.r[0]), r.pot);
+  await E(() => hfTab('sens')); await pg.waitForTimeout(300);
+  const u = await E(() => { const p = document.querySelector('#pane-sens'), txt = p.textContent; const rows = p.querySelectorAll('.sn-t tbody tr').length, chip = p.querySelector('.sn-chip'); const out = { rows, gates: hfSensGet().gates.length, bad: /NaN|undefined|Infinity/.test(txt), tiles: p.querySelectorAll('.sn-tile').length, spark: p.querySelectorAll('.sn-spark').length, most: p.querySelectorAll('.sn-flag').length };
+    if (chip) { chip.click(); out.drawer = HF.drawer === chip.dataset.ck; hfCloseDrawer(); } return out; });
+  check('H26', 'the tab shows one row and one small chart per gate, three tiles, the gate it leans on most, and a chip opens the compound — with nothing undefined on it', u.rows === u.gates && u.spark === u.gates && u.tiles === 3 && u.most === 1 && u.drawer === true && !u.bad, u);
+  const sh = await E(() => { const a = hfSensAoa(), S = hfSensGet(); return { s: a.sens.length, expectS: 1 + S.gates.length * S.T.length + 2, r: a.robust.length, expectR: 1 + S.hits.length + S.near.length, names: hfSheets().map(s => s.name), bad: JSON.stringify(a).match(/NaN|undefined/) }; });
+  check('H26', 'the workbook carries a Sensitivity sheet (every gate at every step) and a Robustness sheet (every hit and every near hit)', sh.s === sh.expectS && sh.r === sh.expectR && sh.names.includes('Sensitivity') && sh.names.includes('Robustness') && !sh.bad, sh);
+  const e = await E(() => { const ss = hfSensGet(); return ss.sig === hfSensGet().sig && hfSensGet() === ss; });
+  check('H26', 'asking again with nothing changed does not recompute', e === true, e);
+  const c = await E(() => { const row = HF.crit.rows.find(x => x.metric === 'potency'); const before = hfSensGet(); row.pass = 60; hfComputeVerdicts(); const after = hfSensGet(); row.pass = 100; hfComputeVerdicts(); return { changed: before !== after, same: before.now.hit !== after.now.hit }; });
+  check('H26', 'changing a threshold recomputes it', c.changed === true && c.same === true, c);
+});
+
+if (run('H27')) await guard('H27', async () => {
+  await h26Load();
+  const r = await E(async () => {
+    const out = {}, cks = HF.uni.slice(0, 6), nm = cks.map(hfName);
+    // no structures: the criteria are inactive and nothing is evaluated
+    ['le', 'lle', 'cnsmpo'].forEach(m => { const c = hfNewCrit(m); out['inactive_' + m] = hfCritActive(c) === false; });
+    const csv = ['Compound,SMILES,MW,cLogP,TPSA,HBD,HBA,RotB,cLogD,pKa,HAC',
+      nm[0] + ',CCO,350,2.5,75,1,5,4,1.5,7.5,30', nm[1] + ',CCN,520,5.5,130,4,8,9,4.5,10.5,40', nm[2] + ',CCC,400,3,30,0,3,3,,,25', nm[3] + ',CCCC,360,3,60,0,4,3,2,8,30', nm[4] + ',CCCCC,450,4,100,2,6,5,3,9,38', nm[5] + ',CCCCCC,500,5,90,3,6,4,3.5,9.5,35'].join('\n');
+    HF.smiles = new Map(); hfChemReset(); await hfAddFiles([new File([csv], 'eff.csv', { type: 'text/csv' })]); await new Promise(r => setTimeout(r, 500));
+    ['le', 'lle', 'cnsmpo'].forEach(m => { const c = hfNewCrit(m); out['active_' + m] = hfCritActive(c) === true; out['advisory_' + m] = c.kind === 'advisory'; });
+    out.pdc = cks.map(ck => { const g = hfPrimOf(ck); const iv = hfIvPotency(g); return { q: g.pot.q, v: iv.lo }; });
+    // LE and LLE are exact for a measured potency
+    const e0 = hfEfficiency(cks[0], hfPrimOf(cks[0])), p0 = 9 - Math.log10(hfPrimOf(cks[0]).pot.value);
+    out.le0 = [e0.le.lo, e0.le.hi, 1.37 * p0 / 30]; out.lle0 = [e0.lle.lo, e0.lle.hi, p0 - 2.5]; out.exact = e0.le.lo === e0.le.hi && e0.lle.lo === e0.lle.hi;
+    // Wager's six, one property at a time
+    const f = Object.fromEntries(HF_MPO.map(m => [m.p, m.f]));
+    out.curves = [f.clogp(3), f.clogp(4), f.clogp(5), f.clogd(2), f.clogd(3), f.clogd(4), f.mw(360), f.mw(430), f.mw(500), f.tpsa(15), f.tpsa(20), f.tpsa(30), f.tpsa(40), f.tpsa(90), f.tpsa(105), f.tpsa(120), f.hbd(0.5), f.hbd(2), f.hbd(3.5), f.pka(8), f.pka(9), f.pka(10)];
+    const m0 = hfMpo(cks[0]); out.m0 = [m0.read, +m0.sum.toFixed(4), m0.lo === m0.hi];
+    const m2 = hfMpo(cks[2]); out.m2 = [m2.read, +m2.lo.toFixed(4), +m2.hi.toFixed(4)];
+    out.m1 = (m => [m.read, +m.sum.toFixed(3)])(hfMpo(cks[1]));
+    // the gate reads the interval: pass at 4 needs the lower end at 4
+    const crit = hfNewCrit('cnsmpo', { kind: 'gate', pass: 4, fail: 3, missing: 'unknown' }); HF.crit.rows.push(crit); hfComputeVerdicts();
+    const st = ck => HF.verdicts.get(ck).items.find(i => i.c.id === crit.id).status;
+    out.gate = cks.map(st); out.text2 = HF.verdicts.get(cks[2]).items.find(i => i.c.id === crit.id).text;
+    // a potency bound stays a bound: "> top dose" is an LE ceiling
+    const gB = { n: 1, pot: { q: '>', value: 10000, lo: 10000, hi: null }, sets: [] };
+    const eB = hfEfficiency(cks[0], gB); out.bound = [eB.le.lo, +eB.le.hi.toFixed(4), +(1.37 * 5 / 30).toFixed(4)];
+    const mkLE = (pass) => hfNewCrit('le', { kind: 'gate', pass, fail: null, missing: 'unknown' });
+    const cLo = mkLE(0.25), cHi = mkLE(0.1);
+    const evalB = c => { const M = METRICS[c.metric]; const o = {}; hfNumTail(c, M, o, eB.le.lo, eB.le.hi); return o.status; };
+    out.boundStatus = [evalB(cLo), evalB(cHi)];
+    // the efficiency criteria honour the slot: a compound with no potency in the slot is unread, not 0
+    out.noPot = hfEfficiency('nobody', null).le === null;
+    // chips in the drawer, export columns, and the workbook
+    hfOpenDrawer(cks[0]); out.chips = [...document.querySelectorAll('#hf-drawer .pchips')].map(p => p.textContent).join('|'); hfCloseDrawer();
+    const sh = hfSheets().find(s => s.name === 'All compounds').aoa, h = sh[0]; out.cols = ['LE (kcal/mol/HA)', 'LLE', 'CNS MPO (read props only)', 'CNS MPO (max)', 'CNS MPO props read'].map(n => h.indexOf(n) >= 0);
+    const row = sh.find(r => r[h.indexOf('Compound')] === nm[0]); out.xl = [row[h.indexOf('LE (kcal/mol/HA)')], row[h.indexOf('LLE')], row[h.indexOf('CNS MPO props read')]];
+    return out;
+  });
+  check('H27', 'without structures LE, LLE and CNS MPO are inactive; with them they are active, and advisory until promoted', ['le', 'lle', 'cnsmpo'].every(m => r['inactive_' + m] && r['active_' + m] && r['advisory_' + m]), r);
+  check('H27', 'LE = 1.37 × pDC50 ÷ heavy atoms and LLE = pDC50 − cLogP, exactly, for a measured potency (a number, not a range)', r.exact && Math.abs(r.le0[0] - r.le0[2]) < 1e-9 && Math.abs(r.lle0[0] - r.lle0[2]) < 1e-9, { le: r.le0, lle: r.lle0 });
+  const want = [1, 0.5, 0, 1, 0.5, 0, 1, 0.5, 0, 0, 0, 0.5, 1, 1, 0.5, 0, 1, 0.5, 0, 1, 0.5, 0];
+  check('H27', 'the six CNS MPO desirability curves are Wager 2010\'s: ClogP 3→1 5→0, ClogD 2→1 4→0, MW 360→1 500→0, TPSA a hump 20-40 up and 90-120 down, HBD 0.5→1 3.5→0, pKa 8→1 10→0', r.curves.every((v, i) => Math.abs(v - want[i]) < 1e-9), r.curves);
+  check('H27', 'with all six read the score is a number (350 Da, ClogP 2.5, ClogD 1.5, TPSA 75, HBD 1, pKa 7.5 → 5.83)', r.m0[0] === 6 && Math.abs(r.m0[1] - 5.8333) < 1e-3 && r.m0[2] === true, r.m0);
+  check('H27', 'with ClogD and pKa missing it is a range widened by two, never a 0 or a 1 for what is not known', r.m2[0] === 4 && Math.abs(r.m2[2] - r.m2[1] - 2) < 1e-9, r.m2);
+  check('H27', 'a gate on an interval reads it honestly: a score that is 4 or more however the unknown two turn out passes; one that could be either way is unverified', r.gate[0] === 'pass' && r.gate[2] !== 'fail' && r.gate.includes('fail'), { gate: r.gate, text: r.text2 });
+  check('H27', 'a potency bound stays a bound: "> 10 µM" is an LE of at most 0.228, which fails LE ≥ 0.25 for certain and neither passes nor fails LE ≥ 0.1', r.bound[0] === 0 && Math.abs(r.bound[1] - r.bound[2]) < 1e-3 && r.boundStatus[0] === 'fail' && r.boundStatus[1] !== 'fail' && r.boundStatus[1] !== 'pass', { bound: r.bound, st: r.boundStatus });
+  check('H27', 'no potency means no LE and no LLE (unread), not zero', r.noPot === true, r.noPot);
+  check('H27', 'the drawer shows LE, LLE and CNS MPO, and the workbook has their columns with the numbers', /LE/.test(r.chips) && /LLE/.test(r.chips) && /CNS MPO/.test(r.chips) && r.cols.every(Boolean) && typeof r.xl[0] === 'number' && typeof r.xl[1] === 'number' && r.xl[2] === 6, { chips: r.chips, cols: r.cols, xl: r.xl });
+});
+
+if (run('H28')) await guard('H28', async () => {
+  const r = await E(async () => {
+    const out = {}, zs = a => a.map((v, i) => ({ i, z: v })), codes = a => [...hfLJRules(zs(a)).entries()].map(([i, f]) => i + ':' + f.code + ':' + f.sev).join(',');
+    out.r13 = codes([0.1, 3.2, -0.2]); out.r13no = codes([2.9, -2.9, 0.1]);
+    out.r22 = codes([0.5, 2.2, 2.6, 0.1]); out.r22no = codes([2.2, -2.6, 0.1, 2.5]);
+    out.r41 = codes([1.2, 1.3, 1.1, 1.4, 0.2]); out.r41no = codes([1.2, 1.3, -1.1, 1.4]);
+    out.r10 = codes([0.1, 0.2, 0.1, 0.3, 0.1, 0.2, 0.1, 0.1, 0.2, 0.1, -0.1]); out.r9 = codes([0.1, 0.2, 0.1, 0.3, 0.1, 0.2, 0.1, 0.1, 0.2, -0.1]);
+    hfLoadHealthDemo(); await new Promise(r => setTimeout(r, 400));
+    const D = hfHealthData(); out.runs = D.runs.length; out.cands = D.cands.length; out.series = D.series.map(s => [s.name, s.n, s.limits, s.pts.filter(p => p.flag).map(p => p.i + ':' + p.flag.code + ':' + p.flag.sev).join(',')]);
+    out.rows = D.rows.map(r => r.status).join(','); out.sd = D.series.map(s => s.sd > 0 && s.sd < 0.5);
+    out.order = D.runs.every((r, i, a) => !i || r.time > a[i - 1].time);
+    // the limits are the runs', and a stepped run does not widen them: the same limits with and without it
+    const s0 = D.series[0], vals = s0.pts.map(p => p.v); const clean = vals.filter((v, i) => i !== 6); const med = hfMedian(clean), mad = hfMedian(clean.map(v => Math.abs(v - med))) * 1.4826;
+    out.robust = [Math.abs(s0.mean - hfMedian(vals)) < 1e-12, s0.sd < 3 * mad + 0.05, hfSD(vals) > 2 * s0.sd];
+    // the chart
+    const svg = hfLJ(s0, D.runs, 'pot', PAL_LIGHT, 640, 230), sc = hfLJ(s0, D.runs, 'pot', PAL_SCREEN, 640, 230);
+    out.svg = { vars: /var\(/.test(svg), screenVars: /var\(/.test(sc), nan: /NaN|undefined|Infinity/.test(svg), titles: (svg.match(/<title>/g) || []).length, pts: s0.pts.length, diamonds: (svg.match(/rotate\(45/g) || []).length, outs: s0.pts.filter(p => p.flag && p.flag.sev === 'out').length };
+    hfTab('health'); await new Promise(r => setTimeout(r, 300)); const p = document.querySelector('#pane-health');
+    out.tab = { cards: p.querySelectorAll('.lj-c').length, rows: p.querySelectorAll('.tbl tbody tr').length, chips: p.querySelectorAll('.tchip').length, bad: /NaN|undefined|Infinity/.test(p.textContent), checks: p.querySelectorAll('.hl-st.check').length };
+    // Dmax is a measure too
+    hfSetHealth('metric', 'eff'); await new Promise(r => setTimeout(r, 200)); out.eff = { cards: document.querySelectorAll('#pane-health .lj-c').length, bad: /NaN|undefined|Infinity/.test(document.querySelector('#pane-health').textContent) }; hfSetHealth('metric', 'pot');
+    // a reference can be switched off, and only the others are drawn
+    const first = D.series[0].ck; hfHealthRef(first); out.off = document.querySelectorAll('#pane-health .lj-c').length; hfHealthRef(first);
+    // one version of an analysis is one run: a re-analysis of run 2 counts instead of it, not as well
+    const k1 = D.runs[1].key, copies = HF.recs.filter(r => r._scr === k1).map(r => Object.assign({}, r, { Run_ID: 'again', Version: 2, Potency_nM: r.Potency_nM * 2 }));
+    hfAddRecords(copies, 'x'); hfAfterIngest();
+    const D2 = hfHealthData(); out.ver = [D2.runs.length, D2.runs.some(r => r.sc.ver === 2), D2.runs.filter(r => r.sc.ver !== 2).length];
+    const refA = D2.series.find(s => s.name === 'REF-A'), refA0 = D.series.find(s => s.name === 'REF-A'); out.verV = [+(refA.pts.find(p => p.i === 1).v - refA0.pts.find(p => p.i === 1).v).toFixed(3), +Math.log10(2).toFixed(3)];
+    return out;
+  });
+  check('H28', '1-3s: one point beyond 3 SD is out of control; 2.9 is not', /^1:1-3s:out$/.test(r.r13) && r.r13no === '', { r13: r.r13, no: r.r13no });
+  check('H28', '2-2s: two in a row beyond 2 SD on the same side are out; opposite sides, or with a gap, are not', r.r22 === '1:2-2s:out,2:2-2s:out' && r.r22no === '', { r22: r.r22, no: r.r22no });
+  check('H28', '4-1s: four in a row beyond 1 SD on one side are a drift to look at, not out of control; a flip of side breaks the run', r.r41 === '0:4-1s:warn,1:4-1s:warn,2:4-1s:warn,3:4-1s:warn' && r.r41no === '', { r41: r.r41, no: r.r41no });
+  check('H28', '10x: ten in a row on one side of the centre are a shift; nine are not', /^(\d:10x:warn,?){10}$/.test(r.r10) && r.r9 === '', { r10: r.r10, r9: r.r9 });
+  check('H28', 'the demo has twelve runs, three references and limits from all of them, in date order', r.runs === 12 && r.cands === 3 && r.series.length === 3 && r.series.every(s => s[1] === 12 && s[2] === true) && r.order && r.sd.every(Boolean), r);
+  check('H28', 'the run that stepped away (7) is flagged out of control for every reference and its verdict is "out"; the climbing runs 11 and 12 are too; the nine quiet runs are in control', r.series.every(s => /(^|,)6:1-3s:out/.test(s[3]) && /(^|,)11:/.test(s[3])) && r.rows.split(',')[6] === 'check' && r.rows.split(',')[10] === 'check' && r.rows.split(',')[11] === 'check' && r.rows.split(',').filter(x => x === 'ok').length === 9, { series: r.series, rows: r.rows });
+  check('H28', 'the limits are the median and 1.4826 × MAD, so the stepped run does not widen its own limits (a plain SD would be more than twice as wide)', r.robust.every(Boolean), r.robust);
+  check('H28', 'the chart is on the palette it is given: the print version has no CSS variable, the screen one is all variables; every run has its point and a tooltip; out-of-control points are diamonds; no NaN', r.svg.vars === false && r.svg.screenVars === true && !r.svg.nan && r.svg.titles === r.svg.pts && r.svg.diamonds === r.svg.outs && r.svg.outs > 0, r.svg);
+  check('H28', 'the tab draws a chart per chosen reference, a row per run, a chip per reference, nothing undefined; Dmax draws too; a reference can be switched off', r.tab.cards === 3 && r.tab.rows === 12 && r.tab.chips === 3 && !r.tab.bad && r.tab.checks >= 3 && r.eff.cards === 3 && !r.eff.bad && r.off === 2, { tab: r.tab, eff: r.eff, off: r.off });
+  check('H28', 'two versions of one analysis are one run: the newest counts and the older one is not a point as well', r.ver[0] === 12 && r.ver[1] === true && r.ver[2] === 11 && Math.abs(r.verV[0] - r.verV[1]) < 0.01, { ver: r.ver, verV: r.verV });
+  const f = await E(async () => {
+    const out = {}; hfLoadHealthDemo(); await new Promise(r => setTimeout(r, 300));
+    // under six runs nothing is flagged and nothing is called in or out of control
+    const keys = hfHealthData().runs.map(r => r.key); keys.slice(5).forEach(k => hfRemoveScreen(k, true)); hfAfterIngest();
+    const D = hfHealthData(); out.few = { runs: D.runs.length, limits: D.series.map(s => s.limits), flagged: D.series.reduce((n, s) => n + s.pts.filter(p => p.flag).length, 0), rows: D.rows.map(r => r.status).join(','), html: (hfRenderHealth(), document.querySelector('#pane-health').textContent.indexOf('fewer than 6') >= 0 || /have fewer|has fewer/.test(document.querySelector('#pane-health').textContent)) };
+    // a bound is counted and left out
+    hfLoadHealthDemo(); await new Promise(r => setTimeout(r, 300));
+    const D0 = hfHealthData(), k3 = D0.runs[3].key, rec = HF.recs.find(r => r._scr === k3 && r._ck === hfKey('REF-A')); rec.Potency_Qualifier = '>'; rec.Potency_nM = 10000; hfRecompute();
+    const s = hfHealthData().series.find(x => x.name === 'REF-A'); out.bound = [s.n, s.bound];
+    // no dates: runs go in the order they were loaded
+    HF.recs.forEach(r => { r.Run_Time = null; }); hfRecompute(); const D3 = hfHealthData(); out.nodate = D3.runs.every((r, i) => r.time == null && r.ord === [...HF.screens.keys()].indexOf(r.key)) && D3.runs.map(r => r.ord).every((o, i, a) => !i || o > a[i - 1]);
+    // the example screen has no reference to chart: say so, and offer the demo
+    loadHitFinderTestData(); await new Promise(r => setTimeout(r, 300)); hfTab('health'); await new Promise(r => setTimeout(r, 200)); const t = document.querySelector('#pane-health'); out.empty = { text: /No reference compound yet/.test(t.textContent), btn: !!t.querySelector('button[onclick*="hfLoadHealthDemo"]'), cards: t.querySelectorAll('.lj-c').length };
+    return out;
+  });
+  check('H28', 'with fewer than six runs the points are drawn without limits, nothing is flagged, and no run is called in or out of control', f.few.runs === 5 && f.few.limits.every(l => l === false) && f.few.flagged === 0 && f.few.rows === 'none,none,none,none,none' && f.few.html, f.few);
+  check('H28', 'a bound is counted and is not a point (n drops by one to eleven, the bound is one)', f.bound[0] === 11 && f.bound[1] === 1, f.bound);
+  check('H28', 'without dates the runs keep the order they were loaded in', f.nodate === true, f.nodate);
+  check('H28', 'a screen with no repeated compound says so and offers the demo instead of an empty chart', f.empty.text && f.empty.btn && f.empty.cards === 0, f.empty);
+});
+
+if (run('H29')) await guard('H29', async () => {
+  await hfReset(); await pg.waitForTimeout(700);
+  const r = await E(async () => {
+    const M = hfReportModel(), k = HF.counts, out = {};
+    out.tiles = M.tiles.map(t => t[1]).join(',') === [k.hit, k.borderline, k.unverified, k.rejected].join(',');
+    out.funnel = M.funnel.length === HF.funnel.steps.length && M.funnel.every((f, i) => +f[2] === HF.funnel.steps[i].out && +f[3] === HF.funnel.steps[i].dropped.length && +f[4] === HF.funnel.steps[i].unknown);
+    const top = hfRankedBy(new Set(['hit']));
+    out.hits = [M.hits.total === k.hit, M.hits.rows.length === Math.min(40, k.hit), M.hits.rows[0][1] === hfName(top[0]), M.hits.rows.every(r => r.length === M.hits.cols.length), M.hits.cols.includes('Holds')];
+    out.gates = M.gates.length === HF.activeRows.filter(c => c.kind === 'gate').length && M.gates.every(g => g.length > 8);
+    out.lists = [M.borderlineTotal === k.borderline, M.unverifiedTotal === k.unverified];
+    out.plots = M.plots.map(p => [p.id, /var\(/.test(p.svg), /NaN|undefined/.test(p.svg), /<rect width="720" height="520" fill="#ffffff"/.test(p.svg)]);
+    out.txt = hfPdfTxt('Potency ≤ 100 nM – hook · 5 µM × ÷ → ≥ “x” ½ α'); out.txtOk = /^[\x20-\x7e\xa0-\xff‘’“”•]*$/.test(out.txt);
+    const J = await hfLoadJsPdf(); out.hasPdf = !!J;
+    if (J) {
+      const doc = await hfBuildPdf(J, M); out.pages = doc.getNumberOfPages();
+      const raw = new TextDecoder('latin1').decode(doc.output('arraybuffer')); out.head = raw.slice(0, 8); out.hasName = raw.indexOf(hfPdfTxt(hfName(top[0]))) > 0; out.hasTitle = raw.indexOf('Hit Finder report') > 0 || raw.indexOf('Hit Finder') > 0; out.pageLabel = /\d+ \/ \d+/.test(raw);
+      const big = JSON.parse(JSON.stringify(M)); for (let i = 0; i < 5; i++) big.hits.rows = big.hits.rows.concat(M.hits.rows); const doc2 = await hfBuildPdf(J, big); out.pages2 = doc2.getNumberOfPages();
+    }
+    return out;
+  });
+  check('H29', 'the report model has the tiers, the funnel, the hits (a row as long as its header) and the gates the screen shows', r.tiles && r.funnel && r.hits.every(Boolean) && r.gates && r.lists.every(Boolean), r);
+  check('H29', 'every plot in the report is on white with no CSS variable and no NaN', r.plots.length >= 2 && r.plots.every(p => !p[1] && !p[2] && p[3]), r.plots);
+  check('H29', 'Helvetica gets only what it can print: ≤ becomes <=, – becomes -, an alpha becomes ?, and nothing outside WinAnsi is left', /<= 100 nM - hook/.test(r.txt) && r.txtOk, r.txt);
+  if (!r.hasPdf) { skipped.push('PDF cases — jsPDF did not load (offline: pass --jspdf=PATH)'); return; }
+  check('H29', 'the PDF is a PDF with real text (the top hit\'s name is in it), several pages, and a page number on each', r.head === '%PDF-1.3' && r.hasName && r.pages >= 3 && r.pageLabel, { head: r.head, name: r.hasName, pages: r.pages, label: r.pageLabel });
+  check('H29', 'a longer hit list makes a longer document (the table breaks onto new pages instead of running off the bottom)', r.pages2 > r.pages, { pages: r.pages, pages2: r.pages2 });
+  const dl = await Promise.all([pg.waitForEvent('download', { timeout: 60000 }), E(() => hfDownloadReport())]).then(a => a[0]);
+  const fp = await dl.path(), bytes = fs.readFileSync(fp);
+  check('H29', 'Download report saves <name>_report.pdf and it is a PDF', /_report\.pdf$/.test(dl.suggestedFilename()) && bytes.slice(0, 5).toString() === '%PDF-' && bytes.length > 8000, { name: dl.suggestedFilename(), n: bytes.length });
+});
+
+if (run('H30')) await guard('H30', async () => {
+  await hfReset(); await pg.waitForTimeout(600);
+  const r = await E(() => {
+    const out = {}, c = hfLabbookCtx(), k = HF.counts;
+    out.shape = [c.source === 'hitfinder', c.results === undefined, Array.isArray(c.tables), c.tables.length === 2];
+    out.tables = c.tables.map(t => ({ id: /^hitfinder-(hits|criteria)-[a-z0-9]+$/.test(t.id), src: t.source === 'Hit Finder', label: !!t.label, cols: Array.isArray(t.columns) && t.columns.length > 3 && t.cols.length === t.columns.length, when: !isNaN(Date.parse(t.createdAt)), even: t.rows.every(r => r.length === t.columns.length), n: t.rows.length }));
+    out.n = [c.tables[0].rows.length === Math.min(200, k.hit + k.borderline), c.tables[1].rows.length === HF.crit.rows.length];
+    const flat = c.tables.flatMap(t => t.rows.flat());
+    out.formula = flat.filter(v => typeof v === 'string' && /^[=+\-@]/.test(v)).length; out.nul = flat.filter(v => v == null || (typeof v === 'number' && !isFinite(v))).length;
+    const ci = c.tables[0].columns.indexOf('Potency (nM)'); out.num = c.tables[0].rows.filter(r => r[ci] !== '').every(r => typeof r[ci] === 'number');
+    out.rank = c.tables[0].rows.map(r => r[0]).join(',') === c.tables[0].rows.map((r, i) => i + 1).join(',');
+    out.stable = JSON.stringify(c.tables.map(t => t.id)) === JSON.stringify(hfLabbookCtx().tables.map(t => t.id));
+    const row = HF.crit.rows.find(x => x.metric === 'potency'); const was = row.pass; row.pass = 40; hfComputeVerdicts(); const c2 = hfLabbookCtx(); row.pass = was; hfComputeVerdicts();
+    out.changes = [c2.tables[0].id !== c.tables[0].id, c2.tables[1].id !== c.tables[1].id];
+    out.btnTop = !!document.getElementById('ex-lb'); out.okTop = hfLabbookOk();
+    return out;
+  });
+  check('H30', 'it sends two tables on the tables channel, from "hitfinder", and no results row', r.shape.every(Boolean), r.shape);
+  check('H30', 'each table has an id, a source, a label, a header, a date, and every row as long as its header', r.tables.every(t => t.id && t.src && t.label && t.cols && t.when && t.even), r.tables);
+  check('H30', 'the hit table has the hits and the borderline compounds (at most 200) in rank order; the criteria table has every criterion', r.n.every(Boolean) && r.rank, { n: r.n, rank: r.rank });
+  check('H30', 'a potency stays a number; nothing is null or NaN; nothing begins as a formula', r.num && r.nul === 0 && r.formula === 0, { num: r.num, nul: r.nul, formula: r.formula });
+  check('H30', 'the same content has the same id (Labbook then does not add it twice), changed criteria give new ids', r.stable && r.changes.every(Boolean), { stable: r.stable, changes: r.changes });
+  check('H30', 'outside the Hub there is no Labbook to send to, so there is no button', r.btnTop === false && r.okTop === false, r);
+  // inside the Hub: the button is there, and pressing it hands over exactly those tables
+  const hp = await ctx.newPage(); hp.on('pageerror', e => pageErrs.push('host: ' + String(e && e.message || e)));
+  await hp.goto(BASE + '/__host.html'); await hp.waitForTimeout(1200);
+  await hp.evaluate(() => openApp('hitfinder', undefined, undefined, { source: 'hub' })); await hp.waitForFunction(() => { const f = document.getElementById('frame-hitfinder'); try { return !!(f && f.contentWindow && f.contentWindow.eval('typeof HF !== "undefined"')); } catch (e) { return false; } }, null, { timeout: 30000 });
+  const hf = hp.frames().find(f => /__hf\.html/.test(f.url()));
+  await hf.evaluate(() => { try { localStorage.removeItem('hf_crit_v1'); } catch (e) {} HF.crit = null; HF.dec = new Map(); loadHitFinderTestData(); }); await hf.waitForTimeout(600);
+  const inHub = await hf.evaluate(() => { hfTab('export'); return new Promise(res => setTimeout(() => { const b = document.getElementById('ex-lb'); const o = { ok: hfLabbookOk(), btn: !!b }; if (b) b.click(); res(o); }, 400)); });
+  await hp.waitForTimeout(300); const opens = await hp.evaluate(() => window.__opens.filter(o => o.id === 'labbook'));
+  check('H30', 'inside the Hub the button is there and pressing it opens Labbook with the two tables and no results', inHub.ok && inHub.btn && opens.length === 1 && opens[0].source === 'hitfinder' && opens[0].tables && opens[0].tables.length === 2 && opens[0].hasResults === false && opens[0].tables.every(t => t.cols > 3 && t.rows > 0), { inHub, opens });
+  await hp.close();
+});
+
+if (run('H31')) await guard('H31', async () => {
+  const lum = [['Sample_ID', 'DC50_nM', 'DC50_CI_lower_nM', 'DC50_CI_upper_nM', 'LogDC50_M', 'pDC50', 'Dmax_pct', 'HillSlope', 'Top', 'Bottom', 'R2', 'n', 'Flag', 'Flag_Reason'],
+    ['LM-1', 12.5, 8, 19, -7.903, 7.903, 91, 1.1, 100, 9, 0.99, 3, 'No', ''], ['LM-2', 340, 200, 600, -6.468, 6.468, 78, 0.9, 100, 22, 0.97, 3, 'No', ''],
+    ['LM-3', 10000, '', '', -5, 5, 20, 1, 100, 80, 0.82, 3, 'Yes', 'DC50>range; R2=0.82'], ['LM-4', 0.2, '', '', -9.7, 9.7, 95, 1, 100, 5, 0.99, 3, 'Yes', 'DC50<range']];
+  const hp = await ctx.newPage(); hp.on('pageerror', e => pageErrs.push('host: ' + String(e && e.message || e)));
+  await hp.goto(BASE + '/__host.html'); await hp.waitForTimeout(1200);
+  await hp.evaluate(t => openApp('hitfinder', undefined, undefined, { source: 'lumina', name: 'LM-plate-1', table: t }), lum);
+  await hp.waitForFunction(() => { const f = document.getElementById('frame-hitfinder'); try { return !!(f && f.contentWindow && f.contentWindow.eval('typeof HF !== "undefined" && HF.screens.size > 0')); } catch (e) { return false; } }, null, { timeout: 30000 });
+  const hf = hp.frames().find(f => /__hf\.html/.test(f.url())); await hf.waitForTimeout(500);
+  const a = await hf.evaluate(() => ({ screens: HF.screens.size, recs: HF.recs.length, src: [...HF.screens.values()].map(s => s.source), pot: HF.recs.map(r => [r.Compound, r.Potency_nM, r.Potency_Qualifier, r.Assay, r.Effect_Eff, r.R2]), tab: HF.ui.tab, toast: (document.querySelector('.toast') || {}).textContent, slots: [...HF.arms.values()].map(x => x.slot) }));
+  check('H31', 'a Lumina results table arrives as one screen of four compounds, named for the plate, source Lumina', a.screens === 1 && a.recs === 4 && /^Lumina · LM-plate-1 \(sent\)$/.test(a.src[0]), a);
+  const by = Object.fromEntries(a.pot.map(p => [p[0], p]));
+  check('H31', 'a potency is read in nM with its qualifier: 12.5 exact, a flagged DC50>range is a lower bound without an invented number, DC50<range an upper bound', by['LM-1'][1] === 12.5 && by['LM-1'][2] === 'exact' && by['LM-2'][1] === 340 && by['LM-3'][2] === '>' && by['LM-3'][1] == null && by['LM-4'][2] === '<' && by['LM-4'][1] == null, a.pot);
+  check('H31', 'it is read as a degradation screen (DC50), the effect and R² come with it, the lone screen is the primary one, and the hits are shown', by['LM-1'][3] === 'hibit' && by['LM-1'][4] === 91 && by['LM-1'][5] === 0.99 && a.slots[0] === 'primary' && a.tab === 'hits' && /Received LM-plate-1/.test(a.toast || ''), a);
+  await hp.evaluate(t => openApp('hitfinder', undefined, undefined, { source: 'lumina', name: 'LM-plate-1', table: t }), lum); await hf.waitForTimeout(1200);
+  const b = await hf.evaluate(() => ({ screens: HF.screens.size, recs: HF.recs.length }));
+  check('H31', 'sending the same plate again replaces it: still one screen, still four records', b.screens === 1 && b.recs === 4, b);
+  const u = await hf.evaluate(() => { const bad = [null, undefined, [], [[]], [['a'], ['b']], 'x', [['Compound'], [1]], [[null, null], [null, null]]]; return bad.map(t => { try { return hfParseSent(t, 'x').length; } catch (e) { return 'threw ' + e.message; } }); });
+  check('H31', 'a table that is not one (null, empty, a header with nothing to read, text) reads as nothing and never throws', u.every(x => x === 0), u);
+  await hp.close();
+});
+
+if (run('H32')) await guard('H32', async () => {
+  const r = await E(async () => {
+    const out = {}; try { localStorage.removeItem('hf_gone_v1'); localStorage.removeItem('hf_presets_v1'); } catch (e) {}
+    HF.dec = new Map([['c-a', { state: 'hit', note: 'mine', ts: 100 }], ['c-b', { state: 'maybe', note: '', ts: 500 }]]);
+    const rowsOf = n => [{ id: 'x1', metric: 'potency', on: true }];
+    // merge: the later call wins per compound; a new one arrives; presets by name, the later wins
+    localStorage.setItem('hf_presets_v1', JSON.stringify({ old: { rows: rowsOf(), ts: 10 }, same: { rows: rowsOf(), ts: 900 } }));
+    const cloud = { dec: { 'c-a': { state: 'reject', note: 'theirs', ts: 300 }, 'c-b': { state: 'hit', note: '', ts: 400 }, 'c-c': { state: 'hit', note: 'new', ts: 50 } }, presets: { old: { rows: [{ id: 'y', metric: 'effect', on: true }], ts: 20 }, same: { rows: [{ id: 'z', metric: 'r2', on: true }], ts: 800 }, fresh: { rows: rowsOf(), ts: 5 } }, gone: {} };
+    const ch = hfCloudMerge(cloud); const up = hfUserPresets();
+    out.merge = [ch, HF.dec.get('c-a').state, HF.dec.get('c-a').note, HF.dec.get('c-b').state, HF.dec.get('c-c').note, up.old.rows[0].metric, up.same.rows[0].metric, !!up.fresh];
+    // a call cleared here is cleared everywhere: the cloud's older copy cannot bring it back, a newer one (made elsewhere after) can
+    HF.dec.delete('c-c'); hfMarkGone('c-c'); const g1 = hfLoadGone()['c-c'];
+    hfCloudMerge({ dec: { 'c-c': { state: 'hit', note: 'new', ts: 50 } } }); out.stays = !HF.dec.has('c-c');
+    hfCloudMerge({ dec: { 'c-c': { state: 'maybe', note: 'again', ts: g1 + 5000 } } }); out.back = HF.dec.has('c-c') && HF.dec.get('c-c').state === 'maybe';
+    hfCloudMerge({ dec: { 'c-d': { state: 'hit', ts: 10 } }, gone: { 'c-d': 99999 } }); out.goneWins = !HF.dec.has('c-d');
+    out.hostile = [null, 5, 'x', [], { dec: 5 }, { dec: { a: null, b: 7, c: { ts: 'x' } } }, { presets: { p: null, q: { rows: 'no' } } }].map(c => { try { hfCloudMerge(c); return 'ok'; } catch (e) { return 'threw ' + e.message; } });
+    // writes wait for the first read
+    const sets = []; let on = null, errCb = null; const ref = { on: (ev, cb, er) => { on = cb; errCb = er; }, off() {}, set: v => { sets.push(JSON.parse(JSON.stringify(v))); return Promise.resolve(); } };
+    HF.cloud = { ref, ready: false, adopting: false, t: null, tries: 0, state: 'off', at: 0 };
+    hfCloudInit(); hfCloudPush(); await new Promise(r => setTimeout(r, 1500)); out.beforeRead = sets.length;
+    HF.dec = new Map([['mine', { state: 'hit', note: '', ts: 1000 }]]);
+    on({ val: () => ({ dec: { theirs: { state: 'maybe', note: '', ts: 2000 } }, presets: {}, gone: {} }) }); await new Promise(r => setTimeout(r, 1600));
+    out.afterRead = sets.length; out.pushed = sets[0] ? Object.keys(sets[0].dec).sort().join(',') : null; out.ready = HF.cloud.ready; out.state = HF.cloud.state;
+    // a refused read keeps the app local
+    HF.cloud = { ref: { on: (ev, cb, er) => { er(new Error('permission_denied')); }, off() {}, set() { return Promise.reject(new Error('no')); } }, ready: false, adopting: false, t: null, tries: 99, state: 'off', at: 0 };
+    hfCloudInit(); out.refused = [HF.cloud.state, HF.cloud.ready];
+    HF.cloud.ref = null; out.noFb = [hfFb() === null, typeof hfCloudLine() === 'string'];
+    HF.cloud = { ref: undefined, ready: false, adopting: false, t: null, tries: 0, state: 'off', at: 0 };
+    return out;
+  });
+  check('H32', 'the later call wins compound by compound, a call that is new arrives, and presets merge by name with the later one winning', r.merge[0] === true && r.merge[1] === 'reject' && r.merge[2] === 'theirs' && r.merge[3] === 'maybe' && r.merge[4] === 'new' && r.merge[5] === 'effect' && r.merge[6] === 'potency' && r.merge[7] === true, r.merge);
+  check('H32', 'a call you cleared stays cleared when another device still has it; one made after that comes back; a clearing from elsewhere wins over an older call here', r.stays && r.back && r.goneWins, r);
+  check('H32', 'a hostile cloud (null, a number, text, nulls in the calls, presets with no rows) is merged as nothing and never throws', r.hostile.every(x => x === 'ok'), r.hostile);
+  check('H32', 'nothing is written before the first read has landed; after it, what only this device knew goes up, merged with the cloud\'s', r.beforeRead === 0 && r.afterRead === 1 && r.pushed === 'mine,theirs' && r.ready === true && r.state === 'synced', { before: r.beforeRead, after: r.afterRead, pushed: r.pushed, ready: r.ready, state: r.state });
+  check('H32', 'a refused read leaves the app local (and working); with no Firebase at all there is no cloud and the Export tab says where the calls are kept', r.refused[0] === 'local' && r.refused[1] === false && r.noFb[0] && r.noFb[1], { refused: r.refused, noFb: r.noFb });
 });
 
 await browser.close(); server.close();

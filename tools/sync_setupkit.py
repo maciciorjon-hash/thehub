@@ -13,7 +13,7 @@ Edit the kit in tools/setupkit/ only — the copies say so in their first commen
 """
 import sys, re, pathlib
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-TARGETS = ['apps/beacon/beacon.html', 'apps/lumina/lumina.html', 'apps/echo/echo.html']
+TARGETS = ['apps/beacon/beacon.html', 'apps/lumina/lumina.html', 'apps/echo/echo.html', 'apps/tempo/tempo.html']
 KIT = ROOT / 'tools/setupkit'
 CSS = (KIT / 'setup.css').read_text(encoding='utf-8').rstrip('\n')
 JS = (KIT / 'setup.js').read_text(encoding='utf-8').rstrip('\n')

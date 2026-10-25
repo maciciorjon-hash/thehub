@@ -192,7 +192,9 @@
 //                            is typed, edited, removed and undone; a wider one stacks outside a narrower one; nothing written round the plate sits on a well, a header or
 //                            another label; the card, the PNG, the print table and a copied layout all carry it. (the plate map could not say what a column was)
 //   B53 time course       Time Course is Kinetic degradation with the compound left open: type KD (Tempo still takes it), code tag TC, the same steps, waits and measures,
-//                            no compound of the lab's own named in the prose, and an experiment from it keeps the 900 min / 5 min run and its plate The kinetic assay medium is CO2-independent + 5% FBS in KD, Time Course and the SPARK NS preset.
+//                            no compound of the lab's own named in the prose, and an experiment from it keeps the 900 min / 5 min run and its plate The kinetic assay medium is named in full (CO2-independent medium + 10% FBS) in every step of KD, Time Course and the SPARK NS preset.
+//   B56 named reagents   No step says "in medium", "assay medium", "transfection medium" or a bare "µL buffer": the medium / buffer is named (the cell line's own culture medium, ViaScript buffer, Nano-Glo HiBiT Lytic Buffer, CO2-independent medium + 10% FBS). The LgBiT transfection
+//                            step reads as the lab does it for the plates there are (2 plates: 19.97 µL mRNA + 19.97 µL ViaScript in 160 µL buffer, + 1,797 µL, into 17.97 mL), and a run made with the old labels keeps its numbers and takes the words.
 //   B55 spark ns tc      The SPARK NS Time Course: one 96-well plate, six pairs of columns (no OA, OA high, OA low, then the same three with a PROTAC series, 7 pts + DMSO), OA on every well at t = 0
 //                            and the PROTAC at 3 h, read to 18 h (1080 min); drawn from the setup with its words round the plate; every calculator on the wells the map says.
 //   B52 one list of         The Compounds step has ONE box for every compound to test, a line each (a column from Excel). The names flow onto the compound
@@ -1621,6 +1623,17 @@ async function suite(opts) {
         rows.forEach(r => delete r.curve);
         if (expHasCurves(e) || nHead(_pubCurvesFill(pubText(e), e))) bad('R8', key, 'curves remain after the fits were removed');
       });
+      // The fit is drawn over the doses tested: from the first to the last point, not across the 0.35-decade margin of the axis (alone and overlaid).
+      await guard('R8', 'fit span', async () => {
+        const c = mkCurve(1e-7, false), num = (svg, re) => [...svg.matchAll(re)].map(m => +m[1]);
+        const one = rcvSvg(c), ov = rcvOverlaySvg([{ name: 'A', detail: '', curve: c }, { name: 'B', detail: '', curve: mkCurve(3e-8, false) }], {});
+        for (const [lbl, svg] of [['alone', one], ['overlaid', ov]]) {
+          tick('R8');
+          const pl = /<polyline points="([^"]+)"/.exec(svg), px = pl ? pl[1].trim().split(/\s+/).map(q => +q.split(',')[0]) : [], cx = [...svg.matchAll(/<circle[^>]* cx="([\d.]+)"[^>]* cy="([\d.]+)"/g)].filter(m => +m[2] < 270).map(m => +m[1]);   // not the legend's swatches, which sit under the plot
+          if (!px.length || !cx.length) { bad('R8', lbl, 'no fitted line or no points to compare'); continue; }
+          if (Math.abs(Math.min(...px) - Math.min(...cx)) > 1.2 || Math.abs(Math.max(...px) - Math.max(...cx)) > 1.2) bad('R8', lbl, `the fitted line runs ${Math.min(...px)}–${Math.max(...px)} but the points ${Math.min(...cx)}–${Math.max(...cx)}`);
+        }
+      });
       // The layout follows the count: one curve alone, two to six overlaid, more than six one panel each.
       await guard('R8', 'layout', async () => {
         const m = made[0], e = m.e, rows = e.integration.results[0].rows;
@@ -2805,11 +2818,12 @@ async function suite(opts) {
         if (cx.kind !== cy.kind) bad('B53', 'calc ' + x.title, 'calculator ' + cx.kind + ' vs ' + cy.kind);
         const ix = Object.assign({}, cx.inputs), iy = Object.assign({}, cy.inputs); delete ix.name; delete iy.name; delete ix.minVolUL; delete iy.minVolUL;
         if (_canonJSON(ix) !== _canonJSON(iy)) bad('B53', 'measures ' + x.title, 'inputs ' + _canonJSON(ix) + ' differ from ' + _canonJSON(iy)); });
-      // the kinetic assay medium is CO2-independent + 5% FBS in every kinetic preset (not 10%)
+      // the kinetic assay medium is named in full, CO2-independent medium + 10% FBS, wherever a step uses it (not "assay medium")
       ['KD', 'KD_TIMECOURSE', 'KD_TC_SPARKNS'].forEach(k => { const p = LB.data.presets[k]; if (!p) return;
         const en = (p.blocks || []).find(x => /Endurazine/.test(x.title || '')); if (!en) { bad('B53', 'medium ' + k, 'no Endurazine step'); return; }
-        const t = [en.html, en.pub].join(' ');
-        if (!/independent \+ 5% FBS/.test(en.html || '') || /10% FBS/.test(t)) bad('B53', 'medium ' + k, 'the assay medium is not "CO2-independent + 5% FBS": ' + (en.html || '').slice(0, 90)); });
+        if (!/\{\{c\.diluent\}\}/.test(en.html || '') || /assay medium/i.test(en.html || '') || !/independent medium containing 10% FBS/.test(en.pub || '')) bad('B53', 'medium ' + k, 'the Endurazine step does not take the medium from its calculator (CO2-independent medium + 10% FBS): ' + (en.html || '').slice(0, 90));
+        (p.blocks || []).forEach(x => { const d = x.calc && x.calc.inputs && x.calc.inputs.diluent;
+          if ((x.calc || {}).kind === 'reagent' || (x.calc || {}).kind === 'spike') if (!/^CO\u2082-independent medium \+ 10% FBS$/.test(d || '')) bad('B53', 'medium ' + k + ' / ' + x.title, 'the diluent reads "' + d + '", not the full medium name'); }); });
       // generic: no compound of the lab's own in the steps
       const text = a.map(x => [x.title, x.html, x.pub].join(' ')).join(' ') + ' ' + tpl.title;
       if (/\bOA\b|oligomycin|antimycin/i.test(text)) bad('B53', 'generic', 'the preset names a compound: ' + (text.match(/\bOA\b|oligomycin|antimycin/i) || [])[0]);
@@ -2824,6 +2838,58 @@ async function suite(opts) {
       if (e.type !== 'KD') bad('B53', 'type', 'the experiment is type ' + e.type + ', not KD');
       if (!e.plate) bad('B53', 'plate', 'no plate map on a Time Course');
       const en = (e.blocks || []).find(x => /Endurazine/.test(x.title || '')); if (en && en.waitMin !== 150) bad('B53', 'wait', 'Endurazine equilibration is ' + en.waitMin + ' min, expected 150');
+    });
+
+    // B56 — a step names what it uses: no bare "medium" or "buffer", and the LgBiT transfection is the lab's own numbers.
+    if (run('B56')) await guard('B56', 'named reagents', async () => {
+      const GEN = /^\s*((assay|culture|cell)\s+)?(medium|media|buffer|diluent)\s*$/i;
+      const BARE = [/\b(?:assay|transfection)\s+medium\b/i, /\b(?:in|into|to|of|with)\s+(?:the\s+|a\s+)?(?:medium|media|buffer|diluent)\b/i, /\b(?:µL|mL)\s+(?:of\s+)?(?:medium|media|buffer|diluent)\b/i];
+      const plain = h => String(h || '').replace(/<[^>]+>/g, ' ').replace(/&micro;/g, 'µ').replace(/&[a-z0-9#]+;/gi, ' ').replace(/\s+/g, ' ');
+      let n = 0;
+      Object.keys(LB.data.presets).forEach(k => { const p = LB.data.presets[k];
+        (p.blocks || []).forEach(b => { n++;
+          let vals = {}; if (b.calc) { try { vals = calcValuesOf({ calc: b.calc }) || {}; } catch (e) {} }
+          [['html', b.html], ['pub', b.pub]].forEach(([w, src]) => {
+            const t = plain(String(src || '').replace(/\{\{c\.(\w+)\}\}/g, (m, x) => vals[x] != null ? String(vals[x]) : 'X').replace(/\{\{(\w+)\}\}/g, 'X'));
+            BARE.forEach(re => { const m = t.match(re); if (m) bad('B56', p.name + ' / ' + b.title + ' ' + w, 'says "' + m[0] + '" - name the medium or buffer it means (' + t.slice(Math.max(0, m.index - 30), m.index + 50) + ')'); }); });
+          if (b.calc && /^(reagent|spike|mixparts)$/.test(b.calc.kind) && b.calc.inputs && GEN.test(b.calc.inputs.diluent || '') && !(b.calc.kind === 'mixparts' && b.calc.inputs.cellLine))
+            bad('B56', p.name + ' / ' + b.title, 'the diluent reads "' + b.calc.inputs.diluent + '", which names nothing'); }); });
+      if (n < 20) bad('B56', 'scan', 'only ' + n + ' steps were looked at');
+      // the LgBiT transfection, for the plates there are: mRNA + ViaScript in 4x their volume of ViaScript buffer, topped up to a tenth of the total, into the line's medium
+      const P = (LB.data.projects || []).find(p => (p.sections || []).length);
+      const key = 'KD_TIMECOURSE', tpl = LB.data.presets[key];
+      const before = new Set(Object.keys(LB.data.experiments));
+      const su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup || {})));
+      buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-10-01', type: presetBase(key), title: 'INV transfection', code: 'INV_B56', setup: su, plate: true });
+      const e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); if (!e) { bad('B56', 'create', 'no experiment was made'); return; }
+      clean.push(e); openExp(e.id); tick('B56');
+      const tx = (e.blocks || []).find(x => /LgBiT transfection/.test(x.title || '')); if (!tx) { bad('B56', 'step', 'no LgBiT transfection step'); return; }
+      const say = b => plain(fillSetup(b.html, e.setup).replace(/\{\{c\.(\w+)\}\}/g, (m, x) => { const v = (calcValuesChained(b, e) || {})[x]; return v == null ? '??' + x : v; }));
+      tx.calc.inputs.nPlates = 2; const two = say(tx);
+      if (!(/Add 19\.97 µL LgBiT mRNA and 19\.97 µL ViaScript reagent to 160 µL of ViaScript buffer/.test(two) && /Dilute with 1,797 µL of ViaScript buffer and add to 17\.97 mL of DMEM \+ 10% FBS/.test(two) && /Aspirate the medium from the cells and add 100 µL of the mix per well/.test(two)))
+        bad('B56', 'two plates', 'the two-plate step reads: ' + two);
+      tx.calc.inputs.nPlates = 1; const one = say(tx);
+      if (!(/9\.98 µL LgBiT mRNA/.test(one) && /to 79\.87 µL of ViaScript buffer/.test(one) && /8,986 µL of DMEM \+ 10% FBS/.test(one))) bad('B56', 'one plate', 'the one-plate step reads: ' + one);
+      if (/\?\?/.test(one)) bad('B56', 'tokens', 'a value the step quotes was not answered: ' + one);
+      // a run made before this wording keeps its numbers and takes the words
+      tx.calc.inputs = { name: 'transfection medium', parts: 'LgBiT mRNA 1, ViaScript 1', diluent: 'medium', volPerWell: 100, format: '96', nPlates: 1, excess: 1.04, replace: true };
+      const oldHtml = '<ol><li>Make {{c.total}} of {{c.name}} for {{c.wells}}: {{c.partsText}} in {{c.diluent}}.</li><li>Aspirate the wells; add {{c.perWell}} per well.</li></ol>';
+      tx.html = oldHtml; tx.tpl = { title: tx.title, html: oldHtml, pub: '' }; tx.done = false;
+      const en = (e.blocks || []).find(x => /Endurazine/.test(x.title || '')); if (en && en.calc) en.calc.inputs.diluent = 'assay medium';
+      _calcKeysFromPresets(); _rewordFromPresets({});
+      if (tx.calc.inputs.nPlates !== 1 || tx.calc.inputs.volPerWell !== 100 || tx.calc.inputs.excess !== 1.04) bad('B56', 'numbers', 'the run\'s own numbers changed: ' + JSON.stringify(tx.calc.inputs));
+      if (!tx.calc.inputs.preBuffer || tx.calc.inputs.name === 'transfection medium') bad('B56', 'migration', 'a run made with the old labels did not take the new ones: ' + JSON.stringify(tx.calc.inputs));
+      if (!/to 79\.87 µL of ViaScript buffer/.test(say(tx))) bad('B56', 'wording', 'a run made with the old wording was not brought up: ' + say(tx).slice(0, 120));
+      if (en && en.calc && !/^CO₂-independent medium \+ 10% FBS$/.test(en.calc.inputs.diluent)) bad('B56', 'diluent', 'a run whose diluent read "assay medium" now reads "' + en.calc.inputs.diluent + '"');
+      // a finished step in a finished run is a record, and still gets the words (Jon: "experimentos ya hechos y en marcha"), never the numbers
+      tx.calc.inputs = { name: 'transfection medium', parts: 'LgBiT mRNA 1, ViaScript 1', diluent: 'medium', volPerWell: 100, format: '96', nPlates: 3, excess: 1.04, replace: true };
+      tx.html = oldHtml; tx.tpl = { title: tx.title, html: oldHtml, pub: '' }; tx.done = true; e.status = 'done';
+      if (en && en.calc) en.calc.inputs.diluent = 'assay medium';
+      _calcKeysFromPresets(); _rewordFromPresets({});
+      if (tx.calc.inputs.nPlates !== 3 || tx.calc.inputs.volPerWell !== 100 || tx.calc.inputs.excess !== 1.04) bad('B56', 'finished numbers', 'a finished run\'s numbers changed: ' + JSON.stringify(tx.calc.inputs));
+      if (!/to 240 µL of ViaScript buffer/.test(say(tx))) bad('B56', 'finished wording', 'a finished run was not brought up to the new wording: ' + say(tx).slice(0, 120));
+      if (en && en.calc && /assay medium/i.test(en.calc.inputs.diluent)) bad('B56', 'finished diluent', 'a finished run still reads "assay medium"');
+      e.status = 'ongoing';
     });
 
     // B55 — SPARK NS time course: OA at t = 0, a PROTAC series at 3 h, read to 18 h, on one 96-well plate.

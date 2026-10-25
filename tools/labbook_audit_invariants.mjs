@@ -20,6 +20,10 @@
 //   L10 Tab leaves the text  Tab in a step's text outside a list moves on (it indented the paragraph: a keyboard trap); Esc then Tab leaves a list too.
 //   L11 text is readable    On the main screens, in both themes, every piece of text that is not ink-on-a-fill is 4.5:1 against what is behind it
 //                           (--text3 was 3.85, accent / good / warn as text 3.5-3.8, a literal green in the dark recipe).
+//   L12 a stale device cannot undo a folder  Projects and folders are merged by id against what the cloud holds at the moment of the write (a
+//                           transaction), never written over it: a device that never heard of a folder, or holds an older list with a newer
+//                           `updated`, refreshes without erasing it; a folder made offline survives the cloud winning the tree; a deletion still
+//                           goes. (the list was one cloud value, last writer wins: the folder vanished and its experiment became an orphan)
 //   L7 an import is one undo step  Importing one experiment from a file is undone by one ⌘Z (the bundle had it; the single import did not)
 //
 //   node tools/labbook_audit_invariants.mjs [--url=URL] [--only=L1,L3]
@@ -250,6 +254,65 @@ try {
     }
     await ctx.close();
   }
+
+  // ── L12 ──
+  if (run('L12')) {
+    counts.L12 = 1;
+    const ctx = await newCtx(); const { page } = await open(ctx);
+    const r = await page.evaluate(async () => {
+      const clone = v => JSON.parse(JSON.stringify(v));
+      const names = (list, pid) => { const p = (list || []).find(x => x.id === pid); return p ? (p.sections || []).map(s => s.name).join('|') : '(no project)'; };
+      // A cloud with the real Firebase's behaviours that matter here: a transaction is first offered null (nothing cached), then the real value.
+      function mock(cloud, log) {
+        const ref = {
+          once: () => Promise.resolve({ val: () => clone(cloud) }),
+          update: d => { log.push(Object.keys(d)); Object.keys(d).forEach(k => { if (k.indexOf('/') > 0) { const a = k.split('/'); cloud[a[0]] = cloud[a[0]] || {}; if (d[k] === null) delete cloud[a[0]][a[1]]; else cloud[a[0]][a[1]] = clone(d[k]); } else cloud[k] = clone(d[k]); }); return Promise.resolve(); },
+          child: name => ({ on() {}, off() {},
+            transaction: (fn) => { fn(null); const out = fn(clone(cloud[name] === undefined ? null : cloud[name])); if (out === undefined) return Promise.resolve({ committed: false, snapshot: { val: () => clone(cloud[name]) } });
+              if (Array.isArray(out) && !out.length) delete cloud[name]; else cloud[name] = clone(out); log.push('tx:' + name);
+              return Promise.resolve({ committed: true, snapshot: { val: () => clone(cloud[name] === undefined ? null : cloud[name]) } }); } }) };
+        return ref;
+      }
+      const sec = (id, name) => ({ id, name });
+      async function boot(cloud, local) {
+        const log = []; LB.data.projects = clone(local.projects); LB.data.experiments = clone(local.experiments || { E1: { id: 'E1', projectId: 'P1', sectionId: 'S2', code: 'TC', blocks: [] } });
+        LB.data.generalSections = []; LB.data.notebooks = []; LB.data.updated = local.updated; if (local.base) LB.data._rootBase = { projects: JSON.stringify(local.base) }; else delete LB.data._rootBase;
+        window._lbFbRef = mock(cloud, log); _cloudSeen = null; _cloudOn = true; _pushWanted = false; _rootBusy = {}; _rootAgain = {};
+        lbInitSync(); await new Promise(r => setTimeout(r, 700)); return log;
+      }
+      const P = secs => [{ id: 'P1', name: 'SPARK', prefix: 'SP', color: '#5e87c5', sections: secs }];
+      const out = {};
+      // a  the device that never heard of Time Course, and whose `updated` is newer, refreshes (no base: a first run of this build)
+      let cloud = { updated: 1000, projects: P([sec('S1', 'NanoBRET'), sec('S2', 'Time Course')]), experiments: {}, generalSections: [], pages: {}, notebook: {} };
+      await boot(cloud, { projects: P([sec('S1', 'NanoBRET')]), updated: 2000 });
+      out.a = [names(cloud.projects, 'P1'), names(LB.data.projects, 'P1')];
+      // b  the same, with a base (the list as this device last agreed it with the cloud)
+      cloud = { updated: 1000, projects: P([sec('S1', 'NanoBRET'), sec('S2', 'Time Course')]), experiments: {}, generalSections: [], pages: {}, notebook: {} };
+      await boot(cloud, { projects: P([sec('S1', 'NanoBRET')]), base: P([sec('S1', 'NanoBRET')]), updated: 2000 });
+      out.b = [names(cloud.projects, 'P1'), names(LB.data.projects, 'P1')];
+      // c  a folder made here and not yet sent; the cloud's tree is newer and wins the tree
+      cloud = { updated: 3000, projects: P([sec('S1', 'NanoBRET')]), experiments: { E9: { id: 'E9', projectId: 'P1', sectionId: 'S1', code: 'X', blocks: [] } }, generalSections: [], pages: {}, notebook: {} };
+      await boot(cloud, { projects: P([sec('S1', 'NanoBRET'), sec('S3', 'Made offline')]), base: P([sec('S1', 'NanoBRET')]), updated: 2000 });
+      out.c = [names(cloud.projects, 'P1'), names(LB.data.projects, 'P1')];
+      // d  a folder deleted here goes from the cloud; one made elsewhere meanwhile stays
+      cloud = { updated: 1000, projects: P([sec('S1', 'NanoBRET'), sec('S2', 'Time Course'), sec('S4', 'Made elsewhere')]), experiments: {}, generalSections: [], pages: {}, notebook: {} };
+      await boot(cloud, { projects: P([sec('S1', 'NanoBRET')]), base: P([sec('S1', 'NanoBRET'), sec('S2', 'Time Course')]), updated: 2000 });
+      out.d = [names(cloud.projects, 'P1'), names(LB.data.projects, 'P1')];
+      // e  a rename made elsewhere is taken by a device that did not touch the name; a folder made here is sent
+      cloud = { updated: 1000, projects: [{ id: 'P1', name: 'SPARK renamed', prefix: 'SP', color: '#5e87c5', sections: [sec('S1', 'NanoBRET')] }], experiments: {}, generalSections: [], pages: {}, notebook: {} };
+      await boot(cloud, { projects: P([sec('S1', 'NanoBRET'), sec('S5', 'New here')]), base: P([sec('S1', 'NanoBRET')]), updated: 2000 });
+      out.e = [cloud.projects[0].name + ':' + names(cloud.projects, 'P1'), LB.data.projects[0].name + ':' + names(LB.data.projects, 'P1')];
+      // f  a project that exists only in the cloud arrives; a whole project made here goes up
+      cloud = { updated: 1000, projects: [{ id: 'P2', name: 'Other', prefix: 'OT', color: '#999', sections: [sec('T1', 'A')] }], experiments: {}, generalSections: [], pages: {}, notebook: {} };
+      await boot(cloud, { projects: P([sec('S1', 'NanoBRET')]), updated: 2000 });
+      out.f = [cloud.projects.map(p => p.id).sort().join(','), LB.data.projects.map(p => p.id).sort().join(',')];
+      return out;
+    });
+    const want = { a: 'NanoBRET|Time Course', b: 'NanoBRET|Time Course', c: 'NanoBRET|Made offline', d: 'NanoBRET|Made elsewhere', e: 'SPARK renamed:NanoBRET|New here', f: 'P1,P2' };
+    const why = { a: 'a device that never heard of a folder erased it from the cloud on refresh (or did not receive it)', b: 'same, with a base', c: 'a folder made here and not yet sent was lost when the cloud won the tree', d: 'a deletion did not go, or a folder made elsewhere was dropped with it', e: 'a rename elsewhere was reverted, or a new folder here was not sent', f: 'a project that exists only on one side was dropped' };
+    for (const k of Object.keys(want)) { const [c, l] = r[k]; if (c !== want[k] || l !== want[k]) bad('L12', `${k}: cloud "${c}", here "${l}", wanted "${want[k]}" — ${why[k]}`); }
+    await ctx.close();
+  }
   // ── L10 ──
   if (run('L10')) {
     counts.L10 = 1;
@@ -270,7 +333,7 @@ try {
     await ctx.close();
   }
 } finally { await browser.close(); if (srv) srv.kill(); }
-for (const id of ['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8', 'L9', 'L10', 'L11']) { if (ONLY && !ONLY.includes(id)) continue; const fs_ = findings.filter(f => f.id === id); process.stdout.write(`  ${fs_.length ? '✗' : '✓'} ${id}${fs_.length ? '  — ' + fs_.length + ' finding(s)' : ''}\n`); }
+for (const id of ['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8', 'L9', 'L10', 'L11', 'L12']) { if (ONLY && !ONLY.includes(id)) continue; const fs_ = findings.filter(f => f.id === id); process.stdout.write(`  ${fs_.length ? '✗' : '✓'} ${id}${fs_.length ? '  — ' + fs_.length + ' finding(s)' : ''}\n`); }
 const seen = new Set(); findings.forEach(f => { const k = f.id + f.m; if (seen.has(k)) return; seen.add(k); process.stdout.write(`     [${f.id}] ${f.m}\n`); });
 if (!findings.length) process.stdout.write('\nLabbook audit invariants hold.\n');
 process.exit(findings.length ? 1 : 0);
