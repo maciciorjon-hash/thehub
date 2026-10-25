@@ -80,6 +80,7 @@
 //   RB46 small molecules  An SDF (several molecules are frames), a MOL2 and an XYZ open as one ligand, atoms named by element and number, LIG on chain A in every frame; selection,
 //                           measurement and Analyse read it; an empty or wrong file is refused with the formats named and the structure on screen kept.
 //   RB47 a long render says so  Export says Rendering… and is disabled the moment it is pressed; a double press makes one file; the button is itself again afterwards.
+//   RB48 text on a chosen colour  A tag's ink is 4.5:1 on any background colour (WCAG luminance, black or white), on screen and in the export; sequence letters are 4.5:1 on their tint in both themes.
 //
 // 3Dmol comes from its CDN (pinned); every other network call is stubbed. If the CDN is unreachable the
 // checks that need the viewer are reported as skipped, not passed.
@@ -2995,7 +2996,49 @@ async function rb47() {
   await ctx.close();
 }
 
-const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20], ['RB21', rb21], ['RB22', rb22], ['RB23', rb23], ['RB24', rb24], ['RB25', rb25], ['RB26', rb26], ['RB27', rb27], ['RB28', rb28], ['RB29', rb29], ['RB30', rb30], ['RB31', rb31], ['RB32', rb32], ['RB33', rb33], ['RB34', rb34], ['RB35', rb35], ['RB36', rb36], ['RB37', rb37], ['RB38', rb38], ['RB39', rb39], ['RB40', rb40], ['RB41', rb41], ['RB42', rb42], ['RB43', rb43], ['RB44', rb44], ['RB45', rb45], ['RB46', rb46], ['RB47', rb47]];
+// ── RB48 text on a colour you chose can be read ─────────────────────────────────────────────
+async function rb48() {
+  const { ctx, pg, E, go } = await open({ tag: 'RB48 ' });
+  if (!(await has3d(pg))) { skipped.push('RB48 (3Dmol could not load from its CDN)'); await ctx.close(); return; }
+  await go('7SEQ'); await sleep(300);
+  // any colour a person can pick for a chain, a tag's text is 4.5:1 on it (the luma rule gave white on #00ff33 1.4:1, on #ff6666 2.9:1)
+  const r = await E(() => {
+    const lin = v => { v /= 255; return v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); };
+    const rgb = s => /rgba?\(([^)]+)\)/.exec(s)[1].split(',').map(Number);
+    const L = c => .2126 * lin(c[0]) + .7152 * lin(c[1]) + .0722 * lin(c[2]);
+    state.labelStyle.bg = true; state.labelStyle.bgMode = 'custom';
+    const bad = []; let n = 0, worst = 99;
+    for (let h = 0; h < 360; h += 12) for (const s of [30, 70, 100]) for (const l of [25, 40, 50, 60, 75, 90]) {
+      const hex = _hslToHex(h, s, l); state.labelStyle.bgColor = hex; state.chainLabels = { A: 'Tag' }; renderLabelTags(); Object.values(labelEls).forEach(e => applyTagStyle(e.div, 'A'));
+      document.querySelectorAll('.chain-tag').forEach(t => { const f = rgb(t.style.color), b = rgb(t.style.background);   // the inline values: a computed style is mid-transition
+        const ratio = (Math.max(L(f), L(b)) + .05) / (Math.min(L(f), L(b)) + .05); n++; worst = Math.min(worst, ratio);
+        if (ratio < 4.5 || t.style.background === 'none') bad.push(hex + ' ' + ratio.toFixed(2)); });
+    }
+    return { n, worst: +worst.toFixed(2), bad: bad.slice(0, 6), black: rbInk('#00ff33'), white: rbInk('#102040') };
+  });
+  check('RB48', 'a tag reads on every background colour (4.5:1 on a grid of 540 hues, saturations and lightnesses)', r.bad.length === 0 && r.n === 540, r);
+  check('RB48', 'dark ink on a light colour, light ink on a dark one', r.black === '#000000' && r.white === '#ffffff', r);
+  // the picture on screen and the same tag drawn into the export share one rule
+  const ex = await E(() => { state.labelStyle.bg = true; state.labelStyle.bgMode = 'custom'; state.labelStyle.bgColor = '#ff6666'; state.chainLabels = { A: 'Tag' }; renderLabelTags(); Object.values(labelEls).forEach(e => applyTagStyle(e.div, 'A')); const tg = [...document.querySelectorAll('.chain-tag')].filter(t => t.textContent === 'Tag')[0], cs = { color: tg.style.color }; const m = /rgb\((\d+), (\d+), (\d+)\)/.exec(tg.style.background); const hex = '#' + [1, 2, 3].map(i => (+m[i]).toString(16).padStart(2, '0')).join(''); return { bg: hex, screen: cs.color, ink: rbInk(hex), src: String(window.drawLabelsToCtx).includes('rbInk(bg)') }; });
+  check('RB48', 'the tag on screen and the one drawn into the export take their ink from the same rule', ex.bg === '#ff6666' && ex.screen === 'rgb(0, 0, 0)' && ex.ink === '#000000' && ex.src, ex);
+  // the sequence letters too, in both themes
+  const sq = await E(async () => {
+    state.color = 'chain'; state.chainColors = { A: '#00ff33', B: '#ff4466' }; recolorStructure(); SEQ.show = '*'; seqToggle(true);
+    const lin = v => { v /= 255; return v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); };
+    const rgb = s => /rgba?\(([^)]+)\)/.exec(s)[1].split(',').map(Number), L = c => .2126 * lin(c[0]) + .7152 * lin(c[1]) + .0722 * lin(c[2]);
+    const res = {};
+    for (const th of ['light', 'dark']) {
+      document.documentElement.dataset.theme = th; seqRender(); await new Promise(r => setTimeout(r, 450));
+      let worst = 99, n = 0; document.querySelectorAll('.sq-r').forEach(e => { if (!e.style.backgroundColor || !e.style.color) return; n++; const f = rgb(e.style.color), b = rgb(e.style.backgroundColor); worst = Math.min(worst, (Math.max(L(f), L(b)) + .05) / (Math.min(L(f), L(b)) + .05)); });
+      res[th] = n > 40 ? +worst.toFixed(2) : -n;
+    }
+    document.documentElement.dataset.theme = 'light'; return res;
+  });
+  check('RB48', 'sequence letters are 4.5:1 on their tint in both themes, on a bright green and a bright red chain', sq.light >= 4.5 && sq.dark >= 4.5, sq);
+  await ctx.close();
+}
+
+const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20], ['RB21', rb21], ['RB22', rb22], ['RB23', rb23], ['RB24', rb24], ['RB25', rb25], ['RB26', rb26], ['RB27', rb27], ['RB28', rb28], ['RB29', rb29], ['RB30', rb30], ['RB31', rb31], ['RB32', rb32], ['RB33', rb33], ['RB34', rb34], ['RB35', rb35], ['RB36', rb36], ['RB37', rb37], ['RB38', rb38], ['RB39', rb39], ['RB40', rb40], ['RB41', rb41], ['RB42', rb42], ['RB43', rb43], ['RB44', rb44], ['RB45', rb45], ['RB46', rb46], ['RB47', rb47], ['RB48', rb48]];
 const port = await freePort();
 const srv = spawn('python3', ['-m', 'http.server', String(port), '--bind', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });
 base = `http://127.0.0.1:${port}/`;

@@ -1860,6 +1860,18 @@ function _lum(hex){
   var r=parseInt(h.slice(0,2),16),g=parseInt(h.slice(2,4),16),b=parseInt(h.slice(4,6),16);
   return (0.299*r+0.587*g+0.114*b)/255;
 }
+// The ink for text laid on a colour: whichever of the two reads better by WCAG relative luminance. The luma above (0.299/0.587/0.114 on the
+// gamma-coded values) said white was fine on #00ff33 (1.4:1) and on #ff6666 (2.9:1); it is kept for the colours it was tuned for.
+function _relLum(hex){
+  var h=(hex||'').replace('#',''); if(h.length===3) h=h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+  function f(i){ var v=parseInt(h.slice(i,i+2),16)/255; return v<=0.03928?v/12.92:Math.pow((v+0.055)/1.055,2.4); }
+  return 0.2126*f(0)+0.7152*f(2)+0.0722*f(4);
+}
+function rbInk(bg,dark,light){
+  dark=dark||'#000000'; light=light||'#ffffff';   // only black and white clear 4.5:1 on every colour (4.58 at worst); a tinted near-black dips to 4.3
+  var b=_relLum(bg), d=_relLum(dark), l=_relLum(light);
+  return (b+0.05)/(d+0.05)>=(l+0.05)/(b+0.05)?dark:light;
+}
 function _mixHex(a,b,t){
   function p(h){ h=h.replace('#',''); return [parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)]; }
   var x=p(a),y=p(b); function c(i){ return ('0'+Math.round(x[i]+(y[i]-x[i])*t).toString(16)).slice(-2); }
@@ -2825,7 +2837,7 @@ function applyTagStyle(div,ch){
   if(ls.bg){
     var bg=ls.bgMode==='custom'?ls.bgColor:chainCol;
     div.style.background=bg;
-    div.style.color=_lum(bg)>0.62?'#1a1d2e':'#ffffff';
+    div.style.color=rbInk(bg);
     div.style.border='1.5px solid rgba(0,0,0,0.35)';
     div.style.padding='5px 10px';
     div.style.textShadow='none';
@@ -4071,7 +4083,7 @@ function drawLabelsToCtx(ctx,factor,rect){
       _roundRectPath(ctx,it.lx-it.bw/2,it.ly-it.bh/2,it.bw,it.bh,(ls.shape==='square'?3:8)*factor);
       ctx.fillStyle=bg; ctx.fill();
       ctx.lineWidth=1.5*factor; ctx.strokeStyle='rgba(0,0,0,0.35)'; ctx.stroke();
-      ctx.fillStyle=_lum(bg)>0.62?'#1a1d2e':'#ffffff';
+      ctx.fillStyle=rbInk(bg);
       ctx.fillText(it.text,it.lx,it.ly);
     } else {
       ctx.lineWidth=3.2*factor; ctx.strokeStyle='rgba(255,255,255,0.92)';
@@ -5266,7 +5278,7 @@ function seqRecolor(){
     $('sqRows').querySelectorAll('.sq-r').forEach(function(sp){
       var e=seqEntry(sp.dataset.k); if(!e) return;
       var c=fn(e.at), v=cache[c];
-      if(!v){ var bg=_mixHex(c,base,dark?0.55:0.62); v=cache[c]={bg:bg,fg:_lum(bg)>0.55?'#1a1d2e':'#f4f5f8'}; }
+      if(!v){ var bg=_mixHex(c,base,dark?0.55:0.62); v=cache[c]={bg:bg,fg:rbInk(bg)}; }
       sp.style.background=v.bg; sp.style.color=v.fg;
     });
   });

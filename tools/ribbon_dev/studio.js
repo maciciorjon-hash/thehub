@@ -137,7 +137,7 @@ function seqRecolor(){
     $('sqRows').querySelectorAll('.sq-r').forEach(function(sp){
       var e=seqEntry(sp.dataset.k); if(!e) return;
       var c=fn(e.at), v=cache[c];
-      if(!v){ var bg=_mixHex(c,base,dark?0.55:0.62); v=cache[c]={bg:bg,fg:_lum(bg)>0.55?'#1a1d2e':'#f4f5f8'}; }
+      if(!v){ var bg=_mixHex(c,base,dark?0.55:0.62); v=cache[c]={bg:bg,fg:rbInk(bg)}; }
       sp.style.background=v.bg; sp.style.color=v.fg;
     });
   });
