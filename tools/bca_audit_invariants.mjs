@@ -11,9 +11,11 @@
 //                                   can be typed (A1:A2, B2:C3); row/column headers are buttons; every field has a name; no
 //                                   typed ✕; the tabs are a tablist; toasts are role=status
 //   BC6  colours that carry text    tabs, headings, table, flags and chips reach 4.5:1 in light and dark
+//   BC7  rows line up                the runtime and alignment audits on the loaded workflow, both Setup and Results, 1440/1024, both themes
 //
 //   node tools/bca_audit_invariants.mjs [--only=BC1,BC2] [--file=apps/bca/bca.html]
 import { chromium } from 'playwright';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -165,6 +167,22 @@ if (run('BC6')) await guard('BC6', async () => {
     await p.evaluate(() => { switchPrepTab('results'); });
     all = all.concat(await p.evaluate(`(${CONTRAST.toString()})()`));
     if (all.length) bad('BC6', `${theme}: ${[...new Set(all)].join('; ')}`); else ok();
+    await p.close();
+  }
+});
+
+if (run('BC7')) await guard('BC7', async () => {
+  const RT = fs.readFileSync(path.join(ROOT, 'tools/audit_runtime.js'), 'utf8'), AL = fs.readFileSync(path.join(ROOT, 'tools/audit_align.js'), 'utf8');
+  for (const theme of ['light', 'dark']) for (const w of [1440, 1024]) {
+    const p = await open(theme); await p.setViewportSize({ width: w, height: 900 });
+    await p.evaluate(() => { loadTestData(); document.getElementById('sc-fit').value = 'quadratic'; renderStandardsCurve(); });
+    for (const tab of ['setup', 'results']) {
+      await p.evaluate(t => switchPrepTab(t), tab); await p.waitForTimeout(250);
+      const f = [].concat(
+        await p.evaluate(RT + ';(window.__runtimeAudit||(()=>({errors:[]})))().errors').catch(() => []).then(r => (r || []).map(x => 'RUNTIME ' + x)),
+        await p.evaluate(AL + ';(window.__alignAudit||(()=>[]))()').catch(() => []).then(r => (r || []).map(x => 'ALIGN ' + x)));
+      f.length ? f.slice(0, 3).forEach(x => bad('BC7', `${theme} ${w} ${tab}: ${x}`)) : ok();
+    }
     await p.close();
   }
 });
