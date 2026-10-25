@@ -48,8 +48,12 @@ def audit(path, xref_src=''):
     skip = {'googleapis', 'gstatic', 'jsdelivr', 'cloudflare', 'com', 'md', 'js', 'org',
             'html', 'svg', 'w3', 'net', 'io', 'chartjs', 'umd', 'getItem'}
     body = src.partition('</style>')[2]         # the WHOLE body, long lines included
+    # A class built from a literal prefix — `aa-${x}` or 'aa-' + x — is used by every class that starts with it.
+    # Without this a sweep of "unused" CSS deleted Helix's amino-acid colours (2026-10-22).
+    prefixes = {m for m in re.findall(r'(?<![\w-])([a-zA-Z][\w-]*[-_])\$\{', body) + re.findall(r'[\'"]([a-zA-Z][\w-]*[-_])[\'"]\s*\+', body) if len(m) >= 3}
     css = [c for c in sorted(set(re.findall(r'\.([a-zA-Z][\w-]*)', head)))
-           if c not in skip and not re.search(r'\b' + re.escape(c) + r'\b', body)]
+           if c not in skip and not re.search(r'\b' + re.escape(c) + r'\b', body)
+           and not any(c.startswith(pf) for pf in prefixes)]
 
     keep = set(re.findall(r'AUDIT-KEEP[\s\S]{0,240}?function\s+([A-Za-z_$][\w$]*)\s*\(', own))
     # A named IIFE — (function setUp(){...})() — runs itself, so its name legitimately appears
