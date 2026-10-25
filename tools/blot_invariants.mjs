@@ -26,6 +26,16 @@
 //   BL15 keyboard and names            every dialog is role=dialog with its title as its name, takes focus, keeps Tab inside, closes on Esc
 //                                      and returns focus; close buttons are named; editable labels are textboxes with a name and a
 //                                      focus ring; the steppers are named and 24px wide; the toast is role=status; the state colours exist
+//   BL16 shapes are data              a hostile list is cleaned (types, ranges, colours, ids, 200 at most); a typed text never runs;
+//                                      shapes come back after a reload and travel in a portable copy and a preset
+//   BL17 drawing and undo              an arrow dragged, or clicked, lands where it was drawn; one undo step each; Format opens and closes
+//   BL18 what you see is exported      the box, the arrow beyond the figure and the text are in the PNG; the export widens for what overhangs
+//   BL19 the pointer                   Shift squares, a drag and the arrow keys move, a handle resizes, the round handle rotates,
+//                                      duplicate / order / align / lock / delete
+//   BL20 text                          typing in a box, a double-click edits, an emptied text goes, typing is one undo step, the asterisk
+//   BL21 the ribbon                    tabs, Format as a contextual tab, ids and labels kept, the Text group dimmed until a label is chosen
+//   BL22 fill the lane labels          10 µM ÷3 ×8 gives 10 µM … 4.6 nM; units carry; hostile inputs; apply and undo
+//   BL23 drop anywhere                 a picture dropped on the page fills the first empty panel (or adds one) and opens the crop
 //   BL12 layout                        escape, runtime and alignment audits on the figure and every dialog, 1440/1024/390,
 //                                      both themes
 //
@@ -218,21 +228,37 @@ if (run('BL7')) await guard('BL7', async () => {
   const p = await open();
   await p.evaluate(GEL + `;(() => { var g = __gel([.5,.5,.5,.5,.5,.5,.5,.5,.5,.5,.5,.5]); FIG.panels[0].cropped = g; FIG.panels[0].src = g; FIG.panels[0].prot = 'BRD4'; save(); render(); openMarkers(0); })()`);
   await sleep(500);
-  const box = await p.locator('#mk-canvas').boundingBox();
+  const state = await p.evaluate(() => ({ tool: AN.tool, tab: document.getElementById('rb-tab-format').textContent, shown: !document.getElementById('rb-tab-format').hidden, dialog: !!document.getElementById('mk-back') }));
+  state.tool === 'mk' && state.tab === 'Markers' && state.shown && !state.dialog ? ok() : bad('BL7', 'markers did not open in place: ' + JSON.stringify(state));
+  const img = async () => p.locator('.panel-blot .blot-img').first().boundingBox();
+  let box = await img();
   await p.evaluate(() => mkPick(3)); // 70 kDa in PageRuler Plus
+  await p.mouse.move(box.x + box.width / 2, box.y + box.height * 0.5);
+  const guide = await p.evaluate(() => { var g = document.getElementById('an-mkg-0'); return g && g.style.display !== 'none' && g.querySelector('text').textContent; });
+  guide === '70 kDa' ? ok() : bad('BL7', 'the guide does not say which size the next click places: ' + guide);
   await p.mouse.click(box.x + box.width / 2, box.y + box.height * 0.25);
+  box = await img();
   await p.mouse.click(box.x + box.width / 2, box.y + box.height * 0.7); // the next size, 55 kDa
+  box = await img();
+  // drag the 70 kDa dot (left edge of the picture) down to 40% of the height
+  const grip = await p.locator('.an-mk-grip[data-k="70"]').boundingBox();
+  await p.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2); await p.mouse.down();
+  await p.mouse.move(grip.x + grip.width / 2, box.y + box.height * 0.4, { steps: 5 }); await p.mouse.up();
   const r = await p.evaluate(async () => {
-    closeMarkers(); render(); await new Promise(r => setTimeout(r, 200));
+    mkDone(); await new Promise(r => setTimeout(r, 200));
     var m = FIG.panels[0].marks, img = document.querySelector('.panel-blot .blot-img').getBoundingClientRect(), mk = [...document.querySelectorAll('.panel-kda .mk')].map(e => { var b = e.querySelector('.mk-t').getBoundingClientRect(); return { k: e.textContent.trim(), y: (b.top + b.height / 2 - img.top) / img.height }; });
     var cv = await renderFigureCanvas(1), x = cv.getContext('2d'), fr = document.getElementById('figure').getBoundingClientRect(), t = document.querySelector('.panel-kda .mk-t').getBoundingClientRect();
     var px = x.getImageData(Math.round(t.left - fr.left + 18 + t.width / 2), Math.round(t.top - fr.top + 18 + t.height / 2), 1, 1).data;
-    return { m: m, mk: mk, px: [px[0], px[1], px[2]], kdaHidden: !document.querySelector('.panel-kda[data-pi="0"] .lbl-in') };
+    return { m: m, mk: mk, px: [px[0], px[1], px[2]], kdaHidden: !document.querySelector('.panel-kda[data-pi="0"] .lbl-in'), tool: AN.tool, undo: UNDO.length };
   });
-  r.m.length === 2 && r.m[0].k === 70 && Math.abs(r.m[0].y - 0.25) < 0.02 && r.m[1].k === 55 ? ok() : bad('BL7', 'markers stored: ' + JSON.stringify(r.m));
-  r.mk.length === 2 && r.mk.every((x, i) => Math.abs(x.y - r.m[i].y) < 0.02) ? ok() : bad('BL7', 'the markers are not drawn at their heights: ' + JSON.stringify(r.mk));
+  r.m.length === 2 && r.m[0].k === 55 === false ? 0 : 0;
+  const m70 = r.m.find(x => x.k === 70), m55 = r.m.find(x => x.k === 55);
+  r.m.length === 2 && m70 && Math.abs(m70.y - 0.4) < 0.03 && m55 && Math.abs(m55.y - 0.7) < 0.02 ? ok() : bad('BL7', 'markers stored (70 dragged to .4, 55 at .7): ' + JSON.stringify(r.m));
+  r.mk.length === 2 && r.mk.every(x => { var q = r.m.find(y => y.k === +x.k); return q && Math.abs(x.y - q.y) < 0.02; }) ? ok() : bad('BL7', 'the markers are not drawn at their heights: ' + JSON.stringify(r.mk));
   r.px[0] < 160 ? ok() : bad('BL7', 'the export does not draw the marker tick (pixel ' + r.px.join(',') + ')');
   r.kdaHidden ? ok() : bad('BL7', 'with markers set, the single kDa label is still drawn beside them');
+  r.tool === 'select' ? ok() : bad('BL7', 'Done did not leave the marker tool');
+  p.errs.length ? bad('BL7', 'errors: ' + p.errs.join(' | ')) : ok();
   await p.context().close();
 });
 
@@ -383,7 +409,7 @@ if (run('BL15')) await guard('BL15', async () => {
   const p = await open();
   await p.evaluate(GEL + `;(() => { var g = __gel([.2,.4,.6,.8,.2,.4,.6,.8,.2,.4,.6,.8]); FIG.panels[0].src = g; FIG.panels[0].cropped = g; FIG.panels[0].prot = 'BRD4'; FIG.panels[0].crop = { x: 0, y: 0, w: 600, h: 120 }; save(); render(); })()`);
   await sleep(300);
-  const dialogs = [['crop-back', 'openCrop(0)', 'closeCrop'], ['dn-back', 'openQuant(0)', 'closeQuant'], ['mk-back', 'openMarkers(0)', 'closeMarkers'], ['hist-back', 'openHistoryModal()', 'closeHistoryModal'], ['preset-back', 'openPresetsModal()', 'closePresetsModal']];
+  const dialogs = [['crop-back', 'openCrop(0)', 'closeCrop'], ['dn-back', 'openQuant(0)', 'closeQuant'], ['sr-back', 'srOpen()', 'srClose'], ['hist-back', 'openHistoryModal()', 'closeHistoryModal'], ['preset-back', 'openPresetsModal()', 'closePresetsModal']];
   for (const [id, open_, close_] of dialogs) {
     await p.evaluate(() => { const b = document.getElementById('exp-labbook') || document.querySelector('.toolbar .btn'); b && b.focus(); });
     const before = await p.evaluate(() => { const e = document.activeElement; e.setAttribute('data-opener', '1'); return e.tagName; });
@@ -408,7 +434,8 @@ if (run('BL15')) await guard('BL15', async () => {
   const q = await p.evaluate(() => {
     const labs = [...document.querySelectorAll('.lbl-in,.grp-lbl')];
     const ring = (() => { const l = document.querySelector('.lane-cell .lbl-in'); l.focus(); const cs = getComputedStyle(l); return cs.outlineStyle !== 'none' && parseFloat(cs.outlineWidth) >= 2; })();
-    const st = [...document.querySelectorAll('.tb-step button')].map(b => ({ w: b.getBoundingClientRect().width, n: b.getAttribute('aria-label') }));
+    // the steppers are spread over the ribbon's tabs now (Lanes on Home, Width / Gap / Size on Layout): open each to measure them
+    const st = []; for (const t of ['home', 'layout']) { rbTab(t); [...document.querySelectorAll('.rb-pane.on .tb-step button')].forEach(b => st.push({ w: b.getBoundingClientRect().width, n: b.getAttribute('aria-label') })); } rbTab('home');
     const inp = [...document.querySelectorAll('.tb-step input')].map(i => i.getAttribute('aria-label'));
     const root = getComputedStyle(document.documentElement);
     return { labs: labs.length, unnamed: labs.filter(l => l.getAttribute('role') !== 'textbox' || !l.getAttribute('aria-label')).length, ring, smallStep: st.filter(x => x.w < 24 || !x.n).length, inp: inp.filter(x => !x), toast: document.getElementById('toast').getAttribute('role'), tokens: ['--good', '--warn', '--danger', '--shadow-xs'].filter(t => !root.getPropertyValue(t).trim()) };
@@ -421,21 +448,323 @@ if (run('BL15')) await guard('BL15', async () => {
   await p.context().close();
 });
 
+// ── Annotations, ribbon, series, drop ───────────────────────────────────────────────────────
+// A page with one gel in panel 0 (the others empty), 12 lanes. Shapes are drawn below the top 45px, where the panel's hover bar sits.
+const withGel = async (opts) => {
+  const p = await open(opts);
+  await p.evaluate(GEL + `;(() => { var g = __gel([.5,.5,.5,.5,.5,.5,.5,.5,.5,.5,.5,.5]); FIG.panels[0].cropped = g; FIG.panels[0].src = g; FIG.panels[0].prot = 'BRD4'; save(); render(); })()`);
+  await sleep(400); return p;
+};
+const imgBox = p => p.locator('.panel-blot .blot-img').first().boundingBox();
+const shapes = p => p.evaluate(() => FIG.panels[0].shapes);
+// Open a ribbon tab the way a person does: a click, except on the tab already open (clicking that one folds the ribbon away).
+const tab = async (p, n) => { const on = await p.evaluate(n => { var r = document.getElementById('ribbon'); return r.dataset.tab === n && r.dataset.collapsed !== '1'; }, n); if (!on) await p.click('#rb-tab-' + n); };
+
+if (run('BL16')) await guard('BL16', async () => {
+  const p = await withGel();
+  const r = await p.evaluate(() => {
+    window.__x = 0;
+    var many = []; for (var i = 0; i < 500; i++) many.push({ t: 'line', x1: 0, y1: 0, x2: 1, y2: 1 });
+    var hostile = [
+      { t: '__proto__' }, { t: 'constructor' }, { t: 'script' }, null, 5, 'x',
+      { t: 'text', s: '<img src=x onerror="window.__x=1">\u0001\u0007ok', x: 'abc', y: NaN, fs: 1e9, col: 'red;background:url(//evil)', ff: '__proto__', op: -4, rot: 1e9, al: 'z' },
+      { t: 'rect', x: 1e9, y: -1e9, w: -5, h: Infinity, sw: 1e9, fill: 'url(#x)', fo: 7, dash: 'evil' },
+      { t: 'line', x1: null, y1: undefined, x2: '0.5', y2: {}, head: 'both;', hs: 'XL', sw: 0, id: '<b>' },
+      { t: 'line', id: 'dup' }, { t: 'line', id: 'dup' }
+    ].concat(many);
+    var c = anClean(hostile);
+    var txt = c.find(s => s.t === 'text'), rect = c.find(s => s.t === 'rect'), ln = c.filter(s => s.t === 'line');
+    var ids = c.map(s => s.id), fin = c.every(s => Object.keys(s).every(k => typeof s[k] !== 'number' || isFinite(s[k])));
+    FIG.panels[0].shapes = c; render();
+    var layer = document.querySelector('.an-layer'), foreign = layer.querySelectorAll('img,script,foreignObject,iframe,style').length;
+    var texts = [...layer.querySelectorAll('text')].map(x => x.textContent).join('|');
+    return { types: c.every(s => ['line', 'rect', 'ellipse', 'text'].indexOf(s.t) >= 0), n: c.length, txt: txt, rect: rect, ln0: ln[0], uniq: new Set(ids).size === ids.length, fin: fin, x: window.__x, foreign: foreign, texts: texts, dupIds: ids.filter(i => i === 'dup').length, errs: 0 };
+  });
+  r.n <= 200 ? ok() : bad('BL16', 'a panel took ' + r.n + ' shapes');
+  r.types ? ok() : bad('BL16', 'a shape of an unknown type (__proto__, constructor, script) got through');
+  r.txt && r.txt.s === '<img src=x onerror="window.__x=1">ok' && r.txt.col === '#111111' && r.txt.ff === 'sans' && r.txt.fs <= 160 && r.txt.op >= 0.05 && r.txt.al === 'c' ? ok() : bad('BL16', 'a hostile text was kept as it came: ' + JSON.stringify(r.txt));
+  r.rect && r.rect.fill === null && r.rect.dash === 'solid' && r.rect.fo <= 1 && r.rect.sw <= 24 && r.rect.w > 0 && r.rect.x <= 4 ? ok() : bad('BL16', 'a hostile box was not brought into range: ' + JSON.stringify(r.rect));
+  r.ln0 && r.ln0.head === 'none' && r.ln0.hs === 'M' && /^[\w-]{1,24}$/.test(r.ln0.id) ? ok() : bad('BL16', 'a hostile line kept a bad head or id: ' + JSON.stringify(r.ln0));
+  r.uniq && r.dupIds <= 1 ? ok() : bad('BL16', 'two shapes share an id');
+  r.fin ? ok() : bad('BL16', 'a shape holds a number that is not finite');
+  r.x === 0 && r.foreign === 0 ? ok() : bad('BL16', 'markup in a text ran or reached the page (x=' + r.x + ', ' + r.foreign + ' foreign)');
+  r.texts.indexOf('<img src=x') >= 0 ? ok() : bad('BL16', 'the typed text is not shown as text: ' + r.texts);
+  // survives: reload, portable copy, preset
+  const keep = await p.evaluate(async () => {
+    FIG.panels[0].shapes = anClean([{ t: 'line', x1: .1, y1: .6, x2: .3, y2: .6, head: 'end', col: '#c04040' }, { t: 'text', x: .6, y: .7, s: 'HA' }]); save(); render();
+    var port = await _bPortable(FIG), back = await _bFromPortable(JSON.parse(JSON.stringify(port)));
+    var pre = JSON.parse(JSON.stringify(FIG)); pre.panels.forEach(q => { q.src = null; q.crop = null; q.cropped = null; });
+    var mig = migrateFig(JSON.parse(JSON.stringify(pre)));
+    return { portable: back.fig.panels[0].shapes.length, preset: mig.panels[0].shapes.length, col: back.fig.panels[0].shapes[0].col };
+  });
+  keep.portable === 2 && keep.preset === 2 && keep.col === '#c04040' ? ok() : bad('BL16', 'shapes did not travel with the figure: ' + JSON.stringify(keep));
+  await p.reload(); await p.waitForFunction(() => typeof FIG === 'object' && FIG && FIG.panels[0].cropped, null, { timeout: 15000 }); await sleep(400);
+  const after = await shapes(p);
+  after.length === 2 && after[1].s === 'HA' ? ok() : bad('BL16', 'the shapes did not come back after a reload: ' + JSON.stringify(after));
+  p.errs.length ? bad('BL16', 'errors: ' + p.errs.join(' | ')) : ok();
+  await p.context().close();
+});
+
+if (run('BL17')) await guard('BL17', async () => {
+  const p = await withGel();
+  const box = await imgBox(p);
+  await tab(p, 'insert'); await p.click('[data-tool="arrow"]');
+  const u0 = await p.evaluate(() => UNDO.length);
+  await p.mouse.move(box.x + box.width * .8, box.y + box.height * .6); await p.mouse.down();
+  await p.mouse.move(box.x + box.width * .55, box.y + box.height * .75, { steps: 8 }); await p.mouse.up(); await sleep(150);
+  let s = await shapes(p);
+  s.length === 1 && s[0].head === 'end' && Math.abs(s[0].x1 - .8) < .01 && Math.abs(s[0].x2 - .55) < .01 && Math.abs(s[0].y1 - .6) < .02 && Math.abs(s[0].y2 - .75) < .02 ? ok() : bad('BL17', 'an arrow drawn by dragging is not where it was drawn: ' + JSON.stringify(s));
+  const st = await p.evaluate(() => ({ tool: AN.tool, tab: document.getElementById('ribbon').dataset.tab, sel: AN.ids.length, u: UNDO.length }));
+  st.tool === 'select' && st.tab === 'format' && st.sel === 1 ? ok() : bad('BL17', 'after drawing: tool/tab/selection ' + JSON.stringify(st));
+  st.u === u0 + 1 ? ok() : bad('BL17', 'drawing an arrow is ' + (st.u - u0) + ' undo steps, not one');
+  // a click, not a drag, points at what was clicked
+  await tab(p, 'insert'); await p.click('[data-tool="arrow"]');
+  await p.mouse.click(box.x + box.width * .3, box.y + box.height * .85); await sleep(120);
+  s = await shapes(p); const a2 = s[1];
+  a2 && Math.abs(a2.x2 - .3) < .005 && Math.abs((a2.x1 - a2.x2) * box.width - 48) < 1.5 && a2.head === 'end' ? ok() : bad('BL17', 'a click did not make a 48px arrow pointing at it: ' + JSON.stringify(a2));
+  // undo / redo walk back through them
+  await p.evaluate(() => blotUndo()); s = await shapes(p);
+  s.length === 1 ? ok() : bad('BL17', 'undo did not remove the second arrow');
+  await p.evaluate(() => blotUndo()); s = await shapes(p);
+  s.length === 0 ? ok() : bad('BL17', 'undo did not remove the first arrow');
+  const gone = await p.evaluate(() => ({ layer: document.querySelectorAll('.an-s').length, sel: AN.ids.length, tabHidden: document.getElementById('rb-tab-format').hidden }));
+  gone.layer === 0 && gone.sel === 0 && gone.tabHidden ? ok() : bad('BL17', 'after undo the layer, the selection or the Format tab still show it: ' + JSON.stringify(gone));
+  await p.evaluate(() => { blotRedo(); blotRedo(); }); s = await shapes(p);
+  s.length === 2 ? ok() : bad('BL17', 'redo did not bring both back');
+  p.errs.length ? bad('BL17', 'errors: ' + p.errs.join(' | ')) : ok();
+  await p.context().close();
+});
+
+if (run('BL18')) await guard('BL18', async () => {
+  const p = await withGel();
+  const r = await p.evaluate(async () => {
+    FIG.panels[0].shapes = anClean([
+      { id: 'bx', t: 'rect', x: .1, y: .55, w: .15, h: .3, col: '#ff0000', sw: 3, fill: '#00ff00', fo: 1 },
+      { id: 'ar', t: 'line', x1: 1.1, y1: .3, x2: 1.0, y2: .3, head: 'end', col: '#0000ff', sw: 4 },
+      { id: 'tx', t: 'text', x: .6, y: .7, s: 'Ub', fs: 30, b: true, col: '#ff00ff' }
+    ]); save(); render(); await new Promise(r => setTimeout(r, 200));
+    var im = document.querySelector('.panel-blot .blot-img').getBoundingClientRect(), fig = document.getElementById('figure').getBoundingClientRect();
+    var base = anOverhang(fig);
+    var cv = await renderFigureCanvas(1), x = cv.getContext('2d'), W = im.width, H = im.height;
+    var ox = im.left - fig.left + 18 + base.l, oy = im.top - fig.top + 18 + base.t;
+    var px = (fx, fy) => { var d = x.getImageData(Math.round(ox + fx * W), Math.round(oy + fy * H), 1, 1).data; return [d[0], d[1], d[2]]; };
+    // what the screen's SVG says
+    var ln = document.querySelector('.an-s[data-id="ar"] line:not(.an-hit)'), rc = document.querySelector('.an-s[data-id="bx"] rect:not(.an-hit)');
+    var svg = { lx1: +ln.getAttribute('x1'), ly: +ln.getAttribute('y1'), rw: +rc.getAttribute('width') };
+    var wide = cv.width, figW = Math.round(fig.width + 36);
+    return { base: base, wide: wide, figW: figW, fill: px(.175, .7), edge: px(.1, .7), shaft: px(1.05, .3), text: (() => { var n = 0; for (var dx = -20; dx <= 20; dx += 2) for (var dy = -14; dy <= 14; dy += 2) { var q = px(.6 + dx / W, .7 + dy / H); if (q[0] > 200 && q[1] < 80 && q[2] > 200) n++; } return n; })(), svg: svg, W: W };
+  });
+  r.fill[1] > 200 && r.fill[0] < 60 ? ok() : bad('BL18', 'the export does not fill the box with its colour: ' + r.fill);
+  r.edge[0] > 200 && r.edge[1] < 60 ? ok() : bad('BL18', 'the export does not draw the box outline: ' + r.edge);
+  r.shaft[2] > 200 && r.shaft[0] < 60 ? ok() : bad('BL18', 'the arrow beyond the figure is not in the export: ' + r.shaft);
+  r.base.r >= 15 && r.wide >= r.figW + r.base.r - 2 ? ok() : bad('BL18', 'the export was not widened for an arrow that reaches past the figure (overhang ' + JSON.stringify(r.base) + ', ' + r.wide + ' vs ' + r.figW + ')');
+  r.text > 5 ? ok() : bad('BL18', 'the text is not in the export (' + r.text + ' coloured pixels)');
+  Math.abs(r.svg.lx1 - 1.1 * r.W) < .6 && Math.abs(r.svg.rw - .15 * r.W) < .6 ? ok() : bad('BL18', 'the screen draws a shape somewhere other than its stored fractions: ' + JSON.stringify(r.svg));
+  // with nothing past the edge the export is its old size again
+  const back = await p.evaluate(async () => { FIG.panels[0].shapes = []; render(); var cv = await renderFigureCanvas(1), fig = document.getElementById('figure').getBoundingClientRect(); return { w: cv.width, f: Math.round(fig.width + 36) }; });
+  Math.abs(back.w - back.f) <= 1 ? ok() : bad('BL18', 'the export is ' + back.w + ' wide with no shapes (figure ' + back.f + ')');
+  p.errs.length ? bad('BL18', 'errors: ' + p.errs.join(' | ')) : ok();
+  await p.context().close();
+});
+
+if (run('BL19')) await guard('BL19', async () => {
+  const p = await withGel();
+  const c = async (sel) => { const b = await p.locator(sel).first().boundingBox(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; };
+  // a box, drawn with Shift, is square
+  const box = await imgBox(p);
+  await tab(p, 'insert'); await p.click('[data-tool="rect"]');
+  await p.keyboard.down('Shift'); await p.mouse.move(box.x + box.width * .1, box.y + box.height * .5); await p.mouse.down();
+  await p.mouse.move(box.x + box.width * .2, box.y + box.height * .6, { steps: 6 }); await p.mouse.up(); await p.keyboard.up('Shift'); await sleep(120);
+  let s = (await shapes(p))[0];
+  s && Math.abs(s.w * box.width - s.h * box.height) < 1.5 && s.w * box.width > 20 ? ok() : bad('BL19', 'a box drawn with Shift is not square: ' + JSON.stringify(s));
+  await p.evaluate(() => anSet('fill', '#2d9462'));   // a filled box can be grabbed anywhere inside, which the locked-drag check below needs
+  // move by dragging its edge; Shift holds an axis
+  const id = s.id, x0 = s.x, y0 = s.y;
+  const edge = await p.evaluate(id => { var r = document.querySelector('.an-s[data-id="' + id + '"] .an-hit').getBoundingClientRect(); return { x: r.left + r.width * .25, y: r.top + 1 }; }, id);   // a quarter along the top edge: the middle is the north handle
+  await p.mouse.move(edge.x, edge.y); await p.mouse.down(); await p.mouse.move(edge.x + 60, edge.y + 4, { steps: 6 }); await p.mouse.up(); await sleep(100);
+  s = (await shapes(p))[0];
+  Math.abs((s.x - x0) * box.width - 60) < 2 && Math.abs((s.y - y0) * box.height - 4) < 2 ? ok() : bad('BL19', 'dragging moved the box by (' + ((s.x - x0) * box.width).toFixed(1) + ',' + ((s.y - y0) * box.height).toFixed(1) + ') not (60,4)');
+  // arrow keys: 1px, Shift 10px
+  await p.keyboard.press('ArrowRight'); await p.keyboard.press('Shift+ArrowDown'); await sleep(60);
+  const s2 = (await shapes(p))[0];
+  Math.abs((s2.x - s.x) * box.width - 1) < .1 && Math.abs((s2.y - s.y) * box.height - 10) < .1 ? ok() : bad('BL19', 'arrow keys nudge by (' + ((s2.x - s.x) * box.width).toFixed(2) + ',' + ((s2.y - s.y) * box.height).toFixed(2) + ') not (1,10)');
+  // resize by the south-east handle
+  const w0 = s2.w;
+  const se = await c('.an-h[data-h="se"]'); await p.mouse.move(se.x, se.y); await p.mouse.down(); await p.mouse.move(se.x + 40, se.y + 10, { steps: 5 }); await p.mouse.up(); await sleep(100);
+  const s3 = (await shapes(p))[0];
+  Math.abs((s3.w - w0) * box.width - 40) < 2 && Math.abs(s3.x - s2.x) < .001 ? ok() : bad('BL19', 'the corner handle did not grow the box by 40px with its corner fixed: ' + JSON.stringify([s2.x, s2.w, s3.x, s3.w]));
+  // rotate: drag the round handle to the right of the centre = 90°
+  const rot = await c('.an-h.rot'); const ctr = await p.evaluate(id => { var r = document.querySelector('.an-s[data-id="' + id + '"] .an-hit').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }, id);
+  await p.mouse.move(rot.x, rot.y); await p.mouse.down(); await p.mouse.move(ctr.x + 80, ctr.y + 8, { steps: 6 }); await p.keyboard.down('Shift'); await p.mouse.move(ctr.x + 80, ctr.y + 6, { steps: 2 });
+  await p.mouse.up(); await p.keyboard.up('Shift'); await sleep(100);   // ~94° by hand, 90° with Shift
+  const s4 = (await shapes(p))[0];
+  Math.abs(s4.rot - 90) < 1 ? ok() : bad('BL19', 'the rotate handle gave ' + s4.rot + '°, not 90°');
+  // duplicate, order, align, lock, delete
+  await p.keyboard.press('Control+d'); await sleep(100);
+  let all = await shapes(p);
+  all.length === 2 && all[1].id !== id && Math.abs(all[1].x - s4.x) > 0 ? ok() : bad('BL19', 'duplicate did not make an offset copy: ' + all.length);
+  await p.evaluate(() => anOrder('back')); all = await shapes(p);
+  all[0].id !== id ? ok() : bad('BL19', 'To back left the copy on top');
+  await p.evaluate(() => anAlign('l')); const al = await p.evaluate(() => { var b = anBox(0), s = anSel()[0]; return anAABB(s, b.W, b.H).x0; });
+  Math.abs(al) < .6 ? ok() : bad('BL19', 'Align left left the shape at x=' + al);
+  await p.evaluate(() => { anOrder('front'); anLock(); }); const xl = (await shapes(p))[1].x;   // on top, so the pointer can land on it
+  await p.keyboard.press('ArrowRight'); await p.keyboard.press('Delete'); await sleep(60);
+  // and the pointer: a drag on a locked shape moves nothing
+  const lk = await p.evaluate(() => { var r = document.querySelector('.an-s.lock .an-hit').getBoundingClientRect(); for (var fx = 0; fx <= 1; fx += .05) for (var fy = 0; fy <= 1; fy += .05) { var x = r.left + r.width * fx, y = r.top + r.height * fy, e = document.elementFromPoint(x, y), g = e && e.closest && e.closest('.an-s'); if (g && g.classList.contains('lock')) return { x: x, y: y }; } return { x: r.left + 1, y: r.top + 1 }; });   // a point that is really on the locked one
+  await p.mouse.move(lk.x, lk.y); await p.mouse.down(); await p.mouse.move(lk.x + 50, lk.y + 20, { steps: 5 }); await p.mouse.up(); await sleep(80);
+  all = await shapes(p);
+  all.length === 2 && all[1].x === xl ? ok() : bad('BL19', 'a locked shape moved or was deleted (' + all.length + ' left, x ' + xl + ' -> ' + (all[1] && all[1].x) + ')');
+  await p.evaluate(() => anLock()); await p.keyboard.press('Delete'); await sleep(60);
+  all = await shapes(p);
+  all.length === 1 ? ok() : bad('BL19', 'Delete did not remove the unlocked shape');
+  // Esc: let go; a click on empty stage lets go too
+  await p.evaluate(() => anSelect([FIG.panels[0].shapes[0].id])); await p.keyboard.press('Escape');
+  (await p.evaluate(() => AN.ids.length)) === 0 ? ok() : bad('BL19', 'Esc did not let go of the selection');
+  p.errs.length ? bad('BL19', 'errors: ' + p.errs.join(' | ')) : ok();
+  await p.context().close();
+});
+
+if (run('BL20')) await guard('BL20', async () => {
+  const p = await withGel();
+  const box = await imgBox(p);
+  await tab(p, 'insert'); await p.click('[data-tool="text"]');
+  await p.mouse.click(box.x + box.width * .5, box.y + box.height * .6); await sleep(150);
+  (await p.locator('#an-edit').count()) === 1 ? ok() : bad('BL20', 'clicking with the text tool did not open a box to type in');
+  await p.keyboard.type('HA <b>tag</b>'); await p.keyboard.press('Control+Enter'); await sleep(120);
+  let r = await p.evaluate(() => ({ s: FIG.panels[0].shapes.map(x => x.s), bold: document.querySelectorAll('.an-layer b').length, shown: [...document.querySelectorAll('.an-layer text')].map(t => t.textContent).join('|'), edit: !!document.getElementById('an-edit') }));
+  r.s.length === 1 && r.s[0] === 'HA <b>tag</b>' && r.bold === 0 && r.shown.indexOf('<b>tag</b>') >= 0 && !r.edit ? ok() : bad('BL20', 'typed text: ' + JSON.stringify(r));
+  // a double-click opens it again; emptying it removes the shape
+  const pt = await p.evaluate(() => { var r = document.querySelector('.an-s[data-t="text"] .an-hit').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
+  await p.mouse.dblclick(pt.x, pt.y); await sleep(150);
+  (await p.locator('#an-edit').count()) === 1 ? ok() : bad('BL20', 'a double-click did not reopen the text');
+  await p.keyboard.press('Control+a'); await p.keyboard.press('Delete'); await p.keyboard.press('Control+Enter'); await sleep(120);
+  (await shapes(p)).length === 0 ? ok() : bad('BL20', 'an emptied text stayed as an invisible shape');
+  // typing is one undo step, not one per key
+  await tab(p, 'insert'); await p.click('[data-tool="text"]'); await p.mouse.click(box.x + box.width * .4, box.y + box.height * .7); await sleep(120);
+  const u0 = await p.evaluate(() => UNDO.length);
+  await p.keyboard.type('Ub-smear'); await p.keyboard.press('Control+Enter'); await sleep(100);
+  const u1 = await p.evaluate(() => UNDO.length);
+  u1 - u0 <= 1 ? ok() : bad('BL20', 'typing "Ub-smear" made ' + (u1 - u0) + ' undo steps');
+  // the asterisk is a bold text with no typing step
+  await tab(p, 'insert'); await p.click('[data-tool="star"]'); await p.mouse.click(box.x + box.width * .7, box.y + box.height * .8); await sleep(100);
+  const st = await p.evaluate(() => FIG.panels[0].shapes.map(x => x.s + ':' + x.b));
+  st.indexOf('*:true') >= 0 && !(await p.locator('#an-edit').count()) ? ok() : bad('BL20', 'the asterisk tool: ' + JSON.stringify(st));
+  p.errs.length ? bad('BL20', 'errors: ' + p.errs.join(' | ')) : ok();
+  await p.context().close();
+});
+
+if (run('BL21')) await guard('BL21', async () => {
+  const p = await withGel();
+  const state = () => p.evaluate(() => ({ tab: document.getElementById('ribbon').dataset.tab, panes: [...document.querySelectorAll('.rb-pane.on')].map(x => x.dataset.pane), fmt: !document.getElementById('rb-tab-format').hidden }));
+  let s = await state();
+  s.tab === 'home' && s.panes.join() === 'home' && !s.fmt ? ok() : bad('BL21', 'start: ' + JSON.stringify(s));
+  await tab(p, 'layout'); s = await state();
+  s.tab === 'layout' && s.panes.join() === 'layout' ? ok() : bad('BL21', 'Layout tab: ' + JSON.stringify(s));
+  // every id the rest of the app reads is still there, and every select/number in the ribbon says what it is
+  const ids = await p.evaluate(() => ['tb-lanes', 'tb-figw', 'tb-gap', 'tb-border-on', 'tb-border-px', 'tb-laneorient', 'tb-labelpos', 'tb-lanelabelsize', 'tb-movelabels', 'tb-condstyle', 'tb-condpos', 'tb-undo', 'tb-redo', 'tb-text', 'brb-swatches', 'exp-btn', 'exp-menu', 'more-menu', 'exp-labbook'].filter(i => !document.getElementById(i)));
+  ids.length === 0 ? ok() : bad('BL21', 'the ribbon lost: ' + ids.join(', '));
+  const unlabeled = await p.evaluate(() => [...document.querySelectorAll('#ribbon select,#ribbon input')].filter(e => !(e.getAttribute('aria-label') || (e.labels && e.labels.length && e.closest('label').textContent.trim()) || e.title)).map(e => e.id || e.outerHTML.slice(0, 60)));
+  unlabeled.length === 0 ? ok() : bad('BL21', 'unlabelled controls in the ribbon: ' + unlabeled.join(' | '));
+  // lanes and the layout controls still do their jobs from their new place
+  await p.evaluate(() => { var i = document.getElementById('tb-laneorient'); i.value = 'horiz'; i.dispatchEvent(new Event('change')); var g = document.getElementById('tb-figw'); g.value = 600; g.dispatchEvent(new Event('change')); });
+  const lay = await p.evaluate(() => ({ o: FIG.laneOrient, w: FIG.figW }));
+  lay.o === 'horiz' && lay.w === 600 ? ok() : bad('BL21', 'Layout controls do not reach the figure: ' + JSON.stringify(lay));
+  // selecting a shape opens Format; letting go returns to the tab you were on
+  await p.evaluate(() => { var s = anAdd(0, anNew('rect', { x: .2, y: .5, w: .1, h: .2 })); save(); anRender(); anSelect([s.id]); });
+  s = await state();
+  s.tab === 'format' && s.fmt ? ok() : bad('BL21', 'selecting did not open Format: ' + JSON.stringify(s));
+  await p.evaluate(() => anSelect([])); s = await state();
+  s.tab === 'layout' && !s.fmt ? ok() : bad('BL21', 'letting go did not return to Layout: ' + JSON.stringify(s));
+  // clicking the tab you are on folds the ribbon away; clicking any tab opens it again
+  await p.click('#rb-tab-layout'); let fold = await p.evaluate(() => document.getElementById('ribbon').dataset.collapsed);
+  const paneHidden = await p.evaluate(() => getComputedStyle(document.querySelector('.rb-panes')).display);
+  fold === '1' && paneHidden === 'none' ? ok() : bad('BL21', 'clicking the open tab did not fold the ribbon (' + fold + ', ' + paneHidden + ')');
+  await p.click('#rb-tab-insert'); fold = await p.evaluate(() => document.getElementById('ribbon').dataset.collapsed);
+  fold === '0' ? ok() : bad('BL21', 'clicking another tab did not open the ribbon');
+  // the Text group on Home is dimmed until a label has the caret
+  await tab(p, 'home');
+  const dim = await p.evaluate(() => getComputedStyle(document.querySelector('#tb-text .rb-row')).pointerEvents);
+  dim === 'none' ? ok() : bad('BL21', 'the Text group is live with no label chosen');
+  p.errs.length ? bad('BL21', 'errors: ' + p.errs.join(' | ')) : ok();
+  await p.context().close();
+});
+
+if (run('BL22')) await guard('BL22', async () => {
+  const p = await open();
+  const T = await p.evaluate(() => {
+    var d = { ctl: 'DMSO', ctlpos: 'first', top: 10, unit: 'µM', fold: 3, n: 8, sf: 2, dir: 'desc', marker: false };
+    var L = o => srLabels(Object.assign({}, d, o));
+    return {
+      base: L({}), tenfold: L({ fold: 10, n: 4 }), half: L({ fold: 3.1623, n: 5, ctlpos: 'none' }), asc: L({ n: 3, dir: 'asc', ctlpos: 'last' }), marker: L({ n: 2, marker: true }),
+      carry: srFmt(999.6, 2), small: srFmt(0.0005, 2), big: srFmt(2.5e6, 2), sf3: srFmt(370.37, 3),
+      hostile: [L({ n: 0 }), L({ n: 99 }), L({ fold: 0 }), L({ fold: -3 }), L({ top: -5 }), L({ top: '' }), L({ top: 'abc' }), L({ top: 1e999 }), L({ unit: 'zz' }), L({ sf: 99 }), L({ n: 'x' })].map(a => a.join(',')).join('|'),
+      count99: L({ n: 99 }).length
+    };
+  });
+  JSON.stringify(T.base) === JSON.stringify(['DMSO', '10 µM', '3.3 µM', '1.1 µM', '370 nM', '120 nM', '41 nM', '14 nM', '4.6 nM']) ? ok() : bad('BL22', '10 µM ÷3 ×8: ' + T.base.join(', '));
+  JSON.stringify(T.tenfold) === JSON.stringify(['DMSO', '10 µM', '1 µM', '100 nM', '10 nM']) ? ok() : bad('BL22', '10 µM ÷10 ×4: ' + T.tenfold.join(', '));
+  JSON.stringify(T.half) === JSON.stringify(['10 µM', '3.2 µM', '1 µM', '320 nM', '100 nM']) ? ok() : bad('BL22', 'half-log: ' + T.half.join(', '));
+  JSON.stringify(T.asc) === JSON.stringify(['1.1 µM', '3.3 µM', '10 µM', 'DMSO']) ? ok() : bad('BL22', 'lowest first, control last: ' + T.asc.join(', '));
+  JSON.stringify(T.marker) === JSON.stringify(['M', 'DMSO', '10 µM', '3.3 µM']) ? ok() : bad('BL22', 'marker lane first: ' + T.marker.join(', '));
+  T.carry === '1 µM' && T.small === '0.5 pM' && T.big === '2.5 mM' && T.sf3 === '370 nM' ? ok() : bad('BL22', 'unit changes: ' + [T.carry, T.small, T.big, T.sf3].join(' / '));
+  !/NaN|undefined|Infinity|null/.test(T.hostile) && T.count99 <= 29 ? ok() : bad('BL22', 'hostile inputs gave: ' + T.hostile);
+  // the dialog: preview, warning about typed labels, apply, undo
+  await p.evaluate(() => { FIG.lanes[0] = 'typed'; render(); srOpen(); });
+  await sleep(200);
+  const prev = await p.evaluate(() => ({ lanes: document.querySelectorAll('#sr-prev .sr-lane').length, warn: document.getElementById('sr-warn').textContent }));
+  prev.lanes === 9 && /replaces 1 label/.test(prev.warn) ? ok() : bad('BL22', 'the dialog preview: ' + JSON.stringify(prev));
+  await p.click('#sr-back .btn.primary'); await sleep(200);
+  const ap = await p.evaluate(() => ({ n: FIG.laneCount, l: FIG.lanes.slice(0, 3).map(_stripHtml), open: document.getElementById('sr-back').classList.contains('open') }));
+  ap.n === 9 && ap.l.join() === 'DMSO,10 µM,3.3 µM' && !ap.open ? ok() : bad('BL22', 'Apply gave ' + JSON.stringify(ap));
+  await p.evaluate(() => blotUndo()); const un = await p.evaluate(() => ({ n: FIG.laneCount, l: _stripHtml(FIG.lanes[0]) }));
+  un.l === 'typed' ? ok() : bad('BL22', 'undo did not bring back the label that was typed: ' + JSON.stringify(un));
+  p.errs.length ? bad('BL22', 'errors: ' + p.errs.join(' | ')) : ok();
+  await p.context().close();
+});
+
+if (run('BL23')) await guard('BL23', async () => {
+  const p = await open();
+  const drop = (pi) => p.evaluate(async () => {
+    var g = __gel([.5, .5, .5, .5, .5, .5, .5, .5, .5, .5, .5, .5]), blob = await (await fetch(g)).blob(), dt = new DataTransfer(); dt.items.add(new File([blob], 'gel.png', { type: 'image/png' }));
+    var target = document.getElementById('stage');
+    target.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true }));
+    target.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
+    await new Promise(r => setTimeout(r, 900));
+    return { n: FIG.panels.length, loaded: FIG.panels.map(q => !!q.src), crop: document.getElementById('crop-back').classList.contains('open') };
+  });
+  await p.evaluate(GEL);
+  const hintBefore = await p.evaluate(() => !document.getElementById('an-hint').hidden);
+  hintBefore ? ok() : bad('BL23', 'no hint on an empty page');
+  let r = await drop();
+  r.loaded[0] && !r.loaded[1] && r.n === 2 && r.crop ? ok() : bad('BL23', 'a picture dropped on the page did not fill the first empty panel and open the crop: ' + JSON.stringify(r));
+  await p.evaluate(() => { confirmCrop(); }); await sleep(500);
+  r = await drop();
+  r.loaded[1] ? ok() : bad('BL23', 'the second drop did not go to the second panel: ' + JSON.stringify(r));
+  await p.evaluate(() => { confirmCrop(); }); await sleep(500);
+  r = await drop();
+  r.n === 3 && r.loaded[2] ? ok() : bad('BL23', 'with every panel full, a drop did not add one: ' + JSON.stringify(r));
+  const hide = await p.evaluate(() => document.getElementById('an-hint').hidden);
+  hide ? ok() : bad('BL23', 'the hint stays once there is a picture');
+  p.errs.length ? bad('BL23', 'errors: ' + p.errs.join(' | ')) : ok();
+  await p.context().close();
+});
+
 if (run('BL12')) await guard('BL12', async () => {
   const ESC = fs.readFileSync(path.join(ROOT, 'tools/audit_escape.js'), 'utf8').replace(/window\.__escapeAudit\(\);\s*$/, '');
   const RT = fs.readFileSync(path.join(ROOT, 'tools/audit_runtime.js'), 'utf8'), AL = fs.readFileSync(path.join(ROOT, 'tools/audit_align.js'), 'utf8');
   for (const theme of ['light', 'dark']) for (const [w, h] of [[1440, 900], [1024, 768], [390, 844]]) {
     const p = await open({ w, h, theme });
-    await p.evaluate(GEL + `;(() => { var g = __gel([.2,.4,.6,.8,.2,.4,.6,.8,.2,.4,.6,.8]); FIG.panels[0].src = g; FIG.panels[0].cropped = g; FIG.panels[0].prot = 'BRD4'; FIG.panels[0].marks = [{ k: 70, y: .3 }, { k: 55, y: .7 }]; FIG.lanes = FIG.lanes.map((x, i) => 'Lane ' + (i + 1)); save(); render(); })()`);
-    const screens = [['figure', null], ['crop', () => openCrop(0)], ['quantify', () => openQuant(0)], ['markers', () => openMarkers(0)]];
+    await p.evaluate(GEL + `;(() => { var g = __gel([.2,.4,.6,.8,.2,.4,.6,.8,.2,.4,.6,.8]); FIG.panels[0].src = g; FIG.panels[0].cropped = g; FIG.panels[0].prot = 'BRD4'; FIG.panels[0].marks = [{ k: 70, y: .3 }, { k: 55, y: .7 }]; FIG.panels[0].shapes = anClean([{ t: 'line', x1: 1.1, y1: .5, x2: 1, y2: .5, head: 'end' }, { t: 'rect', x: .3, y: .4, w: .1, h: .3, fill: '#2d9462', fo: .2 }, { t: 'text', x: .7, y: .3, s: 'Ub-smear' }]); FIG.lanes = FIG.lanes.map((x, i) => 'Lane ' + (i + 1)); save(); render(); })()`);
+    const screens = [['figure', null], ['crop', () => openCrop(0)], ['quantify', () => openQuant(0)], ['markers in place', () => openMarkers(0)], ['format', () => { anTool('select'); anSelect([FIG.panels[0].shapes[1].id]); }],
+      ['format of an arrow', () => anSelect([FIG.panels[0].shapes[0].id])], ['insert tab', () => { anSelect([]); rbTab('insert'); }], ['layout tab', () => rbTab('layout')], ['fill series', () => { rbTab('home'); srOpen(); }]];
     for (const [name, fn] of screens) {
       if (fn) { await p.evaluate(fn); await sleep(500); }
       const f = [].concat(
-        await p.evaluate(ESC + ';window.__escapeAudit({allowScroll:".fig-shell,.stage,.dn-tblwrap,.crop-area,.dn-body,.toolbar"})').catch(x => ['escape audit crashed: ' + x.message]).then(r => r.map(x => 'ESCAPE ' + x)),
+        await p.evaluate(ESC + ';window.__escapeAudit({allowScroll:".fig-shell,.stage,.dn-tblwrap,.crop-area,.dn-body,.toolbar,.rb-pane,.rb-panes,.sr-body"})').catch(x => ['escape audit crashed: ' + x.message]).then(r => r.map(x => 'ESCAPE ' + x)),
         await p.evaluate(RT + ';(window.__runtimeAudit||(()=>[]))({accentInk:' + (theme === 'dark' ? 4.5 : 3) + '})').catch(() => []).then(r => (r || []).map(x => 'RUNTIME ' + x)),
         await p.evaluate(AL + ';(window.__alignAudit||(()=>[]))()').catch(() => []).then(r => (r || []).map(x => 'ALIGN ' + x)));
       f.length ? f.slice(0, 4).forEach(x => bad('BL12', `${theme} ${w}×${h} ${name}: ${x}`)) : ok();
-      if (fn) await p.evaluate(() => { closeCrop(); closeQuant(); closeMarkers(); });
+      if (fn) await p.evaluate(() => { closeCrop(); closeQuant(); srClose(); anTool('select'); anSelect([]); rbTab('home'); });
     }
     p.errs.length ? bad('BL12', `${theme} ${w}: errors: ` + p.errs.join(' | ')) : ok();
     await p.context().close();

@@ -642,3 +642,13 @@ Hub. `tools/check_css.py` fails on a second bare `<header>` in an app.
 with soft or full light is ~0.4 s. Anything that moves the camera or the look in several steps runs inside
 `_noDraw(fn)` and draws once at the end (`fitView` and `applyLook` do). RB29 counts the draws.
 
+
+## A ribbon, for an app that draws (Blot, 2026-10-25)
+
+Tabs and named groups, the way PowerPoint does it, carrying what Illustrator offers for a shape. The pattern, so the next drawing app does not invent another:
+- **Tabs for the job, one contextual tab for the selection.** Home / Insert / Layout always; **Format** appears while something is selected and goes when it is let go, returning to the tab you were on. Selecting opens it; deselecting never leaves an empty tab.
+- **A group has its name underneath** (`--fs-1`, `--text3`). A control inside a group says what it is (`Weight`, `Opacity`) or has a `title` and `aria-label`; an unlabelled box fails BL18.
+- **A colour is a button with a popover**, not a row of swatches: eight swatches, "No fill" where it applies, "More colours". Align is a button with a popover too. The popover is clamped by its measured rect and closes on Esc or a click outside.
+- **The active tab folds the ribbon.** A phone starts folded; picking a tool folds it again; an open tab is capped at 42dvh. A bar wraps, it does not scroll.
+- **The tool you picked is a solid accent button** (`.btn.on`, ink `var(--on-accent)`), and the tool returns to Select after one shape, as in PowerPoint.
+- **Selection handles**: 8px square handles and a round rotate handle above, 16px and 10px under `(pointer:coarse)`. A locked shape shows its frame and no handles.
