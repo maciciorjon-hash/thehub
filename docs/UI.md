@@ -24,7 +24,7 @@ Every app declares the same names. Two scales, no loose values.
   /* light is the default; dark is the override */
   --bg:#f4f5f8; --surface:#ffffff; --surface2:#f0f1f5; --surface3:#e4e6ee;
   --border:rgba(0,0,0,0.07); --border2:rgba(0,0,0,0.13);
-  --text:#1a1d2e; --text2:#5a5f7a; --text3:#7c8199;
+  --text:#1a1d2e; --text2:#4f5470; --text3:#5f647e;     /* text3 is 4.5:1 or better on surface, bg, surface2 (2026-10 audit; it was 3.85) */
 
   --accent:#5e87c5;                      /* ONE blue, every app, everything interactive */
   --on-accent:#ffffff;                   /* ink on any solid fill (accent, good, warn, danger): white here, near-black in dark */
@@ -32,6 +32,7 @@ Every app declares the same names. Two scales, no loose values.
   --brand:<the app's own colour>;        /* its logo box and its card tint — nothing else */
 
   --good:#2d9462; --warn:#c47818; --danger:#c04040;
+  --accent-ink:#36609f; --good-ink:#176c42; --warn-ink:#8a4f08;   /* accent, good, warn AS TEXT (4.5:1 on white and on their 16% tints); fills keep the plain tokens */
   --paper:#fbfaf6;                       /* Labbook only: a Notebook page. Warm, not --surface */
 
   --sans:'IBM Plex Sans',system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
@@ -48,7 +49,8 @@ Every app declares the same names. Two scales, no loose values.
 [data-theme="dark"]{
   --bg:#0d0f14; --surface:#13161e; --surface2:#1c2030; --surface3:#252a3a;
   --border:rgba(255,255,255,0.07); --border2:rgba(255,255,255,0.13);
-  --text:#e8eaf2; --text2:#8b90a8; --text3:#7b8099;
+  --text:#e8eaf2; --text2:#a8adc4; --text3:#9096ad;     /* text2 stays brighter than text3 */
+  --accent-ink:#8aaee0; --good-ink:#6ddca8; --warn-ink:#f0b060;
   --accent:#8aaee0; --accent-dim:rgba(138,174,224,0.16); --accent-soft:rgba(138,174,224,0.26);
   --on-accent:#0d0f14;                   /* the dark theme's fills are light pastels: white on #8aaee0 was 2.3:1, this is 8.4:1 */
   --good:#6ddca8; --warn:#f0b060; --danger:#f08a84;
@@ -305,7 +307,7 @@ A control that sets `outline:none` must draw an equivalent ring (a 2px accent bo
 never a `div` with an `onclick`.
 
 **Card** — `--surface`, `1px solid var(--border)`, `--r3`, `--shadow-xs`; hover lifts 3px and goes
-to `--shadow-md`. A card header is `--fs-2`/700/uppercase/1.3px in `--text3`.
+to `--shadow-md`. A card header is `--fs-2`/700 in `--text3`, sentence case (no `text-transform:uppercase`: µ becomes Mu and a unit changes meaning).
 
 **Panel** — the same surface without the hover: a titled box inside a screen.
 
