@@ -16,6 +16,7 @@
 //   H11 stored text stays text    markup in a task, culture, antibody, announcement, toast or question is printed, never run, on every landing, the nav note and the search
 //   H10 contrast, the whole shell  every text run the shell draws (landings, Settings tabs, search, toast, bar) is >= 4.5:1 in both themes
 //                                  (ink on a solid accent fill is held at 3:1, docs/UI.md)
+//   H13 the typeface travels      dist/index.html has no Google Fonts link, fonts/plex.css is beside it, and with Google blocked the shell loads IBM Plex
 //   H12 an access reset resets          an unlock stored under an older ACCESS_EPOCH is dropped, the old words open nothing, the discover box says who to ask
 //                                  for a code, and an unlock made now survives a reload
 //
@@ -369,6 +370,19 @@ if (run('H12')) {
   }
 }
 
+// H13 — the deployed Hub carries its typeface: dist/index.html has no Google Fonts link, fonts/plex.css sits beside it, and with Google blocked the shell and an app frame still get IBM Plex
+if (run('H13') && /[\\/]dist[\\/]/.test(SHELL)) {
+  const dir = path.dirname(SHELL), html = fs.readFileSync(SHELL, 'utf8');
+  if (/fonts\.googleapis\.com/.test(html)) bad('H13', 'the deployed Hub still asks Google for its typeface'); else ok();
+  if (!fs.existsSync(path.join(dir, 'fonts/plex.css')) || !fs.readdirSync(path.join(dir, 'fonts')).some(f => /ibm-plex-sans-latin\.woff2$/.test(f))) bad('H13', 'fonts/plex.css or the Plex files are missing beside index.html'); else ok();
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  await ctx.route(/fonts\.googleapis|fonts\.gstatic/, r => r.abort());
+  const q = await ctx.newPage(); await q.addInitScript(FB);
+  await q.goto('file://' + SHELL); await q.waitForTimeout(1500);
+  const shellFonts = await q.evaluate(async () => { await document.fonts.ready; return [...document.fonts].filter(f => f.status === 'loaded' && /IBM Plex/.test(f.family)).length; });
+  shellFonts >= 3 ? ok() : bad('H13', 'with Google blocked the shell loaded ' + shellFonts + ' Plex faces, expected 3 or more');
+  await ctx.close();
+}
 await browser.close();
 for (const f of findings) console.log(f);
 console.log(`\n${passed} passed, ${findings.length} finding${findings.length === 1 ? '' : 's'}`);

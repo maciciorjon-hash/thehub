@@ -472,6 +472,13 @@ from inline_3dmol import inline as _inline_3dmol
 
 src = open(SHELL, encoding='utf-8').read()
 errors = []
+# A deployed build (an output path was given, i.e. dist/) carries IBM Plex as files next to index.html instead of asking Google for it:
+# the same face with no third-party request, and the first paint does not wait on one. (A srcdoc frame resolves a relative URL against
+# its parent's, so fonts/plex.css works inside every app frame; the Labbook/Archive PWA profiles already do this.) The personal
+# ./dHUB.html opened from disk keeps the Google link, since there is no fonts/ folder beside it.
+SELF_FONTS = bool(args) and profile in ('all', 'product')
+if SELF_FONTS:
+    src = _FONT_LINK.sub('<link rel="stylesheet" href="fonts/plex.css">', src)
 
 def strip_card(html, key):
     r"""Remove one app's home card, matching <div>s by depth.
@@ -535,6 +542,8 @@ for key, rel in APPS:
         except (ValueError, OSError) as e:
             errors.append('ribbon: could not embed 3Dmol - %s' % e)
             continue
+    if SELF_FONTS:
+        data = _FONT_LINK.sub('<link rel="stylesheet" href="fonts/plex.css">', data.decode('utf-8')).encode('utf-8')
     b64 = base64.b64encode(data).decode('ascii')
     src, n = re.subn(r'(?<=' + key + r': ")[^"]*', b64, src)
     print(f'  {key}: {n} replacement(s)')
@@ -554,6 +563,13 @@ if out_dir:
     os.makedirs(out_dir, exist_ok=True)
 open(OUT, 'w', encoding='utf-8').write(src)
 print(f'Output: {OUT} ({len(src):,} chars)')
+if SELF_FONTS and out_dir:
+    import shutil
+    fdir = os.path.join(out_dir, 'fonts'); os.makedirs(fdir, exist_ok=True)
+    for fn in os.listdir(os.path.join(BASE, 'vendor/fonts')):
+        if fn.endswith(('.woff2', '.css')):
+            shutil.copy(os.path.join(BASE, 'vendor/fonts', fn), os.path.join(fdir, fn))
+    print(f'Wrote {fdir} (IBM Plex, self-hosted)')
 
 # A dist/ build is the deployed Pages site — Jon's personal Hub and an unlisted Archive.
 # Neither belongs in a search index. (robots.txt only counts at the site root, which is why

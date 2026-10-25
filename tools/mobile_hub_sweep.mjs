@@ -40,7 +40,8 @@ const args = Object.fromEntries(process.argv.slice(2).map(a => {
   const m = a.match(/^--([^=]+)(?:=(.*))?$/); return m ? [m[1], m[2] === undefined ? true : m[2]] : [a, true];
 }));
 const ENGINE  = args.engine || 'chromium';
-const URL0    = args.url || 'http://127.0.0.1:8899/dHUB.html';
+// a bare base (http://127.0.0.1:8899) means its index.html; the sweep needs the page itself or every app reports 'onAdminStateChanged is not defined'
+const URL0    = (u => /\/[^/]*\.html?(\?|#|$)/.test(u) ? u : u.replace(/\/?$/, '/index.html'))(args.url || 'http://127.0.0.1:8899/dHUB.html');
 const SIZES   = String(args.sizes || '390x844,375x667,320x568,844x390').split(',').map(s => s.split('x').map(Number));
 const THEMES  = String(args.themes || 'light,dark').split(',');
 const ONLY    = args.only ? String(args.only).split(',') : null;
