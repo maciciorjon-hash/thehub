@@ -2192,6 +2192,7 @@ input:checked+.theme-slider{background:var(--accent);}
 #figure.an-tool .panel-tools,#figure.an-tool .panel-corner-drag,#figure.an-tool .panel-resize-handle{display:none;}   /* the hover bar would sit on the top 40px of the blot the tool is drawing on */
 .an-ui{pointer-events:none;}
 .an-frame{fill:none;stroke:var(--accent);stroke-width:1;stroke-dasharray:4 3;}
+.an-marquee{fill:var(--accent-dim);stroke:var(--accent);stroke-width:1;stroke-dasharray:4 3;pointer-events:none;}
 .an-halo{stroke:var(--accent);stroke-opacity:.28;fill:none;stroke-linecap:round;}
 .an-h{fill:#fff;stroke:var(--accent);stroke-width:1.5;pointer-events:all;touch-action:none;}
 .an-h.rot{fill:var(--accent);}
@@ -2341,6 +2342,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
           <button onclick="doExport('jpeg')">JPEG (high-res)</button>
           <button onclick="doExport('tiff')">TIFF (high-res)</button>
           <button onclick="doExport('pdf')">PDF (blot only — no page headers)</button>
+          <button onclick="doExport('svg')" title="Text stays text, every arrow and box is its own object, the pictures are embedded: open it in Illustrator or Inkscape">SVG (vector, for Illustrator)</button>
           <button onclick="el('exp-menu').classList.remove('open');exportQuantCSV()">Densitometry (CSV)</button>
           <button id="exp-labbook" onclick="sendToLabbook()" style="display:none;">Send to Labbook</button>
         </div>
@@ -3332,6 +3334,67 @@ function toggleExportMenu(e){ e.stopPropagation(); var m=el('exp-menu'), was=m.c
 document.addEventListener('click',function(){ closeMenus(); });
 function loadImg(src){ return new Promise(function(res,rej){ var i=new Image(); i.onload=function(){res(i);}; i.onerror=rej; i.src=src; }); }
 
+/* ── SVG export: the third painter. A recording stand-in for the canvas context: renderFigureCanvas() draws to it exactly as it
+   draws to a canvas, and every call becomes an SVG element, so there is still ONE geometry (what is exported as a PNG and what is
+   exported as an SVG are the same drawing). Text stays text (editable in Illustrator), each annotation is its own group, the
+   pictures are embedded at their own resolution. Only the calls the export makes are implemented. ─────────────────────────── */
+function SvgCtx(W,H){
+  var m=document.createElement('canvas').getContext('2d'), self=this, out=[], path=[], stack=[], dash=[], depth=0, M=[1,0,0,1,0,0], ids={};
+  var s={fillStyle:'#000000',strokeStyle:'#000000',lineWidth:1,font:'10px sans-serif',textAlign:'start',textBaseline:'alphabetic',globalAlpha:1,lineCap:'butt',lineJoin:'miter'};
+  ['fillStyle','strokeStyle','lineWidth','font','textAlign','textBaseline','globalAlpha','lineCap','lineJoin'].forEach(function(k){
+    Object.defineProperty(self,k,{get:function(){ return s[k]; },set:function(v){ s[k]=v; if(k==='font') try{ m.font=v; }catch(e){} }});
+  });
+  function X(t){ return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function N(v){ return +(+v).toFixed(3); }
+  function mul(a,b){ return [a[0]*b[0]+a[2]*b[1],a[1]*b[0]+a[3]*b[1],a[0]*b[2]+a[2]*b[3],a[1]*b[2]+a[3]*b[3],a[0]*b[4]+a[2]*b[5]+a[4],a[1]*b[4]+a[3]*b[5]+a[5]]; }
+  function tf(){ return (M[0]===1&&M[1]===0&&M[2]===0&&M[3]===1&&M[4]===0&&M[5]===0)?'':' transform="matrix('+M.map(N).join(' ')+')"'; }
+  // rgb()/rgba() are written as #rrggbb plus an opacity: not every reader of SVG takes the functional forms.
+  function col(c){ var r=/^rgba?\(\s*([\d.]+)[ ,]+([\d.]+)[ ,]+([\d.]+)(?:[ ,/]+([\d.]+%?))?\s*\)$/.exec(String(c).trim());
+    if(!r) return {c:String(c),a:1};
+    var h='#'+[r[1],r[2],r[3]].map(function(v){ return ('0'+Math.max(0,Math.min(255,Math.round(+v))).toString(16)).slice(-2); }).join(''), a=r[4]==null?1:(/%$/.test(r[4])?parseFloat(r[4])/100:+r[4]);
+    return {c:h,a:a}; }
+  function paint(kind){ var c=col(kind==='fill'?s.fillStyle:s.strokeStyle), a=N(c.a*s.globalAlpha); return kind==='fill'?' fill="'+X(c.c)+'"'+(a<1?' fill-opacity="'+a+'"':''):' stroke="'+X(c.c)+'"'+(a<1?' stroke-opacity="'+a+'"':''); }
+  function strokeAttrs(){ return paint('stroke')+' stroke-width="'+N(s.lineWidth)+'"'+(s.lineCap!=='butt'?' stroke-linecap="'+s.lineCap+'"':'')+(s.lineJoin!=='miter'?' stroke-linejoin="'+s.lineJoin+'"':'')+(dash.length?' stroke-dasharray="'+dash.map(N).join(' ')+'"':''); }
+  this.canvas={width:W,height:H};
+  this.save=function(){ stack.push({s:Object.assign({},s),d:dash.slice(),M:M.slice()}); };
+  this.restore=function(){ var t=stack.pop(); if(!t) return; Object.keys(t.s).forEach(function(k){ self[k]=t.s[k]; }); dash=t.d; M=t.M; };
+  this.translate=function(x,y){ M=mul(M,[1,0,0,1,x,y]); };
+  this.rotate=function(a){ var c=Math.cos(a), n=Math.sin(a); M=mul(M,[c,n,-n,c,0,0]); };
+  this.setTransform=function(a,b,c,d,e,f){ M=[a,b,c,d,e,f]; };
+  this.setLineDash=function(d){ dash=(d||[]).slice(); };
+  this.beginPath=function(){ path=[]; };
+  this.closePath=function(){ path.push('Z'); };
+  this.moveTo=function(x,y){ path.push('M'+N(x)+' '+N(y)); };
+  this.lineTo=function(x,y){ path.push('L'+N(x)+' '+N(y)); };
+  this.rect=function(x,y,w,h){ path.push('M'+N(x)+' '+N(y)+'H'+N(x+w)+'V'+N(y+h)+'H'+N(x)+'Z'); };
+  this.ellipse=function(cx,cy,rx,ry,rot,a0,a1){
+    var full=Math.abs(a1-a0)>=2*Math.PI-1e-6;
+    if(full){ path.push('M'+N(cx+rx)+' '+N(cy)+'A'+N(rx)+' '+N(ry)+' 0 1 1 '+N(cx-rx)+' '+N(cy)+'A'+N(rx)+' '+N(ry)+' 0 1 1 '+N(cx+rx)+' '+N(cy)+'Z'); return; }
+    var x0=cx+rx*Math.cos(a0), y0=cy+ry*Math.sin(a0), x1=cx+rx*Math.cos(a1), y1=cy+ry*Math.sin(a1);
+    path.push('M'+N(x0)+' '+N(y0)+'A'+N(rx)+' '+N(ry)+' 0 '+(Math.abs(a1-a0)>Math.PI?1:0)+' '+(a1>a0?1:0)+' '+N(x1)+' '+N(y1));
+  };
+  this.arc=function(cx,cy,r,a0,a1){ this.ellipse(cx,cy,r,r,0,a0,a1); };
+  this.fill=function(){ if(path.length) out.push('<path d="'+path.join('')+'"'+paint('fill')+' stroke="none"'+tf()+'/>'); };
+  this.stroke=function(){ if(path.length) out.push('<path d="'+path.join('')+'" fill="none"'+strokeAttrs()+tf()+'/>'); };
+  this.fillRect=function(x,y,w,h){ out.push('<rect x="'+N(x)+'" y="'+N(y)+'" width="'+N(w)+'" height="'+N(h)+'"'+paint('fill')+tf()+'/>'); };
+  this.strokeRect=function(x,y,w,h){ out.push('<rect x="'+N(x)+'" y="'+N(y)+'" width="'+N(w)+'" height="'+N(h)+'" fill="none"'+strokeAttrs()+tf()+'/>'); };
+  this.measureText=function(t){ return m.measureText(t); };
+  this.drawImage=function(img,x,y,w,h){
+    var href=/^data:/.test(img.src||'')?img.src:(function(){ var c=document.createElement('canvas'); c.width=img.naturalWidth; c.height=img.naturalHeight; c.getContext('2d').drawImage(img,0,0); return c.toDataURL('image/png'); })();
+    out.push('<image x="'+N(x)+'" y="'+N(y)+'" width="'+N(w)+'" height="'+N(h)+'" preserveAspectRatio="none" xlink:href="'+X(href)+'"'+tf()+'/>');
+  };
+  this.fillText=function(t,x,y){
+    var f=/^(?:(italic|oblique)\s+)?(?:(bold|[1-9]00)\s+)?([\d.]+)px\s+(.+)$/.exec(s.font)||[], sz=+f[3]||10, mt=m.measureText('Hg'), asc=mt.fontBoundingBoxAscent!=null?mt.fontBoundingBoxAscent:sz*.8, des=mt.fontBoundingBoxDescent!=null?mt.fontBoundingBoxDescent:sz*.2;
+    var dy={middle:(asc-des)/2,top:asc,hanging:asc*.8,bottom:-des,ideographic:-des,alphabetic:0}[s.textBaseline]||0;
+    var anchor={left:'start',start:'start',right:'end',end:'end',center:'middle'}[s.textAlign]||'start';
+    out.push('<text x="'+N(x)+'" y="'+N(y+dy)+'" font-family="'+X((f[4]||'sans-serif').replace(/"/g,"'"))+'" font-size="'+N(sz)+'"'+(f[2]?' font-weight="'+f[2]+'"':'')+(f[1]?' font-style="'+f[1]+'"':'')+(anchor!=='start'?' text-anchor="'+anchor+'"':'')+paint('fill')+' xml:space="preserve"'+tf()+'>'+X(t)+'</text>');
+  };
+  this.bg=function(name){ var id=String(name).replace(/[^A-Za-z0-9_-]+/g,'_'); ids[id]=(ids[id]||0)+1; out.push('<g id="'+X(id+(ids[id]>1?'_'+ids[id]:''))+'">'); depth++; };
+  this.eg=function(){ if(depth>0){ out.push('</g>'); depth--; } };
+  this.toSvg=function(){ while(depth>0) this.eg();
+    return '<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="'+N(W)+'" height="'+N(H)+'" viewBox="0 0 '+N(W)+' '+N(H)+'">\n'+out.join('\n')+'\n</svg>\n'; };
+}
+
 /* ── Export render — MEASURES the live #figure DOM (element rects + computed fonts/colours)
    and redraws it to a high-res canvas, so the exported figure matches exactly what's on
    screen: sizes, label positions/offsets, borders, membrane scaling — all of it. ── */
@@ -3350,18 +3413,21 @@ function _textRuns(root){
   return runs;
 }
 
-async function renderFigureCanvas(scale){
+async function renderFigureCanvas(scale,svg){
   await (document.fonts&&document.fonts.ready);
   var fig=el('figure'); if(!fig) return document.createElement('canvas');
   var figRect=fig.getBoundingClientRect();
   var PAD=18, over=anOverhang(figRect), PL=PAD+over.l, PT=PAD+over.t;
   var W=figRect.width+PL+PAD+over.r, H=figRect.height+PT+PAD+over.b;
-  var cv=document.createElement('canvas'); cv.width=Math.max(1,Math.round(W*scale)); cv.height=Math.max(1,Math.round(H*scale));
-  var ctx=cv.getContext('2d'); ctx.setTransform(scale,0,0,scale,0,0);
+  var cv=null, ctx;
+  if(svg){ ctx=new SvgCtx(W,H); scale=1; }
+  else { cv=document.createElement('canvas'); cv.width=Math.max(1,Math.round(W*scale)); cv.height=Math.max(1,Math.round(H*scale)); ctx=cv.getContext('2d'); ctx.setTransform(scale,0,0,scale,0,0); }
+  var G=function(n){ if(ctx.bg) ctx.bg(n); }, E=function(){ if(ctx.eg) ctx.eg(); };   // groups: layers in Illustrator, nothing on a canvas
   ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,W,H);
   function rel(elm){ var r=elm.getBoundingClientRect(); var x=r.left-figRect.left+PL, y=r.top-figRect.top+PT; return {x:x,y:y,w:r.width,h:r.height,cx:x+r.width/2,cy:y+r.height/2}; }
 
   // 1) blot images (with borders) + placeholder rects for empty drops
+  G('Blots');
   var imgEls=fig.querySelectorAll('.panel-blot .blot-img');
   for(var i=0;i<imgEls.length;i++){
     var imgEl=imgEls[i], r=rel(imgEl), cs=getComputedStyle(imgEl), bw=_px(cs.borderTopWidth);
@@ -3377,6 +3443,7 @@ async function renderFigureCanvas(scale){
   }
   fig.querySelectorAll('.blot-drop').forEach(function(dz){ var r=rel(dz); ctx.strokeStyle='#ccc'; ctx.lineWidth=1; ctx.setLineDash([5,4]); ctx.strokeRect(r.x+0.5,r.y+0.5,r.w-1,r.h-1); ctx.setLineDash([]); });
 
+  E();
   // draw a (possibly multi-run) label. rot in degrees; anchor: 'left'|'right'|'center'
   function drawLabel(inEl, rot, anchor){
     var full=(inEl.innerText||''); if(!full.trim()) return;
@@ -3402,15 +3469,18 @@ async function renderFigureCanvas(scale){
   }
 
   // 2) kDa (right-anchored) + protein (left-anchored)
+  G('Size markers and protein labels');
   fig.querySelectorAll('.panel-kda .lbl-in').forEach(function(inEl){ drawLabel(inEl,0,'right'); });
   fig.querySelectorAll('.panel-kda .mk').forEach(function(mk){
     var t=mk.querySelector('.mk-t'), l=mk.querySelector('.mk-l');
     if(t){ var tr=rel(t); ctx.strokeStyle='#111'; ctx.lineWidth=Math.max(1,tr.h); ctx.beginPath(); ctx.moveTo(tr.x,tr.cy); ctx.lineTo(tr.x+tr.w,tr.cy); ctx.stroke(); }
     if(l) drawLabel(l,0,'right'); });
   fig.querySelectorAll('.panel-prot .lbl-in').forEach(function(inEl){ drawLabel(inEl,0,'left'); });
+  E(); G('Lane labels');
   // 3) lane labels — rotation from orientation
   var rot = FIG.laneOrient==='vert' ? -90 : (FIG.laneOrient==='ang' ? -45 : 0);
   fig.querySelectorAll('.lane-row .lane-cell .lbl-in').forEach(function(inEl){ drawLabel(inEl, rot, 'center'); });
+  E(); G('Group brackets');
   // 4) group brackets
   fig.querySelectorAll('#groups-band .grp').forEach(function(grp){
     var line=grp.querySelector('.grp-line'), lbl=grp.querySelector('.grp-lbl');
@@ -3419,6 +3489,7 @@ async function renderFigureCanvas(scale){
       ctx.moveTo(lr.x,ly); ctx.lineTo(lr.x+lr.w,ly); ctx.moveTo(lr.x,ly);ctx.lineTo(lr.x,ly+6); ctx.moveTo(lr.x+lr.w,ly);ctx.lineTo(lr.x+lr.w,ly+6); ctx.stroke(); }
     if(lbl) drawLabel(lbl,0,'center');
   });
+  E(); G('Conditions');
   // 5) sample-conditions matrix (labels + on/off markers)
   fig.querySelectorAll('.cond-band .cond-lblcell .lbl-in').forEach(function(inEl){ drawLabel(inEl,0,'right'); });
   fig.querySelectorAll('.cond-band .cond-cell').forEach(function(cell){
@@ -3428,18 +3499,20 @@ async function renderFigureCanvas(scale){
     else if(FIG.condStyle==='dot'){ ctx.beginPath(); ctx.arc(cx,cy,on?7:3,0,2*Math.PI); ctx.fill(); }
     else { ctx.lineWidth=2; ctx.beginPath(); ctx.arc(cx,cy,8,0,2*Math.PI); if(on) ctx.fill(); ctx.stroke(); }
   });
+  E(); G('Annotations');
   // 6) annotations, over everything else
   fig.querySelectorAll('.panel-blot').forEach(function(h){ var im=h.querySelector('.blot-img'); if(!im) return; var rr=rel(im); anDrawAll(ctx,+h.getAttribute('data-pi'),rr.x,rr.y,rr.w,rr.h); });
-  return cv;
+  E();
+  return svg?ctx:cv;
 }
 
 async function doExport(fmt){
   el('exp-menu').classList.remove('open');
   toast('Rendering figure…');
   try{
-    var scale = fmt==='tiff'?3:3.5;
+    var scale = fmt==='tiff'?3:3.5, name=_bFileName();
+    if(fmt==='svg'){ var rec=await renderFigureCanvas(1,true); downloadBlob(new Blob([rec.toSvg()],{type:'image/svg+xml'}), name+'.svg'); toast('Exported '+name+'.svg'); return; }
     var cv=await renderFigureCanvas(scale);
-    var name=_bFileName();
     if(fmt==='tiff'){
       if(typeof UTIF==='undefined'){ toast('TIFF encoder unavailable'); return; }
       var ctx=cv.getContext('2d'); var id=ctx.getImageData(0,0,cv.width,cv.height);
@@ -4247,7 +4320,7 @@ function anCanvasPrim(ctx,p,ox,oy){
 }
 function anDrawAll(ctx,pi,ox,oy,W,H){
   var p=FIG.panels[pi]; if(!p||!p.shapes) return;
-  p.shapes.forEach(function(s){ anPrims(s,W,H).forEach(function(pr){ anCanvasPrim(ctx,pr,ox,oy); }); });
+  p.shapes.forEach(function(s,i){ if(ctx.bg) ctx.bg('Panel '+(pi+1)+' '+(s.t==='line'?(s.head&&s.head!=='none'?'arrow':'line'):s.t==='ellipse'?'circle':s.t==='rect'?'box':'text')+' '+(i+1)); anPrims(s,W,H).forEach(function(pr){ anCanvasPrim(ctx,pr,ox,oy); }); if(ctx.eg) ctx.eg(); });
 }
 
 // How far shapes reach beyond the figure, so the export is widened instead of cutting an arrow off.
@@ -4305,6 +4378,8 @@ var AN_COARSE=!!(window.matchMedia&&window.matchMedia('(pointer:coarse)').matche
 var AN_CUR={nw:'nwse-resize',se:'nwse-resize',ne:'nesw-resize',sw:'nesw-resize',n:'ns-resize',s:'ns-resize',e:'ew-resize',w:'ew-resize'};
 function anUiSvg(pi,W,H){
   var p=FIG.panels[pi], ids=AN.ids.filter(function(id){ var f=anFind(id); return f&&f.pi===pi; }), out='';
+  var mq=AN.drag&&AN.drag.kind==='marquee'&&AN.drag.moved&&AN.drag.pi===pi?AN.drag:null;
+  if(mq) out+='<rect class="an-marquee" x="'+anNum(Math.min(mq.p0.x,mq.cur.x))+'" y="'+anNum(Math.min(mq.p0.y,mq.cur.y))+'" width="'+anNum(Math.abs(mq.cur.x-mq.p0.x))+'" height="'+anNum(Math.abs(mq.cur.y-mq.p0.y))+'"/>';
   if(AN.tool==='mk'&&MK.pi===pi) out+=anMkSvg(pi,W,H,true);
   else if(AN.tool==='ms'&&(p.marks||[]).length>1) out+=anMkSvg(pi,W,H,false);
   if(!ids.length) return out?'<g class="an-ui">'+out+'</g>':'';
@@ -4414,6 +4489,7 @@ function anUnbindDrag(){ document.removeEventListener('pointermove',anDragMove);
 function anSnapshot(s){ return JSON.parse(JSON.stringify(s)); }
 function anDragMove(ev){
   var d=AN.drag; if(!d) return; var box=d.box, W=box.W, H=box.H, pt=anLocal(ev,box);
+  if(d.kind==='marquee'){ if(!d.moved&&Math.hypot(pt.x-d.p0.x,pt.y-d.p0.y)<4) return; d.moved=true; d.cur=pt; anDraw(d.pi); return; }
   if(d.kind==='create'){
     var f=anFind(d.id); if(!f) return; var s=f.s;
     if(!d.moved&&Math.hypot(pt.x-d.p0.x,pt.y-d.p0.y)<4) return; d.moved=true;
@@ -4459,7 +4535,25 @@ function anDragMove(ev){
 function anDragEnd(){
   var d=AN.drag; anUnbindDrag(); AN.drag=null; if(!d) return;
   if(d.kind==='create'){ AN.drag=null; anCreateEnd(d); return; }
+  if(d.kind==='marquee'){ anMarqueeEnd(d); return; }
   if(d.moved){ save(); anDraw(d.pi); rbSync(false); }   // nothing moved: leave the elements alone, or the click and the double-click lose their target
+}
+function anBeginMarquee(ev,pi){
+  var box=anBox(pi); if(!box) return; ev.preventDefault();   // cancelling pointerdown also stops the picture's own mousedown (the crop pan)
+  var p0=anLocal(ev,box);
+  AN.drag={kind:'marquee',pi:pi,box:box,p0:p0,cur:p0,moved:false,base:anSelPi()===pi?AN.ids.slice():[]};
+  anBindDrag(ev);
+}
+// What a box touches is selected, Illustrator's way (a thin arrow is hard to enclose); the selection it began with is kept.
+function anMarqueeEnd(d){
+  if(!d.moved){ anDraw(d.pi); return; }
+  var W=d.box.W, H=d.box.H, x0=Math.min(d.p0.x,d.cur.x), x1=Math.max(d.p0.x,d.cur.x), y0=Math.min(d.p0.y,d.cur.y), y1=Math.max(d.p0.y,d.cur.y);
+  var hit=(FIG.panels[d.pi].shapes||[]).filter(function(sh){ var a=anAABB(sh,W,H); return a.x1>=x0&&a.x0<=x1&&a.y1>=y0&&a.y0<=y1; }).map(function(sh){ return sh.id; });
+  anSelect(d.base.concat(hit.filter(function(i){ return d.base.indexOf(i)<0; })));
+}
+function anSelectAll(){
+  var pi=anSelPi(); if(pi<0) pi=FIG.panels.findIndex?FIG.panels.findIndex(function(p){ return (p.shapes||[]).length; }):-1;
+  if(pi<0||!(FIG.panels[pi].shapes||[]).length) return; anSelect(FIG.panels[pi].shapes.map(function(sh){ return sh.id; }));
 }
 function anBeginMove(ev,id){
   var f=anFind(id); if(!f) return; var pi=f.pi, box=anBox(pi); if(!box) return;
@@ -4490,6 +4584,9 @@ document.addEventListener('pointerdown',function(ev){
     if(AN.ids.indexOf(id)<0) anSelect([id]);
     if(!f.s.lock) anBeginMove(ev,id); return;
   }
+  // Shift-drag on a picture draws a selection box over its annotations (a plain drag there pans the crop, so the box needs the key)
+  var mh=t.closest('.panel-blot');
+  if(ev.shiftKey&&mh&&(FIG.panels[+mh.getAttribute('data-pi')].shapes||[]).length){ anBeginMarquee(ev,+mh.getAttribute('data-pi')); return; }
   // a click anywhere else on the figure's stage lets go of the selection; the ribbon does not
   if(AN.ids.length&&t.closest('#stage')) anSelect([]);
 });
@@ -4590,6 +4687,7 @@ document.addEventListener('keydown',function(e){
   var k=e.key;
   if(k==='Escape'){ if(AN.tool!=='select'){ anTool('select'); e.preventDefault(); } else if(AN.ids.length){ anSelect([]); e.preventDefault(); } return; }
   if((e.metaKey||e.ctrlKey)&&!e.altKey&&k.toLowerCase()==='d'&&AN.ids.length){ e.preventDefault(); anDup(); return; }
+  if((e.metaKey||e.ctrlKey)&&!e.altKey&&!e.shiftKey&&k.toLowerCase()==='a'&&AN.tool==='select'&&FIG.panels.some(function(p){ return (p.shapes||[]).length; })){ e.preventDefault(); anSelectAll(); return; }
   if(e.metaKey||e.ctrlKey||e.altKey||!AN.ids.length) return;
   if(k==='Delete'||k==='Backspace'){ e.preventDefault(); anDelete(); return; }
   if(k.indexOf('Arrow')===0){
@@ -5200,8 +5298,41 @@ var ctxClose, ctxIsOpen, ctxOpen, ctxBind, ctxApp;
 </script>
 <script>
 /* ctx-app:begin — generated by tools/sync_ctxkit.py from tools/ctxkit/apps/western-blot.js; do not edit here */
-// Blot: the figure's own actions.
-ctxApp(null, { acts: [
+// Blot: an annotation (select it, then what the Format tab does), a picture (its tools), and the figure's own actions.
+ctxApp(function(e, t){
+  if (typeof anFind !== 'function') return null;
+  var sg = t.closest('.an-s');
+  if (sg && AN.tool === 'select') {
+    var id = sg.getAttribute('data-id'), f = anFind(id); if (!f) return null;
+    if (AN.ids.indexOf(id) < 0) anSelect([id]);
+    var sh = anSel(), many = sh.length > 1, locked = sh.every(function(s){ return s.lock; }), one = sh[0];
+    var name = many ? sh.length + ' annotations' : ({ line: one.head && one.head !== 'none' ? 'Arrow' : 'Line', rect: 'Box', ellipse: 'Circle', text: 'Text' })[one.t];
+    return [
+      { hd: name },
+      !many && one.t === 'text' && !one.lock && { label: 'Edit text', act: function(){ anEditText(one.id, false); } },
+      { label: 'Duplicate', k: CTX_MOD + 'D', act: anDup },
+      { label: locked ? 'Unlock' : 'Lock', act: anLock },
+      { sep: true },
+      { label: 'Bring to front', act: function(){ anOrder('front'); } },
+      { label: 'Bring forward', act: function(){ anOrder('fwd'); } },
+      { label: 'Send backward', act: function(){ anOrder('bwd'); } },
+      { label: 'Send to back', act: function(){ anOrder('back'); } },
+      { sep: true },
+      { label: 'Delete', k: 'Del', danger: true, disabled: locked, act: anDelete }
+    ];
+  }
+  var host = t.closest('.panel-blot'); if (!host) return null;
+  var pi = +host.getAttribute('data-pi'), p = FIG.panels[pi]; if (!p || !p.cropped) return null;
+  return [
+    { hd: 'Panel ' + (pi + 1) },
+    { label: 'Size markers…', act: function(){ openMarkers(pi); } },
+    { label: 'Measure a band', disabled: (p.marks || []).length < 2, act: function(){ MK.pi = pi; anMsStart(); } },
+    { label: 'Crop…', act: function(){ openCrop(pi); } },
+    { label: 'Quantify…', act: function(){ openQuant(pi); } },
+    (p.shapes || []).length && { sep: true },
+    (p.shapes || []).length && { label: 'Select all annotations', k: CTX_MOD + 'A', act: function(){ anSelect(p.shapes.map(function(s){ return s.id; })); } }
+  ];
+}, { acts: [
   { l: 'Add a panel', f: 'addPanel' },
   { l: 'Add a group bracket', f: 'addGroup' },
   { l: 'Add a condition row', f: 'addCondRow' },
@@ -5209,6 +5340,7 @@ ctxApp(null, { acts: [
   { l: 'Reset label positions', f: 'resetLaneLabelPos' },
   { l: 'Export PNG (high-res)', f: 'doExport', args: ['png'] },
   { l: 'Export PDF', f: 'doExport', args: ['pdf'] },
+  { l: 'Export SVG (for Illustrator)', f: 'doExport', args: ['svg'] },
   { l: 'Save this figure', f: 'saveHistory' },
   { l: 'History…', f: 'openHistoryModal' },
   { l: 'Presets…', f: 'openPresetsModal' },

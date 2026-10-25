@@ -44,6 +44,12 @@
 //   BL26 snap to the band              a click near a band lands on its centre, a click far from any does not move, a faint ripple does not
 //                                      beat a real band, both polarities; Alt places exactly; the toggle is respected; a band holds one marker
 //   BL27 Measure                       a click reads the size, outside the markers is refused with the reason, Add as label makes a text shape
+//   BL28 SVG export                    the same drawing as the PNG, written as SVG: well-formed, text stays text and typed text cannot become
+//                                      markup, every annotation is its own group under Annotations, the picture is embedded unchanged,
+//                                      the export widens for what overhangs, raster of the SVG matches the PNG, the menu downloads it
+//   BL29 select and right-click        Shift-drag on a picture selects what the box touches (and keeps the selection it began with, and does not pan the
+//                                      crop), ⌘A selects the panel's annotations, right-click on an annotation selects it and offers duplicate,
+//                                      lock, order and delete (disabled while locked), right-click on a picture offers its tools
 //   BL12 layout                        escape, runtime and alignment audits on the figure and every dialog, 1440/1024/390,
 //                                      both themes
 //
@@ -938,6 +944,112 @@ if (run('BL27')) await guard('BL27', async () => {
   await p.evaluate(() => mkDone());
   (await p.evaluate(() => AN.tool)) === 'select' ? ok() : bad('BL27', 'Done did not leave Measure');
   p.errs.length ? bad('BL27', 'errors: ' + p.errs.join(' | ')) : ok();
+  await p.context().close();
+});
+
+if (run('BL28')) await guard('BL28', async () => {
+  const p = await open({ w: 1440, h: 1000 });
+  await p.evaluate(GEL + `;(() => { var g = __gel([.5,.6,.7,.8,.5,.6,.7,.8,.5,.6,.7,.8]); var q = FIG.panels[0]; q.src = g; q.cropped = g; q.prot = 'BRD4'; q.ladder = 'gr_1kb_plus'; q.marks = [{ k: 20000, y: .2 }, { k: 1500, y: .6 }];
+    q.shapes = anClean([{ t: 'line', x1: .9, y1: .2, x2: .7, y2: .45, head: 'end' }, { t: 'rect', x: .1, y: .3, w: .2, h: .3, fill: '#2d9462', fo: .4 }, { t: 'text', x: .5, y: .8, s: 'a </text><script>x()</script> b', rot: 20 }, { t: 'ellipse', x: .6, y: .5, w: .1, h: .2 }]); save(); render(); })()`);
+  await sleep(700);
+  const r = await p.evaluate(async () => {
+    var rec = await renderFigureCanvas(1, true), svg = rec.toSvg(), cv = await renderFigureCanvas(1);
+    var doc = new DOMParser().parseFromString(svg, 'image/svg+xml'), root = doc.documentElement;
+    var img = await new Promise((res, rej) => { var i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' })); });
+    var c2 = document.createElement('canvas'); c2.width = cv.width; c2.height = cv.height; var x2 = c2.getContext('2d'); x2.fillStyle = '#fff'; x2.fillRect(0, 0, c2.width, c2.height); x2.drawImage(img, 0, 0);
+    var a = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data, b = x2.getImageData(0, 0, c2.width, c2.height).data, big = 0, n = a.length / 4;
+    for (var k = 0; k < a.length; k += 4) if (Math.abs(a[k] - b[k]) + Math.abs(a[k + 1] - b[k + 1]) + Math.abs(a[k + 2] - b[k + 2]) > 120) big++;
+    // where the ink of the protein name sits, in each raster
+    var fr = document.getElementById('figure').getBoundingClientRect(), lr = document.querySelector('.panel-prot .lbl-in').getBoundingClientRect(), PAD = 18;
+    function cy(d, w) { var x0 = Math.round(lr.left - fr.left + PAD) - 2, x1 = Math.round(lr.right - fr.left + PAD) + 2, y0 = Math.round(lr.top - fr.top + PAD) - 6, y1 = Math.round(lr.bottom - fr.top + PAD) + 6, s = 0, m = 0;
+      for (var y = y0; y < y1; y++) for (var x = x0; x < x1; x++) { var v = 255 - d[(y * w + x) * 4]; if (v > 40) { s += y * v; m += v; } } return m ? s / m : -1; }
+    var shapes = [...doc.querySelectorAll('g')].filter(g => /^Panel_1_/.test(g.getAttribute('id')));
+    return { ok: root.nodeName === 'svg' && !doc.querySelector('parsererror'), w: +root.getAttribute('width'), h: +root.getAttribute('height'), cw: cv.width, ch: cv.height, diff: big / n,
+      cyA: cy(a, cv.width), cyB: cy(b, c2.width), script: doc.querySelectorAll('script').length, handlers: [...doc.querySelectorAll('*')].filter(e => [...e.attributes].some(t => /^on/i.test(t.name))).length,
+      texts: [...doc.querySelectorAll('text')].map(t => t.textContent), hostile: [...doc.querySelectorAll('text')].some(t => t.textContent === 'a </text><script>x()</script> b'),
+      layers: [...doc.querySelectorAll('svg > g')].map(g => g.getAttribute('id')), shapes: shapes.map(g => g.getAttribute('id')), nested: shapes.map(g => g.parentNode.getAttribute('id')),
+      embedded: svg.indexOf(FIG.panels[0].cropped) > 0, images: doc.querySelectorAll('image').length, imgHref: (doc.querySelector('image').getAttribute('xlink:href') || '').slice(0, 11), blank: [...doc.querySelectorAll('rect')].length > 0 };
+  });
+  r.ok ? ok() : bad('BL28', 'the SVG is not well-formed');
+  r.script === 0 && r.handlers === 0 && r.hostile ? ok() : bad('BL28', 'a typed text became markup, or is missing: ' + JSON.stringify({ s: r.script, h: r.handlers, hostile: r.hostile }));
+  ['20,000', '1,500', 'BRD4'].every(t => r.texts.includes(t)) ? ok() : bad('BL28', 'text is not text in the SVG: ' + r.texts.join(' | '));
+  r.layers.join() === 'Blots,Size_markers_and_protein_labels,Lane_labels,Group_brackets,Conditions,Annotations' ? ok() : bad('BL28', 'the layers are not the figure\'s parts, in order: ' + r.layers.join());
+  r.shapes.length === 4 && r.nested.every(n => n === 'Annotations') && /arrow/.test(r.shapes[0]) && /box/.test(r.shapes[1]) && /text/.test(r.shapes[2]) && /circle/.test(r.shapes[3]) ? ok() : bad('BL28', 'each annotation is not its own group under Annotations: ' + JSON.stringify([r.shapes, r.nested]));
+  r.embedded && r.images === 1 && r.imgHref === 'data:image/' ? ok() : bad('BL28', 'the picture is not embedded unchanged');
+  Math.abs(r.w - r.cw) < 1 && Math.abs(r.h - r.ch) < 1 ? ok() : bad('BL28', `the SVG is not the PNG's size (${r.w}×${r.h} against ${r.cw}×${r.ch})`);
+  r.diff < 0.012 ? ok() : bad('BL28', 'the SVG does not look like the PNG: ' + (r.diff * 100).toFixed(2) + ' % of the pixels differ');
+  r.cyA > 0 && Math.abs(r.cyA - r.cyB) < 1.5 ? ok() : bad('BL28', 'the protein name sits ' + (r.cyB - r.cyA).toFixed(1) + ' px from where the PNG puts it');
+  // an arrow that points in from outside the figure widens the SVG exactly as it widens the PNG
+  const o = await p.evaluate(async () => { FIG.panels[0].shapes.push(anClean([{ t: 'line', x1: -.25, y1: .5, x2: .0, y2: .5, head: 'end' }])[0]); render(); await new Promise(r => setTimeout(r, 300));
+    var rec = await renderFigureCanvas(1, true), cv = await renderFigureCanvas(1), m = /width="([\d.]+)"/.exec(rec.toSvg()); return { w: +m[1], cw: cv.width }; });
+  Math.abs(o.w - o.cw) < 1 && o.cw > 931 ? ok() : bad('BL28', 'an arrow beyond the figure is cut off or the sizes differ: ' + JSON.stringify(o));
+  // the menu
+  const has = await p.evaluate(() => [...document.querySelectorAll('#exp-menu button')].some(b => /doExport\('svg'\)/.test(b.getAttribute('onclick') || '')));
+  has ? ok() : bad('BL28', 'the export menu has no SVG');
+  const dl = p.waitForEvent('download', { timeout: 15000 });
+  await p.evaluate(() => doExport('svg'));
+  const d = await dl, name = d.suggestedFilename(), body = fs.readFileSync(await d.path(), 'utf8');
+  /\.svg$/.test(name) && /^<\?xml/.test(body) && /<svg /.test(body) && body.includes('BRD4') ? ok() : bad('BL28', 'the download is not the SVG: ' + name);
+  p.errs.length ? bad('BL28', 'errors: ' + p.errs.join(' | ')) : ok();
+  await p.context().close();
+});
+
+if (run('BL29')) await guard('BL29', async () => {
+  const p = await open({ w: 1440, h: 1000 });
+  await p.evaluate(GEL + `;(() => { var g = __gel([.5,.5,.5,.5,.5,.5,.5,.5,.5,.5,.5,.5]); var q = FIG.panels[0]; q.src = g; q.cropped = g; q.crop = { x: 150, y: 20, w: 300, h: 60 }; q.prot = 'BRD4';
+    q.shapes = anClean([{ id: 'sa', t: 'line', x1: .1, y1: .15, x2: .2, y2: .3, head: 'end' }, { id: 'sb', t: 'rect', x: .3, y: .2, w: .15, h: .4, fill: '#2d9462', fo: .5 }, { id: 'sc', t: 'text', x: .7, y: .8, s: 'Ub' }, { id: 'sd', t: 'ellipse', x: .85, y: .2, w: .1, h: .3, fill: '#c04040' }]); save(); render(); })()`);
+  await sleep(600);
+  const box = async () => p.locator('.panel-blot .blot-img').first().boundingBox();
+  const sel = () => p.evaluate(() => AN.ids.slice().sort().join());
+  let b = await box();
+  // a box over the arrow and the rectangle
+  await p.keyboard.down('Shift'); await p.mouse.move(b.x + b.width * 0.04, b.y + b.height * 0.04); await p.mouse.down();
+  await sleep(300);   // the picture's own pan arms itself when its source has loaded; a box must not leave it armed
+  await p.mouse.move(b.x + b.width * 0.3, b.y + b.height * 0.3, { steps: 4 });
+  const mid = await p.evaluate(() => !!document.querySelector('.an-marquee'));
+  await p.mouse.move(b.x + b.width * 0.5, b.y + b.height * 0.5, { steps: 4 }); await p.mouse.up(); await p.keyboard.up('Shift');
+  mid ? ok() : bad('BL29', 'no selection box is drawn while dragging');
+  (await sel()) === 'sa,sb' ? ok() : bad('BL29', 'the box did not select what it touches: ' + await sel());
+  (await p.evaluate(() => !document.querySelector('.an-marquee') && JSON.stringify(FIG.panels[0].crop))) === '{"x":150,"y":20,"w":300,"h":60}' ? ok() : bad('BL29', 'the box is left on screen, or the crop was panned');
+  // Shift-drag again keeps what was selected and adds
+  b = await box();   // the Format tab opened with the selection, and the figure moved down with it
+  await p.keyboard.down('Shift'); await p.mouse.move(b.x + b.width * 0.6, b.y + b.height * 0.6); await p.mouse.down(); await p.mouse.move(b.x + b.width * 0.8, b.y + b.height * 0.95, { steps: 4 }); await p.mouse.up(); await p.keyboard.up('Shift');
+  (await sel()) === 'sa,sb,sc' ? ok() : bad('BL29', 'a second box did not add to the selection: ' + await sel());
+  await p.keyboard.press('Escape'); (await sel()) === '' ? ok() : bad('BL29', 'Esc did not let go');
+  // a plain drag is not a box
+  b = await box();
+  await p.mouse.move(b.x + b.width * 0.55, b.y + b.height * 0.7); await p.mouse.down(); await p.mouse.move(b.x + b.width * 0.9, b.y + b.height * 0.9, { steps: 3 });
+  (await p.evaluate(() => !document.querySelector('.an-marquee'))) ? ok() : bad('BL29', 'a drag without Shift draws a selection box (it pans the crop)');
+  await p.mouse.up(); await sleep(200);
+  await p.keyboard.press('Control+a'); (await sel()) === 'sa,sb,sc,sd' ? ok() : bad('BL29', 'Ctrl+A did not select the annotations: ' + await sel());
+  await p.keyboard.press('Escape');
+  // right-click on the rectangle
+  b = await box();
+  const rc = async (fx, fy) => { await p.mouse.click(b.x + b.width * fx, b.y + b.height * fy, { button: 'right' }); await sleep(250); };
+  const items = () => p.evaluate(() => [...document.querySelectorAll('.ctx .ctx-i')].map(i => ({ t: i.textContent.replace(/\s+/g, ' ').trim(), off: i.disabled })));
+  await rc(0.375, 0.4);
+  let m = await items();
+  const names = m.map(i => i.t.replace(/(⌘|Ctrl\+)\S*$|Del$/, '').trim());
+  (await sel()) === 'sb' && ['Duplicate', 'Lock', 'Bring to front', 'Bring forward', 'Send backward', 'Send to back', 'Delete'].every(n => names.some(q => q.startsWith(n))) ? ok() : bad('BL29', 'right-click on an annotation did not select it and offer its actions: ' + JSON.stringify([await sel(), names]));
+  names.some(n => /Add a panel/.test(n)) ? ok() : bad('BL29', 'the figure\'s own actions are gone from the menu');
+  await p.locator('.ctx .ctx-i', { hasText: 'Send to back' }).click(); await sleep(200);
+  (await p.evaluate(() => FIG.panels[0].shapes[0].id)) === 'sb' ? ok() : bad('BL29', 'Send to back from the menu did nothing');
+  await rc(0.375, 0.4); await p.locator('.ctx .ctx-i', { hasText: 'Duplicate' }).click(); await sleep(200);
+  (await p.evaluate(() => FIG.panels[0].shapes.length)) === 5 ? ok() : bad('BL29', 'Duplicate from the menu did nothing');
+  await p.keyboard.press('Delete'); await sleep(150);
+  await rc(0.375, 0.4); await p.locator('.ctx .ctx-i', { hasText: 'Lock' }).click(); await sleep(200);
+  await rc(0.375, 0.4); m = await items();
+  const del = m.find(i => /^Delete/.test(i.t)), unl = m.some(i => /^Unlock/.test(i.t));
+  del && del.off && unl ? ok() : bad('BL29', 'a locked annotation can be deleted from the menu: ' + JSON.stringify(m.map(i => i.t + (i.off ? ' (off)' : ''))));
+  await p.keyboard.press('Escape'); await sleep(100);
+  // on the picture itself
+  await rc(0.6, 0.97);
+  m = await items();
+  const mo = m.find(i => /^Measure/.test(i.t));
+  ['Size markers', 'Crop', 'Quantify', 'Select all annotations'].every(n => m.some(i => i.t.startsWith(n))) && mo && mo.off ? ok() : bad('BL29', 'the picture\'s menu is wrong: ' + JSON.stringify(m.map(i => i.t + (i.off ? ' (off)' : ''))));
+  await p.locator('.ctx .ctx-i', { hasText: 'Size markers' }).click(); await sleep(250);
+  (await p.evaluate(() => AN.tool)) === 'mk' ? ok() : bad('BL29', 'Size markers from the menu did not start the marker tool');
+  p.errs.length ? bad('BL29', 'errors: ' + p.errs.join(' | ')) : ok();
   await p.context().close();
 });
 
