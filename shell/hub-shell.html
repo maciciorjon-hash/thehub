@@ -2758,6 +2758,15 @@ window.CELL_ARCHIVE_BUILTIN = CELL_ARCHIVE_BUILTIN;
 
 // Given a culture, return prioritized alerts (warn first). This is the
 // "hub gives me alerts to check cell line" logic.
+// -- alerts helpers --
+// Whole local days from b to a: calendar days apart, less one when a's clock time has not yet reached b's.
+function _wholeDays(a, b){
+  var x = new Date(a), y = new Date(b);
+  var n = Math.round((Date.UTC(x.getFullYear(), x.getMonth(), x.getDate()) - Date.UTC(y.getFullYear(), y.getMonth(), y.getDate())) / 86400000);
+  if ((x.getHours() * 60 + x.getMinutes()) * 60 + x.getSeconds() < (y.getHours() * 60 + y.getMinutes()) * 60 + y.getSeconds()) n -= 1;
+  return n;
+}
+function _localYmd(ts){ var d = new Date(ts); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
 function computeCellAlerts(cell, now){
   now = now || Date.now();
   var DAY = 86400000, out = [];
@@ -2769,8 +2778,10 @@ function computeCellAlerts(cell, now){
   // is a leftover and counts for nothing. A postponed split moves the due date, not the interval.
   if (cell.needsSplit && cell.needsSplit > (cell.seeded || 0)) out.push({level:'warn', tag:'split', msg:'Needs a split'});
   else if (cell.seeded && cell.intervalDays){
-    var d = (now - cell.seeded) / DAY;
-    var late = (now - Math.max(cell.seeded + cell.intervalDays * DAY, cell.postponedUntil || 0)) / DAY;
+    // Whole local calendar days, not 24-hour blocks: across the clocks changing a day is 23 or 25 hours.
+    var due = new Date(cell.seeded); due.setDate(due.getDate() + cell.intervalDays);
+    var d = _wholeDays(now, cell.seeded);
+    var late = _wholeDays(now, Math.max(due.getTime(), cell.postponedUntil || 0));
     if (late >= 1)       out.push({level:'warn', tag:'split',   msg:'Split overdue · ' + Math.floor(d) + 'd since last split'});
     else if (late >= 0)  out.push({level:'warn', tag:'split',   msg:'Due to split'});
     else if (late >= -1) out.push({level:'soft', tag:'split',   msg:'Split due soon'});
@@ -2808,7 +2819,7 @@ function cultureAct(id, kind, o){
     hist.push({action:'media change', ts:when}); if (o.note) hist[hist.length-1].note = o.note;
     p = {mediaLast:when, needsMedia:null};
   } else if (kind === 'postpone'){
-    hist.push({action:'split postponed', note:'to ' + new Date(o.until).toISOString().slice(0,10) + (o.note ? ' — ' + o.note : ''), ts:when});
+    hist.push({action:'split postponed', note:'to ' + _localYmd(o.until) + (o.note ? ' — ' + o.note : ''), ts:when});
     p = {postponedUntil:o.until, needsSplit:null};
   } else if (kind === 'flag'){
     p = {needsSplit:null, needsMedia:null};

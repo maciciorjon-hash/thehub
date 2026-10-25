@@ -57,7 +57,7 @@ window.openApp=function(){};
 // The alert and action logic is the shell's own, not a copy, so this tests what ships.
 import fs from 'node:fs';
 const shell = fs.readFileSync(path.join(ROOT, 'shell/hub-shell.html'), 'utf8');
-const logic = shell.slice(shell.indexOf('function computeCellAlerts('), shell.indexOf('// Single shared store over Firebase'));
+const logic = shell.slice(shell.indexOf('// -- alerts helpers --'), shell.indexOf('// Single shared store over Firebase'));
 const HOST = HOST_T.replace('/*__SHELL_LOGIC__*/', () => logic + '\nwindow.computeCellAlerts=computeCellAlerts;');
 const findings = []; let checks = 0;
 const bad = (inv, msg) => findings.push(`✗ ${inv} — ${msg}`);
@@ -75,13 +75,22 @@ const yes = (inv, what, v) => { checks++; if (!v) bad(inv, what); };
     vm.runInContext(alertsSrc + '\n' + actSrc, ctx);
     return { st, alerts: ctx[rename[0]], act: ctx[rename[1]] };
   };
-  const A = mk(cut(shell, 'function computeCellAlerts(', '// What happens to a culture, in one place'), cut(shell, 'function cultureAct(', 'window.cultureAct'), 'JournalStore', ['computeCellAlerts', 'cultureAct']);
-  const B = mk(cut(inc, 'function _localAlerts(', 'var computeCellAlerts = _localAlerts'), cut(inc, 'function _localAct(', 'var cultureAct = _localAct'), 'STORE', ['_localAlerts', '_localAct']);
+  const A = mk(cut(shell, '// -- alerts helpers --', '// What happens to a culture, in one place'), cut(shell, 'function cultureAct(', 'window.cultureAct'), 'JournalStore', ['computeCellAlerts', 'cultureAct']);
+  const B = mk(cut(inc, '// Whole local days from b to a', 'var computeCellAlerts = _localAlerts'), cut(inc, 'function _localAct(', 'var cultureAct = _localAct'), 'STORE', ['_localAlerts', '_localAct']);
   const N = 1.8e12, D = 86400000, battery = [];
   for (const seeded of [N - 0.2 * D, N - 2.1 * D, N - 3 * D, N - 4.5 * D]) for (const post of [0, N + 0.5 * D, N + 2 * D]) for (const myco of [0, N - 10 * D, N - 40 * D])
     for (const fl of [{}, { needsSplit: N - 0.1 * D }, { needsMedia: N - 0.1 * D, mediaLast: N - 1 * D }, { needsMedia: N - 2 * D, mediaLast: N - 1 * D }, { issue: { note: 'x' } }])
       battery.push(Object.assign({ line: 'x', seeded, intervalDays: 3, passage: 5, passageLimit: 30, postponedUntil: post, mycoLast: myco }, fl));
   eq('C14', 'alerts agree on ' + battery.length + ' cultures', battery.filter(c => JSON.stringify(A.alerts(c, N)) !== JSON.stringify(B.alerts(c, N))).length, 0);
+  // C14b — a day is a calendar day: across the clocks going forward (29 Mar 2026, London) a split due in 3 days is due at the same clock time on the 3rd day
+  {
+    const tz = process.env.TZ; process.env.TZ = 'Europe/London';
+    const seeded = new Date(2026, 2, 27, 12, 0).getTime(), cell = { line: 'x', seeded, intervalDays: 3 };
+    const tags = (X, t) => X.alerts(cell, t).map(a => a.msg).join('|');
+    const before = new Date(2026, 2, 30, 11, 59).getTime(), at = new Date(2026, 2, 30, 12, 0).getTime(), late = new Date(2026, 2, 31, 12, 0).getTime();
+    for (const [nm, X] of [['shell', A], ['incubator', B]]) eq('C14', nm + ': 3-day split across the clocks going forward is due soon at 11:59, due at 12:00, overdue a calendar day later', [tags(X, before), tags(X, at), tags(X, late)], ['Split due soon', 'Due to split', 'Split overdue · 4d since last split']);
+    if (tz === undefined) delete process.env.TZ; else process.env.TZ = tz;
+  }
   const acts = [['split', { when: N, ratio: '1:6' }], ['media', { when: N }], ['postpone', { when: N, until: N + D }], ['flag', { when: N, what: 'split' }], ['flag', { when: N, what: 'media' }], ['flag', { when: N, what: null }]];
   for (const [k, o] of acts) { for (const X of [A, B]) { X.st.incubator.c = { line: 'x', passage: 3, seeded: N - 3 * D, intervalDays: 3, history: [], needsSplit: N - D, needsMedia: N - D }; X.act('c', k, o); }
     eq('C14', 'the action "' + k + (o.what !== undefined ? ':' + o.what : '') + '" leaves the same culture', JSON.stringify(B.st.incubator.c), JSON.stringify(A.st.incubator.c)); }
