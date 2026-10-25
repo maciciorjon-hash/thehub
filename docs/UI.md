@@ -236,6 +236,10 @@ or an object (a step's grip · camera · ⋯, a plate card's Edit · ⋯, a calc
 the audits. Under `(hover:none)` nothing is hidden: hover would hide them on exactly the
 devices that cannot hover. The experiment banner's actions are always visible on purpose.
 
+## Small print that is allowed (2026-10-25)
+
+The type scale has a 10px floor and `--fs-*` steps only, with **one** documented exception: the text inside a plate well of Labbook's plate editor (`.pp-conc`, `.pp-gl-dose span`, `.pp-nbf`: 6 to 9px). A well is 21 to 34px wide and Jon wants plates small and side by side; a label that does not fit is worse than a small one. The exception is an allow-list in the type-scale invariant, so it cannot spread to anything that is not a well.
+
 ## Labbook, one hand (2026-10-13)
 
 Jon: *"check los experimentos visualmente, tamaños de letra, ticks, dibujos, líneas, cuadros… todo el Labbook tiene que verse homogéneo."* The
