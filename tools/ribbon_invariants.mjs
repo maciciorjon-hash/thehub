@@ -71,6 +71,16 @@
 //                           on the AlphaFold model, labelled, with side chains; a residue not in the model is named.
 //   RB18 measurements       Two atoms make a distance equal to their coordinates, three an angle at the middle one; a dashed line,
 //                           a label, a row; in the export only with labels; kept by a design; hidden with a chain; follows the model.
+//   RB43 the graphics can be taken away  A lost WebGL context (a driver reset, a waking laptop) is asked back and the scene rebuilt from the structure and the design:
+//                           colours, labels and the camera kept, the pointer working, a second loss recovered; if the browser never gives it back a new canvas is made.
+//   RB44 keyboard and landmarks  One h1 and one main landmark; on every tab each scrolling region is reachable by keyboard, nothing interactive sits inside an image or a button,
+//                           no live control is drawn faded; the sequence works without a pointer (caret, Shift, Space, Home, Ctrl+A, Escape, Down a chain, Enter).
+//   RB45 one standard  Every control shows when it has the keyboard (the command line included); text has 4.5:1 on what is behind it on every tab in both themes (white on the
+//                           light accent fill is the Hub's held decision); buttons and fields are 32px with the one small radius; forced-colours mode keeps an edge on icon buttons.
+//   RB46 small molecules  An SDF (several molecules are frames), a MOL2 and an XYZ open as one ligand, atoms named by element and number, LIG on chain A in every frame; selection,
+//                           measurement and Analyse read it; an empty or wrong file is refused with the formats named and the structure on screen kept.
+//   RB47 a long render says so  Export says Rendering… and is disabled the moment it is pressed; a double press makes one file; the button is itself again afterwards.
+//   RB48 text on a chosen colour  A tag's ink is 4.5:1 on any background colour (WCAG luminance, black or white), on screen and in the export; sequence letters are 4.5:1 on their tint in both themes.
 //
 // 3Dmol comes from its CDN (pinned); every other network call is stubbed. If the CDN is unreachable the
 // checks that need the viewer are reported as skipped, not passed.
@@ -2741,9 +2751,9 @@ async function rb42() {
   // the file
   const sv = await E(() => { window.__saved = []; const o = window._saveBlob; window.__saveO = o; window._saveBlob = function (b, n) { window.__saved.push({ b, n }); }; diagSvg(); window._saveBlob = o; const s = window.__saved[0]; return s.b.text().then(t => ({ name: s.n, text: t })); });
   const xml = await E((t) => { const doc = new DOMParser().parseFromString(t, 'image/svg+xml'); return { err: !!doc.querySelector('parsererror'), boxes: doc.querySelectorAll('.dg-res').length, hl: doc.querySelectorAll('.hl').length, w: doc.documentElement.getAttribute('width') }; }, sv.text);
-  check('RB42', 'Save SVG writes a valid, self-contained vector figure named for the structure and the ligand', /_LIG_interactions\.svg$/.test(sv.name) && !xml.err && xml.boxes >= 14 && xml.hl === 0 && /<rect width="\d+" height="\d+" fill="#ffffff"\/>/.test(sv.text), { name: sv.name, xml });
+  check('RB42', 'Export SVG writes a valid, self-contained vector figure named for the structure and the ligand', /_LIG_interactions\.svg$/.test(sv.name) && !xml.err && xml.boxes >= 14 && xml.hl === 0 && /<rect width="\d+" height="\d+" fill="#ffffff"\/>/.test(sv.text), { name: sv.name, xml });
   const png = await E(() => new Promise(res => diagCanvas(cv => { if (!cv) return res(null); const x = cv.getContext('2d'), im = x.getImageData(0, 0, cv.width, cv.height).data; let ink = 0; for (let i = 0; i < im.length; i += 4) if (im[i] < 200 || im[i + 1] < 200 || im[i + 2] < 200) ink++; res({ w: cv.width, h: cv.height, ink: ink / (cv.width * cv.height), ratio: cv.height / cv.width, want: _diagLast.h / _diagLast.w }); }, 1500)));
-  check('RB42', 'Save PNG renders that picture at the width asked, not blank', !!png && png.w === 1500 && png.ink > 0.02 && Math.abs(png.ratio - png.want) < 0.01, png);
+  check('RB42', 'Export PNG renders that picture at the width asked, not blank', !!png && png.w === 1500 && png.ink > 0.02 && Math.abs(png.ratio - png.want) < 0.01, png);
   // enlarged
   await pg.click('#diagBig'); await sleep(300);
   const md = await E(() => ({ open: document.getElementById('diag-modal').classList.contains('open'), same: document.querySelector('#diagBig2 svg').innerHTML === document.querySelector('#diagBox svg').innerHTML, focus: document.activeElement && document.activeElement.id }));
@@ -2759,7 +2769,276 @@ async function rb42() {
   await ctx.close();
 }
 
-const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20], ['RB21', rb21], ['RB22', rb22], ['RB23', rb23], ['RB24', rb24], ['RB25', rb25], ['RB26', rb26], ['RB27', rb27], ['RB28', rb28], ['RB29', rb29], ['RB30', rb30], ['RB31', rb31], ['RB32', rb32], ['RB33', rb33], ['RB34', rb34], ['RB35', rb35], ['RB36', rb36], ['RB37', rb37], ['RB38', rb38], ['RB39', rb39], ['RB40', rb40], ['RB41', rb41], ['RB42', rb42]];
+// ── RB43 the graphics can be taken away ─────────────────────────────────────────────────────
+async function rb43() {
+  for (const mode of ['restored', 'never restored']) {
+    const { ctx, pg, E, go } = await open({ tag: 'RB43 ' });
+    if (!(await has3d(pg))) { skipped.push('RB43 (3Dmol could not load from its CDN)'); await ctx.close(); return; }
+    await go('4LIG');
+    await E(() => { state.color = 'chain'; document.getElementById('topColor').value = 'chain'; state.chainColors = { A: '#123456' }; state.chainLabels = { A: 'ALPHA' }; state.surfaceOpacity = 0.4; buildGeometry(); renderLabelTags(); const v = viewer.getView(); v[3] *= 0.8; viewer.setView(v); window.__v0 = viewer.getView().slice(); window.__old = viewer; });
+    // 3Dmol draws in an OffscreenCanvas; this is what a driver reset does to it
+    await E(m => { const gl = viewer.renderer.getContext(); const ext = gl.getExtension('WEBGL_lose_context'); window.__ext = ext; ext.loseContext(); if (m === 'restored') setTimeout(() => ext.restoreContext(), 400); }, mode === 'restored' ? 'restored' : 'never');
+    await sleep(mode === 'restored' ? 1500 : 4800);
+    const r = await E(() => ({ fresh: viewer !== window.__old, lost: viewer.renderer.getContext().isContextLost(), color: state.color, cc: JSON.stringify(state.chainColors), lbl: JSON.stringify(state.chainLabels), id: currentPdbId, canv: document.querySelectorAll('#viewport canvas').length, atoms: currentModel.selectedAtoms({}).length, zoom: Math.abs(viewer.getView()[3] - window.__v0[3]) / Math.abs(window.__v0[3]), ligs: ligands.length, label: !!document.querySelector('.rb-tag, .label-tag, [data-tagkey]') || true }));
+    check('RB43', `${mode}: the viewer is a new one that draws, and it is the same structure`, r.fresh && !r.lost && r.canv === 1 && r.id === '4LIG' && r.atoms > 100 && r.ligs >= 1, r);
+    check('RB43', `${mode}: colours, labels and the camera are as they were`, r.color === 'chain' && r.cc === '{"A":"#123456"}' && r.lbl === '{"A":"ALPHA"}' && r.zoom < 0.02, r);
+    // it still answers the pointer
+    const box = await pg.locator('#viewport').boundingBox();
+    const q0 = await E(() => viewer.getView().slice(4).join());
+    await pg.mouse.move(box.x + 300, box.y + 300); await pg.mouse.down(); await pg.mouse.move(box.x + 400, box.y + 330, { steps: 6 }); await pg.mouse.up(); await sleep(400);
+    check('RB43', `${mode}: a drag turns it`, q0 !== await E(() => viewer.getView().slice(4).join()));
+    // and a second loss is handled too
+    await E(() => { window.__old = viewer; viewer.renderer.getContext().getExtension('WEBGL_lose_context').loseContext(); });
+    await sleep(mode === 'restored' ? 4500 : 4800);
+    check('RB43', `${mode}: a second loss is recovered as well`, await E(() => viewer !== window.__old && !viewer.renderer.getContext().isContextLost() && state.color === 'chain'));
+    await ctx.close();
+  }
+}
+
+// ── RB44 the canvas app has a keyboard and a structure for a reader ──────────────────────────
+async function rb44() {
+  const { ctx, pg, E, go } = await open({ tag: 'RB44 ' });
+  if (!(await has3d(pg))) { skipped.push('RB44 (3Dmol could not load from its CDN)'); await ctx.close(); return; }
+  await go('7SEQ'); await sleep(300);
+  // landmarks: one h1, one main, and nothing stands outside a landmark
+  const lm = await E(() => ({ h1: document.querySelectorAll('h1').length, h1t: (document.querySelector('h1') || {}).textContent, main: document.querySelectorAll('main,[role=main]').length, outside: [...document.querySelectorAll('.top-bar,#seqBar,#viewport')].filter(e => !e.closest('header,main,[role=main],aside,nav,[role=dialog]')).map(e => e.id || e.className) }));
+  check('RB44', 'the page has one h1 (the app) and one main landmark that holds the toolbar, the sequence and the viewer', lm.h1 === 1 && lm.h1t === 'Ribbon' && lm.main === 1 && lm.outside.length === 0, lm);
+  // the generic walk, on every tab: a scroller can be reached, nothing interactive is inside something that is not, no live control is faded
+  for (const [st, tab] of [['8POC', 'open'], ['8POC', 'models'], ['8POC', 'colour'], ['8POC', 'analyse'], ['9DGM', 'analyse'], ['8POC', 'figure'], ['8POC', 'designs']]) {
+    await go(st); await sleep(200);
+    await E(t => rbTab(t), tab); await sleep(250);
+    if (tab === 'analyse') await E(() => { try { if (typeof siteSet === 'function' && ligands.length) siteSet(ligands[0].key); } catch (e) {} }); await sleep(400);
+    const w = await E(() => {
+      const vis = e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(e).visibility !== 'hidden'; };
+      const FOC = 'a[href],button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[tabindex]:not([tabindex="-1"]),summary';
+      const unreachable = [...document.querySelectorAll('*')].filter(e => { if (!vis(e) || e === document.body || e === document.documentElement) return false; const cs = getComputedStyle(e); if (!/(auto|scroll)/.test(cs.overflowY + cs.overflowX)) return false; if (!(e.scrollHeight > e.clientHeight + 1 || e.scrollWidth > e.clientWidth + 1)) return false; return !(e.matches(FOC) || e.querySelector(FOC)); }).map(e => e.id || e.className);
+      const nested = [...document.querySelectorAll('[role=img],[role=button],[role=link],button,a[href]')].filter(e => vis(e) && e.querySelector('[tabindex]:not([tabindex="-1"]),button,a[href],input,select')).map(e => (e.tagName + '#' + e.id + '.' + (e.getAttribute('class') || '')).slice(0, 50));
+      const svgImg = [...document.querySelectorAll('svg[role=img]')].filter(e => vis(e) && e.querySelector('[tabindex]')).map(e => e.getAttribute('aria-label'));
+      const faded = [...document.querySelectorAll('button:not(:disabled),[role=button]:not([aria-disabled=true])')].filter(e => { if (!vis(e)) return false; let o = 1; for (let n = e; n && n !== document.body; n = n.parentElement) o *= +getComputedStyle(n).opacity; return o > 0.01 && o < 0.7; }).map(e => (e.id || e.className || e.textContent).toString().slice(0, 40));
+      return { unreachable, nested: nested.concat(svgImg), faded };
+    });
+    check('RB44', `${st} ${tab}: every scrolling region can be reached by keyboard`, w.unreachable.length === 0, w.unreachable);
+    check('RB44', `${st} ${tab}: nothing interactive sits inside an image or a button`, w.nested.length === 0, w.nested);
+    check('RB44', `${st} ${tab}: no live control is drawn faded (state is a border and a tint, never half opacity)`, w.faded.length === 0, w.faded);
+  }
+  // the sequence from the keyboard, against what the structure says
+  await go('7SEQ'); await sleep(300);
+  await E(() => { selClear(); if (!SEQ.on) seqToggle(true); SEQ.show = 'A'; seqRender(); });
+  await pg.focus('#sqScroll');
+  const info = () => E(() => ({ sel: Object.keys(_sel).sort().join(','), n: _selN, car: _seqCar, carCls: !!document.querySelector('.sq-r.car'), info: document.getElementById('sqInfo').textContent, live: document.getElementById('sqInfo').getAttribute('aria-live') }));
+  let r = await info();
+  check('RB44', 'focus puts a caret on the first residue and says which it is in the live line', r.carCls && /A · \w{3} 1 /.test(r.info) && r.live === 'polite', r);
+  await pg.keyboard.press('ArrowRight'); await pg.keyboard.press('ArrowRight');
+  await pg.keyboard.press('Space');
+  r = await info();
+  check('RB44', 'arrows move the caret and Space selects the residue under it', r.n === 1 && r.sel === 'A|3' && r.car === 'A|3', r);
+  await pg.keyboard.down('Shift'); await pg.keyboard.press('ArrowRight'); await pg.keyboard.press('ArrowRight'); await pg.keyboard.press('ArrowRight'); await pg.keyboard.up('Shift');
+  r = await info();
+  check('RB44', 'Shift and the arrows extend the selection from where it began', r.sel === 'A|3,A|4,A|5,A|6' && r.car === 'A|6', r);
+  await pg.keyboard.press('Home'); await pg.keyboard.press('Space');
+  r = await info();
+  check('RB44', 'Home goes to the first residue; Space adds it', r.car === 'A|1' && r.sel === 'A|1,A|3,A|4,A|5,A|6', r);
+  await pg.keyboard.press('Space');
+  check('RB44', 'Space on a selected residue takes it away', (await info()).sel === 'A|3,A|4,A|5,A|6');
+  await pg.keyboard.press('Escape');
+  check('RB44', 'Escape clears the selection', (await info()).n === 0);
+  await pg.keyboard.press('ControlOrMeta+a');
+  r = await info();
+  check('RB44', 'Ctrl/Cmd+A selects the chain shown', r.n === 24, r);
+  await E(() => { selClear(); SEQ.show = '*'; seqRender(); });
+  await pg.focus('#sqScroll'); await pg.keyboard.press('ArrowDown');
+  check('RB44', 'with every chain shown, Down moves to the same place in the next chain', (await info()).car === 'B|1', await info());
+  await pg.keyboard.press('Enter');
+  check('RB44', 'Enter selects that residue alone and frames it', await E(() => _selN === 1 && !!_sel['B|1'] && _userMoved));
+  await pg.keyboard.press('Tab');
+  check('RB44', 'the caret goes when the focus leaves, and the sequence is not a trap', await E(() => !document.querySelector('.sq-r.car') && document.activeElement !== document.getElementById('sqScroll')));
+  // the command line completes with Tab only when it has something to offer; empty, Tab (and Shift+Tab) are Tab
+  await pg.focus('#cmdInput'); await pg.keyboard.press('Tab');
+  check('RB44', 'Tab leaves the command line when it has nothing to complete', await E(() => document.activeElement.id !== 'cmdInput'));
+  await pg.focus('#cmdInput'); await pg.keyboard.press('Shift+Tab');
+  check('RB44', 'and so does Shift+Tab', await E(() => document.activeElement.id !== 'cmdInput'));
+  await pg.focus('#cmdInput'); await pg.keyboard.type('colo'); await pg.keyboard.press('Tab');
+  check('RB44', 'with a word begun, Tab completes it and stays', await E(() => document.activeElement.id === 'cmdInput' && /^color /.test(document.getElementById('cmdInput').value)));
+  await ctx.close();
+}
+
+// ── RB45 one standard: focus, shape, ink ────────────────────────────────────────────────────
+async function rb45() {
+  const { ctx, pg, E, go } = await open({ tag: 'RB45 ' });
+  if (!(await has3d(pg))) { skipped.push('RB45 (3Dmol could not load from its CDN)'); await ctx.close(); return; }
+  for (const theme of ['light', 'dark']) {
+    await E(t => { document.documentElement.dataset.theme = t; }, theme);
+    await go('8POC'); await sleep(200);
+    for (const tab of ['open', 'models', 'colour', 'analyse', 'figure', 'designs']) {
+      await E(t => rbTab(t), tab); await sleep(250);
+      if (tab === 'analyse') await E(() => { try { if (ligands.length) siteSet(ligands[0].key); } catch (e) {} });
+      await E(() => document.querySelectorAll('details.rb-sec').forEach(d => { d.open = true; })); await sleep(300);
+      // 1. a control that takes the keyboard shows it: something about it changes (outline, shadow, border or fill) when it is focused
+      await pg.keyboard.press('Shift');
+      const nof = await E(() => {
+        const vis = e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(e).visibility !== 'hidden' && !e.closest('[hidden],[inert],details:not([open])'); };
+        const sig = e => { const c = getComputedStyle(e); return [c.outlineStyle, c.outlineWidth, c.outlineColor, c.boxShadow, c.borderTopColor, c.backgroundColor, c.color].join('|'); };
+        const bad = [];
+        document.querySelectorAll('button:not(:disabled),input:not(:disabled):not([type=hidden]),select:not(:disabled),textarea:not(:disabled),[tabindex="0"],a[href],summary').forEach(e => {
+          if (!vis(e) || e.closest('#as-panel,.as-bubble')) return;   // the help assistant is a generated kit with its own check
+          if (e.type === 'range' || e.type === 'checkbox' || e.type === 'radio' || e.type === 'file') return;   // the browser's own ring
+          const a = sig(e); try { e.focus({ focusVisible: true }); } catch (x) { e.focus(); }
+          const b = sig(e); e.blur();
+          if (a === b) bad.push((e.id ? '#' + e.id : e.tagName.toLowerCase()) + (e.className && typeof e.className === 'string' ? '.' + e.className.split(' ')[0] : ''));
+        });
+        return bad;
+      });
+      check('RB45', `${theme} ${tab}: every control shows when it has the keyboard`, nof.length === 0, nof.slice(0, 8));
+      // 2. text is readable: 4.5:1 (3:1 large), measured on the colour behind it; white on the light accent fill is the held Hub decision
+      const low = await E(() => {
+        const parse = c => { const m = /rgba?\(([^)]+)\)/.exec(c); if (!m) return null; const p = m[1].split(/[ ,\/]+/).filter(Boolean).map(Number); return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 }; };
+        const lin = v => { v /= 255; return v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); };
+        const L = c => .2126 * lin(c.r) + .7152 * lin(c.g) + .0722 * lin(c.b);
+        const over = (f, b) => ({ r: f.r * f.a + b.r * (1 - f.a), g: f.g * f.a + b.g * (1 - f.a), b: f.b * f.a + b.b * (1 - f.a), a: 1 });
+        const backOf = e => { const stack = []; for (let n = e; n; n = n.parentElement) { const cs = getComputedStyle(n); if (cs.backgroundImage !== 'none') return null; const c = parse(cs.backgroundColor); if (c && c.a > 0) { stack.push(c); if (c.a >= 1) break; } } let b = { r: 255, g: 255, b: 255, a: 1 }; stack.reverse().forEach(c => { b = over(c, b); }); return b; };
+        const accent = parse(getComputedStyle(document.documentElement).getPropertyValue('--accent').trim().length ? (() => { const d = document.createElement('i'); d.style.color = getComputedStyle(document.documentElement).getPropertyValue('--accent'); document.body.appendChild(d); const c = getComputedStyle(d).color; d.remove(); return c; })() : 'rgb(0,0,0)');
+        const out = [], seen = new Set();
+        const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+        for (let t; (t = w.nextNode());) {
+          if (!t.nodeValue.trim()) continue; const e = t.parentElement; if (!e || seen.has(e)) continue; seen.add(e);
+          if (e.closest('details:not([open]),#as-panel,.as-bubble,#viewport,svg,.diag-box,.diag-big,.toast,.preset-grid .pv,.sq-r,[hidden],script,style,.ctx,.chain-tag')) continue;
+          const r = e.getBoundingClientRect(); if (r.width < 1 || r.height < 1) continue;
+          const cs = getComputedStyle(e); if (cs.visibility === 'hidden') continue;
+          let op = 1; for (let n = e; n && n !== document.body; n = n.parentElement) op *= +getComputedStyle(n).opacity; if (op < .99) continue;
+          const bg = backOf(e); if (!bg) continue; let fg = parse(cs.color); if (!fg) continue; fg = over(fg, bg);
+          const l1 = L(fg), l2 = L(bg), ratio = (Math.max(l1, l2) + .05) / (Math.min(l1, l2) + .05);
+          const px = parseFloat(cs.fontSize), big = px >= 24 || (px >= 18.66 && +cs.fontWeight >= 700);
+          const held = Math.abs(bg.r - accent.r) + Math.abs(bg.g - accent.g) + Math.abs(bg.b - accent.b) < 6 && document.documentElement.dataset.theme === 'light';   // white on #5e87c5 (3.65): Hub-wide, docs/UI.md
+          if (ratio < (big ? 3 : 4.5) && !held) out.push((e.id ? '#' + e.id : e.tagName.toLowerCase() + '.' + String(e.className).split(' ')[0]) + ' ' + ratio.toFixed(2) + ' ' + t.nodeValue.trim().slice(0, 18));
+        }
+        return out;
+      });
+      check('RB45', `${theme} ${tab}: text has 4.5:1 against what is behind it`, low.length === 0, low.slice(0, 8));
+    }
+    // 3. one shape: buttons and fields are 32px and --r-1 (4px), a pill only for a chip
+    await E(() => rbTab('open'));
+    const shape = await E(() => {
+      const vis = e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+      const bad = [];
+      document.querySelectorAll('.btn:not(.sm),.inp:not(textarea),.tb-select').forEach(e => {
+        if (!vis(e) || e.closest('.li,.look-save,.design-item')) return; const cs = getComputedStyle(e), r = e.getBoundingClientRect();
+        if (cs.borderTopLeftRadius !== '4px' || Math.round(r.height) !== 32 && !e.matches('.tb-select')) bad.push((e.id || e.className) + ' ' + cs.borderTopLeftRadius + ' ' + Math.round(r.height));
+      });
+      return bad;
+    });
+    check('RB45', `${theme}: buttons and fields are 32px with the one small radius`, shape.length === 0, shape.slice(0, 8));
+  }
+  // 4. forced colours: an icon button keeps an edge
+  const fc = await ctx.newPage(); await fc.emulateMedia({ forcedColors: 'active' });
+  await fc.goto(base + (args.file || 'apps/ribbon/ribbon.html') + '?_ts=' + Date.now(), { waitUntil: 'load' }); await fc.waitForTimeout(1200);
+  const edge = await fc.evaluate(() => [...document.querySelectorAll('.tb-btn,.ibtn,.rb-tab')].filter(e => e.getBoundingClientRect().width > 0).filter(e => parseFloat(getComputedStyle(e).borderTopWidth) < 1).map(e => e.id || e.className));
+  check('RB45', 'in forced-colours mode every icon button and tab has an edge', edge.length === 0, edge.slice(0, 8));
+  await fc.close();
+  await ctx.close();
+}
+
+// ── RB46 a small molecule file opens ────────────────────────────────────────────────────────
+async function rb46() {
+  const { ctx, pg, E } = await open({ tag: 'RB46 ' });
+  if (!(await has3d(pg))) { skipped.push('RB46 (3Dmol could not load from its CDN)'); await ctx.close(); return; }
+  const f4 = v => v.toFixed(4).padStart(10);
+  const benz = (dx, dz) => {   // benzene with its hydrogens, as an MDL molfile
+    const at = [], bonds = []; for (let k = 0; k < 6; k++) at.push(['C', 1.39 * Math.cos(k * Math.PI / 3) + dx, 1.39 * Math.sin(k * Math.PI / 3), dz]);
+    for (let k = 0; k < 6; k++) at.push(['H', 2.47 * Math.cos(k * Math.PI / 3) + dx, 2.47 * Math.sin(k * Math.PI / 3), dz]);
+    for (let k = 0; k < 6; k++) { bonds.push([k + 1, (k + 1) % 6 + 1, k % 2 ? 2 : 1]); bonds.push([k + 1, k + 7, 1]); }
+    return 'benzene\n  test\n\n' + String(at.length).padStart(3) + String(bonds.length).padStart(3) + '  0  0  0  0  0  0  0  0999 V2000\n' + at.map(a => f4(a[1]) + f4(a[2]) + f4(a[3]) + ' ' + a[0].padEnd(3) + ' 0  0  0  0  0  0  0  0  0  0  0  0').join('\n') + '\n' + bonds.map(b => String(b[0]).padStart(3) + String(b[1]).padStart(3) + String(b[2]).padStart(3) + '  0').join('\n') + '\nM  END\n$$$$\n';
+  };
+  const mol2 = '@<TRIPOS>MOLECULE\nfoo\n 4 3 1 0 0\nSMALL\nNO_CHARGES\n\n@<TRIPOS>ATOM\n      1 C1          0.0000    0.0000    0.0000 C.3     1  LIG1        0.0000\n      2 C2          1.5000    0.0000    0.0000 C.3     1  LIG1        0.0000\n      3 O1          2.1000    1.2000    0.0000 O.3     1  LIG1        0.0000\n      4 N1         -0.7000   -1.2000    0.0000 N.3     1  LIG1        0.0000\n@<TRIPOS>BOND\n     1     1     2    1\n     2     2     3    1\n     3     1     4    1\n';
+  const xyz = '4\nwater dimer\nO 0 0 0\nH 0.96 0 0\nH -0.24 0.93 0\nO 2.9 0 0\n';
+  const up = async (name, text) => { await E(() => { window.__e0 = document.getElementById('errText').textContent; }); await pg.setInputFiles('#fileInput', { name, mimeType: 'text/plain', buffer: Buffer.from(text) }); await sleep(200); await E(() => new Promise(res => { const t0 = Date.now(), t = setInterval(() => { if (!document.getElementById('fetchBtn').disabled || Date.now() - t0 > 20000) { clearInterval(t); res(); } }, 60); })); await sleep(900); };
+  const S = () => E(() => ({ id: currentPdbId, n: currentModel ? currentModel.selectedAtoms({}).length : 0, frames: _nFrames, ligs: ligands.map(l => l.key + ':' + l.n), chains: chainList.join(), err: document.getElementById('errText').textContent, accept: document.getElementById('fileInput').accept }));
+  await up('poses.sdf', benz(0, 0) + benz(1, 0.5) + benz(2, 1));
+  let s = await S();
+  check('RB46', 'an SDF of three molecules opens as one ligand with three frames', s.id === 'poses.sdf' && s.n === 12 && s.frames === 3 && s.ligs.join() === 'LIG:A:1:12' && s.chains === 'A' && s.err === '', s);
+  check('RB46', 'the picker offers the small-molecule formats', /\.sdf/.test(s.accept) && /\.mol2/.test(s.accept) && /\.xyz/.test(s.accept), s.accept);
+  // each frame is a molecule, named like a PDB ligand so the rest of Ribbon can read it
+  const fr = await E(() => { const out = []; for (const f of [0, 1, 2]) { viewer.setFrame(f); _frame = f; const A = currentModel.selectedAtoms({}); out.push({ x: +A[0].x.toFixed(2), name: A[0].atom, resn: A[0].resn, chain: A[0].chain, resi: A[0].resi, het: A[0].hetflag, nm: A.map(a => a.atom).join() }); } viewer.setFrame(0); _frame = 0; return out; });
+  check('RB46', 'every frame has its atoms named by element and number, residue LIG on chain A, and its own coordinates', fr.map(f => f.x).join() === '1.39,2.39,3.39' && fr.every(f => f.name === 'C1' && f.resn === 'LIG' && f.chain === 'A' && f.resi === 1 && f.het === true && f.nm === 'C1,C2,C3,C4,C5,C6,H1,H2,H3,H4,H5,H6'), fr);
+  const cmd = await E(() => ({ sel: runCommand('select ligand'), n: _selN, d: runCommand('distance A:1@C1 A:1@C4') }));
+  const d0 = await E(() => state.measures.length && measureValue(state.measures[0]));
+  check('RB46', 'the selection language and a measurement work on it (C1 to C4 across the ring is 2 × 1.39 Å)', cmd.n === 1 && cmd.d.ok && Math.abs(d0 - 2.78) < 0.01, { cmd, d0 });
+  await E(() => { rbTab('analyse'); }); await sleep(600);
+  const an = await E(() => ({ chip: document.querySelectorAll('#siteLigs .it-chip').length, none: document.getElementById('siteBody').textContent.slice(0, 40) }));
+  check('RB46', 'Analyse reads the ligand and says there is no protein round it, without an error', an.chip === 1, an);
+  await up('lig.mol2', mol2);
+  s = await S();
+  check('RB46', 'a MOL2 opens the same way', s.id === 'lig.mol2' && s.n === 4 && s.ligs.length === 1 && s.err === '', s);
+  await up('dimer.xyz', xyz);
+  s = await S();
+  check('RB46', 'an XYZ opens the same way', s.id === 'dimer.xyz' && s.n === 4 && s.ligs.length === 1 && s.err === '', s);
+  await up('empty.sdf', '\n\n\n  0  0  0  0  0  0  0  0  0  0999 V2000\nM  END\n$$$$\n');
+  s = await S();
+  check('RB46', 'an empty SDF is refused, the structure on screen stays, and the message names the formats that open', s.id === 'dimer.xyz' && /\.sdf, \.mol2 and \.xyz/.test(s.err), s);
+  await up('notes.txt', 'just some words\nnothing else\n');
+  s = await S();
+  check('RB46', 'a text file is refused the same way', s.id === 'dimer.xyz' && /does not look like a structure/.test(s.err), s);
+  await ctx.close();
+}
+
+// ── RB47 a long render says so ──────────────────────────────────────────────────────────────
+async function rb47() {
+  const { ctx, pg, E, go } = await open({ tag: 'RB47 ' });
+  if (!(await has3d(pg))) { skipped.push('RB47 (3Dmol could not load from its CDN)'); await ctx.close(); return; }
+  await go('4LIG');
+  await pg.click('#exportBtn2'); await sleep(200);
+  await E(() => { window.__dl = 0; const o = window._saveBlob; window._saveBlob = function (b, n) { window.__dl++; return o.apply(this, arguments); }; });
+  const dl = pg.waitForEvent('download');
+  await E(() => { const b = document.getElementById('exGo'); b.click(); b.click(); window.__st = { dis: b.disabled, txt: b.textContent }; });
+  check('RB47', 'Export says Rendering… and is disabled the moment it is pressed (a 1200 dpi render is seconds without a GPU)', await E(() => window.__st.dis && /Rendering/.test(window.__st.txt)), await E(() => window.__st));
+  await dl; await sleep(600);
+  const r = await E(() => ({ n: window.__dl, dis: document.getElementById('exGo').disabled, txt: document.getElementById('exGo').textContent, open: document.getElementById('export-modal').classList.contains('open') }));
+  check('RB47', 'a double press makes one file, and the button is itself again afterwards', r.n === 1 && !r.dis && r.txt === 'Export', r);
+  await ctx.close();
+}
+
+// ── RB48 text on a colour you chose can be read ─────────────────────────────────────────────
+async function rb48() {
+  const { ctx, pg, E, go } = await open({ tag: 'RB48 ' });
+  if (!(await has3d(pg))) { skipped.push('RB48 (3Dmol could not load from its CDN)'); await ctx.close(); return; }
+  await go('7SEQ'); await sleep(300);
+  // any colour a person can pick for a chain, a tag's text is 4.5:1 on it (the luma rule gave white on #00ff33 1.4:1, on #ff6666 2.9:1)
+  const r = await E(() => {
+    const lin = v => { v /= 255; return v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); };
+    const rgb = s => /rgba?\(([^)]+)\)/.exec(s)[1].split(',').map(Number);
+    const L = c => .2126 * lin(c[0]) + .7152 * lin(c[1]) + .0722 * lin(c[2]);
+    state.labelStyle.bg = true; state.labelStyle.bgMode = 'custom';
+    const bad = []; let n = 0, worst = 99;
+    for (let h = 0; h < 360; h += 12) for (const s of [30, 70, 100]) for (const l of [25, 40, 50, 60, 75, 90]) {
+      const hex = _hslToHex(h, s, l); state.labelStyle.bgColor = hex; state.chainLabels = { A: 'Tag' }; renderLabelTags(); Object.values(labelEls).forEach(e => applyTagStyle(e.div, 'A'));
+      document.querySelectorAll('.chain-tag').forEach(t => { const f = rgb(t.style.color), b = rgb(t.style.background);   // the inline values: a computed style is mid-transition
+        const ratio = (Math.max(L(f), L(b)) + .05) / (Math.min(L(f), L(b)) + .05); n++; worst = Math.min(worst, ratio);
+        if (ratio < 4.5 || t.style.background === 'none') bad.push(hex + ' ' + ratio.toFixed(2)); });
+    }
+    return { n, worst: +worst.toFixed(2), bad: bad.slice(0, 6), black: rbInk('#00ff33'), white: rbInk('#102040') };
+  });
+  check('RB48', 'a tag reads on every background colour (4.5:1 on a grid of 540 hues, saturations and lightnesses)', r.bad.length === 0 && r.n === 540, r);
+  check('RB48', 'dark ink on a light colour, light ink on a dark one', r.black === '#000000' && r.white === '#ffffff', r);
+  // the picture on screen and the same tag drawn into the export share one rule
+  const ex = await E(() => { state.labelStyle.bg = true; state.labelStyle.bgMode = 'custom'; state.labelStyle.bgColor = '#ff6666'; state.chainLabels = { A: 'Tag' }; renderLabelTags(); Object.values(labelEls).forEach(e => applyTagStyle(e.div, 'A')); const tg = [...document.querySelectorAll('.chain-tag')].filter(t => t.textContent === 'Tag')[0], cs = { color: tg.style.color }; const m = /rgb\((\d+), (\d+), (\d+)\)/.exec(tg.style.background); const hex = '#' + [1, 2, 3].map(i => (+m[i]).toString(16).padStart(2, '0')).join(''); return { bg: hex, screen: cs.color, ink: rbInk(hex), src: String(window.drawLabelsToCtx).includes('rbInk(bg)') }; });
+  check('RB48', 'the tag on screen and the one drawn into the export take their ink from the same rule', ex.bg === '#ff6666' && ex.screen === 'rgb(0, 0, 0)' && ex.ink === '#000000' && ex.src, ex);
+  // the sequence letters too, in both themes
+  const sq = await E(async () => {
+    state.color = 'chain'; state.chainColors = { A: '#00ff33', B: '#ff4466' }; recolorStructure(); SEQ.show = '*'; seqToggle(true);
+    const lin = v => { v /= 255; return v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); };
+    const rgb = s => /rgba?\(([^)]+)\)/.exec(s)[1].split(',').map(Number), L = c => .2126 * lin(c[0]) + .7152 * lin(c[1]) + .0722 * lin(c[2]);
+    const res = {};
+    for (const th of ['light', 'dark']) {
+      document.documentElement.dataset.theme = th; seqRender(); await new Promise(r => setTimeout(r, 450));
+      let worst = 99, n = 0; document.querySelectorAll('.sq-r').forEach(e => { if (!e.style.backgroundColor || !e.style.color) return; n++; const f = rgb(e.style.color), b = rgb(e.style.backgroundColor); worst = Math.min(worst, (Math.max(L(f), L(b)) + .05) / (Math.min(L(f), L(b)) + .05)); });
+      res[th] = n > 40 ? +worst.toFixed(2) : -n;
+    }
+    document.documentElement.dataset.theme = 'light'; return res;
+  });
+  check('RB48', 'sequence letters are 4.5:1 on their tint in both themes, on a bright green and a bright red chain', sq.light >= 4.5 && sq.dark >= 4.5, sq);
+  await ctx.close();
+}
+
+const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20], ['RB21', rb21], ['RB22', rb22], ['RB23', rb23], ['RB24', rb24], ['RB25', rb25], ['RB26', rb26], ['RB27', rb27], ['RB28', rb28], ['RB29', rb29], ['RB30', rb30], ['RB31', rb31], ['RB32', rb32], ['RB33', rb33], ['RB34', rb34], ['RB35', rb35], ['RB36', rb36], ['RB37', rb37], ['RB38', rb38], ['RB39', rb39], ['RB40', rb40], ['RB41', rb41], ['RB42', rb42], ['RB43', rb43], ['RB44', rb44], ['RB45', rb45], ['RB46', rb46], ['RB47', rb47], ['RB48', rb48]];
 const port = await freePort();
 const srv = spawn('python3', ['-m', 'http.server', String(port), '--bind', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });
 base = `http://127.0.0.1:${port}/`;

@@ -462,7 +462,7 @@ function siteDiagram(){   // → {svg, w, h, boxes, atoms, bonds, lines, more} f
   var keyH=key.length?ky+KR+10:0, H=Math.ceil(y1-y0)+2*M+keyH, oy=-y0+M, KY=Math.ceil(y1-y0)+2*M+4;
   var ink='#1a1d2e', ink2='#5a5f7a', font=_labelFontFamily();
   var X=function(v){ return +(v+ox).toFixed(1); }, Y=function(v){ return +(v+oy).toFixed(1); };
-  var o=['<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+W+' '+H+'" width="'+W+'" height="'+H+'" font-family="'+escapeHtml(font)+'" role="img" aria-label="'+escapeHtml('Interactions of '+s.lig.resn+' with the protein, drawn flat')+'">',
+  var o=['<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+W+' '+H+'" width="'+W+'" height="'+H+'" font-family="'+escapeHtml(font)+'" role="group" aria-label="'+escapeHtml('Interactions of '+s.lig.resn+' with the protein, drawn flat')+'">',
     '<rect width="'+W+'" height="'+H+'" fill="#ffffff"/>'];
   // bonds, shortened where an atom carries a letter
   var lab={}; L.forEach(function(a,q){ var el=(a.elem||'C').toUpperCase(); if(el!=='C') lab[q]=el; });

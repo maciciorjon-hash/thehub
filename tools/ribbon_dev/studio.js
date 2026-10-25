@@ -124,7 +124,7 @@ function seqRender(){
     html+='<div class="sq-row'+(off?' off':'')+'" data-ch="'+escapeHtml(ch)+'"><span class="sq-lab" title="'+escapeHtml(chainTitle(ch))+(chainInfo[ch]&&chainInfo[ch].name?' · '+escapeHtml(chainInfo[ch].name):'')+'">'+escapeHtml(ch.trim()||'–')+'</span><div class="sq-track">'+cells+'</div></div>';
   });
   $('sqRows').innerHTML=html;
-  seqRecolor(); seqPaintSel(); renderSelActs();
+  seqRecolor(); seqPaintSel(); seqPaintCar(); renderSelActs();
 }
 // letters take the colour the structure gives the residue, lightened so the letter reads
 var _seqRaf=0;
@@ -137,7 +137,7 @@ function seqRecolor(){
     $('sqRows').querySelectorAll('.sq-r').forEach(function(sp){
       var e=seqEntry(sp.dataset.k); if(!e) return;
       var c=fn(e.at), v=cache[c];
-      if(!v){ var bg=_mixHex(c,base,dark?0.55:0.62); v=cache[c]={bg:bg,fg:_lum(bg)>0.55?'#1a1d2e':'#f4f5f8'}; }
+      if(!v){ var bg=_mixHex(c,base,dark?0.55:0.62); v=cache[c]={bg:bg,fg:rbInk(bg)}; }
       sp.style.background=v.bg; sp.style.color=v.fg;
     });
   });
@@ -214,6 +214,57 @@ function seqWire(){
   });
   rows.addEventListener('pointerleave',function(){ if(_seqDrag) return; rows._hk=null; seq3DMark(null); seqMarkHover(null); seqInfo(null); });
   rows.addEventListener('dblclick',function(ev){ var sp=ev.target.closest('.sq-r'); if(!sp) return; var e=seqEntry(sp.dataset.k); if(!e) return; selSet([e.k]); _userMoved=true; fitView({focus:{chain:e.ch,resi:e.resi},animate:true,margin:0.3}); });
+  seqKeys();
+}
+// The sequence with the keyboard (the pointer can do everything above; this is the same without one). The scroller is the one tab stop; a caret
+// walks the residues: left and right one residue, up and down the chain above or below (All), Home and End the ends of the chain, PgUp and PgDn
+// ten. Shift extends the selection from where it started, Space adds or takes away the residue under the caret, Enter selects just it and frames
+// it, Cmd/Ctrl+A everything shown, Esc clears. The caret is announced by the line above (aria-live), as the pointer's hover is.
+var _seqCar=null;
+function seqPaintCar(){
+  var rows=$('sqRows'); if(!rows) return;
+  var o=rows.querySelector('.sq-r.car'); if(o) o.classList.remove('car');
+  if(!_seqCar||$('seqBar').hidden||document.activeElement!==$('sqScroll')) return;
+  var sp=rows.querySelector('.sq-r[data-k="'+(window.CSS&&CSS.escape?CSS.escape(_seqCar):_seqCar)+'"]'); if(sp) sp.classList.add('car');
+}
+function seqCaretTo(k){
+  var e=seqEntry(k); if(!e) return;
+  _seqCar=k; seqPaintCar();
+  var sp=$('sqRows').querySelector('.sq-r.car'); if(sp&&sp.scrollIntoView) sp.scrollIntoView({block:'nearest',inline:'nearest'});
+  var t=$('sqInfo'); if(t) t.textContent=(e.ch.trim()?e.ch+' · ':'')+e.resn+' '+e.resi+e.ic+' · '+({h:'helix',s:'strand',c:'loop'})[e.ss]+(_sel[k]?' · selected':'');
+  seq3DMark(e); seqMarkHover(k);
+}
+function seqKeys(){
+  var sc=$('sqScroll'); if(!sc) return;
+  sc.addEventListener('focus',function(){
+    if(!_seqCar||!seqEntry(_seqCar)||seqShown().indexOf(seqEntry(_seqCar).ch)<0){
+      var first=null; seqShown().some(function(ch){ return SEQ.chains[ch].some(function(e){ if(_sel[e.k]){ first=e.k; return true; } return false; }); });
+      _seqCar=first||(seqShown().length?SEQ.chains[seqShown()[0]][0].k:null);
+    }
+    if(_seqCar) seqCaretTo(_seqCar);
+  });
+  sc.addEventListener('blur',function(){ seqPaintCar(); seq3DMark(null); seqMarkHover(null); seqInfo(null); });
+  sc.addEventListener('keydown',function(ev){
+    var e=_seqCar&&seqEntry(_seqCar); if(!e) return;
+    var key=ev.key, L=SEQ.chains[e.ch], i=L._ix[e.k], to=null, shown=seqShown(), mod=ev.metaKey||ev.ctrlKey;
+    if(key==='ArrowLeft') to=L[Math.max(0,i-1)]; else if(key==='ArrowRight') to=L[Math.min(L.length-1,i+1)];
+    else if(key==='PageUp') to=L[Math.max(0,i-10)]; else if(key==='PageDown') to=L[Math.min(L.length-1,i+10)];
+    else if(key==='Home') to=L[0]; else if(key==='End') to=L[L.length-1];
+    else if(key==='ArrowUp'||key==='ArrowDown'){ var ci=shown.indexOf(e.ch)+(key==='ArrowUp'?-1:1); if(ci<0||ci>=shown.length) return; ev.preventDefault(); var L2=SEQ.chains[shown[ci]]; to=L2[Math.min(L2.length-1,i)]; }
+    else if(key===' '||key==='Enter'){
+      ev.preventDefault();
+      if(key===' '){ _selAnchor=e.k; selSet([e.k],_sel[e.k]?'remove':'add'); }
+      else { _selAnchor=e.k; selSet([e.k]); _userMoved=true; fitView({focus:{chain:e.ch,resi:e.resi},animate:true,margin:0.3}); }
+      seqCaretTo(e.k); return;
+    }
+    else if((key==='a'||key==='A')&&mod){ ev.preventDefault(); var all=[]; shown.forEach(function(ch){ SEQ.chains[ch].forEach(function(x){ all.push(x.k); }); }); selSet(all); seqCaretTo(e.k); return; }
+    else if(key==='Escape'){ if(_selN){ selClear(); seqCaretTo(e.k); } return; }
+    else return;
+    ev.preventDefault();
+    if(!to) return;
+    if(ev.shiftKey){ if(!_selAnchor||!seqEntry(_selAnchor)||seqEntry(_selAnchor).ch!==to.ch) _selAnchor=e.k; selSet(seqRangeKeys(_selAnchor,to.k)); }
+    seqCaretTo(to.k);
+  });
 }
 // What can be done with the selection, wherever it was made: next to the sequence, and in the command line.
 function renderSelActs(){
