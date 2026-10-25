@@ -34,7 +34,7 @@ var ctxClose, ctxIsOpen, ctxOpen, ctxBind, ctxApp;
       if (it.sep) return '<div class="ctx-sep" role="separator"></div>';
       if (it.hd) return '<div class="ctx-hd">' + esc(it.hd) + '</div>';
       return '<button class="ctx-i' + (it.danger ? ' danger' : '') + '" role="menuitem" data-i="' + i + '"' + (it.disabled ? ' disabled' : '') + '>' +
-        (it.check !== undefined ? '<span class="ck">' + (it.check ? '✓' : '') + '</span>' : '') + '<span>' + esc(it.label) + '</span>' + (it.k ? '<span class="k">' + esc(it.k) + '</span>' : '') + '</button>';
+        (it.check !== undefined ? '<span class="ck">' + (it.check ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>' : '') + '</span>' : '') + '<span>' + esc(it.label) + '</span>' + (it.k ? '<span class="k">' + esc(it.k) + '</span>' : '') + '</button>';
     }).join('');
     document.body.appendChild(m);
     var w = m.offsetWidth, h = m.offsetHeight, M = 8;
