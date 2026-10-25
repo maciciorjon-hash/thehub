@@ -18,6 +18,12 @@
 //                                every button is 44px
 //   AR12 one standard            docs/UI.md: buttons and fields 32px with --r-1, headings in sentence case, tabs ←/→, every dialog Escape/trap/focus-return, µ in the text a person reads
 //   AR13 named reagents          no protocol step or Methods sentence says "media" / "medium" / "buffer" without saying which: "in media + 1% FBS", "add to complete media", "into 99 uL buffer" (the cell steps name DMEM + 10% FBS or T-REx complete medium)
+//   AR14 mirrored numbers        a step parameter that names the calculator box it mirrors ("calc") holds exactly what that box's default (or the arithmetic over
+//                                the boxes) gives, recomputed here from the live DOM; the twins the audit found cannot be unlinked (WB secondary 1:5000, Gibson 35 ng, ...)
+//   AR15 one answer              FuGENE HD is added to DNA already diluted in Opti-MEM in EVERY place it is written (steps, Methods, calculator output); ssODN purification
+//                                reads the same in the gRNA and the KI protocol; NotI/SmaI are not called un-heat-inactivatable; no step says 1:4000 for the WB secondary
+//   AR16 the arithmetic          KI-RNP's Cas9 pmol is volume x concentration (61 uM = 61 pmol/uL, half of the RNP volume), the ssODN pmol is volume x stock, SPR's t1/2 is ln2/koff
+//   AR17 no glyphs as text       no emoji, warning sign or check mark in the Archive source (UI.md: the drawn icon set, or words)
 //   AR11 offline                 the installable build, after one visit, reloads with the network gone and still lists 34 protocols
 //
 //   node tools/archive_audit_invariants.mjs [--only=AR3] [--url=http://127.0.0.1:8807]      exit 1 on any finding
@@ -169,16 +175,16 @@ if (run('AR1') || run('AR2')) await guard('AR1', 'recompute', async () => {
   C('CTG reagent per well follows the format (384 = 25 uL)', t, /Reagent per well: (\d+) µL/, 25, 0);
   C('CTG total mL', t, /Total reagent needed: ([\d.]+) mL/, 5.5, 0.006);
   t = await stepsOf(p, 'transfection', { 'tf-reagent': 'fugene', 'tf-format': '6', 'tf-nwells': 4, 'tf-dna': 2, 'tf-ratio': 3, 'tf-overage': 'x' }, "document.getElementById('tf-reagent').value='fugene';tfReagentChanged();document.getElementById('tf-overage').checked=true;");
-  C('forward FuGENE uL (2 ug x 3 x 4 x 1.1)', t, /Add (\d+) µL FUGENE HD/, 26.4, 0.6);
+  C('forward FuGENE uL (2 ug x 3 x 4 x 1.1)', t, /Add (\d+) µL FuGENE HD/, 26.4, 0.6);
   C('forward Opti-MEM uL (125 x 4.4)', t, /to (\d+) µL Opti-MEM/, 550, 0.6);
   t = await stepsOf(p, 'revtx', { 'rtx-format': '12', 'rtx-nwells': 10, 'rtx-extra': 1 });
-  C('reverse Opti-MEM uL (100 x 11)', t, /add (\d+) µL Opti-MEM/, 1100, 0.6);
+  C('reverse Opti-MEM uL (100 x 11)', t, /(\d+) µL Opti-MEM in a sterile tube/, 1100, 0.6);
   C('reverse DNA ug (800 ng x 11)', t, /Add ([\d.]+) µg plasmid DNA/, 8.8, 0.06);
   C('reverse FuGENE uL (2.4 x 11)', t, /Add ([\d.]+) µL FuGENE HD/, 26.4, 0.06);
   t = await stepsOf(p, 'trex', { 'tx-wells': 3, 'tx-cpw': 0.8, 'tx-mediavol': 2, 'tx-count': 2, 'tx-excess': 1.1, 'tx-txwells': 3, 'tx-dna': 4, 'tx-ratio': 9, 'tx-pog44': 500, 'tx-pcdna5': '200', 'tx-hstock': 50, 'tx-htarget': 150, 'tx-hvol': 50 });
   C('T-REx suspension per well uL (0.8 M / 2 M/mL)', t, /Seed ([\d,.]+) µL of a/, 400, 0.6);
   C('T-REx pOG44 uL (3.6 ug / 500 ng/uL)', t, /pOG44 3.6 µg = ([\d.]+) µL/, 7.2, 0.06);
-  C('T-REx FuGENE uL (4 ug x 3)', t, /Add ([\d.]+) µL FuGENE HD directly/, 12, 0.06);
+  C('T-REx FuGENE uL (4 ug x 3)', t, /Add ([\d.]+) µL FuGENE HD to the diluted DNA/, 12, 0.06);
   C('T-REx hygromycin uL (150 ug/mL x 50 mL / 50 mg/mL)', t, /Selection medium: ([\d.]+) µL of/, 150, 0.6);
   t = await stepsOf(p, 'transfo', { 'tr-n': 5, 'tr-dna': 2, 'tr-cells': 30, 'tr-soc': 400, 'tr-col': 2, 'tr-lb': 4, 'tr-abx': 500 });
   C('transformation cells uL', t, /Thaw ([\d,]+) µL competent cells/, 150, 0.5);
@@ -471,6 +477,127 @@ if (run('AR13')) await guard('AR13', 'named reagents', async () => {
   const hits = r.filter(x => !AGNOSTIC.test(x));
   if (hits.length) bad('AR13', hits.length + ' step(s) name no medium or buffer: ' + hits.slice(0, 6).join(' | ') + (hits.length > 6 ? ' …' : '')); else ok();
 });
+
+
+// ═════════ AR14 — a mirrored parameter is its calculator's number ═════════
+if (run('AR14')) await guard('AR14', 'mirrored numbers', async () => {
+  const p = await open();
+  const r = await p.evaluate(() => {
+    const out = [], defaults = {};
+    document.querySelectorAll('input[id],select[id]').forEach(e => {
+      defaults[e.id] = e.tagName === 'SELECT' ? ([...e.options].find(o => o.defaultSelected) || e.options[0] || {}).value : e.defaultValue;
+    });
+    const rows = [];
+    Object.keys(PROTOCOL_DATA).forEach(pid => {
+      const d = PROTOCOL_DATA[pid], by = {};
+      const items = [];
+      [{ body: d.preamble || [] }].concat(d.stages || []).forEach(st => (st.body || []).forEach(b => { if (b.t === 'steps') b.items.forEach(it => items.push(it)); }));
+      items.forEach(it => Object.entries(it.params || {}).forEach(([k, v]) => { if (!(k in by)) by[k] = v; }));
+      const ev = (v, which, depth) => {
+        if (depth > 8) throw new Error('calc loop');
+        const expr = v[which === 'value' ? 'calc' : 'calcMax'];
+        if (expr == null) return which === 'value' ? v.value : v.max;
+        const e = expr.replace(/\{(p\.[A-Za-z0-9_]+(?:\.max)?|[A-Za-z][A-Za-z0-9-]*)\}/g, (m, t) => {
+          if (t.startsWith('p.')) { const q = t.split('.'); return String(ev(by[q[1]], q[2] ? 'max' : 'value', depth + 1)); }
+          if (!(t in defaults) || isNaN(parseFloat(defaults[t]))) throw new Error('no numeric box #' + t);
+          return String(parseFloat(defaults[t]));
+        });
+        let n = Function('"use strict";return (' + e + ')')();
+        if (v.round != null) n = Math.floor(n * Math.pow(10, v.round) + 0.5) / Math.pow(10, v.round);
+        return n;
+      };
+      items.forEach(it => Object.entries(it.params || {}).forEach(([k, v]) => {
+        if (v.unit === 'uL') out.push(pid + '.' + k + ': unit "uL" (write µL)');
+        if (v.calc == null) return;
+        rows.push(pid + '.' + k);
+        try {
+          const want = ev(v, 'value', 0);
+          if (!(Math.abs(want - v.value) <= 1e-9 * Math.max(1, Math.abs(want)))) out.push(pid + '.' + k + ' is ' + v.value + ' but ' + v.calc + ' gives ' + want);
+          if (v.calcMax != null) { const wm = ev(v, 'max', 0); if (!(Math.abs(wm - v.max) <= 1e-9 * Math.max(1, Math.abs(wm)))) out.push(pid + '.' + k + ' max is ' + v.max + ' but ' + v.calcMax + ' gives ' + wm); }
+          if (!v.type || !v.label) out.push(pid + '.' + k + ' has no type or label');
+        } catch (e) { out.push(pid + '.' + k + ': ' + e.message); }
+      }));
+    });
+    return { out, rows };
+  });
+  if (r.out.length) bad('AR14', r.out.length + ' mirrored parameter(s) disagree with their calculator: ' + r.out.slice(0, 6).join(' | ') + (r.out.length > 6 ? ' …' : '')); else ok();
+  // the twins the audit found must stay linked: unlinking one is how 4000 and 5000 lived side by side
+  const MUST = ['westernblot.secondaryDilution', 'westernblot.piStockX', 'westernblot.benzonaseX', 'gibson.vectorNg', 'gibson.vectorPmol', 'gibson.insertExcess', 'hibit.lgbitX', 'hibit.substrateX', 'trex.fugeneVol', 'trex.dnaTotal', 'trex.hygro', 'lenti.polybreneVol', 'crispr-ki.rnpCas9Amt', 'spr.mz1HalfLife', 'strap.trypsinAmt', 'trfret.proteinAConc'];
+  const miss = MUST.filter(k => !r.rows.includes(k));
+  if (miss.length) bad('AR14', 'no longer linked to a calculator: ' + miss.join(', ')); else ok();
+  if (r.rows.length < 45) bad('AR14', 'only ' + r.rows.length + ' parameters are linked to a calculator (45 expected)'); else ok();
+  await p.context().close();
+});
+
+// ═════════ AR15 — one answer in every place ═════════
+if (run('AR15')) await guard('AR15', 'one answer', async () => {
+  const p = await open();
+  const r = await p.evaluate(() => {
+    const strip = h => String(h || '').replace(/<[^>]+>/g, ' ').replace(/&[a-z0-9#]+;/gi, ' ').replace(/\s+/g, ' ');
+    const texts = [];   // [where, text]
+    Object.keys(PROTOCOL_DATA).forEach(pid => { const d = PROTOCOL_DATA[pid];
+      const walk = (body, where) => (body || []).forEach(b => { if (b.t === 'steps') b.items.forEach(x => texts.push([pid + ' ' + x.id, strip(substParams(x.html, x.params))])); else if (b.html) texts.push([pid + ' ' + where + ' (' + b.t + ')', strip(b.html)]); });
+      walk(d.preamble, 'preamble'); (d.stages || []).forEach(st => { walk(st.body, st.name); if (st.pub) texts.push([pid + ' ' + st.name + ' (Methods)', st.pub]); }); });
+    // calculator outputs, driven the way a person drives them
+    const set = (id, v) => { const el = document.getElementById(id); el.value = v; el.dispatchEvent(new Event(el.tagName === 'SELECT' ? 'change' : 'input', { bubbles: true })); };
+    const run = (pid, f) => { try { f(); const pr = PROTOCOLS.find(x => x.id === pid); pr.genSteps().forEach(s => texts.push([pid + ' calculator: ' + s.label, strip(s.bullets.join(' \n '))])); } catch (e) { texts.push([pid + ' calculator threw', e.message]); } };
+    run('transfection', () => { set('tf-reagent', 'fugene'); set('tf-nwells', 3); });
+    run('revtx', () => { set('rtx-nwells', 4); });
+    run('trex', () => { set('tx-txwells', 2); });
+    const found = [];
+    const sentences = t => t.split(/(?<=[.;:])\s+(?=[A-Z])/);
+    texts.forEach(([where, t]) => {
+      if (/FUGENE/.test(t)) found.push(where + ': "FUGENE" (it is FuGENE)');
+      if (/FuGENE/i.test(t)) sentences(t).forEach(s => {
+        if (!/FuGENE/i.test(s)) return;
+        if (/Tube B/.test(s) || /not\s+add\s+FuGENE\s+directly\s+to\s+DNA/i.test(s) || /\b(?:DNA|plasmid)\b[^.]{0,40}\badded?\b[^.]{0,20}\bto\b[^.]{0,20}FuGENE/i.test(s)) found.push(where + ': wrong FuGENE order: "' + s.slice(0, 110) + '"');
+        else if (/FuGENE HD(?: \([^)]*\))?\s+(?:\([^)]*\)\s+)?(?:to|in(?:to)?)\s+(?:\d[\d.,]*\s*µL\s+)?(?:the\s+)?Opti-?MEM/i.test(s) && !/diluted DNA/i.test(s)) found.push(where + ': FuGENE goes into Opti-MEM before the DNA: "' + s.slice(0, 110) + '"');
+        else if (/\b(?:add|added|adding)\b/i.test(s) && !/diluted DNA/i.test(s) && !/calculator|dispens|complex(?:es)? (?:were|was|are) (?:left|formed)|DNA–FuGENE|DNA-FuGENE|forward|reverse|volumes? (?:and|or)|pool|per well/i.test(s) && !/Methods/.test(where)) found.push(where + ': FuGENE added but not "to the diluted DNA": "' + s.slice(0, 110) + '"');
+      });
+      if (/1\s*:\s*4000/.test(t) && /secondary/i.test(t) && !/tubulin/i.test(t)) found.push(where + ': WB secondary at 1:4000 (it is 1:5000)');
+      if (/\b(?:SmaI|NotI)\b/.test(t) && /\bnot\b[^.]{0,40}(?:HI|heat)/i.test(t) && !/NEB lists NotI and SmaI/.test(t)) found.push(where + ': NotI/SmaI called not heat-inactivatable (NEB: 65 °C, 20 min)');
+      if (/0\.06\s*pmol/.test(t) && /gibson/.test(where)) found.push(where + ': Gibson says 0.06 pmol (the calculator is 35 ng, about 0.013 pmol at 4 kb)');
+      if (/blasticidin/i.test(t) && /trex/.test(where)) found.push(where + ': T-REx mentions blasticidin (the lab does not use it)');
+    });
+    const get = (pid, id) => (texts.find(x => x[0] === pid + ' ' + id) || [0, ''])[1];
+    const g = get('grna', 'grna.s4.5'), k = get('crispr-ki', 'crispr-ki.s10.4');
+    [['gRNA', g], ['KI', k]].forEach(([n, t]) => { if (!/Ultramer/.test(t) || !/desalting/.test(t) || /PAGE-purif/i.test(t)) found.push(n + ' ssODN purification advice differs from the other protocol: "' + t.slice(0, 120) + '"'); });
+    return { found, n: texts.length };
+  });
+  if (r.found.length) bad('AR15', r.found.length + ' disagreement(s): ' + r.found.slice(0, 6).join(' | ') + (r.found.length > 6 ? ' …' : '')); else ok();
+  if (r.n < 300) bad('AR15', 'only ' + r.n + ' texts scanned'); else ok();
+  await p.context().close();
+});
+
+// ═════════ AR16 — the arithmetic in the prose ═════════
+if (run('AR16')) await guard('AR16', 'the arithmetic', async () => {
+  const p = await open();
+  const r = await p.evaluate(() => {
+    const P = {}; const grab = pid => { const d = PROTOCOL_DATA[pid]; (d.stages || []).forEach(st => (st.body || []).forEach(b => { if (b.t === 'steps') b.items.forEach(it => Object.entries(it.params || {}).forEach(([k, v]) => { P[pid + '.' + k] = v; })); })); };
+    ['crispr-ki', 'spr', 'gibson'].forEach(grab);
+    return { P, wb: document.getElementById('wb-ab-sec').defaultValue };
+  });
+  const P = r.P, near = (a, b, t) => Math.abs(a - b) <= t;
+  // RNP is Cas9 and gRNA 1:1 by volume: half of what is added is Cas9 stock
+  const c = P['crispr-ki.rnpCas9Conc'].value, f = 1 / (1 + P['crispr-ki.rnpRatio'].value), v0 = P['crispr-ki.rnpAddVol'].value, v1 = P['crispr-ki.rnpAddVol'].max;
+  if (!near(P['crispr-ki.rnpCas9Amt'].value, v0 * c * f, 0.05) || !near(P['crispr-ki.rnpCas9Amt'].max, v1 * c * f, 0.05)) bad('AR16', `KI-RNP says ${P['crispr-ki.rnpCas9Amt'].value}–${P['crispr-ki.rnpCas9Amt'].max} pmol Cas9, ${v0}–${v1} µL of RNP at ${c} µM Cas9 (half of it) is ${v0 * c * f}–${v1 * c * f}`); else ok();
+  const sd = P['crispr-ki.ssodnStockConc'].value;
+  if (!near(P['crispr-ki.ssodnAmt'].value, P['crispr-ki.ssodnAddVol'].value * sd, 0.5) || !near(P['crispr-ki.ssodnAmt'].max, P['crispr-ki.ssodnAddVol'].max * sd, 0.5)) bad('AR16', 'KI ssODN pmol is not volume x stock'); else ok();
+  const koff = P['spr.mz1Koff'].value, th = P['spr.mz1HalfLife'].value;
+  if (!near(th, Math.LN2 / koff, 0.6)) bad('AR16', `SPR: koff ${koff} /s gives t1/2 ${Math.LN2 / koff} s, the protocol says ${th}`); else ok();
+  const pm = P['gibson.vectorNg'].value / (0.65 * P['gibson.vectorBp'].value);
+  if (!near(P['gibson.vectorPmol'].value, pm, 0.0006)) bad('AR16', `Gibson: ${P['gibson.vectorNg'].value} ng of ${P['gibson.vectorBp'].value} bp is ${pm} pmol, the protocol says ${P['gibson.vectorPmol'].value}`); else ok();
+  if (!(P['gibson.vectorNg'].value === 35)) bad('AR16', 'Gibson vector is not the lab standard 35 ng'); else ok();
+  if (r.wb !== '5000') bad('AR16', 'the WB secondary box default is ' + r.wb + ', not 5000'); else ok();
+  await p.context().close();
+});
+
+// ═════════ AR17 — no glyphs standing in for icons ═════════
+if (run('AR17')) {
+  const src = fs.readFileSync(path.join(ROOT, 'apps/archive/archive.html'), 'utf8');
+  const hits = [...src.matchAll(/[\u{1F300}-\u{1FAFF}☀-➿⭐⬆️]/gu)].map(m => m[0] + ' U+' + m[0].codePointAt(0).toString(16));
+  if (hits.length) bad('AR17', hits.length + ' emoji or symbol glyph(s) in the Archive source: ' + [...new Set(hits)].join(', ')); else ok();
+}
 
 // ═════════ AR11 — offline ═════════
 if (run('AR11')) await guard('AR11', 'offline', async () => {

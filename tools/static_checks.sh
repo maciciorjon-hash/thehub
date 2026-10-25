@@ -35,7 +35,8 @@ run "Multi-plate reader kit"          "$PY" tools/sync_reader_plates.py --check
 run "Setup dialog kit"                 "$PY" tools/sync_setupkit.py --check
 run "Help assistant"                   "$PY" tools/sync_assist.py --check
 run "Shared Echo blocks"               "$PY" tools/sync_screen_engine.py --check
-run "Ribbon studio"                    "$PY" tools/ribbon_dev/inject_studio.py --check
+run "Archive Methods + mirrored numbers" "$PY" tools/protocol_pub.py --check
+run "Ribbon studio"                   "$PY" tools/ribbon_dev/inject_studio.py --check
 
 if [ $fail -ne 0 ]; then
   echo ""
