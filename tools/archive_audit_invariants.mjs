@@ -24,6 +24,8 @@
 //                                reads the same in the gRNA and the KI protocol; NotI/SmaI are not called un-heat-inactivatable; no step says 1:4000 for the WB secondary
 //   AR16 the arithmetic          KI-RNP's Cas9 pmol is volume x concentration (61 uM = 61 pmol/uL, half of the RNP volume), the ssODN pmol is volume x stock, SPR's t1/2 is ln2/koff
 //   AR17 no glyphs as text       no emoji, warning sign or check mark in the Archive source (UI.md: the drawn icon set, or words)
+//   AR18 the bench checklist     checklist mode: a named role=checkbox on every step (Space ticks), progress, a timer on every duration of 3 h or less whose length IS the parameter,
+//                                the wake lock taken on and released (one the person switched on is left alone), ticks kept over a reload and cleared by Reset, step notes survive the repaint, 44px on the phone
 //   AR11 offline                 the installable build, after one visit, reloads with the network gone and still lists 34 protocols
 //
 //   node tools/archive_audit_invariants.mjs [--only=AR3] [--url=http://127.0.0.1:8807]      exit 1 on any finding
@@ -599,6 +601,80 @@ if (run('AR17')) {
   if (hits.length) bad('AR17', hits.length + ' emoji or symbol glyph(s) in the Archive source: ' + [...new Set(hits)].join(', ')); else ok();
 }
 
+
+// ═════════ AR18 — the bench checklist ═════════
+if (run('AR18')) await guard('AR18', 'checklist', async () => {
+  const WL = () => { window.__wl = { n: 0, rel: 0 }; Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: { request: async () => { window.__wl.n++; return { release: async () => { window.__wl.rel++; }, addEventListener() {} }; } } }); };
+  const mk = async (opts = {}) => {
+    const ctx = await browser.newContext(Object.assign({ viewport: { width: 1440, height: 900 } }, opts));
+    await ctx.addInitScript(WL);
+    const p = await ctx.newPage(); const errs = []; p.on('pageerror', e => errs.push(e.message));
+    await p.goto(PAGE); await p.waitForTimeout(400); p.errs = errs; return p;
+  };
+  const p = await mk();
+  await p.evaluate(() => { openProtocol('miniprep'); });
+  const base = await p.evaluate(() => ({ li: document.querySelectorAll('#detail-miniprep .proto-list li').length, notes: document.querySelectorAll('#detail-miniprep .step-note-btn').length }));
+  await p.click('#detail-miniprep .chk-toggle'); await p.waitForTimeout(150);
+  const on = await p.evaluate(() => {
+    const w = document.getElementById('detail-miniprep');
+    const boxes = [...w.querySelectorAll('.chk-box')];
+    return { n: boxes.length, li: w.querySelectorAll('.proto-list li').length, roles: boxes.every(b => b.getAttribute('role') === 'checkbox' && b.getAttribute('aria-label')), names: boxes.every(b => (b.getAttribute('aria-label') || '').length > 8),
+      prog: (w.querySelector('.chk-prog') || {}).textContent, wake: window.__wl.n, wakeOn: _wakeOn, notes: w.querySelectorAll('.step-note-btn').length, pressed: w.querySelector('.chk-toggle').getAttribute('aria-pressed') };
+  });
+  if (!(on.n === on.li && on.n >= 8)) bad('AR18', `checklist mode puts ${on.n} boxes on ${on.li} steps`); else ok();
+  if (!on.roles || !on.names) bad('AR18', 'a checklist box is not a named role=checkbox'); else ok();
+  if (!(on.wake === 1 && on.wakeOn)) bad('AR18', 'turning the checklist on did not take the wake lock'); else ok();
+  if (on.pressed !== 'true' || !/^0 of \d+ steps done$/.test(on.prog || '')) bad('AR18', 'toggle/progress wrong: ' + on.pressed + ' / ' + on.prog); else ok();
+  if (on.notes !== base.notes) bad('AR18', `the step-note buttons were lost on repaint (${base.notes} before, ${on.notes} after)`); else ok();
+  // tick by keyboard and by click
+  await p.focus('#detail-miniprep .chk-li:nth-child(1) .chk-box'); await p.keyboard.press('Space'); await p.waitForTimeout(80);
+  await p.click('#detail-miniprep .chk-li:nth-child(2) .chk-box'); await p.waitForTimeout(80);
+  const t1 = await p.evaluate(() => { const w = document.getElementById('detail-miniprep'); return [w.querySelectorAll('.chk-li.done').length, w.querySelector('.chk-prog').textContent, w.querySelector('.chk-box').getAttribute('aria-checked')]; });
+  if (t1[0] !== 2 || !/^2 of /.test(t1[1]) || t1[2] !== 'true') bad('AR18', 'ticking by Space and click gave ' + JSON.stringify(t1)); else ok();
+  // the timer is the parameter: miniprep pellet spin is 2 min = 120 s
+  const tm = await p.evaluate(() => { const b = document.querySelector('#detail-miniprep .chk-timer[data-tk$="pelletTime"]'); return b && [b.dataset.sec, b.textContent]; });
+  if (!tm || tm[0] !== '120') bad('AR18', 'the pellet-spin timer is not 120 s: ' + JSON.stringify(tm)); else ok();
+  const noDays = await p.evaluate(() => { openProtocol('scs'); chkMode('scs'); const n = [...document.querySelectorAll('#detail-scs .chk-timer')].map(b => +b.dataset.sec); chkMode('scs'); closeProtocol(); return n; });
+  if (noDays.some(s => s > 3 * 3600 || !(s > 0))) bad('AR18', 'a timer longer than 3 h or empty: ' + noDays.join(',')); else ok();
+  await p.evaluate(() => { openProtocol('miniprep'); });
+  await p.click('#detail-miniprep .chk-timer[data-tk$="pelletTime"]'); await p.waitForTimeout(1200);
+  const run1 = await p.evaluate(() => { const b = document.querySelector('#detail-miniprep .chk-timer[data-tk$="pelletTime"]'); return [b.textContent, b.className, b.getAttribute('aria-pressed')]; });
+  if (!/^[01]:\d\d$/.test(run1[0]) || !/run/.test(run1[1]) || run1[2] !== 'true') bad('AR18', 'a running timer reads ' + JSON.stringify(run1)); else ok();
+  await p.evaluate(() => { Object.values(_chkTimers).forEach(t => { t.end = Date.now() - 1000; }); _chkTick(); });
+  const fin = await p.evaluate(() => [document.querySelector('#detail-miniprep .chk-timer[data-tk$="pelletTime"]').textContent, (document.getElementById('pt-toast') || {}).textContent]);
+  if (fin[0] !== 'Done' || !/finished/.test(fin[1] || '')) bad('AR18', 'a finished timer reads ' + JSON.stringify(fin)); else ok();
+  await p.click('#detail-miniprep .chk-timer[data-tk$="pelletTime"]');
+  // ticks survive a reload
+  await p.reload(); await p.waitForTimeout(400);
+  const kept = await p.evaluate(() => { openProtocol('miniprep'); chkMode('miniprep'); return document.querySelectorAll('#detail-miniprep .chk-li.done').length; });
+  if (kept !== 2) bad('AR18', 'ticks did not survive a reload (' + kept + ' of 2)'); else ok();
+  // reset, then close: the screen may sleep again and the page is back to plain steps
+  await p.click('#detail-miniprep .chk-reset'); await p.waitForTimeout(100);
+  const rs = await p.evaluate(() => document.querySelectorAll('#detail-miniprep .chk-li.done').length);
+  if (rs !== 0) bad('AR18', 'Reset ticks left ' + rs + ' ticked'); else ok();
+  await p.evaluate(() => closeProtocol()); await p.waitForTimeout(100);
+  const cl = await p.evaluate(() => [window.__wl.rel, _wakeOn, document.querySelectorAll('.chk-li').length, !!_chk.on.miniprep]);
+  if (cl[0] < 1 || cl[1] || cl[2] || cl[3]) bad('AR18', 'closing the protocol left the checklist/wake lock on: ' + JSON.stringify(cl)); else ok();
+  if (p.errs.length) bad('AR18', 'page error: ' + p.errs[0]);
+  await p.context().close();
+  // a person who already switched Keep awake on keeps it
+  const q = await mk();
+  const keep = await q.evaluate(async () => { await toggleWake(); openProtocol('miniprep'); chkMode('miniprep'); await new Promise(r => setTimeout(r, 50)); chkMode('miniprep'); await new Promise(r => setTimeout(r, 50)); return [_wakeOn, window.__wl.n]; });
+  if (!keep[0] || keep[1] !== 1) bad('AR18', 'the checklist took or dropped a Keep awake it did not own: ' + JSON.stringify(keep)); else ok();
+  await q.context().close();
+  // the phone: 44px targets, nothing sideways, both themes
+  for (const scheme of ['light', 'dark']) {
+    const t = await mk({ viewport: { width: 375, height: 812 }, hasTouch: true, isMobile: true, colorScheme: scheme });
+    const m = await t.evaluate(() => { openProtocol('miniprep'); document.querySelector('#detail-miniprep .chk-toggle').click();
+      const w = document.getElementById('detail-miniprep');
+      const small = [...w.querySelectorAll('.chk-box,.chk-timer,.chk-toggle')].filter(e => e.getBoundingClientRect().height < 43.5 || e.getBoundingClientRect().width < 43.5).length;
+      return { small, over: document.documentElement.scrollWidth - window.innerWidth, n: w.querySelectorAll('.chk-box').length }; });
+    if (m.small) bad('AR18', `${scheme}: ${m.small} checklist targets under 44px on the phone`); else ok();
+    if (m.over > 1) bad('AR18', `${scheme}: the checklist scrolls sideways by ${m.over}px on the phone`); else ok();
+    await t.screenshot({ path: path.join(os.tmpdir(), 'ar18-phone-' + scheme + '.png') });
+    await t.context().close();
+  }
+});
 // ═════════ AR11 — offline ═════════
 if (run('AR11')) await guard('AR11', 'offline', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'archive-pwa-'));

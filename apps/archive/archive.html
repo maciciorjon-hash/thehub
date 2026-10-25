@@ -337,6 +337,28 @@ body.has-fab #app-body{padding-bottom:calc(84px + env(safe-area-inset-bottom));}
 .proto-day-label{font-size:var(--fs-2);font-weight:600;color:var(--text2);font-family:var(--mono);}
 .proto-list{padding-left:18px;display:flex;flex-direction:column;gap:5px;}
 .proto-list li{font-size:var(--fs-4);line-height:1.6;color:var(--text);}
+/* checklist mode: a box in front of each step, a timer beside each duration */
+.chk-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 14px;}
+.chk-toggle[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--on-accent);}
+.chk-prog{font-size:var(--fs-2);color:var(--text2);font-family:var(--mono);}
+.proto-list.chk{gap:8px;}
+.chk-li.done{color:var(--text3);}
+.chk-box{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;margin:-6px 6px -6px -6px;padding:0;background:none;border:none;border-radius:var(--r-1);cursor:pointer;vertical-align:middle;}
+.chk-tick{display:flex;align-items:center;justify-content:center;width:20px;height:20px;border:2px solid var(--text3);border-radius:var(--r-1);color:var(--on-accent);}
+.chk-tick svg{width:14px;height:14px;opacity:0;}
+.chk-box:hover .chk-tick{border-color:var(--accent);}
+.chk-box[aria-checked="true"] .chk-tick{background:var(--accent);border-color:var(--accent);}
+.chk-box[aria-checked="true"] .chk-tick svg{opacity:1;}
+.chk-timer{display:inline-flex;align-items:center;min-height:28px;margin-left:8px;padding:0 10px;border:1px solid var(--border2);background:var(--surface2);color:var(--text);border-radius:var(--r-1);font-family:var(--mono);font-size:var(--fs-2);cursor:pointer;vertical-align:middle;}
+.chk-timer:hover{background:var(--accent-dim);}
+.chk-timer.run{border-color:var(--accent);color:var(--accent-ink);font-variant-numeric:tabular-nums;}
+.chk-timer.fin{background:var(--accent);border-color:var(--accent);color:var(--on-accent);}
+@media (hover:none) and (pointer:coarse){
+  .chk-box{width:44px;height:44px;margin:-12px 4px -12px -10px;}
+  .chk-timer{min-height:44px;padding:0 14px;}
+  .proto-list.chk{gap:12px;}
+}
+#print-root .chk-bar,#print-root .chk-box,#print-root .chk-timer{display:none;}
 .delivery-bar{display:flex;align-items:center;gap:10px;background:var(--accent-dim);border:1px solid var(--accent);border-radius:var(--r-2);padding:10px 14px;margin-bottom:16px;}
 .delivery-bar-label{font-size:var(--fs-2);font-weight:700;color:var(--accent-ink);font-family:var(--mono);flex-shrink:0;}
 .delivery-bar select{width:auto;flex:1;max-width:340px;font-weight:600;}
@@ -2255,6 +2277,7 @@ function substParams(html, params, over){
 function _protoBodyHtml(b, pid){
   if (b.t === 'steps'){
     var tag = b.ordered ? 'ol' : 'ul';
+    if (_chk.on[pid]) return '<' + tag + ' class="proto-list chk">' + b.items.map(function(it){ return _chkItemHtml(pid, it); }).join('') + '</' + tag + '>';
     return '<' + tag + ' class="proto-list">' + b.items.map(function(it){
       return '<li data-step="' + it.id + '">' + substParams(it.html, it.params) + '</li>';
     }).join('') + '</' + tag + '>';
@@ -2312,7 +2335,13 @@ function paintProtocolPane(pid){
   var wrap = document.getElementById('detail-' + pid);
   if (!wrap) return;
   var pane = wrap.querySelector('.dpane[data-tab="protocol"]');
-  if (pane && PROTOCOL_DATA[pid]) pane.innerHTML = renderProtocolPane(pid);
+  if (pane && PROTOCOL_DATA[pid]){
+    pane.innerHTML = _chkBarHtml(pid) + renderProtocolPane(pid);
+    // The step-note buttons hang on the list items, which were just replaced.
+    delete pane.dataset.stepsTagged;
+    if (typeof _notesOpenPid !== 'undefined' && _notesOpenPid === pid){ assignStepNoteKeys(pid); renderStepNotes(pid); }
+    _chkProgress(pid); _chkTick();
+  }
 }
 
 var PROTOCOLS = [
@@ -3653,6 +3682,7 @@ function openProtocol(id) {
   openNotesForProtocol(id);
 }
 function closeProtocol() {
+  if (_openProtocolId && _chk.on[_openProtocolId]) { _chk.on[_openProtocolId] = false; paintProtocolPane(_openProtocolId); _chkWake(false); }
   _openProtocolId = null;
   document.querySelectorAll('.detail-wrap').forEach(function(d) { d.classList.remove('active'); });
   document.getElementById('home-view').style.display = '';
@@ -3710,6 +3740,138 @@ if ('wakeLock' in navigator) {
     var b = _wakeBtn(); if (b) b.classList.add('avail');
   });
 }
+// ── CHECKLIST MODE (the bench) ── tick the steps off, start a timer where a step has a duration, and
+// keep the screen awake while it is on. Everything comes from PROTOCOL_DATA: a time parameter IS the
+// timer's length, so the timer cannot disagree with the sentence it sits in. Ticks are kept on this
+// device for 18 h so a reload mid-protocol does not lose your place; Reset clears them.
+var _chk = { on: {}, wake: false };
+var _CHK_TTL = 18 * 3600 * 1000, _CHK_MAX_TIMER = 3 * 3600;
+var _CHK_TICK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="5 12.5 10 17.5 19 7"/></svg>';
+function _chkLoad(pid){
+  try { var d = JSON.parse(localStorage.getItem('archive_chk_' + pid) || 'null'); if (d && d.done && Date.now() - d.ts < _CHK_TTL) return d; } catch(e) {}
+  return { ts: Date.now(), done: {} };
+}
+function _chkSave(pid, d){ d.ts = Date.now(); try { localStorage.setItem('archive_chk_' + pid, JSON.stringify(d)); } catch(e) {} }
+function _chkSteps(pid){
+  var d = PROTOCOL_DATA[pid], n = 0; if (!d) return 0;
+  (d.stages || []).forEach(function(s){
+    if (s.variant && _methodState[pid] && s.variant !== _methodState[pid]) return;
+    (s.body || []).forEach(function(b){ if (b.t === 'steps') n += b.items.length; });
+  });
+  return n;
+}
+function _chkBarHtml(pid){
+  if (!_chkSteps(pid)) return '';
+  var on = !!_chk.on[pid];
+  return '<div class="chk-bar"><button type="button" class="btn btn-sm chk-toggle" aria-pressed="' + on + '" onclick="chkMode(\'' + pid + '\')">Checklist</button>' +
+    (on ? '<span class="chk-prog" role="status" aria-live="polite"></span><button type="button" class="btn btn-sm chk-reset" onclick="chkReset(\'' + pid + '\')">Reset ticks</button>' : '') + '</div>';
+}
+// A duration in seconds from a time parameter, or 0 when it is not a timer's business (a range, days, hours-long waits).
+function _chkSeconds(v){
+  if (!v || v.type !== 'time') return 0;
+  var k = { s: 1, sec: 1, min: 60, h: 3600, hours: 3600, hour: 3600 }[String(v.unit || '').trim()];
+  var n = k ? v.value * k : 0;
+  return (n > 0 && n <= _CHK_MAX_TIMER) ? Math.round(n) : 0;
+}
+function _chkClock(sec){
+  var h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+  return (h ? h + ':' + (m < 10 ? '0' : '') : '') + m + ':' + (s < 10 ? '0' : '') + s;
+}
+function _chkItemHtml(pid, it){
+  var d = _chkLoad(pid), done = !!d.done[it.id];
+  var plain = String(it.html || '').replace(/\{\{p\.\w+\}\}/g, '').replace(/<[^>]+>/g, ' ').replace(/&[a-z0-9#]+;/gi, ' ').replace(/\s+/g, ' ').trim().slice(0, 70);
+  var body = substParams(it.html, it.params);
+  Object.keys(it.params || {}).forEach(function(k){
+    var sec = _chkSeconds(it.params[k]); if (!sec) return;
+    var tk = pid + '|' + it.id + '|' + k, label = paramText(it.params[k]);
+    body = body.replace('<span class="pparam" data-p="' + k + '">' + label + '</span>',
+      '<span class="pparam" data-p="' + k + '">' + label + '</span><button type="button" class="chk-timer" data-tk="' + tk + '" data-sec="' + sec + '" data-name="' + label + '" onclick="chkTimer(this)">Timer</button>');
+  });
+  return '<li data-step="' + it.id + '" class="chk-li' + (done ? ' done' : '') + '"><button type="button" class="chk-box" role="checkbox" aria-checked="' + done +
+    '" aria-label="Done: ' + plain.replace(/"/g, '') + '" onclick="chkToggle(\'' + pid + '\',\'' + it.id + '\')"><span class="chk-tick">' + _CHK_TICK_SVG + '</span></button>' + body + '</li>';
+}
+function _chkProgress(pid){
+  var wrap = document.getElementById('detail-' + pid); if (!wrap) return;
+  var el = wrap.querySelector('.chk-prog'); if (!el) return;
+  var all = wrap.querySelectorAll('.chk-li'), n = wrap.querySelectorAll('.chk-li.done').length;
+  el.textContent = n + ' of ' + all.length + ' steps done';
+}
+function chkMode(pid){
+  _chk.on[pid] = !_chk.on[pid];
+  paintProtocolPane(pid);
+  var b = document.querySelector('#detail-' + pid + ' .chk-toggle'); if (b) b.focus();
+  _chkWake(!!_chk.on[pid]);
+  showToast(_chk.on[pid] ? 'Checklist on' : 'Checklist off');
+}
+function chkToggle(pid, id){
+  var d = _chkLoad(pid);
+  if (d.done[id]) delete d.done[id]; else d.done[id] = 1;
+  _chkSave(pid, d);
+  var li = document.querySelector('#detail-' + pid + ' li[data-step="' + id + '"]'); if (!li) return;
+  li.classList.toggle('done', !!d.done[id]);
+  var b = li.querySelector('.chk-box'); if (b) b.setAttribute('aria-checked', d.done[id] ? 'true' : 'false');
+  _chkProgress(pid);
+}
+function chkReset(pid){
+  _chkSave(pid, { ts: Date.now(), done: {} });
+  paintProtocolPane(pid);
+  var b = document.querySelector('#detail-' + pid + ' .chk-toggle'); if (b) b.focus();
+}
+// the screen stays awake while a checklist is open; if the person had already switched Keep awake on, that stays theirs
+async function _chkWake(on){
+  if (on) { if (!_wakeOn && 'wakeLock' in navigator) { await toggleWake(); _chk.wake = _wakeOn; } }
+  else if (_chk.wake) { _chk.wake = false; if (_wakeOn) await toggleWake(); }
+}
+// timers keep absolute end times, so a locked phone or a reload does not stretch them
+var _chkTimers = {}, _chkIv = null, _chkAudio = null;
+try { _chkTimers = JSON.parse(localStorage.getItem('archive_chk_timers') || '{}') || {}; } catch(e) { _chkTimers = {}; }
+function _chkSaveTimers(){ try { localStorage.setItem('archive_chk_timers', JSON.stringify(_chkTimers)); } catch(e) {} }
+function chkTimer(btn){
+  var tk = btn.dataset.tk;
+  if (_chkTimers[tk]) delete _chkTimers[tk];
+  else {
+    var sec = +btn.dataset.sec;
+    _chkTimers[tk] = { end: Date.now() + sec * 1000, sec: sec, name: btn.dataset.name };
+    try { if (!_chkAudio && (window.AudioContext || window.webkitAudioContext)) _chkAudio = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {}   // made on the tap, so a phone lets it ring later
+  }
+  _chkSaveTimers(); _chkTick();
+}
+function _chkAlarm(t){
+  showToast(t.name + ' timer finished');
+  try { if (navigator.vibrate) navigator.vibrate([250, 120, 250, 120, 250]); } catch(e) {}
+  try {
+    if (_chkAudio) {
+      if (_chkAudio.state === 'suspended') _chkAudio.resume();
+      [0, 0.28, 0.56].forEach(function(at){
+        var o = _chkAudio.createOscillator(), g = _chkAudio.createGain();
+        o.frequency.value = 880; g.gain.value = 0.15; o.connect(g); g.connect(_chkAudio.destination);
+        o.start(_chkAudio.currentTime + at); o.stop(_chkAudio.currentTime + at + 0.16);
+      });
+    }
+  } catch(e) {}
+}
+function _chkTick(){
+  var now = Date.now(), live = 0, dirty = false;
+  Object.keys(_chkTimers).forEach(function(tk){
+    var t = _chkTimers[tk];
+    if (now >= t.end) { if (!t.fired) { t.fired = true; dirty = true; _chkAlarm(t); } } else live++;
+  });
+  if (dirty) _chkSaveTimers();
+  document.querySelectorAll('.chk-timer').forEach(function(b){
+    var t = _chkTimers[b.dataset.tk], txt, cls = 'chk-timer', lab;
+    if (!t) { txt = 'Timer'; lab = 'Start a ' + b.dataset.name + ' timer'; }
+    else if (now >= t.end) { txt = 'Done'; cls += ' fin'; lab = b.dataset.name + ' timer finished, tap to clear'; }
+    else { var left = Math.ceil((t.end - now) / 1000); txt = _chkClock(left); cls += ' run'; lab = b.dataset.name + ' timer running, tap to stop'; }
+    if (b.textContent !== txt) b.textContent = txt;
+    if (b.className !== cls) b.className = cls;
+    if (b.getAttribute('aria-label') !== lab) b.setAttribute('aria-label', lab);
+    b.setAttribute('aria-pressed', t ? 'true' : 'false');
+  });
+  if (live && !_chkIv) _chkIv = setInterval(_chkTick, 1000);
+  if (!live && _chkIv) { clearInterval(_chkIv); _chkIv = null; }
+}
+if (Object.keys(_chkTimers).some(function(k){ return Date.now() < _chkTimers[k].end; })) document.addEventListener('DOMContentLoaded', _chkTick);
+document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'visible') _chkTick(); });
 function showDTab(pid, tab) {
   var wrap = document.getElementById('detail-' + pid);
   if (!wrap) return;
