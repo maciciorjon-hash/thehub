@@ -192,7 +192,7 @@
       { id: 'graph', label: 'Graph', sel: tabSel('graph'), go: tabGo('graph'), needs: 'data',
         lead: 'The figure, made like a Prism graph: grouped **bars** when a compound has fewer than four concentrations, **curves** when it has more — both drawn from the readings in Results.',
         do: ['Click anything on the chart to edit it. **Drag** the titles and the legend; they **snap** to each other, to the plot and to the middle of the figure (hold **Alt** to move freely, **arrow keys** nudge, ⌘Z undoes).',
-          '**Data** lists every replicate: click one to **leave it out** of the figure — the mean, the error bar and the fit are made again without it. (This changes the figure only, not Results.)',
+          '**Data** lists every replicate of the compounds you chose (a tick beside each hides or shows it): click one to **leave it out** of the figure — the mean, the error bar and the fit are made again without it. (This changes the figure only, not Results.)',
           '**Colours** has palettes (Prism, colour-blind safe, pastel, one-hue, greys…) and a colour for each compound; **Style** has the error bars (SD, SEM, 95 % CI, range), bar width and gaps, markers and the legend; **Axes** has the ranges, ticks, labels and the reference line; **Page** the size of the figure.',
           'Export a **PNG at 300, 600 or 1200 dpi** (the file is tagged with its dpi), a **vector PDF**, or an SVG.'],
         ref: [['Auto · Bars · Curves', 'Auto chooses from the data. Force bars or curves with the switch above the chart.'],
