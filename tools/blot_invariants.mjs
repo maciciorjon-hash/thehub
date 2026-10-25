@@ -36,6 +36,14 @@
 //   BL21 the ribbon                    tabs, Format as a contextual tab, ids and labels kept, the Text group dimmed until a label is chosen
 //   BL22 fill the lane labels          10 µM ÷3 ×8 gives 10 µM … 4.6 nM; units carry; hostile inputs; apply and undo
 //   BL23 drop anywhere                 a picture dropped on the page fills the first empty panel (or adds one) and opens the crop
+//   BL24 ladders are the makers'        every ladder is the list its maker publishes (the lists are pinned here: an edit has to be made twice), in
+//        lists                          order, with its reference bands among its sizes; DNA says bp and groups thousands; an older, unverified
+//                                      ladder keeps its markers as custom sizes; custom sizes are cleaned
+//   BL25 a size from a height          markers on a known curve give back the size between them, exactly at each marker, never outside the first
+//                                      and last, never past a neighbour; fewer than two or out of order is said, not fitted
+//   BL26 snap to the band              a click near a band lands on its centre, a click far from any does not move, a faint ripple does not
+//                                      beat a real band, both polarities; Alt places exactly; the toggle is respected; a band holds one marker
+//   BL27 Measure                       a click reads the size, outside the markers is refused with the reason, Add as label makes a text shape
 //   BL12 layout                        escape, runtime and alignment audits on the figure and every dialog, 1440/1024/390,
 //                                      both themes
 //
@@ -749,6 +757,190 @@ if (run('BL23')) await guard('BL23', async () => {
   await p.context().close();
 });
 
+if (run('BL24')) await guard('BL24', async () => {
+  // Read from each maker's data sheet or product page on 2026-10-25. Not here, on purpose: SeeBlue Plus2 (its sizes depend on the gel and
+  // buffer system), Chameleon Duo and NEB's Color Prestained Broad Range (no band list in text), NEB 1 kb (its 500/517 pair is listed twice).
+  const LOCK = {
+    pageruler_plus: ['kDa', [250,130,100,70,55,35,25,15,10], [70,25,10]],
+    pageruler: ['kDa', [180,130,100,70,55,40,35,25,15,10], [70,10]],
+    spectra_br: ['kDa', [260,140,100,70,50,40,35,25,15,10], []],
+    spectra_hr: ['kDa', [300,250,180,130,100,70,50,40], []],
+    novex_sharp: ['kDa', [260,160,110,80,60,50,40,30,20,15,10,3.5], []],
+    precision_plus: ['kDa', [250,150,100,75,50,37,25,20,15,10], [75,25]],
+    precision_kaleido: ['kDa', [250,150,100,75,50,37,25,20,15,10], []],
+    precision_unstained: ['kDa', [250,150,100,75,50,37,25,20,15,10], [75,50,25]],
+    pageruler_unstained: ['kDa', [200,150,120,100,85,70,60,50,40,30,25,20,15,10], [50]],
+    pageruler_unstained_br: ['kDa', [250,150,100,70,50,40,30,20,15,10,5], [100,50,20]],
+    gr_1kb: ['bp', [10000,8000,6000,5000,4000,3500,3000,2500,2000,1500,1000,750,500,250], [6000,3000,1000]],
+    gr_1kb_plus: ['bp', [20000,10000,7000,5000,4000,3000,2000,1500,1000,700,500,400,300,200,75], [5000,1500,500]],
+    gr_100: ['bp', [1000,900,800,700,600,500,400,300,200,100], [500]],
+    gr_100_plus: ['bp', [3000,2000,1500,1200,1000,900,800,700,600,500,400,300,200,100], [1000,500]],
+    neb_1kb_plus: ['bp', [10002,8001,6001,5001,4001,3001,2017,1517,1200,1000,900,800,700,600,500,400,300,200,100], [3001,1000,500]],
+    neb_100: ['bp', [1517,1200,1000,900,800,700,600,500,400,300,200,100], [1000,500]],
+    neb_50: ['bp', [1350,916,766,700,650,600,550,500,450,400,350,300,250,200,150,100,50], [500,200]],
+    lambda_hind3: ['bp', [23130,9416,6557,4361,2322,2027,564,125], []]
+  };
+  const p = await open();
+  const r = await p.evaluate(() => { var o = {}; Object.keys(LADDERS).forEach(k => { var L = LADDERS[k]; o[k] = { unit: L.unit, type: L.type, k: L.k, ref: L.ref, grp: L.grp, mfr: !!L.mfr, cat: !!L.cat, note: typeof L.note === 'string' }; });
+    return { o: o, groups: MK_GROUPS, retired: ['chameleon', 'seeblue', 'neb_1kb'].map(k => !!LADDERS[k]) }; });
+  const ids = Object.keys(LOCK);
+  JSON.stringify(Object.keys(r.o).sort()) === JSON.stringify(ids.slice().sort()) ? ok() : bad('BL24', 'the ladders in the app and the pinned list differ: ' + Object.keys(r.o).filter(k => !LOCK[k]).concat(ids.filter(k => !r.o[k])).join(','));
+  for (const id of ids) {
+    const L = r.o[id], [unit, k, ref] = LOCK[id]; if (!L) continue;
+    JSON.stringify(L.k) === JSON.stringify(k) && L.unit === unit ? ok() : bad('BL24', `${id}: sizes differ from the maker's list: ${JSON.stringify(L.k)}`);
+    JSON.stringify(L.ref) === JSON.stringify(ref) ? ok() : bad('BL24', `${id}: reference bands differ: ${JSON.stringify(L.ref)}`);
+    L.k.every((v, i) => v > 0 && (i === 0 || v < L.k[i - 1])) && L.ref.every(v => L.k.indexOf(v) >= 0) && L.type === (unit === 'bp' ? 'dna' : 'protein') && r.groups.indexOf(L.grp) >= 0 && L.mfr && L.cat && L.note
+      ? ok() : bad('BL24', `${id}: not in order, a reference band is not a size, or a field is missing`);
+  }
+  r.retired.every(x => !x) ? ok() : bad('BL24', 'a ladder that was not read from a data sheet is back in the list');
+  // DNA reads in bp with thousands grouped; protein in kDa
+  await p.evaluate(GEL + `;(() => { var g = __gel([.5,.5,.5,.5,.5,.5,.5,.5,.5,.5,.5,.5]); var q = FIG.panels[0]; q.src = g; q.cropped = g; q.ladder = 'gr_1kb_plus'; q.marks = [{ k: 20000, y: .2 }, { k: 1500, y: .6 }]; save(); render(); })()`);
+  await sleep(500);
+  const d = await p.evaluate(() => ({ lbl: [...document.querySelectorAll('.panel-kda .mk-l')].map(e => e.textContent), dna: !!document.querySelector('.panel-kda.is-dna'), unit: mkUnit(FIG.panels[0]) }));
+  d.lbl.join('|') === '20,000|1,500' && d.dna && d.unit === 'bp' ? ok() : bad('BL24', 'a DNA ladder does not read in bp with thousands grouped: ' + JSON.stringify(d));
+  await p.evaluate(() => { openMarkers(0); }); await sleep(300);
+  const svg = await p.evaluate(() => [...document.querySelectorAll('.an-mk-lbl')].map(e => e.textContent).filter(Boolean));
+  svg.includes('20,000 bp') && svg.includes('1,500 bp') ? ok() : bad('BL24', 'the guides on the blot do not carry the unit: ' + svg.join('|'));
+  const chips = await p.evaluate(() => ({ n: document.querySelectorAll('#rb-format .mk-chip').length, ref: [...document.querySelectorAll('#rb-format .mk-chip.ref')].map(e => e.textContent), opt: [...document.querySelectorAll('#rb-format select option')].length }));
+  chips.n === 15 && chips.ref.join('|') === '5,000|1,500|500' && chips.opt > 18 ? ok() : bad('BL24', 'the chips or the list do not show the ladder: ' + JSON.stringify(chips));
+  // an older build listed Chameleon and SeeBlue from memory; a panel that used one keeps its markers as custom sizes
+  const mig = await p.evaluate(() => { var f = JSON.parse(JSON.stringify(FIG)); f.panels[0].ladder = 'chameleon'; f.panels[0].marks = [{ k: 260, y: .1 }, { k: 8, y: .8 }]; f.panels[0].shapes = []; migrateFig(f); var q = f.panels[0];
+    var h = JSON.parse(JSON.stringify(FIG)); h.panels[0].ladder = 'no_such'; migrateFig(h);
+    return { lad: q.ladder, cl: q.cl, marks: q.marks, junk: h.panels[0].ladder }; });
+  mig.lad === 'custom' && JSON.stringify(mig.cl) === '{"unit":"kDa","k":[260,8]}' && mig.marks.length === 2 && mig.marks[0].k === 260 && mig.junk == null ? ok() : bad('BL24', 'a retired or unknown ladder was not handled: ' + JSON.stringify(mig));
+  const cs = await p.evaluate(() => ({ a: mkParseSizes('x, 245; 180 180 -5 1e9 135,100 0 1,000'), bp: mkParseSizes('10,000 8,000 6,000 20000,10000 500', 'bp'), b: mkParseSizes(''), c: mkParseSizes(null), d: mkParseSizes(Array.from({ length: 60 }, (_, i) => i + 1).join(' ')).length }));
+  JSON.stringify(cs.a) === '[245,180,135,100,1]' && JSON.stringify(cs.bp) === '[20000,10000,8000,6000,500]' && cs.b.length === 0 && cs.c.length === 0 && cs.d === 40 ? ok() : bad('BL24', 'custom sizes are not cleaned: ' + JSON.stringify(cs));
+  // custom sizes typed in, then used for markers
+  await p.evaluate(() => { mkSetLadder('custom'); }); await sleep(300);
+  await p.evaluate(() => { var i = document.getElementById('mk-cl-k'); i.value = '245, 180, 135'; i.dispatchEvent(new Event('change', { bubbles: true })); }); await sleep(300);
+  const cu = await p.evaluate(() => ({ cl: FIG.panels[0].cl, chips: [...document.querySelectorAll('#rb-format .mk-chip')].map(e => e.textContent), next: MK.next }));
+  JSON.stringify(cu.cl) === '{"unit":"kDa","k":[245,180,135]}' && cu.chips.join('|') === '245|180|135' ? ok() : bad('BL24', 'custom sizes did not reach the chips: ' + JSON.stringify(cu));
+  p.errs.length ? bad('BL24', 'errors: ' + p.errs.join(' | ')) : ok();
+  await p.context().close();
+});
+
+if (run('BL25')) await guard('BL25', async () => {
+  const p = await open();
+  const r = await p.evaluate(() => {
+    var out = {}, rel = (a, b) => Math.abs(a - b) / b;
+    // a straight line in log10(size) against height: the answer must be the line, to rounding
+    var lin = [250, 130, 70, 25, 10].map((k, i) => ({ k: k, y: 0 })); var yl = i => 0.1 + 0.8 * (Math.log10(250) - Math.log10(lin[i].k)) / (Math.log10(250) - Math.log10(10)); lin.forEach((m, i) => m.y = yl(i));
+    var worst = 0; for (var t = 0.1; t <= 0.9; t += 0.013) { var want = Math.pow(10, Math.log10(250) - (t - 0.1) / 0.8 * (Math.log10(250) - Math.log10(10))); var e = mkEstimate(lin, t); worst = Math.max(worst, rel(e.v, want)); }
+    out.lin = worst;
+    // a sigmoid gel (what a real gel does): exact at each marker, between its two neighbours everywhere, whatever the input order
+    var sig = [250, 150, 100, 75, 50, 37, 25, 20, 15, 10].map((k, i) => ({ k: k, y: 0.08 + 0.84 * (1 / (1 + Math.exp(-(i - 4.5) / 2.2))) })); sig.forEach((m, i) => m.y = 0.08 + 0.84 * (i / 9) + 0.06 * Math.sin(i * 0.7) * (i > 0 && i < 9 ? 1 : 0));
+    var shuf = sig.slice().reverse(), at = 0, between = 0, n = 0;
+    sig.forEach(m => { var e = mkEstimate(shuf, m.y); if (rel(e.v, m.k) < 1e-9) at++; });
+    for (var y = sig[0].y; y <= sig[9].y; y += 0.0007) { var e2 = mkEstimate(shuf, y); n++; if (e2.v <= e2.hi * (1 + 1e-9) && e2.v >= e2.lo * (1 - 1e-9)) between++; }
+    out.at = at; out.between = between; out.n = n;
+    out.above = mkEstimate(sig, sig[0].y - 0.01); out.below = mkEstimate(sig, sig[9].y + 0.01);
+    out.one = mkEstimate([sig[0]], 0.2); out.none = mkEstimate([], 0.2);
+    out.order = mkEstimate([{ k: 100, y: .2 }, { k: 70, y: .4 }, { k: 80, y: .6 }], .3);
+    out.same = mkEstimate([{ k: 100, y: .2 }, { k: 70, y: .2 }], .2);
+    out.two = mkEstimate([{ k: 100, y: .2 }, { k: 10, y: .8 }], .5);
+    out.txt = [mkSizeText(47.3, 'kDa'), mkSizeText(8.44, 'kDa'), mkSizeText(1234, 'bp'), mkSizeText(147, 'kDa'), mkSizeText(9.96, 'kDa'), mkSizeText(23130, 'bp')];
+    out.msgs = [mkEstText(out.above, 'kDa'), mkEstText(out.below, 'bp'), mkEstText(out.order, 'kDa'), mkEstText(out.one, 'kDa'), mkEstText(out.none, 'kDa')];
+    return out; });
+  r.lin < 1e-9 ? ok() : bad('BL25', 'markers on a straight log line do not return the line (worst relative error ' + r.lin + ')');
+  r.at === 10 ? ok() : bad('BL25', `at a marker the estimate is not the marker's size (${r.at} of 10), or depends on the input order`);
+  r.between === r.n && r.n > 1000 ? ok() : bad('BL25', `between two markers the estimate leaves them (${r.n - r.between} of ${r.n} points)`);
+  r.above.err === 'out' && r.above.above && r.below.err === 'out' && !r.below.above ? ok() : bad('BL25', 'a height beyond the first or last marker is extrapolated: ' + JSON.stringify([r.above, r.below]));
+  r.one.err === 'need' && r.none.err === 'need' ? ok() : bad('BL25', 'fewer than two markers is fitted: ' + JSON.stringify([r.one, r.none]));
+  r.order.err === 'order' && r.same.err === 'order' ? ok() : bad('BL25', 'markers out of order, or at the same height, are fitted: ' + JSON.stringify([r.order, r.same]));
+  r.two.v > 31 && r.two.v < 32.7 ? ok() : bad('BL25', 'two markers are not joined by a straight line in log size: ' + r.two.v);
+  JSON.stringify(r.txt) === JSON.stringify(['47 kDa', '8.4 kDa', '1,200 bp', '150 kDa', '10 kDa', '23,000 bp']) ? ok() : bad('BL25', 'sizes are written to the wrong precision: ' + r.txt.join(' | '));
+  r.msgs[0] === 'Above the 250 marker: not extrapolated' && r.msgs[1] === 'Below the 10 marker: not extrapolated' && /out of order: 70 is above 80/.test(r.msgs[2]) && /second marker/.test(r.msgs[3]) && /markers first/.test(r.msgs[4]) ? ok() : bad('BL25', 'the reasons are not said: ' + r.msgs.join(' | '));
+  p.errs.length ? bad('BL25', 'errors: ' + p.errs.join(' | ')) : ok();
+  await p.context().close();
+});
+
+if (run('BL26')) await guard('BL26', async () => {
+  const p = await open();
+  const r = await p.evaluate(() => {
+    function img(w, h, bands, dark, noise) { var g = new Float32Array(w * h), s = 11; for (var y = 0; y < h; y++) for (var x = 0; x < w; x++) { var v = 0; bands.forEach(b => { v += b.a * Math.exp(-((y - b.y) * (y - b.y)) / (2 * (b.s || 3) * (b.s || 3))); }); s = (s * 16807) % 2147483647; var n = (s / 2147483647 - 0.5) * (noise == null ? 4 : noise); g[y * w + x] = dark ? Math.max(0, Math.min(255, 235 - v + n)) : Math.max(0, Math.min(255, 20 + v + n)); } return { g: g, w: w, h: h }; }
+    var B = [{ y: 100, a: 120 }, { y: 200.4, a: 120 }, { y: 300, a: 120 }], o = {};
+    var G = img(100, 400, B, true), s1 = mkSnapY(G, .5, 207 / 400, true); o.near = [s1.snapped, s1.y * 400 - 0.5];
+    var s2 = mkSnapY(G, .5, 193 / 400, true); o.nearUp = [s2.snapped, s2.y * 400 - 0.5];
+    var s3 = mkSnapY(G, .5, 150 / 400, true); o.far = [s3.snapped, s3.y * 400];
+    var L = img(100, 400, B, false); var s4 = mkSnapY(L, .5, 107 / 400, false); o.light = [s4.snapped, s4.y * 400 - 0.5];
+    var F = img(100, 400, [{ y: 200, a: 1.2, s: 3 }], true, 3); var s5 = mkSnapY(F, .5, 205 / 400, true); o.ripple = s5.snapped;
+    var W = img(100, 400, [{ y: 195, a: 10 }, { y: 205, a: 120 }], true), s6 = mkSnapY(W, .5, 197 / 400, true); o.weak = [s6.snapped, s6.y * 400 - 0.5];
+    var W2 = img(100, 400, [{ y: 195, a: 70 }, { y: 205, a: 120 }], true), s7 = mkSnapY(W2, .5, 196 / 400, true); o.near2 = [s7.snapped, s7.y * 400 - 0.5];
+    var edge = mkSnapY(G, 0, 100 / 400, true), edge2 = mkSnapY(G, 1, 100 / 400, true); o.edge = [edge.snapped, edge2.snapped];
+    var tiny = mkSnapY({ g: new Float32Array(4), w: 2, h: 2 }, .5, .5, true); o.tiny = tiny.snapped;
+    return o; });
+  r.near[0] && Math.abs(r.near[1] - 200.4) < 0.5 && r.nearUp[0] && Math.abs(r.nearUp[1] - 200.4) < 0.5 ? ok() : bad('BL26', 'a click near a band did not land on its centre: ' + JSON.stringify([r.near, r.nearUp]));
+  !r.far[0] && Math.abs(r.far[1] - 150) < 1e-6 ? ok() : bad('BL26', 'a click far from a band moved: ' + JSON.stringify(r.far));
+  r.light[0] && Math.abs(r.light[1] - 100) < 0.5 ? ok() : bad('BL26', 'a light band on a dark film was not found: ' + JSON.stringify(r.light));
+  !r.ripple ? ok() : bad('BL26', 'a faint ripple was taken for a band');
+  r.weak[0] && Math.abs(r.weak[1] - 205) < 0.7 ? ok() : bad('BL26', 'a faint neighbour won over a strong band: ' + JSON.stringify(r.weak));
+  r.near2[0] && Math.abs(r.near2[1] - 195) < 1 ? ok() : bad('BL26', 'a real band nearer the click lost to a stronger one further away: ' + JSON.stringify(r.near2));
+  r.edge.every(x => typeof x === 'boolean') && r.tiny === false ? ok() : bad('BL26', 'the picture edge or a tiny picture is not handled');
+  // in the page: the picture's own bands (one dark band across at 50 % of the height)
+  await p.evaluate(GEL + `;(() => { var g = __gel([.8,.8,.8,.8,.8,.8,.8,.8,.8,.8,.8,.8]); var q = FIG.panels[0]; q.src = g; q.cropped = g; q.ladder = 'pageruler_plus'; q.marks = []; save(); render(); openMarkers(0); })()`);
+  await sleep(500);
+  const box = async () => p.locator('.panel-blot .blot-img').first().boundingBox();
+  let b = await box(); const lane = b.x + b.width * (0.5 / 12);
+  await p.mouse.click(lane, b.y + b.height * 0.53); b = await box();
+  let m = await p.evaluate(() => FIG.panels[0].marks.map(x => x.y));
+  m.length === 1 && Math.abs(m[0] - 0.5) < 0.012 ? ok() : bad('BL26', 'a click at 53 % with a band at 50 % did not land on the band: ' + JSON.stringify(m));
+  await p.keyboard.down('Alt'); await p.mouse.click(lane, b.y + b.height * 0.53); await p.keyboard.up('Alt'); b = await box();
+  m = await p.evaluate(() => FIG.panels[0].marks.map(x => x.y));
+  m.length === 2 && Math.abs(m[1] - 0.53) < 0.006 ? ok() : bad('BL26', 'Alt did not place exactly where clicked (a band is 3 % away): ' + JSON.stringify(m));
+  await p.evaluate(() => { mkSnapSet(false); mkPick(2); }); b = await box();
+  await p.mouse.click(lane, b.y + b.height * 0.54);
+  m = await p.evaluate(() => FIG.panels[0].marks.map(x => x.y));
+  m.length === 3 && Math.abs(m[2] - 0.54) < 0.01 ? ok() : bad('BL26', 'with Snap to band off the click was moved: ' + JSON.stringify(m));
+  await p.evaluate(() => { mkSnapSet(true); mkPick(3); }); b = await box();
+  await p.mouse.click(lane, b.y + b.height * 0.52);   // the band the first marker is already on
+  const twin = await p.evaluate(() => ({ n: FIG.panels[0].marks.length, toast: (document.querySelector('.toast, #toast') || {}).textContent || '' }));
+  twin.n === 3 && /already on that band/.test(twin.toast) ? ok() : bad('BL26', 'a second size was placed on a band that has a marker: ' + JSON.stringify(twin));
+  const guide = await p.evaluate(() => { mkSnapSet(true); return mkSnapClick(0, 0.04, 0.53, null); });
+  guide.snapped && Math.abs(guide.y - 0.5) < 0.012 ? ok() : bad('BL26', 'the hover guide does not snap: ' + JSON.stringify(guide));
+  p.errs.length ? bad('BL26', 'errors: ' + p.errs.join(' | ')) : ok();
+  await p.context().close();
+});
+
+if (run('BL27')) await guard('BL27', async () => {
+  const p = await open();
+  await p.evaluate(GEL + `;(() => { var g = __gel([.8,.8,.8,.8,.8,.8,.8,.8,.8,.8,.8,.8]); var q = FIG.panels[0]; q.src = g; q.cropped = g; q.prot = 'BRD4'; q.ladder = 'pageruler_plus';
+    q.marks = [{ k: 250, y: .1 }, { k: 100, y: .3 }, { k: 70, y: .5 }, { k: 10, y: .9 }]; save(); render(); })()`);
+  await sleep(400);
+  await p.evaluate(() => { var f = FIG.panels[0]; f.marks = [f.marks[0]]; anMsStart(); });
+  (await p.evaluate(() => AN.tool)) !== 'ms' ? ok() : bad('BL27', 'Measure opened with one marker');
+  await p.evaluate(() => { FIG.panels[0].marks = [{ k: 250, y: .1 }, { k: 100, y: .3 }, { k: 70, y: .5 }, { k: 10, y: .9 }]; render(); anMsStart(); }); await sleep(300);
+  const st = await p.evaluate(() => ({ tool: AN.tool, tab: document.getElementById('rb-tab-format').textContent, shown: !document.getElementById('rb-tab-format').hidden }));
+  st.tool === 'ms' && st.tab === 'Measure' && st.shown ? ok() : bad('BL27', 'Measure did not open its tab: ' + JSON.stringify(st));
+  const b = await p.locator('.panel-blot .blot-img').first().boundingBox(), x = b.x + b.width * 0.5;
+  await p.keyboard.down('Alt'); await p.mouse.move(x, b.y + b.height * 0.4);
+  const hov = await p.evaluate(() => { var g = document.getElementById('an-mkg-0'); return g && g.style.display !== 'none' && g.querySelector('text').textContent; });
+  await p.mouse.click(x, b.y + b.height * 0.4); await p.keyboard.up('Alt');
+  const r1 = await p.evaluate(() => ({ pin: MK.pin && MK.pin.text, want: mkEstText(mkEstimate(FIG.panels[0].marks, MK.pin.y), 'kDa'), y: MK.pin.y, res: (document.querySelector('#rb-format .mk-res') || {}).textContent, btn: !!document.querySelector('#rb-format button[onclick="anMsLabel()"]') }));
+  Math.abs(r1.y - 0.4) < 0.01 && r1.pin === r1.want && /^≈ \d+ kDa$/.test(r1.pin) && r1.res === r1.pin && r1.btn ? ok() : bad('BL27', 'a click did not read a size: ' + JSON.stringify(r1));
+  hov === r1.pin ? ok() : bad('BL27', 'the hover guide does not say the size before the click: ' + hov + ' vs ' + r1.pin);
+  const v = parseFloat(r1.pin.replace(/[^\d.]/g, '')); v > 70 && v < 100 ? ok() : bad('BL27', 'a band between the 100 and 70 markers reads ' + v);
+  await p.keyboard.down('Alt'); await p.mouse.click(x, b.y + b.height * 0.04); await p.keyboard.up('Alt');
+  const r2 = await p.evaluate(() => ({ pin: MK.pin.text, err: MK.pin.e.err, btn: !!document.querySelector('#rb-format button[onclick="anMsLabel()"]') }));
+  r2.err === 'out' && /not extrapolated/.test(r2.pin) && !r2.btn ? ok() : bad('BL27', 'a click above the markers was answered: ' + JSON.stringify(r2));
+  await p.keyboard.down('Alt'); await p.mouse.click(x, b.y + b.height * 0.4); await p.keyboard.up('Alt');
+  const n0 = await p.evaluate(() => (FIG.panels[0].shapes || []).length);
+  await p.evaluate(() => anMsLabel());
+  const r3 = await p.evaluate(() => { var s = FIG.panels[0].shapes, t = s[s.length - 1]; return { n: s.length, t: t.t, s: t.s, y: t.y, tool: AN.tool, sel: AN.ids.length, undo: UNDO.length }; });
+  r3.n === n0 + 1 && r3.t === 'text' && r3.s === r1.pin && Math.abs(r3.y - 0.4) < 0.01 && r3.tool === 'select' && r3.sel === 1 ? ok() : bad('BL27', 'Add as label did not make a text shape beside the band: ' + JSON.stringify(r3));
+  await p.evaluate(() => blotUndo()); await sleep(200);
+  (await p.evaluate(() => (FIG.panels[0].shapes || []).length)) === n0 ? ok() : bad('BL27', 'the label is not one undo step');
+  // DNA: the unit follows the ladder
+  await p.evaluate(() => { var q = FIG.panels[0]; q.ladder = 'gr_1kb'; q.marks = [{ k: 10000, y: .1 }, { k: 3000, y: .4 }, { k: 250, y: .9 }]; render(); anMsStart(); }); await sleep(300);
+  const b2 = await p.locator('.panel-blot .blot-img').first().boundingBox();
+  await p.keyboard.down('Alt'); await p.mouse.click(b2.x + b2.width * 0.5, b2.y + b2.height * 0.25); await p.keyboard.up('Alt');
+  const r4 = await p.evaluate(() => MK.pin.text);
+  /^≈ [\d,]+ bp$/.test(r4) ? ok() : bad('BL27', 'a DNA gel is measured in kDa: ' + r4);
+  await p.evaluate(() => mkDone());
+  (await p.evaluate(() => AN.tool)) === 'select' ? ok() : bad('BL27', 'Done did not leave Measure');
+  p.errs.length ? bad('BL27', 'errors: ' + p.errs.join(' | ')) : ok();
+  await p.context().close();
+});
+
 if (run('BL12')) await guard('BL12', async () => {
   const ESC = fs.readFileSync(path.join(ROOT, 'tools/audit_escape.js'), 'utf8').replace(/window\.__escapeAudit\(\);\s*$/, '');
   const RT = fs.readFileSync(path.join(ROOT, 'tools/audit_runtime.js'), 'utf8'), AL = fs.readFileSync(path.join(ROOT, 'tools/audit_align.js'), 'utf8');
@@ -756,7 +948,10 @@ if (run('BL12')) await guard('BL12', async () => {
     const p = await open({ w, h, theme });
     await p.evaluate(GEL + `;(() => { var g = __gel([.2,.4,.6,.8,.2,.4,.6,.8,.2,.4,.6,.8]); FIG.panels[0].src = g; FIG.panels[0].cropped = g; FIG.panels[0].prot = 'BRD4'; FIG.panels[0].marks = [{ k: 70, y: .3 }, { k: 55, y: .7 }]; FIG.panels[0].shapes = anClean([{ t: 'line', x1: 1.1, y1: .5, x2: 1, y2: .5, head: 'end' }, { t: 'rect', x: .3, y: .4, w: .1, h: .3, fill: '#2d9462', fo: .2 }, { t: 'text', x: .7, y: .3, s: 'Ub-smear' }]); FIG.lanes = FIG.lanes.map((x, i) => 'Lane ' + (i + 1)); save(); render(); })()`);
     const screens = [['figure', null], ['crop', () => openCrop(0)], ['quantify', () => openQuant(0)], ['markers in place', () => openMarkers(0)], ['format', () => { anTool('select'); anSelect([FIG.panels[0].shapes[1].id]); }],
-      ['format of an arrow', () => anSelect([FIG.panels[0].shapes[0].id])], ['insert tab', () => { anSelect([]); rbTab('insert'); }], ['layout tab', () => rbTab('layout')], ['fill series', () => { rbTab('home'); srOpen(); }]];
+      ['format of an arrow', () => anSelect([FIG.panels[0].shapes[0].id])], ['insert tab', () => { anSelect([]); rbTab('insert'); }], ['layout tab', () => rbTab('layout')], ['fill series', () => { rbTab('home'); srOpen(); }],
+      ['markers, DNA ladder', () => { var q = FIG.panels[0]; q.ladder = 'gr_1kb_plus'; q.marks = [{ k: 20000, y: .2 }, { k: 1500, y: .6 }]; render(); openMarkers(0); }],
+      ['markers, custom sizes', () => { mkSetLadder('custom'); FIG.panels[0].cl = { unit: 'kDa', k: [245, 180, 135, 100, 75, 63, 48, 35, 25, 20, 17, 11] }; render(); openMarkers(0); }],
+      ['measure', () => { var q = FIG.panels[0]; q.ladder = 'pageruler_plus'; q.cl = null; q.marks = [{ k: 250, y: .1 }, { k: 100, y: .3 }, { k: 10, y: .9 }]; render(); anMsStart(); MK.pin = { pi: 0, y: .5, e: mkEstimate(q.marks, .5), text: mkEstText(mkEstimate(q.marks, .5), 'kDa') }; anFormat(); anDraw(0); }]];
     for (const [name, fn] of screens) {
       if (fn) { await p.evaluate(fn); await sleep(500); }
       const f = [].concat(
