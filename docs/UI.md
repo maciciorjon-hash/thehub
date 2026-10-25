@@ -26,12 +26,12 @@ Every app declares the same names. Two scales, no loose values.
   --border:rgba(0,0,0,0.07); --border2:rgba(0,0,0,0.13);
   --text:#1a1d2e; --text2:#4f5470; --text3:#5f647e;     /* text3 is 4.5:1 or better on surface, bg, surface2 (2026-10 audit; it was 3.85) */
 
-  --accent:#5e87c5;                      /* ONE blue, every app, everything interactive */
+  --accent:#4b76b5;                      /* ONE blue, every app, everything interactive; white on it is 4.6:1 (it was #5e87c5, 3.65:1, until 2026-10-25) */
   --on-accent:#ffffff;                   /* ink on any solid fill (accent, good, warn, danger): white here, near-black in dark */
-  --accent-dim:rgba(94,135,197,0.12); --accent-soft:rgba(94,135,197,0.22);
+  --accent-dim:rgba(75,118,181,0.12); --accent-soft:rgba(75,118,181,0.22);
   --brand:<the app's own colour>;        /* its logo box and its card tint — nothing else */
 
-  --good:#2d9462; --warn:#c47818; --danger:#c04040;
+  --good:#238150; --warn:#a8650f; --danger:#c04040;
   --accent-ink:#36609f; --good-ink:#176c42; --warn-ink:#8a4f08;   /* accent, good, warn AS TEXT (4.5:1 on white and on their 16% tints); fills keep the plain tokens */
   --paper:#fbfaf6;                       /* Labbook only: a Notebook page. Warm, not --surface */
 
@@ -93,9 +93,7 @@ second.**
   a "done" mark: in the dark theme the accent is `#8aaee0` and the state colours are light pastels, so white on them was
   2.3:1 (1.7 on the green, 1.9 on the amber). One dark ink serves all four fills. `tools/check_css.py` fails on a literal
   white written beside one of those backgrounds (rules and inline styles built in JS), and `tools/audit_runtime.js` measures
-  every text run laid on a fill as the app resolves it: 4.5:1, or 3:1 for large text. **Held, not fixed:** in the light
-  theme white on `#5e87c5` is 3.65:1 (3.8 on the green, 3.5 on the amber), so the sweep holds light at 3:1 — darkening the
-  blue to about `#4b76b5` would give 4.6:1, and that is a decision about the Hub's colour, not a bug.
+  every text run laid on a fill as the app resolves it: 4.5:1, or 3:1 for large text. **Fixed 2026-10-25:** white on the light fills is now 4.6:1 on `--accent #4b76b5`, 4.8:1 on `--good #238150` and 4.6:1 on `--warn #a8650f` (they were 3.65 / 3.8 / 3.5, held at 3:1); the sweep holds light at 4.5:1 like dark.
 - Semantic colour is `--good` / `--warn` / `--danger`, never a raw hex. The exception is a
   **print stylesheet** (`#print-root`, `@media print`): paper has one theme, so fixed values there
   are correct and theme tokens would be wrong.

@@ -49,8 +49,8 @@ const JSON_OUT= args.json ? String(args.json) : null;
 const VERBOSE = !!args.verbose;
 const ESCAPE  = !!args.escape;
 // ink on a solid fill (the primary button, the active pill): 4.5:1 in the dark theme, where it was 2.3:1 and is fixed (--on-accent). The light
-// theme's white on #5e87c5 is 3.65:1 — a palette decision (docs/UI.md), so it is held at 3:1 until the blue is chosen.
-const ACCENT_INK = { dark: 4.5, light: 3 };
+// theme's white on #4b76b5 is 4.6:1 (the blue was darkened from #5e87c5, 3.65:1, on 2026-10-25), on --good #238150 4.8, on --warn #a8650f 4.6.
+const ACCENT_INK = { dark: 4.5, light: 4.5 };
 // scrollers that hold a data table or a figure larger than its box on purpose (a table whose box is its only child is allowed by the audit itself)
 const ESC_OPTS = JSON.stringify({ allowScroll: '.results-tbl-scroll,.hits-scroll,.fig-shell,.crop-area,.eg-tblwrap,.eg-scroll,.sq-scroll' });
 const DESKTOP = !!args.desktop;
