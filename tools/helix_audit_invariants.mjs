@@ -186,6 +186,8 @@ if (run('HX8')) await guard('HX8', async () => {
   const toast = await p.evaluate(() => document.getElementById('helix-toast').textContent);
   if (r.unl.length) bad('HX8', 'fields with no label: ' + r.unl.join(', ')); else ok();
   if (r.n !== 64 || r.badCell) bad('HX8', `${r.n} codon cells, ${r.badCell} not buttons or unnamed`); else ok();
+  const grey = await p.evaluate(() => [...document.querySelectorAll('.codon-cell')].filter(c => getComputedStyle(c).backgroundColor === 'rgba(0, 0, 0, 0)').length + [...document.querySelectorAll('.codon-legend-item')].filter(c => getComputedStyle(c).backgroundColor === 'rgba(0, 0, 0, 0)').length);
+  if (grey) bad('HX8', `${grey} codon cells / legend items have no class colour (the .aa-* rules are gone)`); else ok();
   if (r.tips) bad('HX8', `${r.tips} ⓘ marks are not keyboard stops`); else ok();
   if (!/Copied|did not allow/.test(toast)) bad('HX8', `Copy gives no answer: "${toast}"`); else ok();
 
