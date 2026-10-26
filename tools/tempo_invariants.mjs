@@ -20,6 +20,7 @@
 // K19 a GloMax time-course file is read as it comes: the reader's own clock, A:1 labels, several readouts as several plates, missing never 0; a range of wells is parsed or refused
 // K20 Setup (Reads · Time · Controls · Compounds · Review): a layout-less file opens it at Controls, the controls and the series land on the plate, the fit runs once at the end, ⌘Z undoes, nothing leaves the card
 // K21 normalise X against Y: wells read against control wells of their own (one vehicle per condition on a plate); the rest keep the plate's vehicle; a rule with no usable control leaves its wells without a curve, never on another vehicle; Plate tab and Setup both make, show and remove rules, ⌘Z covers them
+// K22 raw kinetics: Curves › Raw (RLU) draws the reads as written (any plate, a rising protein level too): background, fold over T0, vehicle, single wells; the plate with a number in every well and a slider over the reads
 // K15 Analysis settings is four tabs of aligned rows: every control has a caption, sits in one column on its tab, Apply stays in view whichever tab is open, and Apply reads the tabs that are hidden
 import { chromium } from 'playwright';
 import fs from 'fs';
@@ -716,6 +717,61 @@ try {
     check('K21 Setup › Controls takes a rule typed as ranges, refuses a bad range, and removes one', r.setup && r.badWarn && r.setupDel, JSON.stringify([r.setup, r.badWarn, r.setupDel]));
     check('K21 no page error through any of it', e7.length === 0, e7.slice(0, 2).join(' | '));
     await c7.close();
+  }
+
+  /* ───── K22 raw kinetics: the reads as the reader wrote them, for any plate ───── */
+  {
+    const c8 = await browser.newContext({ viewport: { width: 1440, height: 1100 } }), pg = await c8.newPage(), e8 = [];
+    pg.on('pageerror', e => e8.push(e.message));
+    await pg.route(/^https?:/, r => r.abort()); await pg.addInitScript(() => { try { localStorage.clear(); } catch (e) {} });
+    await pg.goto('file://' + FILE); await pg.waitForFunction(() => typeof tpLoadExample === 'function');
+    const r = await pg.evaluate(async () => {
+      const o = {}, wait = ms => new Promise(r => setTimeout(r, ms)); await tpLoadExample(); const p = tpPlate(), ids = Object.keys(p.wells);
+      // a protein level that RISES, 4-fold, on a plate of two conditions and a vehicle; background 100 RLU
+      const dose = ids.filter(i => tpRole(p.wells[i]) === 'dose'), veh = ids.filter(i => tpRole(p.wells[i]) === 'veh'), bk = ids.filter(i => tpRole(p.wells[i]) === 'bkg');
+      p.times.forEach((t, k) => { ids.forEach(id => { const w = p.wells[id]; if (!w.raw) return; w.raw[k] = tpRole(w) === 'bkg' ? 100 : 1000 * (1 + 3 * (1 - Math.exp(-k / 40))) * (tpRole(w) === 'veh' ? 1 : 1 + w.conc / 4000); }); });
+      TP.ui.raw = { y: 'rlu', bkg: false, veh: true, wells: false, by: 'auto', k: null };
+      tpTab('curves'); tpSub('raw'); await wait(300);
+      o.opens = !!document.getElementById('tp-rawchart') && /Raw kinetics/.test(document.getElementById('pane-curves').textContent) && TP.sel.sub === 'raw';
+      let M = tpRawModel(p, tpRes(p)); const g = M.groups.find(x => x.kind === 'dose'), k = 100;
+      const want = g.ids.reduce((a, id) => a + p.wells[id].raw[k], 0) / g.ids.length; o.mean = Math.abs(g.mean[k] - want) < 1e-9 && want > 3000; o.rising = g.mean[M.N - 1] > 3 * g.mean[M.k0];
+      o.hasVeh = M.groups.some(x => x.kind === 'veh') && M.groups.some(x => x.kind === 'bkg');
+      // background subtracted: exactly the readings minus 100
+      TP.ui.raw.bkg = true; M = tpRawModel(p, tpRes(p)); const g2 = M.groups.find(x => x.key === g.key); o.bkg = Math.abs(g2.mean[k] - (want - 100)) < 1e-9 && !M.groups.some(x => x.kind === 'bkg');
+      // fold over T0: each well over its own first read (after time zero), so the lines start at 1
+      TP.ui.raw.y = 'fold'; M = tpRawModel(p, tpRes(p)); const g3 = M.groups.find(x => x.key === g.key), id0 = g3.ids[0], b0 = p.wells[id0].raw[M.k0] - 100; o.fold = Math.abs(g3.perWell[0][k] - (p.wells[id0].raw[k] - 100) / b0) < 1e-9 && Math.abs(g3.mean[M.k0] - 1) < 1e-9;
+      TP.ui.raw.y = 'rlu'; TP.ui.raw.bkg = false;
+      // the vehicle can be put away; the options redraw
+      TP.ui.raw.veh = false; M = tpRawModel(p, tpRes(p)); o.noVeh = !M.groups.some(x => x.kind === 'veh'); TP.ui.raw.veh = true;
+      // a rule's own vehicle is its own line
+      p.norm = [{ x: dose.slice(0, 8), y: veh.slice(0, 2) }]; M = tpRawModel(p, tpRes(p)); o.rule = M.groups.some(x => x.key === 'Vehicle · rule 1' && x.ids.length === 2); delete p.norm;
+      // every line is a path with the real numbers; the single wells add one each
+      tpRenderCurves(); const nLines = document.querySelectorAll('#tp-rawchart path.tr').length; o.lines = nLines === tpRawModel(p, tpRes(p)).groups.length && nLines > 5;
+      tpRawSet('wells', true); o.wells = document.querySelectorAll('#tp-rawchart svg path').length > nLines + 30; tpRawSet('wells', false);
+      // the plate: the number in every well, the slider moves it, and the marker on the chart with it
+      const cell = () => document.querySelector('#tp-rawgrid .w[data-tip^="A3 "] .rv'); const before = cell().textContent; const kb = tpRawOpts().k;
+      const sl = document.getElementById('tp-rawk'); sl.value = '170'; sl.dispatchEvent(new Event('input', { bubbles: true }));
+      const after = cell().textContent; o.slider = before !== after && /k$|M$/.test(after) && tpRawOpts().k === 170 && /Read 171 of /.test(document.getElementById('tp-rawlbl').textContent); o.marker = Math.abs(+document.getElementById('tp-rawmk').getAttribute('x1') - +document.querySelector('#tp-rawchart path.tr').getAttribute('d').split(/[ML]/).pop().split(' ')[0]) < 40;
+      o.cells = document.querySelectorAll('#tp-rawgrid .w .rv').length >= 80;
+      o.fmt = tpFmtRLU(12345) === '12.3k' && tpFmtRLU(950) === '950' && tpFmtRLU(2.5e6) === '2.5M' && tpFmtRLU(null) === '';
+      // the file: the chart saves as a figure like the others
+      o.svg = /data-chart="raw"/.test(tpChartSVGLight() || '');
+      // a plate with no layout at all (every well says nothing): the Curves tab is not an empty state, only this view is on offer, and it groups by row
+      ids.forEach(id => { const w = p.wells[id]; if (w.kind === 'sample') { w.role = undefined; delete w.role; w.compound = ''; w.target = ''; w.conc = null; } }); p._mx = null; TP.sel.sub = 'kin'; await tpRunPlate(p); tpTab('plate'); tpTab('curves'); await wait(300);
+      o.noCmp = !!document.getElementById('tp-rawchart') && /No compound wells yet/.test(document.getElementById('pane-curves').textContent) && [...document.querySelectorAll('#pane-curves .segw')[0].querySelectorAll('button')].filter(b => b.disabled).length === 7;
+      M = tpRawModel(p, tpRes(p)); o.byRow = M.by === 'row' && M.groups.length === 8 && M.groups.every(x => x.kind === 'row');
+      // left-out wells are not drawn
+      tpRawSet('by', 'well'); const n1 = tpRawModel(p, tpRes(p)).groups.length; tpEx(p).wells = ['A1', 'A2']; const n2 = tpRawModel(p, tpRes(p)).groups.length; o.leftOut = n2 === n1 - 2; tpEx(p).wells = [];
+      return o;
+    });
+    check('K22 Curves › Raw (RLU) draws every line from the reads as written: the mean of its wells at a read, a rising trace as it rises, vehicle and background as lines of their own', r.opens && r.mean && r.rising && r.hasVeh, JSON.stringify(r));
+    check('K22 Subtract background removes exactly the background wells\' mean (and their line); Fold over T0 divides each well by its own first read so every line starts at 1; the vehicle can be put away', r.bkg && r.fold && r.noVeh, JSON.stringify([r.bkg, r.fold, r.noVeh]));
+    check('K22 a rule\'s control wells are a line of their own, each line is a path of the chart, single wells add one each', r.rule && r.lines && r.wells, JSON.stringify([r.rule, r.lines, r.wells]));
+    check('K22 the plate under the chart prints the number of every well (12.3k, 2.5M), the slider moves the read in the plate, the label and the chart marker', r.slider && r.cells && r.marker && r.fmt, JSON.stringify([r.slider, r.cells, r.marker, r.fmt]));
+    check('K22 the chart saves as a figure like the others', r.svg, '');
+    check('K22 a plate with no compound wells opens on this view (not an empty state), says why the others are off, groups by row, and a left-out well is not drawn', r.noCmp && r.byRow && r.leftOut, JSON.stringify([r.noCmp, r.byRow, r.leftOut]));
+    check('K22 no page error through any of it', e8.length === 0, e8.slice(0, 2).join(' | '));
+    await c8.close();
   }
 
   /* ───── the real ProNect files, when they are here ───── */
