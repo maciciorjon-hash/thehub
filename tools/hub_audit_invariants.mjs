@@ -19,6 +19,8 @@
 //   H13 the typeface travels      dist/index.html has no Google Fonts link, fonts/plex.css is beside it, and with Google blocked the shell loads IBM Plex
 //   H12 an access reset resets          an unlock stored under an older ACCESS_EPOCH is dropped, the old words open nothing, the discover box says who to ask
 //                                  for a code, and an unlock made now survives a reload
+//   H14 a calculation, answered  The search, signed in or not, answers "10 mM to 50 µM in 1 mL" with the pipetting as its first row, Enter copies it as text,
+//                                  an ordinary query gets no such row, and the empty box says it can (the arithmetic itself is tools/calckit_invariants.mjs)
 //
 //   node tools/hub_audit_invariants.mjs [--shell=PATH] [--only=H2]      exit 1 on any finding
 import { chromium } from 'playwright';
@@ -322,6 +324,28 @@ if (run('H10')) {
     const v = await open({ theme, mode: 'visitor' }); const vs = await v.page.evaluate(scan);
     if (vs.length) bad('H10', 'visitor ' + theme + ': ' + vs.join(' | ')); else ok();
     await v.context.close();
+  }
+}
+
+if (run('H14')) {
+  for (const mode of ['visitor', 'admin']) {
+    const { context, page, errs } = await open({ mode, init: "window.__copied=[];try{Object.defineProperty(navigator,'clipboard',{value:{writeText:function(s){window.__copied.push(s);return Promise.resolve();}},configurable:true});}catch(e){}" });
+    await page.waitForFunction(() => window.hubSpot && typeof CalcKit === 'object', null, { timeout: 8000 }).catch(() => {});
+    const q = async v => { await page.evaluate(v => { window.hubSpot.open(); const i = document.getElementById('hub-spot-in'); i.value = v; i.dispatchEvent(new Event('input', { bubbles: true })); }, v); await settle(page, 200); };
+    await page.evaluate(() => { window.hubSpot.open(); }); await settle(page, 150);
+    const empty = await page.evaluate(() => document.getElementById('hub-spot-hint').textContent);
+    if (!/calculates/.test(empty)) bad('H14', `${mode}: the empty search does not say it can calculate: ${empty.slice(0, 80)}`); else ok();
+    await q('10 mM to 50 uM in 1 mL');
+    const a = await page.evaluate(() => { const f = document.querySelector('#hub-spot-res .hspot-i'); return { card: !!(f && f.querySelector('.cq-card')), txt: f ? f.textContent : '', sel: f && f.getAttribute('aria-selected') }; });
+    if (!a.card || a.sel !== 'true' || !/995 µL/.test(a.txt)) bad('H14', `${mode}: the first row is not the selected card: ${JSON.stringify(a)}`); else ok();
+    await page.keyboard.press('Enter'); await settle(page, 250);
+    const c = await page.evaluate(() => ({ copied: window.__copied.slice(), open: document.getElementById('hub-spot-back').classList.contains('open'), toast: (document.getElementById('hub-toast') || {}).textContent || '' }));
+    if (c.copied.length !== 1 || !/^Take 5 µL stock \+ 995 µL diluent/.test(c.copied[0]) || c.open || !/Copied/.test(c.toast)) bad('H14', `${mode}: Enter did not copy the answer, close the box and say so: ${JSON.stringify(c)}`); else ok();
+    await q('EX41 dose response');
+    const n = await page.evaluate(() => document.querySelectorAll('#hub-spot-res .cq-card').length);
+    if (n) bad('H14', `${mode}: an ordinary query got a calculation row`); else ok();
+    const own = errs.filter(e => !/sandbox/.test(e)); if (own.length) bad('H14', `${mode}: ${own[0]}`);
+    await context.close();
   }
 }
 
