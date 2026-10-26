@@ -193,6 +193,10 @@
 //                            another label; the card, the PNG, the print table and a copied layout all carry it. (the plate map could not say what a column was)
 //   B53 time course       Time Course is Kinetic degradation with the compound left open: type KD (Tempo still takes it), code tag TC, the same steps, waits and measures,
 //                            no compound of the lab's own named in the prose, and an experiment from it keeps the 900 min / 5 min run and its plate The kinetic assay medium is named in full (CO2-independent medium + 10% FBS) in every step of KD, Time Course and the SPARK NS preset.
+//   B57 old words, new     The suspension-and-seed step of a run made before the split ("… + seed": prose with 90 µL typed in, "the labelling is covalent…", a list of what
+//       words, same numbers  was done) says what its OWN calculator says — in a run that is done as in one not started (that is split into the two steps), in a copy of a
+//                            finished run, and in the next run made from the preset: a stored preset the app itself rewrote (tick lists flattened) is not "edited". The old read's
+//                            "Controls to include" list goes too. A step with the lab's own words, a tick or a note, a calculator input and a done tick: untouched.
 //   B56 named reagents   No step says "in medium", "assay medium", "transfection medium" or a bare "µL buffer": the medium / buffer is named (the cell line's own culture medium, ViaScript buffer, Nano-Glo HiBiT Lytic Buffer, CO2-independent medium + 10% FBS). The LgBiT transfection
 //                            step reads as the lab does it for the plates there are (2 plates: 19.97 µL mRNA + 19.97 µL ViaScript in 160 µL buffer, + 1,797 µL, into 17.97 mL), and a run made with the old labels keeps its numbers and takes the words.
 //   B55 spark ns tc      The SPARK NS Time Course: one 96-well plate, six pairs of columns (no OA, OA high, OA low, then the same three with a PROTAC series, 7 pts + DMSO), OA on every well at t = 0
@@ -2597,6 +2601,81 @@ async function suite(opts) {
       if (JSON.stringify(canon(done.blocks)) !== j0) bad('B47', 'finished', 'the load pass edited a finished run');
       const part = mk('INV_B47G'); part.blocks.find(b => b.calc && b.calc.kind === 'reagent').done = true; _calcKeysFromPresets();
       if (+part.blocks.find(b => b.calc && b.calc.kind === 'reagent').calc.inputs.perWellUL > 0) bad('B47', 'done step', 'a finished substrate step was rewritten');
+    });
+
+    // B57 — the old suspension-and-seed step reads from its calculator, in every run and in the preset the next run comes from.
+    if (run('B57')) await guard('B57', 'old words, new words', async () => {
+      const P = (LB.data.projects || []).find(p => (p.sections || []).length);
+      const key = 'NB_BIO_RTX96', tpl = LB.data.presets[key];
+      const OLD = '<p>Trypsinize and resuspend in <b>phenol-red-free Opti-MEM + 4% FBS</b>. Two suspensions: one <b>with</b> the HaloTag 618 ligand at 100 nM and one <b>without</b>, for the four no-ligand control wells. The ligand goes into the medium, not into each well.</p><p>Seed <b>90 µL per well</b> straight onto the complexes → <b>100 µL/well, 20,000 cells/well</b>.</p><p><i>The labelling is covalent, so the later additions diluting the well to 148 µL do not unlabel anything.</i></p><ol class="pub-skip"><li>+ ligand suspension made</li><li>− ligand suspension made</li></ol>';
+      const old = 'Cell suspension ± HaloTag ligand + seed';
+      const mk = (code, status) => {
+        const su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup || {})));
+        const before = new Set(Object.keys(LB.data.experiments));
+        buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-10-01', type: 'NB', title: 'INV old words', code, setup: su, plate: true });
+        const e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); clean.push(e);
+        const i = e.blocks.findIndex(b => b.title === 'Cell suspension ± HaloTag ligand'), sus = e.blocks[i];
+        sus.title = old; sus.html = OLD; sus.tpl = { title: old, html: OLD, pub: '' }; delete sus.pub; e.blocks.splice(i + 1, 1);
+        sus.calc.inputs.volPerWell = 80; if (sus.calcSeed) sus.calcSeed.volPerWell = 80;   // the number the table shows; the old prose said 90
+        e.status = status || 'planned'; return e; };
+      const sus = e => e.blocks.find(b => /^Cell suspension/.test(b.title));
+      const text = (e, b) => String(fillCalcText(b.html, b, e)).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+      // the words that were the problem
+      const OLDWORDS = /covalent|Two suspensions|pub-skip|suspension made|Seed 90 µL/;
+      // a run that is done keeps its one step, with its calculator's numbers in the words
+      const fin = mk('INV_B57A', 'done'); fin.blocks.forEach(b => { b.done = true; b.completedAt = Date.now(); }); tick('B57');
+      const calc0 = J(sus(fin).calc), n0 = fin.blocks.length, done0 = fin.blocks.map(b => !!b.done).join();
+      seedPresets();
+      const fb = sus(fin), ft = text(fin, fb);
+      if (fin.blocks.length !== n0 || !/^Cell suspension/.test(fb.title)) bad('B57', 'done shape', 'a finished run was re-shaped: ' + fin.blocks.map(b => b.title).join(' | '));
+      if (OLDWORDS.test(fb.html) || OLDWORDS.test(ft)) bad('B57', 'done words', 'the finished run still carries the old words: ' + ft.slice(0, 160));
+      if (!/80 µL/.test(ft) || !/90 µL per well/.test(ft)) bad('B57', 'done numbers', 'the step does not say what its calculator says (80 µL onto the 10 µL → 90 µL per well): ' + ft.slice(0, 260));
+      if (!/\{\{c\.volPerWell\}\}/.test(fb.html)) bad('B57', 'done tokens', 'the words quote no calculator token, so the next edit of the calculator would not reach them');
+      if (J(sus(fin).calc) !== calc0) bad('B57', 'done calc', 'the finished run\'s calculator was touched');
+      if (fin.blocks.map(b => !!b.done).join() !== done0) bad('B57', 'done ticks', 'the load pass changed a tick');
+      const h1 = fb.html; seedPresets(); _legacyWords(); if (fb.html !== h1) bad('B57', 'idempotent', 'a second pass changed the step again');
+      // the calculator moves, the sentence follows
+      fb.calc.inputs.volPerWell = 60; if (!/Add 60 µL of the suspension/.test(text(fin, fb))) bad('B57', 'follows', 'the text did not follow the calculator: ' + text(fin, fb).slice(0, 200));
+      // a run not started is split, as before
+      const plan = mk('INV_B57B'); seedPresets();
+      if (plan.blocks.filter(b => /^(Cell suspension ± HaloTag ligand|Seed onto the transfection mix)$/.test(b.title)).length !== 2) bad('B57', 'planned', 'an unstarted run was not split into suspension and seed');
+      // the lab's own words, a note, a tick: left exactly as written
+      const own = mk('INV_B57C', 'done'); sus(own).html += '<p>I used 10 cm dishes.</p>'; const own0 = sus(own).html;
+      const noted = mk('INV_B57D', 'done'); sus(noted).note = 'seeded 5 min late'; sus(noted).done = true;   // a note is a record: this step is not touched when it was the one with records? (the words are still the preset's)
+      seedPresets();
+      if (sus(own).html !== own0) bad('B57', 'own words', 'a step with the lab\'s own words was rewritten');
+      // a copy of a finished run: the next run made from the old one has today's steps at once
+      const src = mk('INV_B57E', 'done'); src.blocks.forEach(b => { b.done = true; });
+      const lbp = window.lbPrompt; window.lbPrompt = (m, v) => Promise.resolve(v);
+      try { const before = new Set(Object.keys(LB.data.experiments)); dupExperiment(src.id); await sleep(150);
+        const c = Object.keys(LB.data.experiments).filter(id => !before.has(id)).map(id => LB.data.experiments[id])[0];
+        if (!c) bad('B57', 'copy', 'no copy was made'); else { clean.push(c);
+          if (c.blocks.filter(b => /^(Cell suspension ± HaloTag ligand|Seed onto the transfection mix)$/.test(b.title)).length !== 2 || c.blocks.some(b => OLDWORDS.test(b.html))) bad('B57', 'copy', 'a copy of a finished run still has the old step: ' + c.blocks.map(b => b.title).join(' | ')); }
+      } finally { window.lbPrompt = lbp; }
+      // the old read: its aside and its list of controls go, its sentence and its numbers stay
+      const rd = mk('INV_B57F', 'done'); const rb = rd.blocks.find(b => /^NanoBRET substrate \+ read$/.test(b.title));
+      const OLDREAD = '<p>Read per the established NanoBRET protocol: add substrate, equilibrate, then read donor (~460 nm) and acceptor (~618 nm) channels. <i class="pub-skip">The 1:100 substrate dilution here is a placeholder from the existing NanoBRET preset — set it to whatever your kit lot says.</i></p><p><b>Controls to include</b></p><ul><li>NanoLuc + HaloTag <b>+ ligand 618</b></li><li>Mock (carrier DNA only)</li></ul><p>The corrected BRET ratio is the acceptor/donor ratio.</p><p><b>Results</b></p><p></p>';
+      rb.title = 'NanoBRET read'; rb.html = OLDREAD; rb.tpl = { title: 'NanoBRET read', html: OLDREAD, pub: '' };
+      rb.calc = { kind: 'reagent', inputs: { name: 'NanoBRET Nano-Glo substrate', diluent: 'assay medium', totalVol: 2520, dilution: 100 } };
+      _legacyWords();
+      if (/Controls to include|placeholder/.test(rb.html)) bad('B57', 'read', 'the old read still lists the controls to include');
+      if (!/~460 nm/.test(rb.html) || !/corrected BRET ratio/.test(rb.html) || !/Results/.test(rb.html)) bad('B57', 'read kept', 'the read lost words that were not the problem: ' + rb.html.slice(0, 200));
+      // the preset the next run is made from: stamped, then rewritten by the app itself (tick lists flattened, entities decoded), never by a person
+      const K = 'NB_SPARK_RTX96', keep = LB.data.presets[K];
+      try {
+        const oldP = { name: keep.name, baseType: 'NB', title: keep.title, setup: JSON.parse(JSON.stringify(keep.setup || {})), blocks: [
+          { dayOffset: 0, title: 'Transfection mixes (FuGENE HD)', html: '<p>Add the DNA &micro;g to the Opti-MEM.</p><ul class="lb-check"><li>Mixes made per condition</li></ul>', calc: { kind: 'nbtx', inputs: { donorNames: 'A', acceptorNames: 'B', ratios: '10, 50' } } },
+          { dayOffset: 0, title: 'Cell suspension ± ligand 618 + seed', html: '<p>Two suspensions of {{cellLine}}.</p><ul class="lb-check"><li>+ ligand suspension made</li></ul>' },
+          { dayOffset: 1, title: 'NanoBRET read', html: '<p>Read.</p>' }] };
+        oldP._seedSig = _presetSig(oldP);
+        // what the app did to it afterwards: flatten the lists, decode the entities, move a calculator default
+        oldP.blocks.forEach(b => { const f = _flattenTickHtml(b.html, false); if (f != null) b.html = f; b.html = normHtml(b.html); }); oldP.blocks[0].calc.inputs.ratios = '10';
+        LB.data.presets[K] = JSON.parse(JSON.stringify(oldP)); seedPresets();
+        if (LB.data.presets[K].blocks.length < 4) bad('B57', 'preset', 'a stored preset the app itself rewrote stayed on its first wording: ' + LB.data.presets[K].blocks.map(b => b.title).join(' | '));
+        // the same preset, but a person changed a word: theirs
+        const mine = JSON.parse(JSON.stringify(oldP)); mine.blocks[2].html = '<p>Read, my way.</p>'; LB.data.presets[K] = mine; seedPresets();
+        if (LB.data.presets[K].blocks.length !== 3) bad('B57', 'preset edited', 'a preset whose words a person changed was overwritten by the seed');
+      } finally { LB.data.presets[K] = keep; }
     });
 
     // B48 — the plasmid named in the header is the master mix's plasmid.

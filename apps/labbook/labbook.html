@@ -3717,6 +3717,12 @@ var NB_COMMON={
     pub:'NanoBRET substrate was added ({{c.perWell}} per well) and the plate read at {{c.donorNm}} (donor) and {{c.acceptorNm}} (acceptor). The corrected BRET ratio is the acceptor/donor ratio of the + ligand wells minus the same ratio in the matched &minus;ligand wells.',
     html:'<ol><li>Prepare the substrate immediately before use: {{c.reagentUL}} {{c.name}} ({{c.dilution}}) + {{c.diluentUL}} {{c.diluent}} = {{c.total}} ({{c.perWell}} per well for {{c.nWells}}). Keep it dark.</li><li>Add {{c.perWell}} per well directly onto the cells, without aspirating ({{c.wellVol}} already in the well &rarr; {{c.finalVol}}).</li><li>Shake ~10 s on the orbital shaker; equilibrate 2&ndash;3 min at room temperature.</li><li>Read the donor ({{c.donorNm}}) and acceptor ({{c.acceptorNm}}) channels; save the data.</li></ol><p><b>Results</b></p><p></p>'}
 };
+// The suspension and the seeding as ONE step: what a run made before they were split still carries, and a
+// run that is done keeps one step (a record is not re-shaped) but says it with these words — the numbers
+// are the step's own calculator's, never typed in the prose.
+NB_COMMON.suspSeed={
+  pub:NB_COMMON.susp.pub+' '+NB_COMMON.seed.pub,
+  html:NB_COMMON.susp.html.replace(/<\/ol>$/,'')+NB_COMMON.seed.html.replace(/^<ol>/,'')};
 // The substrate calculator every NanoBRET step starts from; the read channels are the reader's and differ.
 function _nbReadCalc(diluent,donorNm,acceptorNm){ return {kind:'reagent',inputs:{name:'NanoBRET Nano-Glo substrate',diluent:diluent,
   perWellUL:25,nWells:84,excess:1.2,wellVolUL:100,dilution:100,donorNm:donorNm,acceptorNm:acceptorNm}}; }
@@ -10364,8 +10370,41 @@ function presetFromSeed(seed,name,baseType){ return {name:name,baseType:baseType
 // runs had split a month before. A step that has records is never touched, and a finished run is a
 // record: both are left as they were.
 var STEP_SPLITS=[
-  {preset:'NB_BIO_RTX96', old:'Cell suspension \u00b1 HaloTag ligand + seed', to:['Cell suspension \u00b1 HaloTag ligand','Seed onto the transfection mix']}
+  {preset:'NB_BIO_RTX96', old:'Cell suspension \u00b1 HaloTag ligand + seed', to:['Cell suspension \u00b1 HaloTag ligand','Seed onto the transfection mix']},
+  {preset:'NB_SPARK_RTX96', old:'Cell suspension \u00b1 ligand 618 + seed', to:['Cell suspension \u00b1 HaloTag ligand','Seed onto the transfection mix']},
+  {preset:'NB_SPARK_SCREEN96', old:'Cell suspension + HaloTag ligand + seed', to:['Cell suspension \u00b1 HaloTag ligand','Seed onto the transfection mix']}
 ];
+// \u2500\u2500 The suspension-and-seed step, in the words of today, for every run (Jon, 2026-10-26) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// "se editen todos los experimentos futuros y tambi\u00e9n los pasados". The step the biosensor and the SPARK runs
+// carried before it was split quoted its numbers in prose ("Seed 90 \u00b5L per well \u2192 100 \u00b5L/well", written once,
+// never updated) next to a calculator that said 80 \u00b5L; it explained why the labelling is covalent, and ended
+// in a list of what had been done. A run that has not started is split into the two steps the preset has
+// (_stepSplits). A run that has records \u2014 or is done, and a finished run is a record \u2014 keeps ONE step and
+// says it with the preset's words, whose numbers are tokens of that step's own calculator: they follow it,
+// whatever it holds. Only a step proven to be the preset's own text is touched, and only when every token it
+// quotes has an answer \u2014 a number nobody recorded is never made up. Idempotent: the rewritten step carries
+// the new text in its template, so it compares equal next time.
+var _LEGACY_SUSP_SEED={'Cell suspension \u00b1 HaloTag ligand + seed':1,'Cell suspension \u00b1 ligand 618 + seed':1,'Cell suspension + HaloTag ligand + seed':1};
+// The old NanoBRET read: an aside about a placeholder dilution, and the list of controls to include (they are on the plate map).
+function _stripReadAsides(h){ return typeof h!=='string'?h:h.replace(/ <i class="pub-skip">The 1:100 substrate dilution[^<]*<\/i>/,'').replace(/<p><b>Controls to include<\/b><\/p><ul>[\s\S]*?<\/ul>/,''); }
+function _legacyWords(){
+  var ex=(LB.data&&LB.data.experiments)||{}, n=0;
+  Object.keys(ex).forEach(function(id){ var e=ex[id], ch=false;
+    if(!e||e.type!=='NB'||!e.blocks) return;
+    var su=e.setup||{}, S=NB_COMMON.suspSeed;
+    e.blocks.forEach(function(b){ if(b.proto||!b.tpl||b.tpl.own) return;
+      var t=String(b.tpl.title||'');
+      if(_LEGACY_SUSP_SEED[t]){
+        if(b.tpl.html===S.html) return;
+        if(!_expBlockUntouched(e,b)||_unansweredTokens(S.html,b,e).length) return;
+        b.tpl={title:b.tpl.title, html:S.html, pub:S.pub};
+        b.html=fillSetup(S.html,su); b.pub=fillSetup(S.pub,su); ch=true; n++; return; }
+      if(t==='NanoBRET read'&&/Controls to include|placeholder from the existing NanoBRET preset/.test(b.html||'')&&_expBlockUntouched(e,b)){
+        var th=_stripReadAsides(b.tpl.html), bh=_stripReadAsides(b.html);
+        if(th===b.tpl.html||bh===b.html) return;
+        b.tpl.html=th; b.html=bh; ch=true; n++; } });
+    if(ch) e.updated=Date.now(); });
+  return n; }
 var _STEP_PLAIN_KEYS={id:1,date:1,dayOffset:1,done:1,completedAt:1,html:1,title:1,tpl:1,calc:1,calcSeed:1,floatImgs:1,stepDone:1,pub:1,waitMin:1,waitSameDay:1};
 function _stepHasRecords(b){
   if(b.done||b.completedAt) return true;
@@ -10448,6 +10487,9 @@ function seedPresets(){
   var _before={}; try{ _before=JSON.parse(JSON.stringify(LB.data.presets||{})); }catch(e){}
   _seedPresetsInner();
   var _sp=[]; try{ _sp=_stepSplits().concat(_calcKeysFromPresets()); }catch(_e){}
+  var _lw=0; try{ _lw=_legacyWords(); }catch(_e){}
+  if(_lw){ setTimeout(function(){ try{ save(); }catch(e){} },0);
+    setTimeout(function(){ try{ toast('Reworded '+_lw+' NanoBRET step'+(_lw===1?'':'s')+' to the preset’s words — the numbers now follow each step’s calculator. Nothing recorded was changed.'); }catch(e){} },2400); }
   if(_calcKeysFin&&!_sp.length) setTimeout(function(){ try{ save(); }catch(e){} },0);
   if(_sp.length){ setTimeout(function(){ try{ save(); }catch(e){} },0);
     setTimeout(function(){ try{ toast('Brought the steps of '+_sp.filter(function(x,i,a){ return a.indexOf(x)===i; }).join(', ')+' up to the preset — nothing in it had been started. The numbers are the run\u2019s own.'); }catch(e){} },1800); }
@@ -10617,10 +10659,10 @@ function _seedPresetsInner(){
   // you have changed is left alone. (This upgrade itself is still a blunt refresh — no built-in
   // can have been edited through the new field before the field existed — and it is what stamps
   // the signatures that make every later bump safe.)
-  var upgrade=!LB.data._presetV23;
+  var upgrade=!LB.data._presetV24;
   EXP_TYPES.forEach(function(t){
     var cur=LB.data.presets[t.id];
-    var edited = cur && cur._seedSig && !_sigSame(cur._seedSig,_presetSig(cur));
+    var edited = cur && cur._seedSig && !_sigSame(cur._seedSig,_presetSig(cur)) && !_presetWordsUnedited(cur);
     if(!cur || (upgrade && !edited)){
       var s=PRESET_SEED[t.id]||PRESET_SEED.EXP;
       var np=presetFromSeed(s,(cur&&cur.name)||t.name,t.id);
@@ -10631,7 +10673,7 @@ function _seedPresetsInner(){
       if(!cur._seedSig) cur._seedSig=_presetSig(cur);   // stamp what is there, whatever it is
     }
   });
-  if(upgrade) LB.data._presetV23=true;
+  if(upgrade) LB.data._presetV24=true;
   // The one-time flag meant a preset added later could never reach an existing notebook. The
   // inner check is what makes this safe to run every load: it only fills in what is missing and
   // never touches a preset you have edited.
@@ -10656,9 +10698,23 @@ function _seedPresetsInner(){
     // produced, nobody has edited it, and a correction is safe to deliver. Without this, every
     // notebook older than the stamp is frozen on whatever it was first given.
     if(cur && !cur._seedSig && _seedUnedited(cur,s)) cur=null;
-    if(cur && !(cur._seedSig && _sigSame(cur._seedSig,_presetSig(cur)))) return;   // edited — leave it
+    if(cur && !(cur._seedSig && (_sigSame(cur._seedSig,_presetSig(cur))||_presetWordsUnedited(cur)))) return;   // edited — leave it
     LB.data.presets[k]=_presetFromExtra(k);
   });
+}
+// A preset the app itself rewrote after stamping it — the tick lists flattened into numbered ones (the DOM round trip
+// decodes &micro; into µ as it goes), a calculator default the New-experiment preview wrote back — no longer equals its
+// stamp, and "edited" then froze it on the first wording it ever had: Jon's NanoBRET_SPARK_Reverse_96 and the NanoBRET
+// type still carried the Aug-24 steps, and every new run was made from them. What a person edits is the WORDS, so the
+// question is asked of the words: every step's title, day and text (and Methods sentence), the stamp's put through the same
+// flattening, against what is stored. Numbers in the calculators are the seed's to correct, as _seedUnedited already says.
+function _normHtml(h){ try{ var d=document.createElement('div'); d.innerHTML=String(h==null?'':h); return d.innerHTML; }catch(e){ return String(h||''); } }
+function _stampWords(blocks,flat){ return (blocks||[]).map(function(b){ var h=String(b.html||''), f=flat?_flattenTickHtml(h,!!b.pub):null; if(f!=null) h=f;
+  return [String(b.title||''), b.dayOffset||0, _normHtml(h), _normHtml(b.pub||'')]; }); }
+function _presetWordsUnedited(p){
+  if(!p||!p._seedSig||!p.blocks) return false;
+  try{ var st=JSON.parse(p._seedSig); if(!st||!st[2]) return false;
+    return JSON.stringify(_stampWords(st[2],true))===JSON.stringify(_stampWords(p.blocks,false)); }catch(e){ return false; }
 }
 function _presetFromExtra(k){
   var s=EXTRA_PRESET_SEED[k]; if(!s) return null;
@@ -14609,7 +14665,11 @@ function dupExperiment(id){ var e=LB.data.experiments[id]; if(!e) return;
     _resetCopiedBlock(b); });
   if(e.code) c.code=_dupCode(e.code, start);
   undoMark('Duplicate',['experiments.'+c.id]);
-  c.created=Date.now(); c.updated=Date.now(); LB.data.experiments[c.id]=c; save(); SEL.page=c.id; EXP_TAB='steps'; renderAll();
+  c.created=Date.now(); c.updated=Date.now(); LB.data.experiments[c.id]=c;
+  // A copy has nothing ticked, so it can take the preset's steps as they are now — a finished run it was copied from may
+  // be older than the split suspension and seeding, and waiting for the next load left the old step on the screen.
+  try{ _stepSplits(); _legacyWords(); }catch(_e){}
+  save(); SEL.page=c.id; EXP_TAB='steps'; renderAll();
   toast('Duplicated as '+(c.code||'a new experiment')+' — dated from today, nothing ticked'); }
 // Same date swap as a replicate's code, but a copy is not a replicate: a free code keeps its
 // date-swapped form, and a taken one gets _2, _3 rather than _R2.
