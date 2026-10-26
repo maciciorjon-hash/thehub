@@ -16650,6 +16650,7 @@ function dayActsMenu(ev,D){
   popOpen('ctxmenu',[
     {label:'Journal page', sub:'what was done that day, and the day\u2019s notes', fn:function(){ openDayPage(D); }},
     {label:'What you need today', sub:'every material the steps due consume, and where it is', fn:function(){ openPrepSheet({date:D}); }},
+    {label:'Print this day', sub:'a to-do sheet: steps with their boxes, tasks, carried over', fn:function(){ exportDaySheet(D); }},
     {label:'Week planner', fn:function(){ selectNode('week'); }},
     (ids.length>1?{label:allFolded?'Unfold all experiments':'Fold all experiments', fn:function(){ dayFoldAll(D,allFolded?0:1); }}:null),
     {sep:true},
@@ -17010,7 +17011,7 @@ function renderDayView(host,D){
     +'<span class="day-lblwrap"><span class="day-lbl">'+esc(_dayLbl(D))+'</span><input class="day-pick" type="date" aria-label="Go to a day" value="'+esc(D)+'" onchange="daySet(this.value)"></span>'
     +'<button class="day-arw" title="Next day" onclick="dayGo(1)">'+tbIco(P_CHEV_R,15)+'</button>'
     +(isToday?'':'<button class="day-today" onclick="dayToday()">Today</button>')+'<div class="jr-seg"><button class="on">Day</button><button onclick="selectNode(\'week\')">Week</button></div>'+'</div>';
-  host.innerHTML='<div class="nb-desk"><div class="nb-wrap"><div class="nb-page nb-plan"><div class="exh exh-day"><div class="exh-top"><div class="exh-title" style="cursor:default;">'+(isToday?'Today':esc(fmtDate(D)))+'</div>'+nav+'<div class="exh-acts"><button class="exh-act exh-more" title="This day" onclick="dayActsMenu(event,\''+D+'\')">'+ICON_MORE_H+'</button><button class="exh-act exh-keep" title="Journal page &mdash; the day&rsquo;s free note, in the Notebook" onclick="openDayPage(\''+D+'\')">'+tbIco('<rect x="4.6" y="3.2" width="14.8" height="17.6" rx="2.2"/><path d="M8.4 3.2v17.6"/><path d="M11.4 8.2h5M11.4 11.8h5M11.4 15.4h3.2"/>',17)+'</button><button class="exh-act exh-keep" title="What you need &mdash; every material the steps due today consume, and where it is" onclick="openPrepSheet({date:\''+D+'\'})">'+tbIco(P_BOX,17)+'</button><button class="exh-act danger" title="Delete day" onclick="delDay(\''+D+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button></div></div><div class="exh-code">'+(isToday?esc(fmtDate(D)):'Planner \u00b7 day')+'</div></div>'
+  host.innerHTML='<div class="nb-desk"><div class="nb-wrap"><div class="nb-page nb-plan"><div class="exh exh-day"><div class="exh-top"><div class="exh-title" style="cursor:default;">'+(isToday?'Today':esc(fmtDate(D)))+'</div>'+nav+'<div class="exh-acts"><button class="exh-act exh-more" title="This day" onclick="dayActsMenu(event,\''+D+'\')">'+ICON_MORE_H+'</button><button class="exh-act exh-keep" title="Journal page &mdash; the day&rsquo;s free note, in the Notebook" onclick="openDayPage(\''+D+'\')">'+tbIco('<rect x="4.6" y="3.2" width="14.8" height="17.6" rx="2.2"/><path d="M8.4 3.2v17.6"/><path d="M11.4 8.2h5M11.4 11.8h5M11.4 15.4h3.2"/>',17)+'</button><button class="exh-act exh-keep" title="What you need &mdash; every material the steps due today consume, and where it is" onclick="openPrepSheet({date:\''+D+'\'})">'+tbIco(P_BOX,17)+'</button><button class="exh-act exh-keep" title="Print this day as a to-do sheet" onclick="exportDaySheet(\''+D+'\')">'+tbIco(P_PRINT,17)+'</button><button class="exh-act danger" title="Delete day" onclick="delDay(\''+D+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button></div></div><div class="exh-code">'+(isToday?esc(fmtDate(D)):'Planner \u00b7 day')+'</div></div>'
     +(isToday?syncBandHtml():'')+culturesHtml(D)+work+nbTasksHtml(D)+ongoingHtml(D)
     +dayJournalCard(D)+'</div></div></div>';
   hydrateAtt(host,{lazy:true}); hydrateFloatLayers(host); lbWatchCultures();
@@ -17886,6 +17887,7 @@ var P_PLAY='<path d="M8 5.5l10 6.5-10 6.5z"/>';
 var P_DISH='<circle cx="12" cy="12" r="8.5"/><path d="M8 10.5c1.4-1.2 3-1.2 4.4 0s3 1.2 4.4 0"/><circle cx="9.5" cy="14.5" r="1"/><circle cx="14" cy="14.8" r="1"/>';
 // A crate, for "what to take out before you start" — nothing else in the set is a box, so it
 // cannot be confused with the dish, the flask or the freezer's snowflake.
+var P_PRINT='<path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8" rx="1"/>';
 var P_BOX='<path d="M12 3l8 3.6v9.8L12 20l-8-3.6V6.6z"/><path d="M4 6.6l8 3.6 8-3.6M12 10.2V20"/>';
 var P_SHEET='<path d="M9 3h6v3H9z"/><path d="M9 4.5H6.5A1.5 1.5 0 005 6v14a1.5 1.5 0 001.5 1.5h11A1.5 1.5 0 0019 20V6a1.5 1.5 0 00-1.5-1.5H15"/><path d="M8.5 11h7M8.5 15h4"/>';
 var P_SLIDERS='<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/>';
@@ -23146,14 +23148,14 @@ function _labPlateHtml(p,title){ if(!p||!Object.keys(p.wells||{}).some(function(
 // the plate map says which compound and which line. The experiment's own header names (cells,
 // plasmids) are on the sheet's head already, so the pairs carry a bare stub of the experiment
 // and prepNeeds adds nothing per experiment.
-function _labNeedsHtml(e,blocks){
+function _labNeedsHtml(e,blocks,title){
   var items=prepNeeds(blocks.map(function(b){ return {exp:{id:e.id}, block:b}; }))
     .filter(function(it){ return it.k!=='protocol'&&it.k!=='unknown'; });
   if(!items.length) return '';
   var order={}; PREP_GROUPS.forEach(function(g,i){ order[g[0]]=i; });
   items.sort(function(x,y){ return (order[x.k]||0)-(order[y.k]||0); });
   var lbl={cells:'Cells', plasmid:'Plasmids', compound:'Compounds', antibody:'Antibodies', reagent:'Reagents', plastic:'Plastics'};
-  return '<div class="lb-needs"><div class="lb-needs-t">What you need today</div><div class="lb-needs-g">'
+  return '<div class="lb-needs"><div class="lb-needs-t">'+esc(title||'What you need today')+'</div><div class="lb-needs-g">'
     +items.map(function(it){ var w=PREP_LOCATABLE[it.k]?prepWhere(it):null, q=_prepQty(it);
       return '<div class="lb-ni"><span class="lb-ngl">'+esc(lbl[it.k]||it.k)+'</span><span class="lb-nn">'+esc(it.name)
         +(it.notes&&it.notes.filter(Boolean).length?(' <span class="lb-nnote">'+esc(it.notes.filter(Boolean).join(' · '))+'</span>'):'')
@@ -23208,6 +23210,96 @@ function exportLab(id){
   Promise.all([hydrateAtt(pr)]).then(function(){
     _printTitled((e.code||e.title||'experiment')+' bench sheet');
   });
+}
+// ── Today on paper ──────────────────────────────────────────────────────────────────────────
+// The Planner's day as a sheet to carry and tick with a pen: the same lists the screen shows
+// (the steps due, what is carried over, the tasks, the cultures) built from the same helpers, so
+// the paper and the screen cannot disagree. A step is a box with its title; the actions inside it
+// are boxes of their own and the amounts stay bold, exactly as on the bench sheet. A ticked step
+// prints ticked and folded to its title — it is the record of what is already done, not work.
+// Plate maps stay on the experiment's bench sheet; they are a page each.
+var DAY_SHEET_CSS='<style>'
+ +'#print-root .ds-h{border-bottom:1.2pt solid #111;padding-bottom:6px;margin-bottom:6px}'
+ +'#print-root .ds-k{font:600 7.5pt/1 sans-serif;letter-spacing:1.2px;text-transform:uppercase;color:#555}'
+ +'#print-root .ds-t{font:700 17pt/1.2 sans-serif;color:#000;margin:3px 0 0}'
+ +'#print-root .ds-m{margin-top:3px;font:400 8.5pt/1.4 sans-serif;color:#555}'
+ +'#print-root .ds-sec{margin-top:15px;break-inside:auto}'
+ +'#print-root .ds-st{display:flex;align-items:baseline;justify-content:space-between;gap:12px;border-bottom:.5pt solid #999;padding-bottom:2px;margin-bottom:6px;font:700 10.5pt/1.2 sans-serif;color:#000;break-after:avoid}'
+ +'#print-root .ds-st small{font:400 8pt/1.2 sans-serif;color:#666}'
+ +'#print-root .ds-exp{margin-top:9px;break-inside:auto}#print-root .ds-exp:first-of-type{margin-top:0}'
+ +'#print-root .ds-eh{display:flex;align-items:baseline;gap:8px;margin-bottom:3px;break-after:avoid}'
+ +'#print-root .ds-ec{font:700 9.5pt/1.3 ui-monospace,Menlo,monospace;color:#000}#print-root .ds-et{font:600 9.5pt/1.3 sans-serif;color:#111}'
+ +'#print-root .ds-ep{font:400 8pt/1.3 sans-serif;color:#777}'
+ +'#print-root .ds-box{display:inline-block;flex:none;width:11px;height:11px;border:1pt solid #222;border-radius:1px;margin-top:2px}'
+ +'#print-root .ds-done .ds-box{background:#222}'
+ +'#print-root .ds-row{display:flex;gap:7px;align-items:flex-start;padding:2px 0;font:400 9.5pt/1.4 sans-serif;break-inside:avoid}'
+ +'#print-root .ds-row .ds-x{flex:1 1 auto;min-width:0;overflow-wrap:anywhere}'
+ +'#print-root .ds-row .ds-r{flex:none;font:400 8pt/1.6 sans-serif;color:#666;white-space:nowrap}'
+ +'#print-root .ds-row .ds-u{flex:none;font:700 9.5pt/1.4 sans-serif;color:#000}'
+ +'#print-root .ds-done .ds-x{text-decoration:line-through;color:#666}'
+ +'#print-root .ds-blank .ds-x{border-bottom:.5pt solid #bbb;height:17px}'
+ +'#print-root .ds-ex{font:400 8pt/1.4 sans-serif;color:#666;margin-left:4px}'
+ +'#print-root .ds-step{display:grid;grid-template-columns:18px 1fr;gap:0 4px;margin-top:6px;break-inside:auto}'
+ +'#print-root .ds-step .lb-stt{margin-bottom:3px}'
+ +'#print-root .ds-step .lb-ck li{padding-left:20px}'
+ +'#print-root .ds-step.ds-done .lb-stept{text-decoration:line-through;color:#666;font-weight:600}'
+ +'#print-root .ds-line{border-bottom:.5pt solid #bbb;height:23px;break-inside:avoid}'
+ +'</style>';
+function _dsRow(txt,o){ o=o||{};
+  return '<div class="ds-row'+(o.done?' ds-done':'')+(o.blank?' ds-blank':'')+'"><span class="ds-box"></span>'
+    +(o.urgent?'<span class="ds-u">!</span>':'')+'<span class="ds-x">'+txt+'</span>'+(o.right?('<span class="ds-r">'+esc(o.right)+'</span>'):'')+'</div>'; }
+function buildDaySheet(D){
+  D=D||todayStr(); var isToday=(D===todayStr()), h=LAB_CSS+DAY_SHEET_CSS;
+  var byExp={}, order=[]; blocksForDate(D).forEach(function(fb){
+    if(!byExp[fb.exp.id]){ byExp[fb.exp.id]={exp:fb.exp,blocks:[]}; order.push(fb.exp.id); } byExp[fb.exp.id].blocks.push(fb.block); });
+  var co=carryoverForDate(D), tasks=tasksUndated(D).concat(tasksForDate(D)).concat(tasksCarriedTo(D));
+  var nSteps=0, nOpen=0; order.forEach(function(id){ byExp[id].blocks.forEach(function(b){ nSteps++; if(!b.done) nOpen++; }); });
+  var nCarry=co.order.reduce(function(a,id){ return a+co.byExp[id].blocks.length; },0);
+  var nTasks=tasks.filter(function(t){ return !t.done; }).length;
+  var title=(function(){ try{ return new Date(D+'T12:00:00').toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'}); }catch(e){ return fmtDate(D); } })();
+  var bits=[]; if(nSteps) bits.push(nSteps+' step'+(nSteps===1?'':'s')+(nOpen<nSteps?(' ('+nOpen+' to do)'):''));
+  if(nCarry) bits.push(nCarry+' carried over'); if(nTasks) bits.push(nTasks+' task'+(nTasks===1?'':'s'));
+  h+='<div class="ds-h"><div class="ds-k">'+(isToday?'Today':'Planner')+' &middot; to do</div><div class="ds-t">'+esc(title)+'</div>'
+    +(bits.length?('<div class="ds-m">'+esc(bits.join(' \u00b7 '))+'</div>'):'')+'</div>';
+  // Cultures: today only, as on the screen. A box per flask, what the check says beside it.
+  var cul=isToday?lbCultures():null;
+  if(cul&&cul.length){
+    h+='<div class="ds-sec"><div class="ds-st"><span>Cell cultures &mdash; morning check</span><small>'+cul.length+' in culture</small></div>'
+      +cul.slice().sort(function(a,b){ return String(a.c.line||'').localeCompare(String(b.c.line||'')); }).map(function(x){
+        var c=x.c, msg=x.alerts.length?x.alerts[0].msg:'';
+        return _dsRow('<b>'+esc(c.line||'\u2014')+'</b> <span class="ds-ex">p'+esc(String(c.passage==null?'?':c.passage))+(c.vessel?(' \u00b7 '+esc(c.vessel)):'')+'</span>',{right:msg}); }).join('')+'</div>';
+  }
+  if(order.length){
+    h+='<div class="ds-sec"><div class="ds-st"><span>'+(isToday?'What to do today':(D<todayStr()?'What was due that day':'What is due that day'))+'</span><small>from your experiments</small></div>';
+    order.forEach(function(id){ var g=byExp[id], e=g.exp, open=g.blocks.filter(function(b){ return !b.done; });
+      h+='<div class="ds-exp"><div class="ds-eh"><span class="ds-ec">'+esc(e.code||'')+'</span><span class="ds-et">'+esc(e.title||'')+'</span><span class="ds-ep">'+esc(projCrumb(e))+'</span></div>'
+        +(open.length?_labNeedsHtml(e,open,'What you need'+(isToday?' today':' that day')):'');
+      g.blocks.forEach(function(b){
+        h+='<div class="ds-step'+(b.done?' ds-done':'')+'"><div class="lb-sn"><span class="ds-box"></span></div><div class="lb-sb">'
+          +'<div class="lb-stt"><span class="lb-stept">'+esc(b.title||'Step')+'</span></div>'
+          +(b.done?'':(_labBodyHtml(b,true)+_labCalcHtml(b)))+'</div></div>'; });
+      h+='</div>'; });
+    h+='</div>';
+  }
+  if(co.order.length){
+    h+='<div class="ds-sec"><div class="ds-st"><span>Carried over &mdash; unfinished from earlier days</span><small>'+nCarry+' step'+(nCarry===1?'':'s')+'</small></div>';
+    co.order.forEach(function(id){ var g=co.byExp[id];
+      g.blocks.forEach(function(b){ h+=_dsRow('<b class="ds-ec">'+esc(g.exp.code||g.exp.title||'')+'</b> '+esc(b.title||'Step'),{right:'due '+fmtDate(b.date)}); }); });
+    h+='</div>';
+  }
+  // Tasks, then three empty lines: the point of a paper list is what gets written on it.
+  h+='<div class="ds-sec"><div class="ds-st"><span>Tasks</span><small>for this day</small></div>'
+    +tasks.map(function(t){ var le=t.expId?LB.data.experiments[t.expId]:null;
+      return _dsRow(esc(t.text)+(le?('<span class="ds-ex">'+esc(le.code||le.title||'')+'</span>'):''),
+        {done:t.done,urgent:t.urgent,right:(t.date&&t.date<D)?fmtDate(t.date):''}); }).join('')
+    +[1,2,3].map(function(){ return _dsRow('',{blank:true}); }).join('')+'</div>';
+  h+='<div class="ds-sec"><div class="ds-st"><span>Notes</span></div>'+[1,2,3,4,5,6].map(function(){ return '<div class="ds-line"></div>'; }).join('')+'</div>';
+  h+='<div class="lb-foot">'+esc(_brand())+' &middot; to do &middot; '+esc(fmtDate(D))+' &middot; printed '+esc(fmtDate(todayStr()))+'</div>';
+  return h;
+}
+function exportDaySheet(D){
+  D=D||todayStr(); var pr=el('print-root'); pr.innerHTML=buildDaySheet(D);
+  setTimeout(function(){ _printTitled('To do '+D); },60);
 }
 // ── Data out ───────────────────────────────────────────────────────────────────────────────
 // The PDF and the methods sheet are documents; these are the numbers. Someone who wants to

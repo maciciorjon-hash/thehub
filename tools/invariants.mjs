@@ -1393,6 +1393,7 @@ async function suite(opts) {
         ['record PDF', () => exportPDF(ALLON, { kind: 'exp', id: e.id }), () => el('print-root').textContent],
         ['Methods sheet', () => exportMethods(e.id), () => el('print-root').textContent],
         ['bench sheet', () => exportLab(e.id), () => el('print-root').textContent],
+        ...((e.blocks || []).some(b => b.date) ? [['day sheet', () => exportDaySheet((e.blocks || []).filter(b => b.date)[0].date), () => el('print-root').textContent]] : []),
         ['results CSV', () => exportResultsCSV(e.id), null], ['steps CSV', () => exportStepsCSV(e.id), null],
         ['JSON', () => exportExpJSON(e.id), null], ['plate PNG', () => exportPlatePNG('exp:' + e.id), null],
         ['copy', () => copyPubReady(e.id), null], ['copy rendered', () => copyRendered(), null],
