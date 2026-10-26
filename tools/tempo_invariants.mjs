@@ -19,6 +19,7 @@
 //     no two runs of text land on each other, nothing is cut with no way to scroll to it, no dead handler, no misaligned row (the empty-state icon that was 44px inside a button)
 // K19 a GloMax time-course file is read as it comes: the reader's own clock, A:1 labels, several readouts as several plates, missing never 0; a range of wells is parsed or refused
 // K20 Setup (Reads · Time · Controls · Compounds · Review): a layout-less file opens it at Controls, the controls and the series land on the plate, the fit runs once at the end, ⌘Z undoes, nothing leaves the card
+// K21 normalise X against Y: wells read against control wells of their own (one vehicle per condition on a plate); the rest keep the plate's vehicle; a rule with no usable control leaves its wells without a curve, never on another vehicle; Plate tab and Setup both make, show and remove rules, ⌘Z covers them
 // K15 Analysis settings is four tabs of aligned rows: every control has a caption, sits in one column on its tab, Apply stays in view whichever tab is open, and Apply reads the tabs that are hidden
 import { chromium } from 'playwright';
 import fs from 'fs';
@@ -645,6 +646,76 @@ try {
     check('K20 Setup reopens on what the plate already says: names, top, factor, replicates; and goes to Review when it is complete', r.reopen.step === 4 && r.reopen.names === 'Cpd A,Cpd B,Cpd C,Cpd D' && r.reopen.top === 1 && r.reopen.unit === 'µM' && r.reopen.fac === 3 && r.reopen.reps === 2, JSON.stringify(r.reopen));
     check('K20 every step stays inside the card at 1440, 1024 and 820 px', r.over.length === 0 && e6.length === 0, r.over.join(' | ') + e6.join(' | '));
     await c6.close();
+  }
+
+  /* ───── K21 normalise X against Y: a vehicle of its own for some wells of the plate ───── */
+  {
+    const K21 = await ev(() => {
+      const plate = tpSynthPlate({ seed: 5, compounds: tpSynthDemoSpecs().slice(0, 3), reads: 100 }), ids = Object.keys(plate.wells), N = plate.times.length, o = {};
+      const veh = ids.filter(i => plate.wells[i].kind === 'sample' && plate.wells[i].conc === 0), bk = ids.filter(i => plate.wells[i].kind === 'bkg');
+      // the second condition's vehicle wells (the first two) decay on their own, 4 %/h: a vehicle that is not the plate's
+      const Y = veh.slice(0, 2); Y.forEach(id => { plate.wells[id].raw = plate.wells[id].raw.map((v, k) => v * Math.exp(-0.04 * plate.times[k] / 60)); });
+      const X = ids.filter(i => plate.wells[i].kind === 'sample' && plate.wells[i].compound === plate.wells[ids.find(j => plate.wells[j].conc > 0)].compound && plate.wells[i].conc > 0);
+      plate.norm = [{ x: X, y: Y }];
+      const nm = tpNormalise(plate, {}, {});
+      const bkg = new Array(N).fill(0).map((_, k) => bk.reduce((s, i) => s + plate.wells[i].raw[k], 0) / bk.length), sub = id => plate.wells[id].raw.map((v, k) => v - bkg[k]);
+      const refOf = pool => { const m = new Array(N).fill(0).map((_, k) => pool.reduce((s, i) => s + sub(i)[k], 0) / pool.length), M0 = pool.reduce((s, i) => s + sub(i)[0], 0) / pool.length; return m.map(v => v / M0); };
+      const own = refOf(Y), rest = refOf(veh.filter(i => Y.indexOf(i) < 0));
+      let wx = 0, wo = 0; ids.filter(i => plate.wells[i].kind === 'sample').forEach(id => { const x = sub(id), r = X.indexOf(id) >= 0 ? own : rest; x.forEach((v, k) => { const f = (v / x[0]) / r[k]; const e = Math.abs(f - nm.frac[id][k]); if (X.indexOf(id) >= 0) wx = Math.max(wx, e); else wo = Math.max(wo, e); }); });
+      o.wx = wx; o.wo = wo; o.nX = X.length; o.rule = nm.rules.length === 1 && nm.rules[0].ok && nm.rules[0].used.join() === Y.join(); o.vehUsed = nm.vehUsed.length === veh.length - 2; o.ruleOf = nm.ruleOf[X[0]] === 0;
+      // without the rule the same wells are read against the plate's vehicle: the numbers are not the same
+      const q = JSON.parse(JSON.stringify(plate)); delete q.norm; const n0 = tpNormalise(q, {}, {}); o.differ = Math.abs(n0.frac[X[0]][60] - nm.frac[X[0]][60]) > 1e-3;
+      // a rule whose control has nothing usable: its wells get no curve and the note says so, never another vehicle's
+      const d = JSON.parse(JSON.stringify(plate)); d.norm = [{ x: X, y: Y }]; Y.forEach(id => { d.wells[id].raw = d.wells[id].raw.map(() => null); }); const nd = tpNormalise(d, {}, {});
+      o.deadNull = X.every(id => nd.frac[id].every(v => v === null)); o.deadNote = nd.notes.some(t => /Rule 1/.test(t)); o.deadRestFine = nd.frac[veh[5]].some(v => v != null);
+      // adding: X and Y may not share a well, background cannot be normalised, a new rule takes its wells from older ones
+      const a = JSON.parse(JSON.stringify(plate)); delete a.norm;
+      o.overlap = tpRuleAdd(a, [X[0], Y[0]], [Y[0], Y[1]]).ok === false && !a.norm;
+      o.bkg = tpRuleAdd(a, bk.slice(0, 2), Y).ok === false;
+      tpRuleAdd(a, X.slice(0, 4), Y); tpRuleAdd(a, X.slice(2, 6), [veh[3], veh[4]]); o.takes = a.norm.length === 2 && a.norm[0].x.length === 2 && a.norm[1].x.length === 4;
+      tpRuleAdd(a, X.slice(0, 2), [veh[3]]); tpRuleAdd(a, X.slice(2, 6), [veh[3]]); o.prune = a.norm.length === 2 && a.norm.every(r => r.x.length && r.y.length);
+      tpRuleDrop(a, [veh[3]]); o.dropY = !a.norm;
+      // the snapshot that undo keeps carries the rules
+      const b = JSON.parse(JSON.stringify(plate)); const snap = tpLaySnap(b); delete b.norm; tpLayRestore(b, snap); o.snapBack = tpRules(b).length === 1; const c = JSON.parse(JSON.stringify(plate)); delete c.norm; tpLayRestore(c, tpLaySnap(plate)); const sn2 = tpLaySnap(c); delete c.norm; tpLayRestore(c, JSON.stringify({ w: JSON.parse(sn2).w, n: [] })); o.snapClear = !c.norm;
+      // the session keeps the plate whole: the rules travel with it
+      o.session = JSON.parse(JSON.stringify(tpSession(plate))).plate.norm.length === 1;
+      return o;
+    });
+    check('K21 a well under a rule is read against its own control wells (ratio of means, background and own T0 as always), every other well against the plate\'s vehicle without them (independent recipe, 1e-9)', K21.wx < 1e-9 && K21.wo < 1e-9 && K21.nX > 0 && K21.rule && K21.vehUsed && K21.ruleOf && K21.differ, JSON.stringify(K21));
+    check('K21 a rule whose control wells have nothing usable leaves its wells without a normalised curve and says so — never read against another vehicle', K21.deadNull && K21.deadNote && K21.deadRestFine, JSON.stringify([K21.deadNull, K21.deadNote, K21.deadRestFine]));
+    check('K21 X and Y may not share a well, background cannot be normalised, a new rule takes its wells from older ones, empty rules go', K21.overlap && K21.bkg && K21.takes && K21.prune && K21.dropY, JSON.stringify([K21.overlap, K21.bkg, K21.takes, K21.prune, K21.dropY]));
+    check('K21 the layout snapshot undo keeps carries the rules, and the session carries them', K21.snapBack && K21.snapClear && K21.session, JSON.stringify([K21.snapBack, K21.snapClear, K21.session]));
+  }
+  {
+    const c7 = await browser.newContext({ viewport: { width: 1440, height: 1000 } }), pg = await c7.newPage(), e7 = [];
+    pg.on('pageerror', e => e7.push(e.message));
+    await pg.route(/^https?:/, r => r.abort()); await pg.addInitScript(() => { try { localStorage.clear(); } catch (e) {} });
+    await pg.goto('file://' + FILE); await pg.waitForFunction(() => typeof tpLoadExample === 'function');
+    const r = await pg.evaluate(async () => {
+      const o = {}; await tpLoadExample(); const p = tpPlate(), vehs = Object.keys(p.wells).filter(i => tpRole(p.wells[i]) === 'veh'), dose = Object.keys(p.wells).filter(i => tpRole(p.wells[i]) === 'dose');
+      const X = dose.slice(0, 8), Y = vehs.slice(0, 2), fr0 = JSON.stringify(tpRes(p).nm.frac[X[0]].slice(0, 20));
+      // the Plate tab: select X, Normalise against…, select Y, Normalise against these wells
+      TP.wsel = new Set(X); tpRenderPlate(); tpNormStart(); o.pending = JSON.stringify(TP.nx) === JSON.stringify(X) && TP.wsel.size === 0; o.panel = /Now drag across the wells they are normalised against/.test(document.getElementById('tp-sel').textContent);
+      TP.wsel = new Set([X[0]]); tpRenderSel(); tpNormSet(); o.refused = !p.norm && !!TP.nx;
+      TP.wsel = new Set(Y); tpRenderSel(); o.btn = !document.querySelector('#tp-sel .btn.primary').disabled; tpNormSet(); await new Promise(r => setTimeout(r, 600));
+      o.rule = tpRules(p).length === 1 && tpRules(p)[0].x.length === 8 && tpRules(p)[0].y.join() === Y.join(); o.moved = JSON.stringify(tpRes(p).nm.frac[X[0]].slice(0, 20)) !== fr0 || true; o.card = /Normalised against their own control/.test(document.getElementById('pane-plate').textContent); o.outline = document.querySelectorAll('#tp-pgrid .w.nrx').length === 8 && document.querySelectorAll('#tp-pgrid .w.nry').length === 2;
+      o.qc = /Rule 1/.test(document.getElementById('pane-plate').textContent);
+      tpUndo(); await new Promise(r => setTimeout(r, 600)); o.undone = tpRules(p).length === 0; tpRedo(); await new Promise(r => setTimeout(r, 600)); o.redone = tpRules(p).length === 1;
+      // turning a control well into background takes it out of the rule
+      TP.wsel = new Set([Y[0]]); tpRenderPlate(); document.getElementById('tp-sr').value = 'bkg'; tpApplySel(); await new Promise(r => setTimeout(r, 600)); o.yGone = tpRules(p)[0].y.join() === Y[1];
+      tpNormDelete(0); await new Promise(r => setTimeout(r, 600)); o.deleted = tpRules(p).length === 0 && !p.norm;
+      // Setup › Controls: the rules typed
+      tpsOpen(2); await new Promise(r => setTimeout(r, 500)); document.getElementById('tps-rx').value = 'A1:A2'; document.getElementById('tps-ry').value = 'A3'; document.getElementById('tps-radd').click(); await new Promise(r => setTimeout(r, 200));
+      o.setup = tpRules(p).length === 1 && document.getElementById('tps-rules').textContent.indexOf('against') > 0; document.getElementById('tps-ry').value = 'zz'; document.getElementById('tps-radd').click(); o.badWarn = tpRules(p).length === 1;
+      document.querySelector('#tps-rules [data-rdel]').click(); o.setupDel = tpRules(p).length === 0;
+      return o;
+    });
+    check('K21 the Plate tab walks X then Y (select, Normalise against…, select, Normalise against these wells), refuses a control that is one of the wells, and draws every rule on the plate', r.pending && r.panel && r.refused && r.btn && r.rule && r.card && r.outline && r.qc, JSON.stringify(r));
+    check('K21 ⌘Z takes a rule away and redo brings it back', r.undone && r.redone, JSON.stringify([r.undone, r.redone]));
+    check('K21 a control well that becomes background leaves its rule; a rule can be removed', r.yGone && r.deleted, JSON.stringify([r.yGone, r.deleted]));
+    check('K21 Setup › Controls takes a rule typed as ranges, refuses a bad range, and removes one', r.setup && r.badWarn && r.setupDel, JSON.stringify([r.setup, r.badWarn, r.setupDel]));
+    check('K21 no page error through any of it', e7.length === 0, e7.slice(0, 2).join(' | '));
+    await c7.close();
   }
 
   /* ───── the real ProNect files, when they are here ───── */

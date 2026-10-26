@@ -193,6 +193,17 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
 .w.bkg{background:color-mix(in srgb,var(--warn) 16%,var(--surface));border-color:color-mix(in srgb,var(--warn) 40%,var(--border));}
 .w.blank{background:var(--surface);border-style:dotted;color:var(--text3);}
 .w.sel{outline:2px solid var(--accent);outline-offset:-1px;z-index:1;}
+.w.nrx{box-shadow:inset 0 0 0 3px var(--nc);}
+.w.nry{outline:2px dashed var(--nc);outline-offset:-4px;}
+.w.nrp{box-shadow:inset 0 0 0 3px var(--accent);border-style:dotted;}
+.rule-list{display:flex;flex-direction:column;gap:6px;}
+.rule-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:var(--fs-3);}
+.rule-dot{width:10px;height:10px;border-radius:var(--r-1);flex:0 0 auto;}
+.rule-n{font-weight:600;min-width:12px;}
+.rule-by,.rule-cv{color:var(--text3);}
+.rule-bad{color:var(--warn-ink,var(--warn));}
+.rule-row .lnk{border:none;background:none;padding:0 2px;font-family:var(--mono);font-size:var(--fs-3);color:var(--accent-ink,var(--accent));text-decoration:underline;text-decoration-color:var(--border2);text-underline-offset:3px;cursor:pointer;}
+.rule-row .btn{margin-left:auto;}
 .w.out{opacity:.35;} .w.out::after{content:'';position:absolute;inset:0;background:linear-gradient(45deg,transparent 46%,var(--danger) 47%,var(--danger) 53%,transparent 54%);}
 .w .t{position:relative;z-index:1;font-size:var(--fs-1);line-height:1.05;text-align:center;pointer-events:none;}
 .plate-leg{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:12px;font-size:var(--fs-2);color:var(--text2);}
@@ -1450,6 +1461,28 @@ var TP_DEFAULTS = {
 };
 function tpSet(S) { var o = JSON.parse(JSON.stringify(TP_DEFAULTS)); if (S) for (var g in o) if (S[g] != null) { if (typeof o[g] === 'object' && !Array.isArray(o[g])) { for (var k in S[g]) o[g][k] = S[g][k]; } else o[g] = S[g]; } return o; }
 
+/* ───── normalise X against Y ─────
+   By default every well is read against the plate's vehicle wells. A rule — plate.norm = [{x:[wells], y:[wells]}] — says that some wells (X) are read against other
+   wells (Y) instead: one vehicle for each condition on the same plate (the compound plus a second drug, with its own DMSO wells). A well is in at most one rule's X;
+   the Y wells of a rule leave the plate-wide vehicle (unless that would leave it empty); a rule whose Y has no usable trace leaves its wells unnormalised and says so —
+   it is never quietly read against another vehicle. */
+var TP_RULE_COL = ['#4e79a7', '#f28e2b', '#59a14f', '#e15759', '#76b7b2', '#edc948', '#b07aa1', '#9c755f'];
+function tpRules(p) { return (p && Array.isArray(p.norm)) ? p.norm : []; }
+function tpRulePrune(p) { if (!p || !p.norm) return; p.norm = p.norm.filter(function (r) { return r.x.length && r.y.length; }); if (!p.norm.length) delete p.norm; }
+// Take wells out of every rule (a well that became background or a blank, or was deleted).
+function tpRuleDrop(p, ids) { if (!p || !p.norm || !ids.length) return; var set = new Set(ids); p.norm = p.norm.map(function (r) { return { x: r.x.filter(function (q) { return !set.has(q); }), y: r.y.filter(function (q) { return !set.has(q); }) }; }); tpRulePrune(p); }
+// → { ok, msg } ; writes nothing when it refuses.
+function tpRuleAdd(p, x, y) {
+  var ok = function (id) { var w = p.wells[id]; return w && tpRole(w) !== 'bkg' && tpRole(w) !== 'blank'; };
+  x = x.filter(ok); y = y.filter(ok);
+  if (!x.length) return { ok: false, msg: 'Nothing to normalise — background and blank wells cannot be.' };
+  if (!y.length) return { ok: false, msg: 'Nothing to normalise against — background and blank wells cannot be the control.' };
+  if (y.some(function (id) { return x.indexOf(id) >= 0; })) return { ok: false, msg: 'A well cannot be normalised against itself — select the control wells only.' };
+  var xs = new Set(x); p.norm = tpRules(p).map(function (r) { return { x: r.x.filter(function (q) { return !xs.has(q); }), y: r.y.slice() }; });
+  p.norm.push({ x: x.slice(), y: y.slice() }); tpRulePrune(p);
+  return { ok: true, msg: x.length + ' well' + (x.length === 1 ? '' : 's') + ' normalised against ' + y.length };
+}
+
 /* ───── normalisation ───── */
 // ex = { wells:Set(pos) left out of references and replicates, masks:[[t0h,t1h]] time ranges to ignore }
 function tpNormalise(plate, S, ex) {
@@ -1467,7 +1500,7 @@ function tpNormalise(plate, S, ex) {
     ids.forEach(function (id) { var w = plate.wells[id]; if (w.pn && tpRole(w) !== 'bkg' && tpRole(w) !== 'blank') out.frac[id] = main.map(function (i) { return w.pn[i]; }); });
     out.ref = main.map(function () { return 1; });
     out.vehUsed = ids.filter(function (id) { return tpRole(plate.wells[id]) === 'veh' && out.frac[id]; });
-    out.notes.push('Normalised traces taken as they are.');
+    out.notes.push('Normalised traces taken as they are.' + (tpRules(plate).length ? ' Normalisation rules do not apply to them.' : ''));
     return out;
   }
   var role = function (id) { return tpRole(plate.wells[id]); };
@@ -1490,8 +1523,12 @@ function tpNormalise(plate, S, ex) {
   var base = {};
   Object.keys(x).forEach(function (id) { var b = tpMean(useSet.map(function (i) { return x[id][i]; })); if (b != null && b > 0) base[id] = b; });
   out.base = base;
+  // The rules: the Y wells of a rule are its own vehicle, so they leave the plate-wide one
+  var ruleIn = tpRules(plate), ruleY = {}, ruleOf = {};
+  ruleIn.forEach(function (rl, ri) { rl.y.forEach(function (id) { ruleY[id] = true; }); rl.x.forEach(function (id) { ruleOf[id] = ri; }); });
   // 4) vehicle wells: a robust test drops a dead well whole
   var vehAll = ids.filter(function (id) { return role(id) === 'veh' && x[id] && base[id] && !exW.has(id); });
+  var vehOwn = vehAll.filter(function (id) { return !ruleY[id]; }); if (vehOwn.length) vehAll = vehOwn;
   var vehUsed = vehAll.slice();
   if (vehAll.length >= 4 && N.veh !== 'perTime') {
     var lev = vehAll.map(function (id) { return tpMean(main.map(function (i) { return x[id][i] != null ? x[id][i] / base[id] : null; })); });
@@ -1503,36 +1540,53 @@ function tpNormalise(plate, S, ex) {
       else if (bad.length) { out.vehSuspect = bad; notes.push('Vehicle well' + (bad.length > 1 ? 's ' : ' ') + bad.join(', ') + (bad.length > 1 ? ' sit' : ' sits') + ' far from the other vehicle wells; they are in the reference (as ProNect does) — switch on "Leave out discordant vehicle wells" to drop them.'); }
     }
   }
-  if (!vehUsed.length && N.veh !== 'none') { notes.push('No vehicle wells: curves are normalised to their own T0 only, so substrate depletion is NOT corrected.'); }
+  var uncovered = Object.keys(x).some(function (id) { return ruleOf[id] === undefined && !ruleY[id]; });
+  if (!vehUsed.length && N.veh !== 'none' && (!ruleIn.length || uncovered)) { notes.push('No vehicle wells: curves are normalised to their own T0 only, so substrate depletion is NOT corrected.'); }
   out.vehUsed = vehUsed;
-  // 5) the vehicle trace
-  var ref = null, vrawMean = null;
-  if (vehUsed.length) {
-    vrawMean = main.map(function (i) { return tpMean(vehUsed.map(function (id) { return x[id][i]; })); });
+  // 5) the vehicle trace — of the plate-wide vehicle wells, and of each rule's own
+  function mkRef(used) {
+    var vr = main.map(function (i) { return tpMean(used.map(function (id) { return x[id][i]; })); }), rf = null;
     if (N.veh === 'ratioOfMeans') {
-      var M0 = tpMean(vehUsed.map(function (id) { return base[id]; }));
-      ref = vrawMean.map(function (m) { return m == null ? null : m / M0; });
+      var M0 = tpMean(used.map(function (id) { return base[id]; }));
+      rf = vr.map(function (m) { return m == null ? null : m / M0; });
     } else if (N.veh === 'meanOfRatios') {
-      ref = main.map(function (i) { return tpMean(vehUsed.map(function (id) { return x[id][i] != null ? x[id][i] / base[id] : null; })); });
+      rf = main.map(function (i) { return tpMean(used.map(function (id) { return x[id][i] != null ? x[id][i] / base[id] : null; })); });
     } else if (N.veh === 'perTime') {
-      ref = vrawMean.slice();
+      rf = vr.slice();
     }
-    if (ref && N.smooth === 'med3') ref = ref.map(function (v, k) { if (k === 0 || k === ref.length - 1) return v; var a = [ref[k - 1], v, ref[k + 1]]; return tpMedian(a); });
+    if (rf && N.smooth === 'med3') rf = rf.map(function (v, k) { if (k === 0 || k === rf.length - 1) return v; var a = [rf[k - 1], v, rf[k + 1]]; return tpMedian(a); });
+    return { ref: rf, raw: vr };
   }
+  function mkCV(used) {
+    var cv = main.map(function (i) { var a = used.map(function (id) { return N.veh === 'perTime' ? x[id][i] : (x[id][i] != null ? x[id][i] / base[id] : null); }); var m = tpMean(a), s = tpSD(a); return (m && s != null) ? s / m : null; });
+    return { cv: cv, mean: tpMean(cv) };
+  }
+  var ref = null, vrawMean = null;
+  if (vehUsed.length) { var gr = mkRef(vehUsed); ref = gr.ref; vrawMean = gr.raw; }
   out.ref = ref; out.vehRaw = vrawMean;
+  out.rules = ruleIn.map(function (rl, ri) {
+    var used = rl.y.filter(function (id) { return x[id] && base[id] && !exW.has(id); }), rr = { i: ri, x: rl.x.slice(), y: rl.y.slice(), used: used, ok: used.length > 0, ref: null, vehRaw: null, cv: [], cvmean: null };
+    if (!used.length) { notes.push('Rule ' + (ri + 1) + ': none of its control wells has a usable trace, so its ' + rl.x.length + ' well' + (rl.x.length === 1 ? ' is' : 's are') + ' left without a normalised curve.'); return rr; }
+    var m = mkRef(used); rr.ref = m.ref; rr.vehRaw = m.raw;
+    if (used.length > 1) { var q = mkCV(used); rr.cv = q.cv; rr.cvmean = q.mean; if (q.mean != null && q.mean > 0.08) notes.push('Rule ' + (ri + 1) + ': its control wells scatter by ' + (q.mean * 100).toFixed(1) + '% (n=' + used.length + ').'); }
+    else notes.push('Rule ' + (ri + 1) + ': only one control well — its noise goes into every curve of the rule.');
+    return rr;
+  });
+  out.ruleOf = ruleOf;
   // 6) fractional signal
   Object.keys(x).forEach(function (id) {
     var role_ = role(id); if (role_ === 'blank') return;
-    if (N.veh === 'perTime' && ref) { out.frac[id] = main.map(function (i, k) { var v = x[id][i], r = ref[k]; return (v != null && r != null && r > 0) ? v / r : null; }); return; }
+    var rr = ruleOf[id] !== undefined ? out.rules[ruleOf[id]] : null, rf = rr ? rr.ref : ref;
+    if (rr && !rr.ok) { out.frac[id] = main.map(function () { return null; }); return; }
+    if (N.veh === 'perTime' && rf) { out.frac[id] = main.map(function (i, k) { var v = x[id][i], r = rf[k]; return (v != null && r != null && r > 0) ? v / r : null; }); return; }
     if (!base[id]) { out.frac[id] = main.map(function () { return null; }); return; }
-    out.frac[id] = main.map(function (i, k) { var v = x[id][i]; if (v == null) return null; var u = v / base[id]; if (!ref) return u; var r = ref[k]; return (r != null && r > 0) ? u / r : null; });
+    out.frac[id] = main.map(function (i, k) { var v = x[id][i]; if (v == null) return null; var u = v / base[id]; if (!rf) return u; var r = rf[k]; return (r != null && r > 0) ? u / r : null; });
   });
   // 7) quality of the reference: CV of the vehicle wells at each read
   if (vehUsed.length > 1) {
-    out.vehCV = main.map(function (i) { var a = vehUsed.map(function (id) { return N.veh === 'perTime' ? x[id][i] : (x[id][i] != null ? x[id][i] / base[id] : null); }); var m = tpMean(a), s = tpSD(a); return (m && s != null) ? s / m : null; });
-    out.vehCVmean = tpMean(out.vehCV);
+    var qq = mkCV(vehUsed); out.vehCV = qq.cv; out.vehCVmean = qq.mean;
     if (out.vehCVmean != null && out.vehCVmean > 0.08) notes.push('The vehicle wells scatter by ' + (out.vehCVmean * 100).toFixed(1) + '% (n=' + vehUsed.length + '): every curve inherits that noise — smoothing the reference may help.');
-  } else if (vehUsed.length === 1) notes.push('Only one vehicle well: its noise goes into every curve.');
+  } else if (vehUsed.length === 1 && (!ruleIn.length || uncovered)) notes.push('Only one vehicle well: its noise goes into every curve.');
   return out;
 }
 
@@ -2044,7 +2098,7 @@ function tpToProNectJSON(plate, res) {
 /* ───── §3 state ───── */
 const TP = {
   v: 1, plates: [], pi: 0, S: tpSet(), ex: {}, res: {},
-  sel: { comp: null, conc: null, sub: 'kin' }, wsel: new Set(), anchor: null,
+  sel: { comp: null, conc: null, sub: 'kin' }, wsel: new Set(), anchor: null, nx: null,
   ui: { tab: 'plate', pview: 'layout', ptime: 0, sort: { k: 'logeff', d: -1 }, cmpX: 'kmax', cmpY: 'dmax', cmpC: null, units: { conc: 'auto', time: 'h' }, busy: false },
   lbLink: null
 };
@@ -2052,8 +2106,8 @@ const TP_ABOUT = { name: 'Tempo', ver: 'tempo/1' };
 // Undo: what you can take back is what you decided — wells and reads left out, time ranges, K-fit overrides, and the layout (roles, names, concentrations).
 // A step stores the plate's left-out state and a compact copy of its layout, never the reads.
 const TP_UNDO = { stack: [], redo: [] };
-function tpLaySnap(p) { const o = {}; Object.keys(p.wells).forEach(id => { const w = p.wells[id]; o[id] = [w.kind, w.role || null, w.compound, w.target, w.conc]; }); return JSON.stringify(o); }
-function tpLayRestore(p, snap) { const o = JSON.parse(snap); Object.keys(o).forEach(id => { const w = p.wells[id], a = o[id]; if (!w) return; w.kind = a[0]; if (a[1]) w.role = a[1]; else delete w.role; w.compound = a[2]; w.target = a[3]; w.conc = a[4]; }); p._mx = null; }
+function tpLaySnap(p) { const o = {}; Object.keys(p.wells).forEach(id => { const w = p.wells[id]; o[id] = [w.kind, w.role || null, w.compound, w.target, w.conc]; }); return JSON.stringify({ w: o, n: tpRules(p) }); }
+function tpLayRestore(p, snap) { const all = JSON.parse(snap), o = all.w || all; if (all.w) { if (all.n && all.n.length) p.norm = all.n; else delete p.norm; } Object.keys(o).forEach(id => { const w = p.wells[id], a = o[id]; if (!w) return; w.kind = a[0]; if (a[1]) w.role = a[1]; else delete w.role; w.compound = a[2]; w.target = a[3]; w.conc = a[4]; }); p._mx = null; }
 function tpUndoMark(label) { const p = tpPlate(); if (!p) return; TP_UNDO.stack.push({ pid: p.id, label: label, ex: JSON.stringify(tpEx(p)), lay: tpLaySnap(p) }); if (TP_UNDO.stack.length > 60) TP_UNDO.stack.shift(); TP_UNDO.redo = []; }
 function tpUndoStep(from, to, verb) {
   const s = TP_UNDO[from].pop(); if (!s) { tpToast('Nothing to ' + verb, ''); return false; }
@@ -2199,7 +2253,7 @@ async function tpLoadExample() {
 // AUDIT-KEEP: the name the sweeps and audits call to put an example on screen
 function loadTestData() { return tpLoadExample(); }
 function tpRemovePlate(i) { const p = TP.plates[i]; if (!p) return; TP.plates.splice(i, 1); delete TP.res[p.id]; delete TP.ex[p.id]; TP.pi = Math.max(0, Math.min(TP.pi, TP.plates.length - 1)); TP.sel.comp = null; TP.wsel = new Set(); tpAfterLoad(); tpAutosaveSoon(); }
-function tpSetPlate(i) { TP.pi = i; TP.sel.comp = null; TP.sel.conc = null; TP.wsel = new Set(); tpAfterLoad(); }
+function tpSetPlate(i) { TP.nx = null; TP.pi = i; TP.sel.comp = null; TP.sel.conc = null; TP.wsel = new Set(); tpAfterLoad(); }
 function tpRenamePlate(i) { const p = TP.plates[i]; if (!p) return; tpDialog('<h3>Name this plate</h3><div class="bd"><input class="inp" id="tp-rn" style="width:100%" value="' + esc(p.name) + '" maxlength="80"></div><div class="ft"><button class="btn" onclick="tpCloseDialog()">Cancel</button><button class="btn primary" id="tp-rn-ok">Rename</button></div>'); $('#tp-rn').select(); const go = () => { const v = tpCleanName($('#tp-rn').value); if (v) { p.name = v; tpAutosaveSoon(); } tpCloseDialog(); tpRender(); }; $('#tp-rn-ok').onclick = go; $('#tp-rn').onkeydown = e => { if (e.key === 'Enter') go(); }; }
 
 /* ───── autosave & projects ───── */
@@ -2466,6 +2520,7 @@ function tpQCCard(p) {
     '<dt>Normalised as</dt><dd>' + esc(tpNormName()) + '</dd>' +
     '<dt>Vehicle wells in the reference</dt><dd>' + vn + (nm.vehDropped.length ? ' (left out ' + esc(nm.vehDropped.join(', ')) + ')' : '') + '</dd>' +
     '<dt>Vehicle scatter (mean CV)</dt><dd>' + (cv == null ? '—' : (cv * 100).toFixed(1) + '%') + '</dd>' +
+    (nm.rules && nm.rules.length ? nm.rules.map(r => '<dt>Rule ' + (r.i + 1) + ' · ' + r.x.length + ' well' + (r.x.length === 1 ? '' : 's') + '</dt><dd>' + (r.ok ? 'against ' + r.used.length + ' well' + (r.used.length === 1 ? '' : 's') + (r.cvmean != null ? ', scatter ' + (r.cvmean * 100).toFixed(1) + '%' : '') : 'no usable control') + '</dd>').join('') : '') +
     '<dt>Background wells</dt><dd>' + (nm.bkg && TP.S.norm.bkg ? Object.values(p.wells).filter(w => tpRole(w) === 'bkg').length : 'not subtracted') + '</dd></dl>' +
     (notes ? '<ul class="note-list">' + notes + '</ul>' : '<ul class="note-list"><li class="ok">Nothing to flag in the reference.</li></ul>') + '</div>';
 }
@@ -2491,6 +2546,7 @@ function tpCompColor(p, name, pal) { const i = tpCompNames(p).indexOf(name), P =
 function tpPlateGrid(p) {
   const res = tpRes(p), R = p.fmt.rows, C = p.fmt.cols, pal = tpPal(), view = TP.ui.pview, kt = TP.ui.ptime;
   const ex = new Set(tpEx(p).wells), ttime = res ? res.t : [], k0 = res ? res.nm.idx[0] : 0;
+  const nrX = {}, nrY = {}, nxPend = new Set(TP.nx || []); tpRules(p).forEach((r, i) => { r.x.forEach(id => { nrX[id] = i; }); r.y.forEach(id => { if (nrY[id] === undefined) nrY[id] = i; }); });
   const kk = view === 'signal' ? Math.min(p.times.length - 1, Math.max(0, k0 + kt)) : kt;
   let h = '<div class="pgrid' + (p.fmt.n === 384 ? ' p384' : '') + '" id="tp-pgrid" role="group" aria-label="Wells of the plate: arrow keys move, Shift extends the selection, Space adds or removes one" style="grid-template-columns:18px repeat(' + C + ',minmax(0,1fr))">';
   h += '<div></div>'; for (let c = 1; c <= C; c++) h += '<div class="hd" data-col="' + c + '">' + c + '</div>';
@@ -2498,6 +2554,7 @@ function tpPlateGrid(p) {
     const row = String.fromCharCode(65 + r); h += '<div class="hd" data-row="' + row + '">' + row + '</div>';
     for (let c = 1; c <= C; c++) {
       const id = row + c, w = p.wells[id], sel = TP.wsel.has(id); let cls = 'w', st = '', label = '', tip = '';
+      const rx = nrX[id], ry = nrY[id];
       if (!w) cls += ' empty';
       else {
         const role = tpRole(w); cls += ' ' + (role === 'veh' ? 'veh' : role === 'bkg' ? 'bkg' : role === 'blank' ? 'blank' : '');
@@ -2508,6 +2565,10 @@ function tpPlateGrid(p) {
         tip = esc(id + ' · ' + (TP_ROLE_L[role] || role) + (w.compound ? ' · ' + w.compound : '') + (w.conc != null && w.conc > 0 ? ' · ' + tpAxConc(w.conc) : '') + (ex.has(id) ? ' · left out' : ''));
       }
       if (sel) cls += ' sel';
+      if (w) {
+        const ri = nxPend.has(id) ? -1 : rx !== undefined ? rx : ry; if (nxPend.has(id)) cls += ' nrp'; else if (ri !== undefined) { cls += rx !== undefined ? ' nrx' : ' nry'; const nc = '--nc:' + TP_RULE_COL[ri % TP_RULE_COL.length] + ';'; st = st ? st.replace(' style="', ' style="' + nc) : ' style="' + nc + '"'; }
+        if (rx !== undefined) tip += ' · read against rule ' + (rx + 1); else if (ry !== undefined) tip += ' · the control of rule ' + (ry + 1);
+      }
       h += '<div class="' + cls + '" data-id="' + id + '" role="button" tabindex="' + (r === 0 && c === 1 ? 0 : -1) + '" aria-pressed="' + sel + '" aria-label="' + (tip || id + ' · empty') + '"' + st + (tip ? ' data-tip="' + tip + '"' : '') + '><span class="t">' + label + '</span></div>';
     }
   }
@@ -2561,8 +2622,37 @@ function tpBindGrid() {
     $$('#tp-pgrid .w').forEach(x => x.tabIndex = -1); el.tabIndex = 0; el.focus(); paintSel(); tpRenderSel();
   });
 }
+// ── normalise X against Y: the plate's rules, drawn, listed, added and removed ──
+var TP_NX_INIT = null;
+function tpRangeText(ids) { return ids.length <= 6 ? ids.join(' ') : ids[0] + ' … ' + ids[ids.length - 1] + ' (' + ids.length + ')'; }
+function tpNormStart() { const p = tpPlate(); if (!p) return; const ids = [...TP.wsel].filter(id => p.wells[id]); if (!ids.length) { tpToast('Select the wells to normalise first.', 'warn'); return; } TP.nx = ids; TP.wsel = new Set(); tpRenderPlate(); }
+function tpNormCancel() { TP.nx = null; tpRenderPlate(); }
+function tpNormSet() {
+  const p = tpPlate(); if (!p || !TP.nx) return; const y = [...TP.wsel].filter(id => p.wells[id]);
+  if (!y.length) { tpToast('Select the control wells first.', 'warn'); return; }
+  tpUndoMark('a normalisation rule'); const r = tpRuleAdd(p, TP.nx, y);
+  if (!r.ok) { TP_UNDO.stack.pop(); tpToast(r.msg, 'warn'); return; }
+  TP.nx = null; TP.wsel = new Set(); p._mx = null; tpToast(r.msg); tpAutosaveSoon(); tpRunPlate(p).then(() => tpRender());
+}
+function tpNormDelete(i) { const p = tpPlate(); if (!p || !tpRules(p)[i]) return; tpUndoMark('a normalisation rule removed'); p.norm.splice(i, 1); tpRulePrune(p); tpAutosaveSoon(); tpRunPlate(p).then(() => tpRender()); }
+function tpNormPick(i, which) { const p = tpPlate(), r = tpRules(p)[i]; if (!r) return; TP.nx = null; TP.wsel = new Set(r[which]); tpRenderPlate(); }
+function tpRulesCard(p) {
+  const rules = tpRules(p), res = tpRes(p); if (!rules.length) return '';
+  return '<div class="card"><h3>Normalised against their own control</h3><p class="hint" style="margin:0 0 8px">Wells outside a rule are read against the plate\'s vehicle wells.</p><div class="rule-list">' + rules.map((r, i) => {
+    const rr = res && res.nm.rules && res.nm.rules[i], bad = rr && !rr.ok;
+    return '<div class="rule-row"><i class="rule-dot" style="background:' + TP_RULE_COL[i % TP_RULE_COL.length] + '"></i><span class="rule-n">' + (i + 1) + '</span>' +
+      '<button class="lnk" onclick="tpNormPick(' + i + ',\'x\')" title="Select these wells">' + esc(tpRangeText(r.x)) + '</button><span class="rule-by">against</span>' +
+      '<button class="lnk" onclick="tpNormPick(' + i + ',\'y\')" title="Select these wells">' + esc(tpRangeText(r.y)) + '</button>' +
+      (bad ? '<span class="rule-bad">no usable trace</span>' : (rr && rr.cvmean != null ? '<span class="rule-cv mono">scatter ' + (rr.cvmean * 100).toFixed(1) + '%</span>' : '')) +
+      '<button class="btn sm" onclick="tpNormDelete(' + i + ')" aria-label="Remove rule ' + (i + 1) + '">Remove</button></div>';
+  }).join('') + '</div></div>';
+}
 function tpSelPanel(p) {
-  const ids = [...TP.wsel].filter(id => p.wells[id]); if (!ids.length) return '<div class="lay-panel" id="tp-sel"><p class="hint" style="margin:0">Drag across the plate to pick wells (shift extends, ⌘/Ctrl adds, a row or column label takes the line). Then say what they hold, or leave them out of the analysis.</p></div>';
+  const ids = [...TP.wsel].filter(id => p.wells[id]);
+  if (TP.nx) return '<div class="lay-panel" id="tp-sel"><div class="sec-hd" style="margin-bottom:8px"><h2 style="font-size:var(--fs-5)">Normalise ' + TP.nx.length + ' well' + (TP.nx.length === 1 ? '' : 's') + '</h2><span class="sec-sub mono">' + esc(tpRangeText(TP.nx)) + '</span></div>' +
+    '<p class="hint" style="margin:0">' + (ids.length ? ids.length + ' well' + (ids.length === 1 ? '' : 's') + ' selected as their control (the mean of them, read by read).' : 'Now drag across the wells they are normalised against — the vehicle of this condition.') + '</p>' +
+    '<div class="acts"><button class="btn primary sm" onclick="tpNormSet()"' + (ids.length ? '' : ' disabled') + '>Normalise against these wells</button><button class="btn sm" onclick="tpNormCancel()">Cancel</button></div></div>';
+  if (!ids.length) return '<div class="lay-panel" id="tp-sel"><p class="hint" style="margin:0">Drag across the plate to pick wells (shift extends, ⌘/Ctrl adds, a row or column label takes the line). Then say what they hold, or leave them out of the analysis.</p></div>';
   const ws = ids.map(id => p.wells[id]), roles = new Set(ws.map(tpRole)), cpd = new Set(ws.map(w => w.compound)), tg = new Set(ws.map(w => w.target)), cc = new Set(ws.map(w => w.conc));
   const ex = new Set(tpEx(p).wells), allOut = ids.every(i => ex.has(i));
   const r0 = roles.size === 1 ? [...roles][0] : '';
@@ -2574,6 +2664,7 @@ function tpSelPanel(p) {
     '<div class="acts"><button class="btn primary sm" onclick="tpApplySel()">Apply</button>' +
     '<button class="btn sm" onclick="tpSeriesDlg()">Dilution series…</button>' +
     '<button class="btn sm" onclick="tpToggleOut()">' + (allOut ? 'Put back in' : 'Leave out') + '</button>' +
+    '<button class="btn sm" onclick="tpNormStart()" title="Read these wells against control wells of their own instead of the plate-wide vehicle">Normalise against…</button>' +
     '<button class="btn sm" onclick="TP.wsel=new Set();tpRenderPlate()">Clear selection</button></div></div>';
 }
 function tpRenderSel() { const p = tpPlate(), el = $('#tp-sel'); if (!el) return; const t = document.createElement('div'); t.innerHTML = tpSelPanel(p); el.replaceWith(t.firstChild); }
@@ -2586,6 +2677,7 @@ function tpApplySel() {
   ids.forEach(id => {
     const w = p.wells[id];
     if (role === 'bkg') { w.kind = 'bkg'; delete w.role; } else if (role === 'blank') { w.kind = 'blank'; delete w.role; } else if (role) { w.kind = 'sample'; w.role = role; }
+    if (role === 'bkg' || role === 'blank') tpRuleDrop(p, [id]);
     if ($('#tp-sc').value.trim() !== '' || $('#tp-sc').placeholder === '') w.compound = cpd;
     if ($('#tp-st').value.trim() !== '' || $('#tp-st').placeholder === '') w.target = tg;
     if (nv !== '') { const v = tpNum(nv), um = tpUnitNM(un); if (v != null && um != null && v >= 0) { w.conc = v * um; } }
@@ -2645,7 +2737,7 @@ function tpsKit() {
     steps: [
       { key: 'reads', label: 'Reads', render: () => tpsReads(), live: () => tpsPlates(), focus: false, done: () => TP.plates.length > 0 },
       { key: 'time', label: 'Time', render: () => tpsTime(), done: () => !!tpPlate() },
-      { key: 'controls', label: 'Controls', render: () => tpsControls(), live: () => { tpsMini('tps-mini-c'); tpsCtlFill(); }, done: () => { const s = tpsSummary(tpPlate()); return !!s && s.veh > 0 && s.none === 0; } },
+      { key: 'controls', label: 'Controls', render: () => tpsControls(), live: () => { tpsMini('tps-mini-c'); tpsCtlFill(); tpsRulesFill(); }, done: () => { const s = tpsSummary(tpPlate()); return !!s && s.veh > 0 && s.none === 0; } },
       { key: 'compounds', label: 'Compounds', render: () => tpsCompounds(), live: () => { tpsMini('tps-mini-p'); tpsPlanText(); }, done: () => { const s = tpsSummary(tpPlate()); return !!s && s.cpds.length > 0; } },
       { key: 'review', label: 'Review', render: () => tpsReview(), live: () => tpsReview() }
     ],
@@ -2742,9 +2834,26 @@ function tpsControls() {
   tpsK.pane('controls').innerHTML = '<div class="sx-two"><div>' +
     SetupKit.group('Where the controls are', 'the wells of ' + esc(p.name),
       '<div id="tps-ctls">' + ['veh', 'bkg', 'blank', 'out'].map(k => SetupKit.ctlRow(k, TPS_CTL[k][0], TPS_CTL[k][1], TPS_CTL[k][2])).join('') + '</div>' +
+      '<div class="sx-hint" style="margin-top:14px"><b>A condition with a vehicle of its own?</b> Wells normalised against other wells instead of the plate-wide vehicle (for example the same compound with and without a second drug, each with its own DMSO wells):</div>' +
+      '<div id="tps-rules"></div>' +
+      '<div class="sx-ctl"><div class="t"><b>Normalise</b><span>wells…</span></div><input type="text" id="tps-rx" placeholder="e.g. A2:D6" aria-label="Wells to normalise"></div>' +
+      '<div class="sx-ctl"><div class="t"><b>against</b><span>wells…</span></div><input type="text" id="tps-ry" placeholder="e.g. A1:D1" aria-label="Wells they are normalised against"><button class="btn sm" id="tps-radd">Add</button></div>' +
       '<div class="sx-hint">Type wells or ranges — <b>A1:H2</b>, <b>E1:F1, H2</b>, a row letter <b>B</b>, a column number <b>11</b> — and press Enter or leave the box. Empty clears that control. Anything that is not a control or a compound is counted as vehicle until you say what it is. For a layout that is not a block, paste it (Paste a layout, below) or select the wells on the Plate tab.</div>') +
     '</div><div class="sx-side"><div class="sx-mini-wrap" id="tps-mini-c"></div></div></div>';
-  tpsCtlFill(); tpsMini('tps-mini-c');
+  tpsCtlFill(); tpsRulesFill(); tpsMini('tps-mini-c');
+}
+function tpsRulesFill() {
+  const el = tpsEl('tps-rules'), p = tpPlate(); if (!el || !p) return;
+  el.innerHTML = tpRules(p).map((r, i) => '<div class="sx-ctl"><i style="background:' + TP_RULE_COL[i % TP_RULE_COL.length] + '"></i><div class="t"><b>' + (i + 1) + ' · ' + esc(SetupKit.rangeStr(r.x, tpsPos)) + '</b><span>against ' + esc(SetupKit.rangeStr(r.y, tpsPos)) + '</span></div><button class="btn sm" data-rdel="' + i + '" aria-label="Remove rule ' + (i + 1) + '">Remove</button></div>').join('');
+}
+function tpsRuleAdd() {
+  const p = tpPlate(), a = tpsEl('tps-rx'), b = tpsEl('tps-ry'); if (!p || !a || !b) return;
+  const X = tpParseRange(a.value.trim(), p.fmt), Y = tpParseRange(b.value.trim(), p.fmt);
+  if (!a.value.trim() || !b.value.trim() || X === null || Y === null) { (X === null || !a.value.trim() ? a : b).parentNode.classList.add('bad'); tpToast('Write the wells on both lines, as a well or a range such as A1:D1.', 'warn'); return; }
+  a.parentNode.classList.remove('bad'); b.parentNode.classList.remove('bad');
+  tpUndoMark('a normalisation rule'); const r = tpRuleAdd(p, X.filter(id => p.wells[id]), Y.filter(id => p.wells[id]));
+  if (!r.ok) { TP_UNDO.stack.pop(); tpToast(r.msg, 'warn'); return; }
+  a.value = ''; b.value = ''; p._mx = null; TPS.dirty = true; tpAutosaveSoon(); tpToast(r.msg); tpsK.refresh();
 }
 function tpsCtlFill() {
   const root = tpsEl('tps-ctls'), p = tpPlate(); if (!root || !p) return; const s = tpsSummary(p);
@@ -2755,7 +2864,8 @@ function tpsCtlFill() {
   });
 }
 function tpsToNone(w) { w.kind = 'sample'; delete w.role; w.compound = ''; w.target = ''; w.conc = null; }
-function tpsToRole(w, key, was) {
+function tpsToRole(w, key, was, id) {
+  if ((key === 'bkg' || key === 'blank') && id) tpRuleDrop(tpPlate(), [id]);
   if (key === 'veh') { w.kind = 'sample'; w.role = 'veh'; w.conc = 0; if (was === 'dose') w.compound = ''; }
   else { w.kind = key; delete w.role; w.conc = null; w.compound = ''; w.target = ''; }
 }
@@ -2769,7 +2879,7 @@ function tpsSetRole(key, text, inp) {
   if (SetupKit.rangeStr(ids, tpsPos) === SetupKit.rangeStr(cur, tpsPos)) { inp.value = SetupKit.rangeStr(ids, tpsPos); return; }
   tpUndoMark('wells assigned');
   if (key === 'out') tpEx(p).wells = ids.slice();
-  else { const set = new Set(ids); Object.keys(p.wells).forEach(id => { const w = p.wells[id], r = tpsRoleOf(w); if (r === key && !set.has(id)) tpsToNone(w); else if (set.has(id) && r !== key) tpsToRole(w, key, r); }); }
+  else { const set = new Set(ids); Object.keys(p.wells).forEach(id => { const w = p.wells[id], r = tpsRoleOf(w); if (r === key && !set.has(id)) tpsToNone(w); else if (set.has(id) && r !== key) tpsToRole(w, key, r, id); }); }
   p._mx = null; TPS.dirty = true; tpAutosaveSoon(); inp.value = SetupKit.rangeStr(ids, tpsPos); tpsK.refresh();
 }
 // The plate, small: what the layout is, as it is typed. Compounds in their colours, controls in theirs, a tint where there are reads and no role yet.
@@ -2908,6 +3018,7 @@ function tpsWire(d) {
   d.addEventListener('keydown', e => {
     const t = e.target;
     if (t.dataset && t.dataset.role && e.key === 'Enter') { e.preventDefault(); tpsSetRole(t.dataset.role, t.value, t); return; }
+    if ((t.id === 'tps-rx' || t.id === 'tps-ry') && e.key === 'Enter') { e.preventDefault(); tpsRuleAdd(); return; }
     if (t.id === 'tps-drop' && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); tpPickFiles(); }
   });
   d.addEventListener('click', e => {
@@ -2920,6 +3031,8 @@ function tpsWire(d) {
     if (t.closest('#tps-reps') && t.dataset.n) { TPS.form.reps = +t.dataset.n; tpsCompounds(); return; }
     if (t.closest('#tps-dir') && t.dataset.d) { TPS.form.dir = t.dataset.d; tpsCompounds(); return; }
     if (t.closest('#tps-run') && t.dataset.r) { TPS.form.run = t.dataset.r; tpsCompounds(); return; }
+    if (t.id === 'tps-radd') { tpsRuleAdd(); return; }
+    if (t.dataset.rdel !== undefined) { const q = tpPlate(); if (q && tpRules(q)[+t.dataset.rdel]) { tpUndoMark('a normalisation rule removed'); q.norm.splice(+t.dataset.rdel, 1); tpRulePrune(q); q._mx = null; TPS.dirty = true; tpAutosaveSoon(); tpsK.refresh(); } return; }
     if (t.id === 'tps-place') { tpsPlace(); return; }
     if (t.id === 'tps-unplace') { tpsUnplace(); return; }
   });
@@ -2929,7 +3042,7 @@ function tpRenderPlate() {
   if (!p) { pane.innerHTML = tpEmptyPlate(); return; }
   let h = '<div class="pl-top">' + TP.plates.map((q, i) => '<span class="pchip" role="button" tabindex="0" aria-pressed="' + (i === TP.pi) + '" onclick="tpSetPlate(' + i + ')" ondblclick="tpRenamePlate(' + i + ')" data-tip="Double-click to rename">' + esc(q.name) + '<span class="x" role="button" tabindex="0" aria-label="Remove ' + esc(q.name) + '" onclick="event.stopPropagation();tpRemovePlate(' + i + ')">×</span></span>').join('') +
     '<button class="btn sm" onclick="tpPickFiles()">' + ICO.up + 'Add files</button><button class="btn sm" onclick="tpLoadExample()">Example</button></div>';
-  h += '<div class="pl-grid"><div class="pl-left">' + tpPlateInfo(p) + tpTimeCard(p) + tpQCCard(p) + '</div><div>' + tpPlateCard(p) + '</div></div>';
+  h += '<div class="pl-grid"><div class="pl-left">' + tpPlateInfo(p) + tpTimeCard(p) + tpQCCard(p) + '</div><div>' + tpPlateCard(p) + tpRulesCard(p) + '</div></div>';
   pane.innerHTML = h; tpBindGrid();
   const b = $('#b-plate'); if (b) { const nn = (tpRes(p) ? tpRes(p).nm.notes.length : 0); b.hidden = !nn; b.textContent = nn; }
 }
@@ -3229,14 +3342,14 @@ function tpExportXLSX() {
   // the traces, in the shape ProNect writes them: one column per well
   TP.plates.forEach(p => { const res = tpRes(p); if (!res) return; const ids = Object.keys(res.nm.frac).sort((a, b) => { const x = tpWellRC(a), y = tpWellRC(b); return x.r - y.r || x.c - y.c; }); const aoa = [['Wells', ''].concat(ids), ['Target', ''].concat(ids.map(i => p.wells[i].target)), ['Compound', ''].concat(ids.map(i => p.wells[i].compound)), ['Concentration (nM)', ''].concat(ids.map(i => p.wells[i].conc)), ['Time (min)', 'Time (h)']]; res.t.forEach((t, k) => aoa.push([tpSigF(t * 60, 6), tpSigF(t, 6)].concat(ids.map(i => tpSigF(res.nm.frac[i][k], 6))))); add((multi ? 'Fractional ' + (TP.plates.indexOf(p) + 1) : 'Fractional'), aoa); });
   TP.plates.forEach(p => { const ids = Object.keys(p.wells).sort((a, b) => { const x = tpWellRC(a), y = tpWellRC(b); return x.r - y.r || x.c - y.c; }); const aoa = [['Wells', 'Time (min)'].concat(ids)]; p.times.forEach((t, k) => aoa.push(['', tpSigF(t, 8)].concat(ids.map(i => p.wells[i].raw ? p.wells[i].raw[k] : null)))); add(multi ? 'Raw ' + (TP.plates.indexOf(p) + 1) : 'Raw', aoa); });
-  TP.plates.forEach(p => { const lay = [['Plate', 'Well', 'Role', 'Compound', 'Target', 'Concentration (nM)', 'Left out']]; const ex = new Set(tpEx(p).wells); Object.keys(p.wells).sort((a, b) => { const x = tpWellRC(a), y = tpWellRC(b); return x.r - y.r || x.c - y.c; }).forEach(id => { const w = p.wells[id]; lay.push([p.name, id, TP_ROLE_L[tpRole(w)], w.compound, w.target, w.conc, ex.has(id) ? 'yes' : '']); }); if (!TP._layAcc) TP._layAcc = []; add(multi ? 'Layout ' + (TP.plates.indexOf(p) + 1) : 'Layout', lay); });
+  TP.plates.forEach(p => { const lay = [['Plate', 'Well', 'Role', 'Compound', 'Target', 'Concentration (nM)', 'Left out'].concat(tpRules(p).length ? ['Normalised against'] : [])]; const ex = new Set(tpEx(p).wells), ruleOfW = {}; tpRules(p).forEach((r, i) => r.x.forEach(q => { ruleOfW[q] = 'rule ' + (i + 1) + ': ' + SetupKit.rangeStr(r.y, tpsPos); })); Object.keys(p.wells).sort((a, b) => { const x = tpWellRC(a), y = tpWellRC(b); return x.r - y.r || x.c - y.c; }).forEach(id => { const w = p.wells[id]; lay.push([p.name, id, TP_ROLE_L[tpRole(w)], w.compound, w.target, w.conc, ex.has(id) ? 'yes' : ''].concat(tpRules(p).length ? [ruleOfW[id] || 'plate vehicle'] : [])); }); if (!TP._layAcc) TP._layAcc = []; add(multi ? 'Layout ' + (TP.plates.indexOf(p) + 1) : 'Layout', lay); });
   const st = [['Setting', 'Value']].concat(tpSettingsLines()); TP.plates.forEach(p => { const res = tpRes(p); if (res) { st.push(['Plate ' + p.name, p.source + ' · ' + Object.keys(p.wells).length + ' wells · ' + p.times.length + ' reads']); res.nm.notes.forEach(n => st.push(['  note', n])); const ex = tpEx(p); if (ex.wells.length) st.push(['  wells left out', ex.wells.join(', ')]); if (ex.masks.length) st.push(['  time ranges left out (h)', ex.masks.map(m => tpF(m[0], 3) + '–' + tpF(m[1], 3)).join('; ')]); } }); add('Settings', st);
   XLSX.writeFile(wb, tpBase() + '_tempo.xlsx'); tpToast('Workbook written');
 }
 function tpExportCSV() {
   const rows = tpRowsFlat(); if (!rows.length) { tpToast('Nothing to export yet', 'warn'); return; }
-  const out = [['Plate', 'Well', 'Compound', 'Target', 'Concentration_nM', 'Time_h', 'RLU_raw', 'Fractional', 'Left_out']];
-  TP.plates.forEach(p => { const res = tpRes(p); if (!res) return; const ex = new Set(tpEx(p).wells), exp = tpEx(p).pts; Object.keys(res.nm.frac).sort(tpNatCmp).forEach(id => { const w = p.wells[id]; res.t.forEach((t, k) => out.push([p.name, id, w.compound, w.target, tpNMConc(w.conc), tpSigF(t, 6), w.raw ? w.raw[res.nm.idx[k]] : null, tpSigF(res.nm.frac[id][k], 6), (ex.has(id) || (exp[id] || []).indexOf(k) >= 0) ? 1 : 0])); }); });
+  const anyRule = TP.plates.some(q => tpRules(q).length), out = [['Plate', 'Well', 'Compound', 'Target', 'Concentration_nM', 'Time_h', 'RLU_raw', 'Fractional', 'Left_out'].concat(anyRule ? ['Normalised_against'] : [])];
+  TP.plates.forEach(p => { const res = tpRes(p); if (!res) return; const ex = new Set(tpEx(p).wells), exp = tpEx(p).pts; Object.keys(res.nm.frac).sort(tpNatCmp).forEach(id => { const w = p.wells[id]; res.t.forEach((t, k) => out.push([p.name, id, w.compound, w.target, tpNMConc(w.conc), tpSigF(t, 6), w.raw ? w.raw[res.nm.idx[k]] : null, tpSigF(res.nm.frac[id][k], 6), (ex.has(id) || (exp[id] || []).indexOf(k) >= 0) ? 1 : 0].concat(anyRule ? [res.nm.ruleOf && res.nm.ruleOf[id] !== undefined ? 'rule ' + (res.nm.ruleOf[id] + 1) : 'plate vehicle'] : []))); }); });
   tpDownload(tpBase() + '_tempo_tidy.csv', tpBlob(tpCSV(out))); tpToast('Tidy CSV written (one row per well and read)');
 }
 // Prism: a table per compound — time down, one column per concentration (mean), then the same for SD and N
@@ -3264,7 +3377,7 @@ function tpExportProNect() {
   const js = tpToProNectJSON(p); js.Name = p.name; js.Results = tpResultsJSON(p);
   const dl = (n, b, d) => setTimeout(() => tpDownload(n, b), d); const b = tpBase();
   dl(b + '_raw_kinetic.csv', tpBlob(tpCSV(raw)), 0); dl(b + '_norm_kinetic.csv', tpBlob(tpCSV(nm)), 350); dl(b + '_normalized_data.json', new Blob([JSON.stringify(js)], { type: 'application/json' }), 700);
-  tpToast('Three files written: raw_kinetic.csv, norm_kinetic.csv, normalized_data.json (same layout ProNect writes)');
+  tpToast('Three files written: raw_kinetic.csv, norm_kinetic.csv, normalized_data.json (same layout ProNect writes)' + (tpRules(p).length ? ' — wells under a normalisation rule are read against their own control, which ProNect cannot reproduce' : ''));
 }
 function tpResultsJSON(p) { const res = tpRes(p); return { app: TP_ABOUT.ver, settings: TP.S, compounds: res.compounds.map(c => ({ compound: c.compound, target: c.target, class: c.cls, cref_nM: c.cref, promega: c.A && !c.A.fail ? { DC50_nM: c.A.DC50_nM, Dmax_pct: c.A.Dmax_pct, hill: c.A.HillSlope, R2: c.A.R2, flags: c.A.Flag_Reason } : null, michaelisMenten: c.B && c.B.ok ? { KDegMax_per_h: c.B.Kmax, KDeg50_nM: c.B.K50, efficiency: c.B.Eff, logEfficiency: c.B.LogEff, n: c.B.n, R2: c.B.r2, saturated: c.B.saturated } : null, concentrations: c.concs.map(cc => ({ nM: cc.c, K_per_h: cc.fit && cc.fit.degrading ? cc.fit.K : null, plateau: cc.fit && cc.fit.degrading ? cc.fit.P : null, class: cc.fit && cc.fit.ok ? cc.fit['class'] : null })) })) }; }
 /* charts as pictures */
@@ -3431,7 +3544,7 @@ async function tpSendToLabbook() {
   const ctx = { source: 'tempo', experiment: TP.lbLink && TP.lbLink.expId ? { id: TP.lbLink.expId } : null, cellLines: [], plateMaps: [], protocols: [], compounds: rows.map(r => ({ name: r.compound })),
     results: [{ id: id, source: 'Tempo', origin: 'tempo', session: session || undefined, label: 'Kinetic degradation · ' + rows.length + ' compound' + (rows.length === 1 ? '' : 's') + (p.name ? ' · ' + p.name : ''), assay: 'kd',
       potencyLabel: 'DC50 (nM)', effectLabel: 'Dmax (%)', potencyUnit: 'nM', effectUnit: '%', rows: rows, createdAt: new Date().toISOString(),
-      normalisation: ['Normalised as: ' + tpNormName(), 'Vehicle: ' + vn + ' well' + (vn === 1 ? '' : 's') + (res.nm.vehCVmean != null ? ', scatter ' + (res.nm.vehCVmean * 100).toFixed(1) + ' %' : ''), 'Fit: one-phase decay per concentration, y = P + (1 − P)·exp(−K·t), y0 fixed at 1; DC50 from the Dmax of every well against concentration; KDegMax and KDeg50 from K against concentration (Michaelis–Menten)'],
+      normalisation: ['Normalised as: ' + tpNormName(), 'Vehicle: ' + vn + ' well' + (vn === 1 ? '' : 's') + (res.nm.vehCVmean != null ? ', scatter ' + (res.nm.vehCVmean * 100).toFixed(1) + ' %' : ''), ...(res.nm.rules || []).map(r => 'Rule ' + (r.i + 1) + ': ' + r.x.length + ' well' + (r.x.length === 1 ? '' : 's') + ' normalised against ' + r.used.length + ' control well' + (r.used.length === 1 ? '' : 's') + ' of their own (' + SetupKit.rangeStr(r.y, tpsPos) + ')'), 'Fit: one-phase decay per concentration, y = P + (1 − P)·exp(−K·t), y0 fixed at 1; DC50 from the Dmax of every well against concentration; KDegMax and KDeg50 from K against concentration (Michaelis–Menten)'],
       normText: 'Luminescence was recorded kinetically; each trace was background-subtracted, divided by its own first read and by the vehicle trace treated the same way' + (N.veh === 'ratioOfMeans' ? '' : ' (' + N.veh + ')') + '. A one-phase decay was fitted to every concentration (initial level fixed at 1), Dmax and DC50 were obtained from the plateau of each well against concentration, and the rate constants were fitted against concentration with a Michaelis–Menten model to give KDegMax and KDeg50.' }] };
   TP.lbLink = { expId: TP.lbLink ? TP.lbLink.expId : null, setId: id, label: TP.lbLink ? TP.lbLink.label : '' };
   try { window.parent.openApp('labbook', undefined, undefined, ctx); tpSyncLb(); } catch (e) { tpToast('Could not reach Labbook.', 'err'); }
