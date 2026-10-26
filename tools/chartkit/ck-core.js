@@ -49,7 +49,7 @@ var ChartKitCore = (function(){
       pts: { show: false, size: 1.8 },
       xy: { marker: 'circle', msize: 2.8, lw: 1.4, fit: true, points: true, open: false, dash: false, extend: false },
       ref: { show: true, y: null, dash: true, w: 0.9, label: true },
-      legend: { show: true, size: 9, swatch: 9, pos: 'auto' },
+      legend: { show: true, size: 9, swatch: 9, pos: 'auto', float: false },
       hidden: {}, seen: {}, omit: {}, pos: {}, margin: { l: 0, r: 0, t: 0, b: 0 },
       snap: true, grid2: false
     };
@@ -77,7 +77,7 @@ var ChartKitCore = (function(){
     if (s.y.dec !== null) s.y.dec = Math.round(s.y.dec);
     return s;
   }
-  function withDefaults(s){ var d = defaults(); if (s && typeof s === 'object') { merge(d, JSON.parse(JSON.stringify(s))); if (Array.isArray(s.title)) d.title = s.title.map(function(t, i){ return merge(JSON.parse(JSON.stringify(defaults().title[i] || defaults().title[2])), t); }); } return sanitize(d); }
+  function withDefaults(s){ var d = defaults(); if (s && typeof s === 'object') { merge(d, JSON.parse(JSON.stringify(s))); delete d.title0; delete d.title1; delete d.title2; if (Array.isArray(s.title)) d.title = s.title.map(function(t, i){ return merge(JSON.parse(JSON.stringify(defaults().title[i] || defaults().title[2])), t); }); } return sanitize(d); }
 
   // ── numbers ─────────────────────────────────────────────────
   function fin(v){ return typeof v === 'number' && isFinite(v); }
@@ -299,7 +299,7 @@ var ChartKitCore = (function(){
     }
 
 
-    var M = spec.margin, pL = 12 + yTitleW + yLabW + spec.tick + 6 + M.l, pR = 14 + (legW && !legBelow && !spec.pos.legend ? legW + 22 : (legW && !legBelow ? 14 : 0)) + M.r, pT = tTop + titleH + 14 + M.t, legRes = legBelow && !spec.pos.legend ? legH + 8 : 0, pB = 10 + xTitleH + xLabH + spec.tick + 4 + legRes + M.b;
+    var M = spec.margin, pL = 12 + yTitleW + yLabW + spec.tick + 6 + M.l, pR = 14 + (legW && !legBelow ? (spec.legend.float ? 14 : legW + 22) : 0) + M.r, pT = tTop + titleH + 14 + M.t, legRes = legBelow && !spec.legend.float ? legH + 8 : 0, pB = 10 + xTitleH + xLabH + spec.tick + 4 + legRes + M.b;
     // A page too small for its own labels does not get labels on top of one another: the figure grows to what they need, and says so.
     var grew = null, W0 = W, H0 = H, ysz = spec.yTitle.size, minPH = 60;
     if (yt) {   // the Y title runs up the plot: set smaller (to 8 pt) when it is longer than the plot is high, and the plot is made high enough for what is left

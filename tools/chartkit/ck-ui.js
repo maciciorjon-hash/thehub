@@ -19,7 +19,7 @@ var ChartKit = (function(){
 
   function mount(root, opts){
     opts = opts || {};
-    var KEY = 'ck2:' + (opts.key || 'chart'), spec, doc = { items: [] }, scene = null, sel = null, tab = 'data', undo = [], redo = [], lastUndoKey = '', lastUndoAt = 0, dpi = 1200, saveT = 0, drag = null, openItems = {};
+    var KEY = 'ck2:' + (opts.key || 'chart'), spec, doc = { items: [] }, scene = null, sel = null, tab = 'data', undo = [], redo = [], lastUndoKey = '', lastUndoAt = 0, dpi = 1200, saveT = 0, drag = null, openItems = {}, cmode = null;
     try { spec = C.withDefaults(JSON.parse(localStorage.getItem(KEY) || 'null')); } catch (e) { spec = C.withDefaults(null); }
 
     root.classList.add('ck-root'); root.setAttribute('tabindex', '-1');
@@ -119,8 +119,10 @@ var ChartKit = (function(){
     }
 
     // ── selection ──────────────────────────────────────────────
+    // a title line is spec.title[n]; xTitle and yTitle are keys of their own
+    function tpath(id){ return id.indexOf('title') === 0 ? 'title.' + id.slice(5) : id; }
     function itemOf(id){ var m = /^(?:bar|fit|pt|leg):(.+)$/.exec(id || ''); return m ? m[1] : null; }
-    function select(id){ sel = id || null; renderSel(); overlay(); if (sel && TEXTS[sel]) tab = tab === 'data' ? 'text' : tab; if (sel && itemOf(sel) && tab === 'text') tab = 'colors'; renderTabs(); renderPanel(); }
+    function select(id){ if ((id || null) !== sel) cmode = null; sel = id || null; renderSel(); overlay(); if (sel && TEXTS[sel]) tab = tab === 'data' ? 'text' : tab; if (sel && itemOf(sel) && tab === 'text') tab = 'colors'; renderTabs(); renderPanel(); }
     function renderSel(){
       var h = '';
       if (!sel) h = '<div class="ck-hint"><b>Click anything on the chart to edit it.</b> Drag the titles and the legend — they snap to each other and to the plot; hold <kbd>Alt</kbd> to move freely, arrow keys nudge. Click a replicate in <b>Data</b> to omit it.</div>';
@@ -128,7 +130,7 @@ var ChartKit = (function(){
         var tt = sel.indexOf('title') === 0 ? spec.title[+sel.slice(5)] : spec[sel], cur = tt.text === null ? defaultText(sel) : tt.text;
         h = '<div class="ck-selh"><b>' + TEXTS[sel] + '</b><button type="button" class="ck-link" data-a="deselect">Done</button></div>' +
           '<input class="ck-in ck-txt" type="text" data-text="' + sel + '" value="' + esc(cur) + '" aria-label="' + TEXTS[sel] + '" placeholder="Empty hides it">' +
-          '<div class="ck-row"><label class="ck-f"><span>Size</span><input class="ck-in" type="number" step="0.5" min="4" max="60" data-tp="' + sel + '.size" value="' + tt.size + '"></label>' +
+          '<div class="ck-row"><label class="ck-f"><span>Size</span><input class="ck-in" type="number" step="0.5" min="4" max="60" data-tp="' + tpath(sel) + '.size" value="' + tt.size + '"></label>' +
           '<button type="button" class="ck-tg' + (tt.bold ? ' on' : '') + '" data-tg="' + sel + '.bold" title="Bold"><b>B</b></button><button type="button" class="ck-tg' + (tt.italic ? ' on' : '') + '" data-tg="' + sel + '.italic" title="Italic"><i>I</i></button></div>' + alignRow();
       } else if (sel === 'legend') {
         h = '<div class="ck-selh"><b>Legend</b><button type="button" class="ck-link" data-a="deselect">Done</button></div><div class="ck-row"><label class="ck-f"><span>Size</span><input class="ck-in" type="number" step="0.5" min="4" max="40" data-p="legend.size" data-t="num" value="' + spec.legend.size + '"></label><button type="button" class="ck-btn" data-a="hideleg">Hide</button></div>' + alignRow();
@@ -136,16 +138,20 @@ var ChartKit = (function(){
         var id = itemOf(sel), it = (doc.items || []).filter(function(x){ return x.id === id; })[0], ci = (doc.items || []).indexOf(it);
         if (it) {
           var col = C.itemColor(spec, it, ci, (doc.items || []).length), pal = C.PALETTES.filter(function(p){ return p.id === spec.palette; })[0] || C.PALETTES[0];
+          var pcs = palColors(pal), inPal = !spec.colors[id] || pcs.some(function(c){ return c.toLowerCase() === col.toLowerCase(); }), mode = cmode || (inPal ? 'palette' : 'full');
           h = '<div class="ck-selh"><b>' + esc(it.name) + '</b><button type="button" class="ck-link" data-a="deselect">Done</button></div>' +
-            '<div class="ck-row"><label class="ck-f"><span>Colour</span><input class="ck-color" type="color" data-item="' + esc(id) + '" value="' + col + '"></label>' +
-            '<button type="button" class="ck-link" data-a="resetcolor" data-id="' + esc(id) + '">Back to the palette</button><button type="button" class="ck-link" data-a="hideitem" data-id="' + esc(id) + '">Hide</button></div>' +
-            '<div class="ck-sw">' + palColors(pal).map(function(c){ return '<button type="button" class="ck-swb' + (c.toLowerCase() === col.toLowerCase() ? ' on' : '') + '" style="background:' + c + '" data-a="setcolor" data-id="' + esc(id) + '" data-c="' + c + '" aria-label="' + c + '"></button>'; }).join('') + '</div>';
+            '<div class="ck-seg ck-cm" role="group" aria-label="Where the colour comes from"><button type="button" class="' + (mode === 'palette' ? 'active' : '') + '" aria-pressed="' + (mode === 'palette') + '" data-cm="palette">Within the palette</button><button type="button" class="' + (mode === 'full' ? 'active' : '') + '" aria-pressed="' + (mode === 'full') + '" data-cm="full">Full spectrum</button></div>' +
+            (mode === 'palette'
+              ? '<div class="ck-sw">' + pcs.map(function(c){ return '<button type="button" class="ck-swb' + (c.toLowerCase() === col.toLowerCase() ? ' on' : '') + '" style="background:' + c + '" data-a="setcolor" data-id="' + esc(id) + '" data-c="' + c + '" aria-label="' + c + '"></button>'; }).join('') + '</div>'
+              : '<div class="ck-row"><label class="ck-f"><span>Colour</span><input class="ck-color" type="color" data-item="' + esc(id) + '" value="' + col + '"></label>' +
+                '<label class="ck-f"><span>Hex</span><input class="ck-in ck-hex" type="text" maxlength="7" data-hex="' + esc(id) + '" value="' + col + '" aria-label="Hex colour of ' + esc(it.name) + '"></label></div>') +
+            '<div class="ck-row"><button type="button" class="ck-link" data-a="resetcolor" data-id="' + esc(id) + '">Back to the palette</button><button type="button" class="ck-link" data-a="hideitem" data-id="' + esc(id) + '">Hide</button></div>';
         }
       } else if (sel === 'ref') h = '<div class="ck-selh"><b>Reference line</b><button type="button" class="ck-link" data-a="deselect">Done</button></div><div class="ck-hint">Its value and style are under <b>Axes</b>.</div>';
       else if (sel === 'axisX' || sel === 'axisY') h = '<div class="ck-selh"><b>' + (sel === 'axisX' ? 'X' : 'Y') + ' axis</b><button type="button" class="ck-link" data-a="deselect">Done</button></div><div class="ck-hint">Range, ticks and line width are under <b>Axes</b>.</div>';
       selBox.innerHTML = h;
     }
-    function palColors(pal){ var n = (doc.items || []).length; return pal.ramp ? Array.apply(null, Array(Math.max(2, Math.min(12, n)))).map(function(_, i, a){ return C.blueRamp(i, a.length); }) : pal.c; }
+    function palColors(pal){ return pal.ramp ? Array.apply(null, Array(12)).map(function(_, i){ return C.blueRamp(i, 12); }) : pal.c; }
     function alignRow(){ return '<div class="ck-row ck-align"><button type="button" class="ck-btn" data-al="cx">Centre on plot</button><button type="button" class="ck-btn" data-al="fx">Centre on figure</button><button type="button" class="ck-link" data-a="resetpos">Reset position</button></div>'; }
     function defaultText(id){ if (id === 'xTitle') return doc.xTitle || ''; if (id === 'yTitle') return doc.yTitle || ''; return (doc.title && doc.title[+id.slice(5)]) || ''; }
 
@@ -162,6 +168,7 @@ var ChartKit = (function(){
       if (tab === 'data') h = dataHtml();
       else if (tab === 'text') {
         h = '<div class="ck-grp">Click a line of text to edit it, or pick one:</div><div class="ck-list">' + Object.keys(TEXTS).map(function(k){ return '<button type="button" class="ck-li' + (sel === k ? ' on' : '') + '" data-pick="' + k + '">' + TEXTS[k] + '</button>'; }).join('') + '<button type="button" class="ck-li' + (sel === 'legend' ? ' on' : '') + '" data-pick="legend">Legend</button></div>' +
+          '<div class="ck-grp">Size of the title lines</div><div class="ck-grid">' + fld('Line 1', 'title.0.size', 'num', { step: 0.5, min: 4, max: 60 }) + fld('Line 2', 'title.1.size', 'num', { step: 0.5, min: 4, max: 60 }) + fld('Line 3', 'title.2.size', 'num', { step: 0.5, min: 4, max: 60 }) + '</div>' +
           '<div class="ck-grp">Numbers on the axes</div><div class="ck-grid">' + fld('Y labels', 'y.size', 'num', { step: 0.5, min: 4, max: 40 }) + fld('X labels', 'x.size', 'num', { step: 0.5, min: 4, max: 40 }) + '</div>';
       }
       else if (tab === 'axes') {
@@ -175,11 +182,11 @@ var ChartKit = (function(){
         h = (kind === 'bars' ? '<div class="ck-grp">Bars</div><div class="ck-grid">' + fld('Width', 'bar.width', 'num', { step: 0.05, min: 0.2, max: 1.2 }) + fld('Gap between groups', 'bar.gap', 'num', { step: 0.1, min: 0, max: 4 }) + fld('Gap inside a group', 'bar.inner', 'num', { step: 0.05, min: 0, max: 1 }) + fld('Border', 'bar.border', 'num', { step: 0.25, min: 0, max: 5 }) + '</div>' + fld('Fill', 'fill', 'sel', { opts: [['solid', 'Solid'], ['tint', 'Light fill, coloured border'], ['outline', 'Outline only']] }) + fld('Shade by concentration (highest darkest)', 'bar.shade', 'bool') + fld('Show every replicate as a point', 'pts.show', 'bool')
           : '<div class="ck-grp">Curves and points</div><div class="ck-grid">' + fld('Marker', 'xy.marker', 'sel', { opts: [['circle', 'Circle'], ['square', 'Square'], ['triangle', 'Triangle'], ['diamond', 'Diamond'], ['auto', 'One per compound']] }) + fld('Marker size', 'xy.msize', 'num', { step: 0.5, min: 1, max: 14 }) + fld('Line width', 'xy.lw', 'num', { step: 0.25, min: 0.25, max: 6 }) + '</div>' + fld('Show the fit', 'xy.fit', 'bool') + fld('Extend the fit across the whole axis', 'xy.extend', 'bool') + fld('Show the points', 'xy.points', 'bool') + fld('Open markers', 'xy.open', 'bool') + fld('Dashed fit', 'xy.dash', 'bool') + fld('Show every replicate beside its mean', 'pts.show', 'bool')) +
           '<div class="ck-grp">Error bars</div>' + fld('Show', 'err.type', 'sel', { opts: [['sd', 'SD'], ['sem', 'SEM'], ['ci95', '95% CI'], ['range', 'Range'], ['none', 'None']] }) + '<div class="ck-grid">' + (kind === 'bars' ? fld('Direction', 'err.dir', 'sel', { opts: [['up', 'Up only'], ['both', 'Both ways']] }) : '') + fld('Cap', 'err.cap', 'num', { step: 0.5, min: 0, max: 16 }) + fld('Width', 'err.w', 'num', { step: 0.25, min: 0.25, max: 5 }) + '</div>' +
-          '<div class="ck-grp">Legend</div>' + fld('Show', 'legend.show', 'bool') + '<div class="ck-grid">' + fld('Size', 'legend.size', 'num', { step: 0.5, min: 4, max: 40 }) + fld('Position', 'legend.pos', 'sel', { opts: [['auto', 'Auto'], ['right', 'Right of the plot'], ['below', 'Below the plot']] }) + '</div>';
+          '<div class="ck-grp">Legend</div>' + fld('Show', 'legend.show', 'bool') + '<div class="ck-grid">' + fld('Size', 'legend.size', 'num', { step: 0.5, min: 4, max: 40 }) + fld('Position', 'legend.pos', 'sel', { opts: [['auto', 'Auto'], ['right', 'Right of the plot'], ['below', 'Below the plot']] }) + '</div>' + fld('Legend takes no room (the plot grows into its space)', 'legend.float', 'bool');
       }
       else if (tab === 'colors') {
         h = '<div class="ck-grp">Palette</div><div class="ck-pals">' + C.PALETTES.map(function(p){ return '<button type="button" class="ck-pal' + (spec.palette === p.id ? ' on' : '') + '" data-pal="' + p.id + '" title="' + p.name + '"><span class="ck-pn">' + p.name + '</span><span class="ck-ps">' + p.c.slice(0, 8).map(function(c){ return '<i style="background:' + c + '"></i>'; }).join('') + '</span></button>'; }).join('') + '</div>' +
-          '<div class="ck-grp">Each compound</div><div class="ck-items">' + (doc.items || []).map(function(it, i){ var col = C.itemColor(spec, it, i, (doc.items || []).length); return '<div class="ck-itrow"><input class="ck-color" type="color" data-item="' + esc(it.id) + '" value="' + col + '" aria-label="Colour of ' + esc(it.name) + '"><button type="button" class="ck-name" data-pick="bar:' + esc(it.id) + '">' + esc(it.name) + '</button>' + (spec.colors[it.id] ? '<button type="button" class="ck-link" data-a="resetcolor" data-id="' + esc(it.id) + '">palette</button>' : '') + '</div>'; }).join('') + '</div>' +
+          '<div class="ck-grp">Each compound</div><div class="ck-items">' + (doc.items || []).map(function(it, i){ var col = C.itemColor(spec, it, i, (doc.items || []).length); return '<div class="ck-itrow"><button type="button" class="ck-chip' + (sel === 'bar:' + it.id ? ' on' : '') + '" style="background:' + col + '" data-pick="bar:' + esc(it.id) + '" aria-label="Colour of ' + esc(it.name) + ': ' + col + '"></button><button type="button" class="ck-name" data-pick="bar:' + esc(it.id) + '">' + esc(it.name) + '</button>' + (spec.colors[it.id] ? '<button type="button" class="ck-link" data-a="resetcolor" data-id="' + esc(it.id) + '">palette</button>' : '') + '</div>'; }).join('') + '</div>' +
           '<div class="ck-note">Choosing a palette recolours every compound; a colour picked for one compound is kept until you apply a palette again.</div>';
       }
       else if (tab === 'page') {
@@ -231,6 +238,7 @@ var ChartKit = (function(){
       if (t.dataset.a === 'dpi') { dpi = +t.value; pngNote(); }
       else if (t.dataset.a === 'toggleitem') { pushUndo('hide'); if (t.checked) delete spec.hidden[t.dataset.id]; else spec.hidden[t.dataset.id] = true; if (!t.checked && sel && itemOf(sel) === t.dataset.id) sel = null; draw(); renderSel(); renderPanel(); save(); }
       else if (t.dataset.a === 'snap') { pushUndo('snap'); spec.snap = t.checked; save(); }
+      else if (t.dataset.hex) { var hx = String(t.value).trim(); if (hx.charAt(0) !== '#') hx = '#' + hx; if (/^#[0-9a-f]{6}$/i.test(hx)) { pushUndo('col:' + t.dataset.hex); spec.colors[t.dataset.hex] = hx.toLowerCase(); draw(); save(); } renderSel(); if (tab === 'data' || tab === 'colors') renderPanel(); }
       else if (t.dataset.item) { renderSel(); if (tab === 'data' || tab === 'colors') renderPanel(); }
       else if (t.dataset.p) renderPanel();
     });
@@ -239,6 +247,7 @@ var ChartKit = (function(){
       var d = t.dataset;
       if (d.kind) { pushUndo('kind'); spec.kind = d.kind; syncBar(); draw(); renderPanel(); save(); return; }
       if (d.tab) { tab = d.tab; renderTabs(); renderPanel(); return; }
+      if (d.cm) { cmode = d.cm; renderSel(); return; }
       if (d.pick) { select(d.pick); return; }
       if (d.omit) { pushUndo('omit'); spec.omit[d.omit] = !spec.omit[d.omit]; if (!spec.omit[d.omit]) delete spec.omit[d.omit]; draw(); renderPanel(); save(); return; }
       if (d.pal) { pushUndo('palette'); spec.palette = d.pal; spec.colors = {}; draw(); renderPanel(); renderSel(); save(); return; }

@@ -40,6 +40,12 @@
 //       it is ticked        survive a refresh of the same data and new data starts unticked again; a lone compound, and a host with its own chooser (drawAll), are drawn at once.
 //   K22 open on request     Ticking a compound does not list its replicates: they open when its name or the arrow beside it is clicked (and close the same way), for that compound only.
 //
+//   K23 a title line has  Its Size changes that line (not a key of its own), from the card and from the Text tab, and is drawn at that size
+//       a size
+//   K24 the legend moves  Dragging the legend changes only the legend: the plot keeps its place and size; "Legend takes no room" is the one way to give its space to the plot
+//   K25 colour in the     The colour card has Within the palette (swatches) and Full spectrum (picker, hex); it opens on the one the colour belongs to
+//       palette or not
+//
 //   node tools/chartkit_invariants.mjs        exit 1 on any finding
 import { chromium } from 'playwright';
 import path from 'node:path';
@@ -145,7 +151,7 @@ const k5 = await ev(() => {
   o.before = [fillOf('c0'), fillOf('c1')];
   document.querySelector('#root [data-tab=colors]').click(); document.querySelector('#root [data-pal=okabe]').click();
   o.okabe = [fillOf('c0'), fillOf('c1')];
-  const inp = document.querySelector('#root .ck-color[data-item=c1]'); inp.value = '#123456'; inp.dispatchEvent(new Event('input', { bubbles: true }));
+  document.querySelector('#root .ck-chip[data-pick="bar:c1"]').click(); document.querySelector('#root [data-cm=full]').click(); const inp = document.querySelector('#root .ck-color[data-item=c1]'); inp.value = '#123456'; inp.dispatchEvent(new Event('input', { bubbles: true }));
   o.picked = [fillOf('c0'), fillOf('c1')];
   spec.hidden.c0 = true; kit.draw(); o.hidden = fillOf('c1'); delete spec.hidden.c0; kit.draw();
   document.querySelector('#root [data-pal=bold]').click(); o.bold = [fillOf('c0'), fillOf('c1')];
@@ -155,6 +161,49 @@ const k5 = await ev(() => {
 check('K5 a palette recolours every compound', k5.before[0] !== k5.okabe[0] && k5.okabe[0] === '#0072b2' && k5.okabe[1] === '#d55e00', JSON.stringify(k5));
 check('K5 a colour picked for one compound is kept, and hiding another compound does not move it', k5.picked[1] === '#123456' && k5.picked[0] === '#0072b2' && k5.hidden === '#123456', JSON.stringify(k5));
 check('K5 applying a palette again replaces the picked colour, and undo brings it back', k5.bold[1] === '#377eb8' && k5.undone[1] === '#123456', JSON.stringify({ bold: k5.bold, undone: k5.undone }));
+
+// ── K23 / K24 / K25 ──
+await open('bars');
+const k23 = await ev(() => {
+  const o = {}, spec = kit.spec(); spec.title[0].text = 'Heading'; kit.draw(); kit.select('title0');
+  const inp = document.querySelector('#root [data-tp="title.0.size"]'); o.hasInput = !!inp;
+  if (inp) { inp.value = '24'; inp.dispatchEvent(new Event('input', { bubbles: true })); }
+  o.size = kit.spec().title[0].size; o.junk = Object.keys(kit.spec()).filter(k => /^title\d$/.test(k));
+  const t = [...document.querySelectorAll('#root svg [data-el]')].find(x => x.dataset.el === 'title0'); const tx = t && (t.tagName === 'text' ? t : t.querySelector('text')); o.fs = tx && +tx.getAttribute('font-size');
+  document.querySelector('#root [data-tab=text]').click(); const tin = document.querySelector('#root [data-p="title.2.size"]'); o.tabInput = !!tin;
+  if (tin) { tin.value = '17'; tin.dispatchEvent(new Event('input', { bubbles: true })); } o.size2 = kit.spec().title[2].size;
+  const w = ChartKitCore.withDefaults({ title0: { size: 9 } }); o.healed = !('title0' in w);
+  return o;
+});
+check('K23 the Size of a title line changes that line (title[0].size), not a key of its own, and the Text tab has a size for each line', k23.hasInput && k23.size === 24 && k23.junk.length === 0 && k23.tabInput && k23.size2 === 17 && k23.healed, JSON.stringify(k23));
+check('K23 the title is drawn at the size set', k23.fs && Math.abs(k23.fs - 24) < 6, JSON.stringify(k23));
+
+await open('bars');
+await ev(() => { kit.spec().snap = false; });
+const plotOf = () => ev(() => { const s = kit.scene(); return { x: s.plot.x, y: s.plot.y, w: s.plot.w, h: s.plot.h, W: s.W, H: s.H }; });
+const pl0 = await plotOf();
+await drag('legend', -70, 25, true);
+const pl1 = await plotOf();
+const legIn = await ev(() => { const svg = document.querySelector('#root svg'), o = svg.getBoundingClientRect(), l = [...svg.querySelectorAll('[data-el]')].find(x => x.dataset.el === 'legend').getBoundingClientRect(); return l.left >= o.left - 1 && l.right <= o.right + 1 && l.top >= o.top - 1 && l.bottom <= o.bottom + 1; });
+check('K24 dragging the legend moves the legend and nothing else: the plot keeps its place and size, and the legend stays on the page', ['x', 'y', 'w', 'h', 'W', 'H'].every(k => Math.abs(pl0[k] - pl1[k]) < 0.01) && legIn, JSON.stringify({ pl0, pl1, legIn }));
+await ev(() => { kit.spec().legend.float = true; kit.draw(); });
+const pl2 = await plotOf();
+check('K24 "Legend takes no room" hands its space to the plot, on request only', pl2.w > pl1.w + 20, JSON.stringify({ pl1, pl2 }));
+
+await open('bars');
+const k25 = await ev(() => {
+  const o = {}, spec = kit.spec(), q = s => document.querySelector('#root ' + s);
+  document.querySelector('#root [data-tab=colors]').click(); o.chip = !!q('.ck-chip[data-pick="bar:c1"]'); q('.ck-chip[data-pick="bar:c1"]').click();
+  o.tabs = [...document.querySelectorAll('#root [data-cm]')].map(b => b.textContent);
+  o.swatches = document.querySelectorAll('#root .ck-sw .ck-swb').length; o.pickerInPalette = !!q('.ck-selbox .ck-color, #root .ck-color[data-item="c1"]') && !!document.querySelector('#root .ck-sel .ck-color');
+  const sw = document.querySelectorAll('#root .ck-sw .ck-swb')[3]; const c3 = sw && sw.dataset.c; if (sw) sw.click(); o.paletteColour = spec.colors.c1 === c3;
+  q('[data-cm="full"]').click(); o.full = !!document.querySelector('#root [data-hex="c1"]');
+  const hx = document.querySelector('#root [data-hex="c1"]'); hx.value = '#abcdef'; hx.dispatchEvent(new Event('change', { bubbles: true })); o.hex = spec.colors.c1;
+  kit.select(null); kit.select('bar:c1'); o.opensFull = !!document.querySelector('#root [data-hex="c1"]');
+  document.querySelector('#root [data-a="resetcolor"]').click(); kit.select(null); kit.select('bar:c1'); o.opensPalette = !document.querySelector('#root [data-hex="c1"]') && document.querySelectorAll('#root .ck-sw .ck-swb').length > 0;
+  return o;
+});
+check('K25 the colour card has "Within the palette" and "Full spectrum": swatches in the first, any colour (picker or hex) in the second, opening on the one the colour belongs to', k25.chip && k25.tabs.join('|') === 'Within the palette|Full spectrum' && k25.swatches >= 8 && k25.paletteColour && k25.full && k25.hex === '#abcdef' && k25.opensFull && k25.opensPalette, JSON.stringify(k25));
 
 // ── K6 ──
 await open('bars');
