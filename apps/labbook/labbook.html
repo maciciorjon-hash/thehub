@@ -24806,6 +24806,8 @@ else document.documentElement.classList.add('lb-loading');
 _leanInit(); applyLayout(); renderPanels();
 function _restoreWhereLeft(){
   // Open where you left off: the Journal page you were on, or the Planner's last node.
+  // Inside dHUB it is the other way round: the Hub opens on Today, every time (lb:go below).
+  if(lbHost()) return;
   var nb=WS_LAST.notebook;
   if(WS_LAST.ws==='notebook' && nb && nb.page && (_isDateKey(nb.page)||LB.data.pages[nb.page])){ SEL.node=_jrNode(); SEL.page=nb.page; return; }
   if(WS_LAST.ws==='designer'){ SEL.node={kind:'design'}; return; }
@@ -25039,15 +25041,18 @@ function _trustedMsg(e){
   try{ if(e.source && e.source.document) return true; }catch(x){}
   var me=(typeof self.origin==='string')?self.origin:location.origin;
   return e.origin===me; }
+var _hubLanded=false;
 window.addEventListener('message', function(e){
   if(!_trustedMsg(e)) return;
   // The workspace rail drives Labbook from outside: Home is this app's dashboard and Labbook
   // is the notebook, so the shell needs a way to say which one without knowing our internals.
   if(e.data && e.data.type==='lb:go'){
-    var v=e.data.view;
+    var v=e.data.view; var _first=!_hubLanded; _hubLanded=true;
     // The rail says Planner (→ Today or Week, where you left it), Experiments, or Notebook (→ where you left it, else today's page).
     // The older views stay answered so a saved link or an old shell keeps working.
-    if(v==='planner') openPlannerWs();
+    // The Hub's first words after it loads are "Planner": that is the landing, and the landing is Today, not
+    // wherever the last session ended. Later Planner clicks still return to where you were.
+    if(v==='planner'){ if(_first) selectNode('journal'); else openPlannerWs(); }
     else if(v==='notebook'){ if(lbWorkspace()!=='notebook') openJournalWs(); }
     else if(v==='experiments') openExperimentsWs();
   else if(v==='visualize') openPlannerWs();

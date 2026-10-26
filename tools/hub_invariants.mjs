@@ -14,6 +14,7 @@
 //                         open app lights the landing it belongs to
 //   S6  the rail's order      Journal, Planner, Experiments, Designer, then the landings; Experiments has its own entry and icon, an old
 //                         "exps" link lights it, and Labbook telling the Hub it is in Experiments lights it
+//   S8  lands on Today     an admin opening dHUB starts on Labbook's Today, whatever the last session left (Week, Designer, Experiments)
 //   S7  opaque links      a public app's link is an opaque slug, never its name: opening Echo writes the slug to the URL, the
 //                         slug opens it for anyone, and #echo opens only for the admin or a visitor who typed Echo's word
 //
@@ -200,6 +201,23 @@ if (run('S6')) {
   if (r.afterExps !== 'experiments' || r.section !== 'experiments') bad('S6', 'the old Experiments link lit ' + r.afterExps + ' (section ' + r.section + '), expected Experiments'); else ok();
   if (r.afterPlanner !== 'planner') bad('S6', 'Planner lit ' + r.afterPlanner); else ok();
   if (r.afterTold !== 'experiments') bad('S6', 'Labbook said it is in Experiments and the rail lit ' + r.afterTold); else ok();
+}
+
+if (run('S8')) {
+  // Its own contexts: the landing is decided by what the previous session saved (lb_last), so each starts from a different one.
+  for (const saved of [null, { ws: 'planner', planner: { node: { kind: 'week' } } }, { ws: 'designer' }, { ws: 'experiments', experiments: { node: { kind: 'exps' } } }]) {
+    const c8 = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const p8 = await c8.newPage();
+    await p8.route(/^https?:/, r => r.abort());
+    await p8.addInitScript(s => { localStorage.setItem('lb_tour_done', '1'); if (s) localStorage.setItem('lb_last', JSON.stringify(s)); }, saved);
+    await p8.goto('file://' + SHELL, { waitUntil: 'load' });
+    await p8.waitForTimeout(800);
+    await p8.evaluate(() => { isAdmin = true; renderSuites(); });
+    await p8.waitForTimeout(3500);
+    const r = await p8.evaluate(() => { const w = (document.getElementById('frame-labbook') || {}).contentWindow; return { node: w && w.SEL && w.SEL.node && w.SEL.node.kind, page: w && w.SEL && w.SEL.page, rail: (document.querySelector('#ws-rail .ws-item.on') || { dataset: {} }).dataset.ws }; });
+    if (r.node !== 'journal' || r.page || r.rail !== 'planner') bad('S8', 'dHUB opened on ' + JSON.stringify(r) + ' after ' + JSON.stringify(saved) + ' (want the Planner on Today)'); else ok();
+    await c8.close();
+  }
 }
 
 if (run('S7')) {

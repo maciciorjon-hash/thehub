@@ -7731,7 +7731,7 @@ commit and one invariant each; each step below is added when it lands.
   standalone); Experiments = *All experiments* + the Projects tree; standalone gets a "Workspaces"
   block of the four on top. `WS_LAST.experiments` is its own memory, and `_wsLastFrom()` moves what an
   older version saved under the planner's key. Opening an experiment from Today moves the rail to
-  Experiments (the editor lives there). dHUB still opens on Planner · Today. Icon `experiments`
+  Experiments (the editor lives there). dHUB still opens on Planner · Today — always: inside the Hub Labbook ignores `lb_last` at start (`_restoreWhereLeft` returns on `lbHost()`) and the Hub's first `lb:go planner` selects Today (`_hubLanded`); later Planner clicks still restore Week. Standalone/iPhone keep "open where you left off". Invariant **S8** (`tools/hub_invariants.mjs`). Icon `experiments`
   (a flask) is drawn in `tools/sync_icons.py`.
   Invariants: **B33** (`tools/invariants.mjs`), **S6** (`tools/hub_invariants.mjs`), PA7 now expects
   `today,exps,cells,add,more`. The desktop sweep's `home` scene became `planner_today`, so the
