@@ -231,6 +231,16 @@ button:focus-visible,summary:focus-visible,[role=button]:focus-visible,[role=tab
 @media (max-width:1100px){.lm-body{grid-template-columns:minmax(0,1fr);}}
 @media (max-width:1240px){.lm-body.x384{grid-template-columns:minmax(0,1fr);}}
 .lm-platecol{min-width:0;}
+/* The panel starts where the plate does, not where the plate's own controls (size, readings, demos) do: the body is two rows,
+   those controls over the plate in the first, the plate and the panel in the second. The plate column is a subgrid of them. */
+.lm-body{grid-template-rows:auto auto;row-gap:0;}
+.lm-platecol{grid-row:1 / span 2;display:grid;grid-template-rows:subgrid;align-items:start;}
+.lm-pre{grid-row:1;min-width:0;}
+.lm-platecol > .well-grid-wrap{grid-row:2;}
+.lm-body > .lm-sel{grid-column:2;grid-row:2;margin-top:var(--lm-ptop,0px);}
+.lm-body.names > .lm-sel{grid-column:1;grid-row:auto;}
+@media (max-width:1100px){.lm-body > .lm-sel{grid-column:1;grid-row:3;margin-top:24px;}}
+@media (max-width:1240px){.lm-body.x384 > .lm-sel{grid-column:1;grid-row:3;margin-top:24px;}}
 .lm-sel{position:sticky;top:60px;border:1px solid var(--border);border-radius:var(--r-2);background:var(--surface2);padding:14px 16px;}
 @media (max-width:1000px){.lm-sel{position:static;}}
 .lm-body.x384 .lm-sel{position:static;}
@@ -536,7 +546,7 @@ button:focus-visible,summary:focus-visible,[role=button]:focus-visible,[role=tab
 .lm-head{margin-bottom:12px;}
 .lm-head:has(.lm-plates:empty){display:none;}
 .lm-steps{grid-template-columns:repeat(var(--n,3),minmax(0,1fr));}
-.lm-body{grid-template-columns:minmax(0,1fr) 400px;gap:28px;}
+.lm-body{grid-template-columns:minmax(0,1fr) 400px;column-gap:28px;}
 .lm-body.x384{grid-template-columns:minmax(0,1fr) 380px;}
 .lm-sel{top:12px;}
 .lm-platebar{flex-wrap:nowrap;align-items:center;gap:10px 14px;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border);}
@@ -1376,6 +1386,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
     <div class="lm-body" id="lm-body">
       <div class="lm-platecol" id="lm-platewrap">
+        <div class="lm-pre">
         <div class="lm-platebar">
           <select id="plate-format" class="lm-assay lm-fmt" onchange="bSetFormat(+this.value);this.blur()" aria-label="Plate format" title="The plate: 96 or 384 wells. A grid you paste or a file you drop sets it for you; changing it by hand clears this plate’s readings and layout (⌘Z brings them back)">
             <option value="96">96-well plate</option>
@@ -1388,6 +1399,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
           <button class="lm-link" onclick="loadTestData('displacement')">Tracer displacement demo</button>
         </div>
         <div class="bc-demo" id="bc-recent"></div>
+        </div>
         <div class="well-grid-wrap"><div id="well-grid" class="well-grid"></div></div>
       </div>
 
@@ -3457,6 +3469,26 @@ function _bReadFmt(v, fit){
   if (s.length > fit) s = String(Math.round(v));
   return s.length > fit ? '' : s;
 }
+// The side panel starts at the first row of wells, not at the column labels above them: --lm-ptop is how far down that is.
+(function(){
+  var raf = 0;
+  function align(){
+    raf = 0;
+    var body = document.getElementById('lm-body'), grid = document.getElementById('well-grid');
+    if (!body || !grid) return;
+    var w = grid.querySelector('.well'), wrap = grid.parentElement, d = 0;
+    if (w && wrap && wrap.offsetParent) d = Math.max(0, Math.round(w.getBoundingClientRect().top - wrap.getBoundingClientRect().top));
+    body.style.setProperty('--lm-ptop', d + 'px');
+  }
+  function soon(){ if (!raf) raf = requestAnimationFrame(align); }
+  var gridEl = document.getElementById('well-grid');
+  if (gridEl) {
+    if (window.MutationObserver) new MutationObserver(soon).observe(gridEl, { childList: true });
+    if (window.ResizeObserver) new ResizeObserver(soon).observe(gridEl);
+  }
+  window.addEventListener('resize', soon);
+  soon();
+})();
 function bRenderGrid(){
   var grid = document.getElementById('well-grid'), pl = bPl();
   var none = !pl;

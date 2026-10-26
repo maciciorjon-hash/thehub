@@ -650,6 +650,25 @@ try {
   check('L22 clearing wells takes them out of the rules, and a rule with nothing left goes (and the tab with it)', r.gone && /\/44$/.test(r.cleared) && !/^1\/44$/.test(r.cleared), JSON.stringify({ c: r.cleared, g: r.gone }));
 } catch (err) { check('L22 the checks ran to the end', false, String(err && err.message || err).split('\n')[0]); }
 
+// ── L23 the side panel starts level with the plate ───────────────────────────────────────
+// The panel sat level with the plate's size dropdown, a whole bar above the wells. The plate column is a subgrid of two rows now (its controls, then the plate),
+// and the panel is in the second, offset by the column labels above the first row of wells. A reading strip, concentrations in the labels, a layout change:
+// none of them may let the panel and the first row drift apart.
+try {
+  const r = await ev(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms)), o = {};
+    const top = q => { const e = document.querySelector(q); return e ? e.getBoundingClientRect().top : null; };
+    const gap = () => Math.abs(top('#well-grid .well') - top('#lm-sel'));
+    switchTab('input'); state.activeSubtab = 'layout'; setPlateFormat(96); lmAfterChange(); await wait(400); o.empty = gap(); o.fmtH = document.getElementById('plate-format').getBoundingClientRect().height;
+    loadLuminaTestData(); await wait(900); o.loaded = gap();
+    o.fmtAbove = top('#plate-format') < top('#well-grid .well') - 20;
+    return o;
+  });
+  check('L23 on an empty plate the side panel starts level with the first row of wells, not with the size dropdown above them', r.empty < 1.5 && r.fmtAbove, JSON.stringify(r));
+  check('L23 with a layout loaded (concentrations make the column labels taller) the panel still meets the first row of wells', r.loaded < 1.5, JSON.stringify(r));
+  check('L23 the plate size dropdown is a 32px box like every other (Beacon\'s bar is the same)', Math.round(r.fmtH) === 32, JSON.stringify(r));
+} catch (err) { check('L23 the checks ran to the end', false, String(err && err.message || err).split('\n')[0]); }
+
 check('no page or console errors', errs.length === 0, errs.slice(0, 3).join(' | '));
 await browser.close();
 if (findings.length) { console.log(findings.join('\n')); console.log(`\n${findings.length} finding(s), ${passed} checks passed.`); process.exit(1); }

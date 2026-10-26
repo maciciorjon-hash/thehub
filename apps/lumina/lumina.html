@@ -234,6 +234,16 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px soli
 @media (max-width:1100px){.lm-body{grid-template-columns:minmax(0,1fr);}}
 @media (max-width:1240px){.lm-body.x384{grid-template-columns:minmax(0,1fr);}}
 .lm-platecol{min-width:0;}
+/* The panel starts where the plate does, not where the plate's own controls (its size, the readings strip) do: the body is two rows,
+   those controls over the plate in the first, the plate and the panel in the second. The plate column is a subgrid of them. */
+.lm-body{grid-template-rows:auto auto;column-gap:24px;row-gap:0;}
+.lm-platecol{grid-row:1 / span 2;display:grid;grid-template-rows:subgrid;align-items:start;}
+.lm-pre{grid-row:1;min-width:0;}
+.lm-platecol > .well-grid-wrap{grid-row:2;}
+.lm-body > .lm-sel{grid-column:2;grid-row:2;margin-top:var(--lm-ptop,0px);}
+.lm-body.names > .lm-sel{grid-column:1;grid-row:auto;}
+@media (max-width:1100px){.lm-body > .lm-sel{grid-column:1;grid-row:3;margin-top:24px;}}
+@media (max-width:1240px){.lm-body.x384 > .lm-sel{grid-column:1;grid-row:3;margin-top:24px;}}
 .lm-sel{position:sticky;top:60px;border:1px solid var(--border);border-radius:var(--r-2);background:var(--surface2);padding:14px 16px;}
 @media (max-width:1000px){.lm-sel{position:static;}}
 .lm-body.x384 .lm-sel{position:static;}
@@ -275,7 +285,8 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px soli
 .lg-empty{display:none;margin:6px 0 14px;font-size:var(--fs-4);color:var(--text2);}
 .lm-platebar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin-bottom:10px;}
 .lm-platebar .lm-read{flex:1 1 300px;margin-bottom:0;min-width:0;}
-.lm-assay.lm-fmt{min-width:150px;}   /* the select of the assay, narrower: it only says 96 or 384 */
+.lm-assay.lm-fmt{min-width:0;height:32px;}   /* the select of the assay, smaller: it only says 96 or 384, and 32px is the height of a box (docs/UI.md; Beacon's bar is the same) */
+.lm-platebar{margin-bottom:6px;}
 .lm-read.empty{border:1.5px dashed var(--border2);border-radius:var(--r-2);padding:10px 14px;cursor:pointer;}
 .lm-read.empty:hover{border-color:var(--accent);background:var(--accent-dim);}
 .lm-read svg{width:18px;height:18px;flex-shrink:0;color:var(--text3);}
@@ -1305,13 +1316,13 @@ var SetupKit = (function(){
 
       <div class="lm-body" id="lm-body">
         <div class="lm-platecol" id="lm-platewrap">
-          <div class="lm-platebar">
+          <div class="lm-pre"><div class="lm-platebar">
             <select id="plate-format" class="lm-assay lm-fmt" onchange="setPlateFormat(+this.value);this.blur()" aria-label="Plate format" title="The plate: 96 or 384 wells. Changing it clears the layout and readings (⌘Z brings them back)">
               <option value="96">96-well plate</option>
               <option value="384">384-well plate</option>
             </select>
             <div class="lm-read" id="lm-read"></div>
-          </div>
+          </div></div>
           <div class="well-grid-wrap"><div id="well-grid" class="well-grid"></div></div>
         </div>
 
@@ -2959,6 +2970,26 @@ function _lmReadFmt(v, fit, force){
 }
 function wellPos(r, c){ return String.fromCharCode(65 + r) + (c + 1); }
 
+// The side panel starts at the first row of wells, not at the column labels above them: --lm-ptop is how far down that is.
+(function(){
+  var raf = 0;
+  function align(){
+    raf = 0;
+    var body = document.getElementById('lm-body'), grid = document.getElementById('well-grid');
+    if (!body || !grid) return;
+    var w = grid.querySelector('.well'), wrap = grid.parentElement, d = 0;
+    if (w && wrap && wrap.offsetParent) d = Math.max(0, Math.round(w.getBoundingClientRect().top - wrap.getBoundingClientRect().top));
+    body.style.setProperty('--lm-ptop', d + 'px');
+  }
+  function soon(){ if (!raf) raf = requestAnimationFrame(align); }
+  var gridEl = document.getElementById('well-grid');
+  if (gridEl) {
+    if (window.MutationObserver) new MutationObserver(soon).observe(gridEl, { childList: true });
+    if (window.ResizeObserver) new ResizeObserver(soon).observe(gridEl);
+  }
+  window.addEventListener('resize', soon);
+  soon();
+})();
 function renderGrid(){
   var grid = document.getElementById('well-grid');
   var rows = state.rows, cols = state.cols;

@@ -31,6 +31,8 @@
 //                               so the last rows of a plate taller than the window can be drawn.
 //   B21 X against Y          Any wells can be normalised against any other wells: Plate › Normalise (drag X, "Normalise these wells…", drag Y, "Normalise against these wells") makes a rule drawn on the plate; a well is in one rule, never its
 //                            own control; every value is divided by the mean of its rule's wells (else the vehicle's), so the figure, the Prism copy and the workbook follow; the Normalisation tab exists only while a rule does; undo, History keep it.
+//   B22 the panel meets the plate  The side panel (Select wells…) starts level with the first row of wells, not with the size dropdown and readings strip above the plate: the plate column is a subgrid
+//                              of two rows, and the panel follows the plate when the column labels above the wells grow (concentrations) or the format changes.
 //
 // Usage (repo root):  node tools/analysis_invariants.mjs [--only=C1,C3] [--file-bca=path] [--verbose]
 import { chromium } from 'playwright';
@@ -679,6 +681,22 @@ if (run('B21')) await guard('B21', async () => {
   check('B21', 'deleting the last rule hides the tab; the snapshot (History) brings the rule back; "Layout → all plates" copies it', JSON.stringify(r.deleted) === '[0,true]' && r.restored === 1 && r.copied === 1, { deleted: r.deleted, restored: r.restored, copied: r.copied });
   check('B21', 'the figure says it is relative to its control, and the workbook has a Normalisation sheet', /its control/.test(r.yTitle) && r.aoa === 5 && r.prism > 2, { y: r.yTitle, aoa: r.aoa });
   check('B21', 'with the rules gone the tab is hidden and skipped by the arrow keys, and every value is the vehicle\'s again', r.tab2 === true && !r.keys.includes('norm') && r.back.every(Boolean), { keys: r.keys, back: r.back });
+  await ctx.close();
+});
+
+if (run('B22')) await guard('B22', async () => {
+  const { ctx, pg } = await open('/apps/beacon/beacon.html');
+  const r = await pg.evaluate(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms)), o = {};
+    const top = q => { const e = document.querySelector(q); return e ? e.getBoundingClientRect().top : null; };
+    const gap = () => { const w = top('#well-grid .well'), s = top('#lm-sel'); return w === null || s === null ? null : Math.abs(w - s); };
+    await wait(300); o.empty = gap(); o.fmtAbove = top('#plate-format') < top('#well-grid .well') - 20;
+    loadTestData('gain'); await wait(900); o.loaded = gap();
+    bSetFormat(384); await wait(600); o.f384 = gap(); o.cols = document.getElementById('lm-body').classList.contains('x384');
+    return o;
+  });
+  check('B22', 'on the empty plate the side panel starts level with the first row of wells, and the size dropdown sits above them', r.empty !== null && r.empty < 1.5 && r.fmtAbove, r);
+  check('B22', 'with a plate loaded (concentrations in the column labels make them taller) the panel still meets the first row of wells', r.loaded !== null && r.loaded < 1.5, r);
   await ctx.close();
 });
 
