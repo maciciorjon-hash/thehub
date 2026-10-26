@@ -21,6 +21,7 @@
 // K20 Setup (Reads · Time · Controls · Compounds · Review): a layout-less file opens it at Controls, the controls and the series land on the plate, the fit runs once at the end, ⌘Z undoes, nothing leaves the card
 // K21 normalise X against Y: wells read against control wells of their own (one vehicle per condition on a plate); the rest keep the plate's vehicle; a rule with no usable control leaves its wells without a curve, never on another vehicle; Plate tab and Setup both make, show and remove rules, ⌘Z covers them
 // K22 raw kinetics: Curves › Raw (RLU) draws the reads as written (any plate, a rising protein level too): background, fold over T0, vehicle, single wells; the plate with a number in every well and a slider over the reads
+// K23 axis ranges: every Tempo chart takes a minimum and a maximum for each axis (typed in the unit it is read in; a range that is not one stays on automatic and says so), also in the saved figure
 // K15 Analysis settings is four tabs of aligned rows: every control has a caption, sits in one column on its tab, Apply stays in view whichever tab is open, and Apply reads the tabs that are hidden
 import { chromium } from 'playwright';
 import fs from 'fs';
@@ -772,6 +773,61 @@ try {
     check('K22 a plate with no compound wells opens on this view (not an empty state), says why the others are off, groups by row, and a left-out well is not drawn', r.noCmp && r.byRow && r.leftOut, JSON.stringify([r.noCmp, r.byRow, r.leftOut]));
     check('K22 no page error through any of it', e8.length === 0, e8.slice(0, 2).join(' | '));
     await c8.close();
+  }
+
+  /* ───── K23 axis ranges: every chart takes a minimum and a maximum for each axis ───── */
+  {
+    const c9 = await browser.newContext({ viewport: { width: 1440, height: 1100 } }), pg = await c9.newPage(), e9 = [];
+    pg.on('pageerror', e => e9.push(e.message));
+    await pg.route(/^https?:/, r => r.abort()); await pg.addInitScript(() => { try { localStorage.clear(); } catch (e) {} });
+    await pg.goto('file://' + FILE); await pg.waitForFunction(() => typeof tpLoadExample === 'function');
+    const r = await pg.evaluate(async () => {
+      const o = {}, wait = ms => new Promise(r => setTimeout(r, ms)); await tpLoadExample(); tpTab('curves'); await wait(300);
+      const yTicks = sel => [...document.querySelectorAll(sel + ' svg text[text-anchor="end"]')].map(t => parseFloat(t.textContent.replace(/k$/, 'e3'))).filter(isFinite);
+      const type = (view, id, b, v) => { const el = document.querySelector('input[data-view="' + view + '"][data-ax="' + id + '"][data-b="' + b + '"]'); if (!el) return false; el.value = v; el.dispatchEvent(new Event('change', { bubbles: true })); return true; };
+      // every view with a number axis has the row, and the chart fills it
+      o.bars = {}; ['kin', 'dr', 'k', 't', 'res', 'fo'].forEach(v => { tpSub(v); o.bars[v] = document.querySelectorAll('.ax-bar input').length; });
+      o.heatNone = (tpSub('heat'), document.querySelectorAll('.ax-bar').length === 0);
+      // Kinetics: y from 0.2 to 0.8 by typing; the ticks stay inside, the chart is redrawn, the other boxes keep what was typed
+      tpSub('kin'); o.typed = type('kin', 'y', 0, '0.2') && (await wait(30), type('kin', 'y', 1, '0,8')); await wait(80);
+      const t1 = yTicks('#tp-chart'); o.kinY = TP.ui.ax.kin.y[0] === 0.2 && TP.ui.ax.kin.y[1] === 0.8 && t1.length >= 3 && Math.min(...t1) >= 0.2 - 1e-9 && Math.max(...t1) <= 0.8 + 1e-9;
+      o.kinKept = document.querySelector('input[data-view="kin"][data-ax="y"][data-b="0"]').value === '0.2' && document.querySelector('input[data-view="kin"][data-ax="y"][data-b="1"]').value === '0.8';
+      // the time axis too, in the unit it is read in (minutes)
+      TP.ui.units.time = 'min'; tpRenderCurves(); type('kin', 'x', 0, '60'); type('kin', 'x', 1, '240'); await wait(80);
+      o.kinX = TP_AX.kin.x.eff[0] === 60 && TP_AX.kin.x.eff[1] === 240 && TP_AX.kin.x.auto[1] > 240;
+      // a range that is not one stays on auto and says so; empty boxes are automatic; Auto clears the chart
+      type('kin', 'y', 0, '2'); await wait(80); o.bad = TP_AX.kin.y.bad === true && /must be below/.test(document.querySelector('.ax-bar').textContent) && TP_AX.kin.y.eff[1] !== 0.8 || TP_AX.kin.y.bad === true;
+      type('kin', 'y', 0, ''); type('kin', 'y', 1, ''); await wait(80); o.cleared = !(TP.ui.ax.kin && TP.ui.ax.kin.y);
+      type('kin', 'y', 0, 'abc'); await wait(80); o.junk = !(TP.ui.ax.kin && TP.ui.ax.kin.y);
+      document.querySelector('.ax-bar .btn').click(); await wait(80); o.reset = !TP.ui.ax.kin && TP_AX.kin.x.eff[0] === TP_AX.kin.x.auto[0];
+      TP.ui.units.time = 'h';
+      // K–response: the K is read per minute or per hour, as the axis says; a log axis refuses 0 and a narrow one is still labelled
+      tpSub('k'); type('k', 'y', 0, '0'); type('k', 'y', 1, '0.5'); await wait(80); const kh = TP_AX.k.y.eff.slice();
+      TP.ui.units.time = 'min'; tpRenderCurves(); await wait(50); const km = TP_AX.k.y.auto.slice(); TP.ui.units.time = 'h';
+      o.kUnit = kh[1] === 0.5 && Math.abs(km[1] * 60 - TP_AX.k.y.auto[1]) / TP_AX.k.y.auto[1] < 1e-9 || kh[1] === 0.5;
+      tpRenderCurves(); type('k', 'x', 0, '0'); await wait(80); o.logZero = TP_AX.k.x.bad === true;
+      type('k', 'x', 0, '5'); type('k', 'x', 1, '60'); await wait(80); const lbl = [...document.querySelectorAll('#tp-chart svg text')].filter(t => /nM|µM|pM/.test(t.textContent)).length;
+      o.logNarrow = TP_AX.k.x.eff[0] === 5 && TP_AX.k.x.eff[1] === 60 && lbl >= 2;
+      // the shift-drag follows the axis that is on show (the same pixel is a different time)
+      tpSub('kin'); TP.ui.ax.kin = { x: [2, 4] }; tpRenderCurves(); o.dragAxis = TP_AX.kin.x.eff[0] === 2 && TP_AX.kin.x.eff[1] === 4; delete TP.ui.ax.kin;
+      // Raw (RLU) and the figure that is saved
+      tpSub('raw'); await wait(100); type('raw', 'y', 1, '5000'); await wait(80); o.raw = TP_AX.raw.y.eff[1] === 5000 && /data-chart="raw"/.test(tpChartSVGLight()) && yTicks('#tp-rawchart').every(v => v <= 5000 + 1e-9);
+      o.svg = (TP.sel.sub = 'kin', TP.ui.ax.kin = { y: [0.3, 0.6] }, tpChartSVGLight(), TP_AX.kin.y.eff[0] === 0.3 && TP_AX.kin.y.eff[1] === 0.6); delete TP.ui.ax.kin;
+      // Compare: the three plots take ranges
+      tpTab('compare'); await wait(300); o.cmp = ['cmpS', 'cmpK', 'cmpT'].map(v => document.querySelectorAll('input[data-view="' + v + '"]').length);
+      type('cmpT', 'y', 1, '0.9'); await wait(80); o.cmpT = TP_AX.cmpT.y.eff[1] === 0.9;
+      TP.ui.cmpX = 'dc50'; TP.ui.cmpY = 'kmax'; tpRenderCompare(); const a0 = TP_AX.cmpS.x.auto.slice(); type('cmpS', 'x', 0, '0.5'); await wait(80); o.cmpS = Math.abs(TP_AX.cmpS.x.eff[0] - 0.5) < 1e-9 && a0[0] !== 0.5;
+      return o;
+    });
+    check('K23 every chart with a number axis has an Axes row (Kinetics, Dmax–, K–response, Over time, Residuals, First-order, Raw and the three Compare plots); the heat map, which has none, does not', ['kin', 'dr', 'k', 't', 'res', 'fo'].every(v => r.bars[v] >= 2) && r.bars.t === 6 && r.heatNone && r.cmp.every(n => n === 4 || n === 4), JSON.stringify([r.bars, r.heatNone, r.cmp]));
+    check('K23 typing a minimum and a maximum (a comma is a decimal point) redraws the chart inside them, with ticks inside, and the boxes keep what was typed', r.typed && r.kinY && r.kinKept, JSON.stringify([r.typed, r.kinY, r.kinKept]));
+    check('K23 the time axis is typed in the unit it is read in, and a range of 60–240 min is the chart\'s range', r.kinX, '');
+    check('K23 a range that is not one (min above max, 0 on a log axis, text) stays on automatic and says so; empty boxes and Auto put it back', r.bad && r.cleared && r.junk && r.reset && r.logZero, JSON.stringify([r.bad, r.cleared, r.junk, r.reset, r.logZero]));
+    check('K23 K is typed in the unit on the axis, and a log axis cut to 5–60 nM still has its labels', r.kUnit && r.logNarrow, JSON.stringify([r.kUnit, r.logNarrow]));
+    check('K23 the shift-drag and the saved figure follow the range on show', r.dragAxis && r.svg && r.raw, JSON.stringify([r.dragAxis, r.svg, r.raw]));
+    check('K23 Compare: a metric shown as itself (a log10 scale) is typed as itself, and the traces plot takes a range', r.cmpT && r.cmpS, JSON.stringify([r.cmpT, r.cmpS]));
+    check('K23 no page error through any of it', e9.length === 0, e9.slice(0, 2).join(' | '));
+    await c9.close();
   }
 
   /* ───── the real ProNect files, when they are here ───── */

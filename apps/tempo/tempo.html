@@ -229,6 +229,9 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
 .chart{width:100%;overflow:hidden;} .chart svg{display:block;width:100%;height:auto;touch-action:pan-y;user-select:none;-webkit-user-select:none;}
 .chart-tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;}
 .chart-tools .sp{flex:1;}
+.ax-bar{gap:6px 14px;margin:10px 0;} .ax-bar .ax-t{font-size:var(--fs-2);font-weight:600;color:var(--text2);}
+.ax-g{display:inline-flex;flex-wrap:wrap;align-items:center;gap:6px;max-width:100%;min-width:0;} .ax-n{font-size:var(--fs-2);color:var(--text2);white-space:nowrap;} .ax-d{color:var(--text3);}
+.ax-g .inp{width:72px;height:28px;padding:0 7px;text-align:right;} .ax-bad{color:var(--danger);}
 .statrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;}
 .stat{border:1px solid var(--border);border-radius:var(--r-3);padding:10px 12px;background:var(--surface);min-width:0;}
 .stat .l{font-size:var(--fs-2);color:var(--text2);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
@@ -2102,7 +2105,7 @@ function tpToProNectJSON(plate, res) {
 const TP = {
   v: 1, plates: [], pi: 0, S: tpSet(), ex: {}, res: {},
   sel: { comp: null, conc: null, sub: 'kin' }, wsel: new Set(), anchor: null, nx: null,
-  ui: { tab: 'plate', pview: 'layout', ptime: 0, raw: { y: 'rlu', bkg: false, veh: true, wells: false, by: 'auto', k: null }, sort: { k: 'logeff', d: -1 }, cmpX: 'kmax', cmpY: 'dmax', cmpC: null, units: { conc: 'auto', time: 'h' }, busy: false },
+  ui: { tab: 'plate', pview: 'layout', ptime: 0, raw: { y: 'rlu', bkg: false, veh: true, wells: false, by: 'auto', k: null }, sort: { k: 'logeff', d: -1 }, cmpX: 'kmax', cmpY: 'dmax', cmpC: null, ax: {}, units: { conc: 'auto', time: 'h' }, busy: false },
   lbLink: null
 };
 const TP_ABOUT = { name: 'Tempo', ver: 'tempo/1' };
@@ -2300,11 +2303,26 @@ function tpNiceTicks(lo, hi, n) {
 }
 function tpAxConc(v) { return v >= 1000 ? (+(v / 1000).toPrecision(3)) + ' µM' : v < 1 ? (+(v * 1000).toPrecision(3)) + ' pM' : (+v.toPrecision(3)) + ' nM'; }
 // a chart frame: scales, gridlines, axes, titles. o = { W,H, m:{l,r,t,b}, x:{lo,hi,log,label,ticks,fmt}, y:{…}, pal }
+/* Axis ranges the person set, per chart (view) and axis (x, y, y2): TP.ui.ax[view][id] = [min|null, max|null], in the units the axis is read in
+   (h or min, nM, %, the K unit). A chart that is given a `view` takes them; `a.disp` = { f: internal → shown, g: shown → internal } where those differ
+   (K per hour shown per minute, a log10 metric shown as itself). TP_AX remembers what each axis would be on auto, for the placeholders and the shift-drag. */
+const TP_AX = {};
+function tpAxGet(view, id) { const A = TP.ui.ax && TP.ui.ax[view]; return A && A[id] || null; }
+function tpAxFit(view, id, a) {
+  const d = a.disp || {}, f = d.f || (v => v), g = d.g || (v => v), rec = (TP_AX[view] = TP_AX[view] || {})[id] = { auto: [f(a.lo), f(a.hi)], bad: false };
+  const L = tpAxGet(view, id); let lo = a.lo, hi = a.hi;
+  if (L) {
+    const l = L[0] != null ? g(L[0]) : lo, h = L[1] != null ? g(L[1]) : hi;
+    if (isFinite(l) && isFinite(h) && h > l && (!a.log || l > 0)) { lo = l; hi = h; a.ticks = null; } else rec.bad = true;
+  }
+  a.lo = lo; a.hi = hi; rec.eff = [f(lo), f(hi)];
+}
 function tpFrame(o) {
+  if (o.view) { tpAxFit(o.view, o.x.ax || 'x', o.x); tpAxFit(o.view, o.y.ax || 'y', o.y); }
   const m = Object.assign({ l: 58, r: 16, t: 14, b: 44 }, o.m || {}), W = o.W, H = o.H, pal = o.pal, iw = W - m.l - m.r, ih = H - m.t - m.b;
   const sc = (a, len, flip) => { const L = a.log ? Math.log10(a.lo) : a.lo, Hh = a.log ? Math.log10(a.hi) : a.hi; return v => { const x = a.log ? Math.log10(Math.max(v, 1e-300)) : v; const f = (x - L) / ((Hh - L) || 1); return flip ? len - f * len : f * len; }; };
   const X = v => m.l + sc(o.x, iw, false)(v), Y = v => m.t + sc(o.y, ih, true)(v);
-  const tk = a => a.ticks || (a.log ? (() => { const t = []; for (let k = Math.floor(Math.log10(a.lo)); k <= Math.ceil(Math.log10(a.hi)); k++) { const v = Math.pow(10, k); if (v >= a.lo * 0.999 && v <= a.hi * 1.001) t.push(v); } return t; })() : tpNiceTicks(a.lo, a.hi, a === o.x ? 6 : 5));
+  const tk = a => a.ticks || (a.log ? (() => { const t = []; for (let k = Math.floor(Math.log10(a.lo)); k <= Math.ceil(Math.log10(a.hi)); k++) { const v = Math.pow(10, k); if (v >= a.lo * 0.999 && v <= a.hi * 1.001) t.push(v); } if (t.length < 3) { t.length = 0; for (let k = Math.floor(Math.log10(a.lo)); k <= Math.ceil(Math.log10(a.hi)); k++) [1, 2, 5].forEach(b => { const v = b * Math.pow(10, k); if (v >= a.lo * 0.999 && v <= a.hi * 1.001) t.push(v); }); } return t; })() : tpNiceTicks(a.lo, a.hi, a === o.x ? 6 : 5));
   const font = 'font-family="IBM Plex Mono,ui-monospace,Menlo,Consolas,monospace"';
   let s = '';
   const xt = tk(o.x), yt = tk(o.y);
@@ -2317,7 +2335,38 @@ function tpFrame(o) {
   const fitT = (t, px) => { t = String(t); const max = Math.max(6, Math.floor(px / 6.3)); if (t.length <= max) return t; const b = t.indexOf(' ('); return b > 3 && b <= max ? t.slice(0, b) : t.slice(0, max - 1) + '…'; };
   if (o.x.label) s += '<text x="' + (m.l + iw / 2) + '" y="' + (H - 6) + '" text-anchor="middle" font-size="11.5" fill="' + pal.text2 + '" font-family="IBM Plex Sans,Arial,sans-serif"><title>' + esc(o.x.label) + '</title>' + esc(fitT(o.x.label, W - 20)) + '</text>';
   if (o.y.label) s += '<text transform="translate(13 ' + (m.t + ih / 2) + ') rotate(-90)" text-anchor="middle" font-size="11.5" fill="' + pal.text2 + '" font-family="IBM Plex Sans,Arial,sans-serif"><title>' + esc(o.y.label) + '</title>' + esc(fitT(o.y.label, ih)) + '</text>';
-  return { s: s, X: X, Y: Y, m: m, iw: iw, ih: ih, clip: '<clipPath id="' + (o.id || 'cp') + '"><rect x="' + m.l + '" y="' + m.t + '" width="' + iw + '" height="' + ih + '"/></clipPath>' };
+  return { s: s, X: X, Y: Y, m: m, iw: iw, ih: ih, lim: { x: [o.x.lo, o.x.hi], y: [o.y.lo, o.y.hi] }, clip: '<clipPath id="' + (o.id || 'cp') + '"><rect x="' + m.l + '" y="' + m.t + '" width="' + iw + '" height="' + ih + '"/></clipPath>' };
+}
+/* The Axes row under a chart: a minimum and a maximum for each axis, the automatic values as the placeholders, empty = automatic. */
+function tpTU() { return TP.ui.units.time === 'min' ? 'min' : 'h'; }
+function tpAxDefs(view) {
+  const T = ['x', 'Time (' + tpTU() + ')'], C = ['x', 'Concentration (nM)'], K = ['y', 'K (' + (tpTU() === 'min' ? 'min⁻¹' : 'h⁻¹') + ')'];
+  return ({ kin: [T, ['y', 'Fractional signal']], raw: [T, ['y', TP.ui.raw && TP.ui.raw.y === 'fold' ? 'Fold over T0' : 'Signal (RLU)']], dr: [C, ['y', 'Dmax (%)']], k: [C, K], t: [T, ['y', 'DC50 (nM)'], ['y2', 'Dmax (%)']], res: [T, ['y', 'Residual']], fo: [T, ['y', 'ln']],
+    cmpS: [['x', 'X'], ['y', 'Y']], cmpK: [C, K], cmpT: [T, ['y', 'Fractional signal']] })[view] || [];
+}
+function tpAxBar(view) {
+  const defs = tpAxDefs(view); if (!defs.length) return '';
+  const R = TP_AX[view] || {}, any = defs.some(d => tpAxGet(view, d[0])), bad = defs.some(d => R[d[0]] && R[d[0]].bad);
+  const inp = (id, b, name) => { const L = tpAxGet(view, id), a = R[id] && R[id].auto; return '<input class="inp mono" type="text" inputmode="decimal" autocomplete="off" data-view="' + view + '" data-ax="' + id + '" data-b="' + b + '" value="' + (L && L[b] != null ? +L[b].toPrecision(6) : '') + '" placeholder="' + (a ? esc(tpF(a[b], 3)) : 'auto') + '" aria-label="' + esc(name) + (b ? ' maximum' : ' minimum') + '" onchange="tpAxSet(this)">'; };
+  return '<div class="chart-tools ax-bar" role="group" aria-label="Axis ranges"><span class="ax-t">Axes</span>' + defs.map(d => '<span class="ax-g"><span class="ax-n">' + esc(d[1]) + '</span>' + inp(d[0], 0, d[1]) + '<span class="ax-d">–</span>' + inp(d[0], 1, d[1]) + '</span>').join('') +
+    '<button class="btn sm" onclick="tpAxReset(\'' + view + '\')"' + (any ? '' : ' disabled') + '>Auto</button>' + (bad ? '<span class="hint ax-bad">The minimum must be below the maximum' + (defs.some(d => /nM/.test(d[1])) ? ' (and above 0 on a log axis)' : '') + ': that axis stays on auto.</span>' : '<span class="hint">Leave a box empty for automatic.</span>') + '</div>';
+}
+function tpAxCard(view, svg) { return tpAxBar(view) + '<div class="chart">' + svg + '</div>'; }
+function tpAxSet(el) {
+  const view = el.dataset.view, id = el.dataset.ax, b = +el.dataset.b, txt = el.value.trim().replace(/,/g, '.').replace(/[−–]/g, '-');
+  let v = txt === '' ? null : Number(txt); if (v != null && !isFinite(v)) { tpToast('“' + el.value + '” is not a number', 'warn'); v = null; }
+  const A = TP.ui.ax[view] = TP.ui.ax[view] || {}, L = A[id] = A[id] || [null, null]; L[b] = v;
+  if (L[0] == null && L[1] == null) delete A[id]; if (!Object.keys(A).length) delete TP.ui.ax[view];
+  tpAxRefresh();
+}
+function tpAxReset(view) { delete TP.ui.ax[view]; tpAxRefresh(); }
+// drawn again after the focus has moved on (a Tab from one box to the next must land in the next box), which is then given back
+function tpAxRefresh() {
+  setTimeout(() => {
+    const a = document.activeElement, key = a && a.dataset && a.dataset.ax ? ['view', 'ax', 'b'].map(k => a.dataset[k]) : null;
+    if (TP.ui.tab === 'compare') tpRenderCompare(); else tpRenderCurves();
+    if (key) { const n = document.querySelector('input[data-view="' + key[0] + '"][data-ax="' + key[1] + '"][data-b="' + key[2] + '"]'); if (n) { n.focus(); n.select(); } }
+  }, 0);
 }
 function tpSvg(W, H, inner, pal, extra) { return '<svg viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg" role="img" ' + (extra || '') + '><rect width="' + W + '" height="' + H + '" fill="' + pal.bg + '"/>' + inner + '</svg>'; }
 function tpPath(pts, X, Y) { let d = '', pen = false; pts.forEach(p => { if (p[0] == null || p[1] == null || !isFinite(p[0]) || !isFinite(p[1])) { pen = false; return; } d += (pen ? 'L' : 'M') + X(p[0]).toFixed(1) + ' ' + Y(p[1]).toFixed(1); pen = true; }); return d; }
@@ -2325,6 +2374,8 @@ const tpTT = h => tpTimeX(h);
 function tpTimeX(h) { return TP.ui.units.time === 'min' ? h * 60 : h; }
 function tpTimeLabel() { return TP.ui.units.time === 'min' ? 'Time since T0 (min)' : 'Time since T0 (h)'; }
 function tpKV(k) { return TP.ui.units.time === 'min' ? k / 60 : k; }
+function tpKDisp() { return { f: v => v * tpKV(1), g: v => v / tpKV(1) }; }
+function tpMetricDisp(M) { return M.log ? { f: v => Math.pow(10, v), g: v => Math.log10(v) } : M.fmt === TP_METRICS.kmax.fmt ? tpKDisp() : null; }
 function tpKLabel() { return TP.ui.units.time === 'min' ? 'K (min⁻¹)' : 'K (h⁻¹)'; }
 function tpHookSet(comp) { const s = new Set(); (comp.B && comp.B.rows || []).forEach(r => { if (r.hook) s.add(tpCKey(r.c)); }); return s; }
 
@@ -2334,7 +2385,7 @@ function tpChartKin(res, comp, o) {
   if (!comp || !comp.concs.length) return tpSvg(o.W, o.H, '<text x="20" y="30" fill="' + pal.text2 + '">No traces</text>', pal);
   const t = res.t, tMax = t[t.length - 1] || 1; let yMax = 1.15;
   comp.concs.forEach(c => c.mean.forEach(v => { if (v != null && v > yMax) yMax = Math.min(1.6, v + 0.04); }));
-  const F = tpFrame({ W: o.W, H: o.H, pal: pal, id: 'ck', m: { r: o.legend ? 120 : 16 }, x: { lo: 0, hi: tpTT(tMax), label: tpTimeLabel() }, y: { lo: 0, hi: yMax, label: 'Fractional signal (vehicle = 1)', ticks: tpNiceTicks(0, yMax, 6) } });
+  const F = tpFrame({ W: o.W, H: o.H, pal: pal, id: 'ck', view: o.view, m: { r: o.legend ? 120 : 16 }, x: { lo: 0, hi: tpTT(tMax), label: tpTimeLabel() }, y: { lo: 0, hi: yMax, label: 'Fractional signal (vehicle = 1)', ticks: tpNiceTicks(0, yMax, 6) } });
   let s = '<defs>' + F.clip + '</defs>' + F.s + '<g clip-path="url(#ck)">';
   s += '<line x1="' + F.m.l + '" x2="' + (F.m.l + F.iw) + '" y1="' + F.Y(1).toFixed(1) + '" y2="' + F.Y(1).toFixed(1) + '" stroke="' + pal.veh + '" stroke-dasharray="5 4" stroke-width="1.2"/>';
   // left-out time ranges
@@ -2422,7 +2473,7 @@ function tpChartRaw(M, o) {
   G.forEach(g => g.mean.forEach((v, k) => { if (v != null) yHi = Math.max(yHi, v + (g.sd[k] || 0)); })); if (R.wells) G.forEach(g => g.perWell.forEach(a => a.forEach(v => { if (v != null) yHi = Math.max(yHi, v); })));
   if (!(yHi > 0)) yHi = 1; const ticks = tpNiceTicks(0, yHi * 1.06, 6), yMax = ticks[ticks.length - 1] > yHi * 1.06 ? ticks[ticks.length - 1] : yHi * 1.06;
   const legend = G.length > 1 || M.by === 'cond', mr = legend ? 170 : 16;
-  const F = tpFrame({ W: o.W, H: o.H, pal: pal, id: 'cr', m: { r: mr }, x: { lo: tpTT(tMin), hi: tpTT(tMax), label: tpTimeLabel() }, y: { lo: 0, hi: yMax, label: fold ? 'Signal / its own T0' + (R.bkg ? ' (background subtracted)' : '') : 'Signal (RLU)' + (R.bkg ? ' · background subtracted' : ''), ticks: ticks, fmt: v => fold ? tpF(v, 3) : tpFmtRLU(v) } });
+  const F = tpFrame({ W: o.W, H: o.H, pal: pal, id: 'cr', view: o.view, m: { r: mr }, x: { lo: tpTT(tMin), hi: tpTT(tMax), label: tpTimeLabel() }, y: { lo: 0, hi: yMax, label: fold ? 'Signal / its own T0' + (R.bkg ? ' (background subtracted)' : '') : 'Signal (RLU)' + (R.bkg ? ' · background subtracted' : ''), ticks: ticks, fmt: v => fold ? tpF(v, 3) : tpFmtRLU(v) } });
   let s = '<defs>' + F.clip + '</defs>' + F.s + '<g clip-path="url(#cr)">';
   if (fold) s += '<line x1="' + F.m.l + '" x2="' + (F.m.l + F.iw) + '" y1="' + F.Y(1).toFixed(1) + '" y2="' + F.Y(1).toFixed(1) + '" stroke="' + pal.veh + '" stroke-dasharray="5 4" stroke-width="1.2" opacity=".6"/>';
   if (t.length && M.k0 > 0) s += '<rect x="' + F.m.l + '" y="' + F.m.t + '" width="' + Math.max(0, F.X(tpTT(0)) - F.m.l).toFixed(1) + '" height="' + F.ih + '" fill="' + pal.text3 + '" opacity=".08"/>';
@@ -2468,7 +2519,8 @@ function tpRenderRaw(p, res) {
   let h = '<div class="cv-main" style="max-width:1100px"><div class="card"><div class="cv-hd"><div class="l"><h2>Raw kinetics</h2><span class="muted">' + esc(p.name) + ' · ' + p.times.length + ' reads' + (M.groups.length ? ' · ' + M.groups.length + ' line' + (M.groups.length === 1 ? '' : 's') : '') + '</span></div><span class="hint">← → views</span></div>';
   h += '<div class="chart-tools" style="margin-top:12px"><div class="segw" role="group" aria-label="View">' + TP_SUBS.map(s => '<button aria-pressed="' + (TP.sel.sub === s[0]) + '"' + (noCmp && s[0] !== 'raw' ? ' disabled title="Needs compound wells (say what each well holds on the Plate tab or in Setup)"' : '') + ' onclick="tpSub(\'' + s[0] + '\')">' + s[1] + '</button>').join('') + '</div></div>';
   h += '<div class="chart-tools raw-opts" style="margin:10px 0">' + segs('y', [['rlu', 'RLU'], ['fold', 'Fold over T0']]) + segs('by', [['auto', 'Auto'], ['cond', 'Condition'], ['well', 'Each well'], ['row', 'Row'], ['col', 'Column']]) + chk('bkg', 'Subtract background') + chk('veh', 'Show the vehicle') + chk('wells', 'Show single wells') + '</div>';
-  h += '<div class="chart" id="tp-rawchart">' + tpChartRaw(M, { W: W, H: Math.round(W * .5) }) + '</div>';
+  const rawSvg = tpChartRaw(M, { view: 'raw', W: W, H: Math.round(W * .5) });
+  h += tpAxBar('raw') + '<div class="chart" id="tp-rawchart">' + rawSvg + '</div>';
   h += '<p class="hint" style="margin:8px 0 0">' + (noCmp ? 'No compound wells yet, so only this view is available — say what each well holds on the Plate tab or in Setup to get the curves, fits and dose–response. ' : '') + 'Every read as the reader wrote it' + (R.bkg ? ', the background wells subtracted' : '') + '; a shaded band is ± SD of the wells in a line. The dotted vertical line is the read chosen below.</p></div>';
   h += '<div class="card"><h3>The plate at a read<span class="sub" id="tp-rawlbl">' + esc(tpRawReadLabel(M)) + '</span></h3><div class="scrub" style="margin-bottom:10px"><input type="range" id="tp-rawk" min="0" max="' + (M.N - 1) + '" value="' + Math.max(0, Math.min(M.N - 1, R.k == null ? M.k0 : R.k)) + '" oninput="tpRawTime(this.value)" aria-label="Read"><span class="mono">' + esc(tpFmtT(M.t[0], 3)) + ' → ' + esc(tpFmtT(M.t[M.N - 1], 3)) + '</span></div><div id="tp-rawplate">' + tpRawGrid(M) + '</div></div></div>';
   pane.innerHTML = h;
@@ -2476,7 +2528,7 @@ function tpRenderRaw(p, res) {
 function tpRawSet(k, v) { const R = tpRawOpts(); R[k] = (v === 'true' ? true : v === 'false' ? false : v); tpRenderCurves(); }
 function tpRawTime(v) {
   const R = tpRawOpts(), p = tpPlate(), res = tpRes(p); if (!p || !res) return; R.k = +v; const M = tpRawModel(p, res), W = Math.max(300, Math.min(980, ($('#pane-curves').clientWidth || 900) - 40));
-  const g = $('#tp-rawplate'), c = $('#tp-rawchart'), l = $('#tp-rawlbl'); if (g) g.innerHTML = tpRawGrid(M); if (c) c.innerHTML = tpChartRaw(M, { W: W, H: Math.round(W * .5) }); if (l) l.textContent = tpRawReadLabel(M);
+  const g = $('#tp-rawplate'), c = $('#tp-rawchart'), l = $('#tp-rawlbl'); if (g) g.innerHTML = tpRawGrid(M); if (c) c.innerHTML = tpChartRaw(M, { view: 'raw', W: W, H: Math.round(W * .5) }); if (l) l.textContent = tpRawReadLabel(M);
 }
 
 // 2) Promega: how deep each well went, against concentration, with the 4PL
@@ -2484,11 +2536,11 @@ function tpChartDR(res, comp, o) {
   o = Object.assign({ W: 620, H: 380, light: false }, o || {}); const pal = tpPal(o.light), A = comp && comp.A;
   if (!A || A.fail) return tpSvg(o.W, 120, '<text x="20" y="40" fill="' + pal.text2 + '" font-size="13" font-family="IBM Plex Sans,Arial,sans-serif">Not enough concentrations with a measurable plateau for a dose–response (' + esc(A && A.n != null ? A.n + ' found, 4 needed' : '') + ').</text>', pal);
   const cs = comp.concs.map(c => c.c), lo = Math.min.apply(null, cs) / 2.5, hi = Math.max.apply(null, cs) * 2.5;
-  const F = tpFrame({ W: o.W, H: o.H, pal: pal, id: 'cd', x: { lo: lo, hi: hi, log: true, label: 'Concentration', fmt: tpAxConc }, y: { lo: -5, hi: 110, label: 'Degradation at the plateau (%)', ticks: [0, 25, 50, 75, 100] } });
+  const F = tpFrame({ W: o.W, H: o.H, pal: pal, id: 'cd', view: o.view, x: { lo: lo, hi: hi, log: true, label: 'Concentration', fmt: tpAxConc }, y: { lo: -5, hi: 110, label: 'Degradation at the plateau (%)', ticks: [0, 25, 50, 75, 100] } });
   let s = '<defs>' + F.clip + '</defs>' + F.s + '<g clip-path="url(#cd)">';
   const hookC = new Set((A._hook_concs || []).map(v => v.toFixed(3)));
-  const bot = A._bot, top = A._tc, le = A._logec50, h = A._hill, xs = [], N = 120;
-  for (let i = 0; i <= N; i++) xs.push(Math.pow(10, Math.log10(lo) + (Math.log10(hi) - Math.log10(lo)) * i / N));
+  const bot = A._bot, top = A._tc, le = A._logec50, h = A._hill, xs = [], N = 120, xl = F.lim.x[0], xh = F.lim.x[1];
+  for (let i = 0; i <= N; i++) xs.push(Math.pow(10, Math.log10(xl) + (Math.log10(xh) - Math.log10(xl)) * i / N));
   const yv = x => 100 - (bot + (top - bot) / (1 + Math.pow(10, h * (Math.log10(x * 1e-9) - le))));
   s += '<path d="' + tpPath(xs.map(x => [x, yv(x)]), F.X, F.Y) + '" fill="none" stroke="' + pal.ink + '" stroke-width="2"/>';
   const dmax = 100 - bot, dc = A.DC50_nM;
@@ -2498,8 +2550,9 @@ function tpChartDR(res, comp, o) {
   comp.concs.forEach((cc, i) => { cc.live.forEach(id => { const f = cc.wellFits[id]; if (!f || !f.ok) return; const v = f.degrading ? 100 - f.P * 100 : 100 - f.level * 100, bound = f.degrading && f.plateau !== 'reached', x = F.X(cc.c), y = F.Y(v), hk = hookC.has(tpLog10M(cc.c).toFixed(3)), col = tpRamp(pal, i, n);
     if (hk) s += '<path d="M' + x.toFixed(1) + ' ' + (y - 5.5).toFixed(1) + 'l5.5 5.5l-5.5 5.5l-5.5 -5.5z" fill="' + pal.bg + '" stroke="' + pal.warn + '" stroke-width="1.6"/>';
     else s += '<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="4.3" fill="' + (bound ? pal.bg : col) + '" stroke="' + col + '" stroke-width="1.7"/>' + (bound ? '<path d="M' + x.toFixed(1) + ' ' + (y - 6).toFixed(1) + 'l0 -5m-2.5 2.5l2.5 -2.5l2.5 2.5" stroke="' + col + '" stroke-width="1.2" fill="none"/>' : ''); }); });
-  s += '</g><text x="' + (F.m.l + F.iw - 4) + '" y="' + (F.Y(dmax) - 6).toFixed(1) + '" text-anchor="end" font-size="11" fill="' + pal.warn + '" font-family="IBM Plex Mono,monospace">Dmax ' + Math.round(dmax) + '%</text>';
-  if (dc != null) s += '<text x="' + (F.X(dc) + 6).toFixed(1) + '" y="' + (F.m.t + F.ih - 8) + '" font-size="11" fill="' + pal.accent + '" font-family="IBM Plex Mono,monospace">DC50 ' + esc(tpFmtNM(dc)) + '</text>';
+  s += '</g>'; const inY = y => y >= F.m.t + 10 && y <= F.m.t + F.ih, inX = x => x >= F.m.l && x <= F.m.l + F.iw - 60;
+  if (inY(F.Y(dmax) - 6)) s += '<text x="' + (F.m.l + F.iw - 4) + '" y="' + (F.Y(dmax) - 6).toFixed(1) + '" text-anchor="end" font-size="11" fill="' + pal.warn + '" font-family="IBM Plex Mono,monospace">Dmax ' + Math.round(dmax) + '%</text>';
+  if (dc != null && inX(F.X(dc))) s += '<text x="' + (F.X(dc) + 6).toFixed(1) + '" y="' + (F.m.t + F.ih - 8) + '" font-size="11" fill="' + pal.accent + '" font-family="IBM Plex Mono,monospace">DC50 ' + esc(tpFmtNM(dc)) + '</text>';
   return tpSvg(o.W, o.H, s, pal, 'data-chart="dr"');
 }
 
@@ -2510,9 +2563,9 @@ function tpChartK(res, comp, o) {
   if (!rows.length) return tpSvg(o.W, 100, '<text x="20" y="40" fill="' + pal.text2 + '" font-size="13" font-family="IBM Plex Sans,Arial,sans-serif">No concentration shows a degradation with a measurable K.</text>', pal);
   let kMax = Math.max.apply(null, rows.map(r => r.K)); if (B.ok && B.curve) kMax = Math.max(kMax, B.curve(hi) * 1.02);
   rows.forEach((r, i) => { const f = comp.concs.find(c => c.c === r.c).fit; if (f && f.KHi && isFinite(f.KHi)) kMax = Math.max(kMax, Math.min(f.KHi, kMax * 1.6)); });
-  const F = tpFrame({ W: o.W, H: o.H, pal: pal, id: 'ck2', x: { lo: lo, hi: hi, log: true, label: 'Concentration', fmt: tpAxConc }, y: { lo: 0, hi: kMax * 1.08, label: tpKLabel(), fmt: v => tpF(tpKV(v), 2) } });
+  const F = tpFrame({ W: o.W, H: o.H, pal: pal, id: 'ck2', view: o.view, x: { lo: lo, hi: hi, log: true, label: 'Concentration', fmt: tpAxConc }, y: { lo: 0, hi: kMax * 1.08, disp: tpKDisp(), label: tpKLabel(), fmt: v => tpF(tpKV(v), 2) } });
   let s = '<defs>' + F.clip + '</defs>' + F.s + '<g clip-path="url(#ck2)">';
-  const xs = [], N = 140; for (let i = 0; i <= N; i++) xs.push(Math.pow(10, Math.log10(lo) + (Math.log10(hi) - Math.log10(lo)) * i / N));
+  const xs = [], N = 140, xl = F.lim.x[0], xh = F.lim.x[1]; for (let i = 0; i <= N; i++) xs.push(Math.pow(10, Math.log10(xl) + (Math.log10(xh) - Math.log10(xl)) * i / N));
   if (B.ok) {
     s += '<path d="' + tpPath(xs.map(x => [x, B.curve(x)]), F.X, F.Y) + '" fill="none" stroke="' + pal.ink + '" stroke-width="2"/>';
     s += '<line x1="' + F.m.l + '" x2="' + (F.m.l + F.iw) + '" y1="' + F.Y(B.Kmax).toFixed(1) + '" y2="' + F.Y(B.Kmax).toFixed(1) + '" stroke="' + pal.warn + '" stroke-dasharray="1 4" stroke-width="1.4"/>';
@@ -2529,7 +2582,7 @@ function tpChartK(res, comp, o) {
     else s += '<circle data-tip="' + tip + '" cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="4.8" fill="' + col + '" stroke="' + pal.bg + '" stroke-width="1"/>';
   });
   s += '</g>';
-  if (B.ok) s += '<text x="' + (F.m.l + F.iw - 4) + '" y="' + (F.Y(B.Kmax) - 6).toFixed(1) + '" text-anchor="end" font-size="11" fill="' + pal.warn + '" font-family="IBM Plex Mono,monospace">KDegMax ' + (B.saturated ? '' : '≥ ') + tpF(tpKV(B.Kmax), 3) + '</text>';
+  if (B.ok && F.Y(B.Kmax) - 6 >= F.m.t + 10 && F.Y(B.Kmax) - 6 <= F.m.t + F.ih) s += '<text x="' + (F.m.l + F.iw - 4) + '" y="' + (F.Y(B.Kmax) - 6).toFixed(1) + '" text-anchor="end" font-size="11" fill="' + pal.warn + '" font-family="IBM Plex Mono,monospace">KDegMax ' + (B.saturated ? '' : '≥ ') + tpF(tpKV(B.Kmax), 3) + '</text>';
   return tpSvg(o.W, o.H, s, pal, 'data-chart="k"');
 }
 
@@ -2540,12 +2593,12 @@ function tpChartT(res, comp, o) {
   const half = o.W / 2 - 10, tMax = Math.max.apply(null, d.map(x => x.t)) * 1.05; let s = '';
   const vals = d.filter(x => x.dc50 != null && x.q === '=').map(x => x.dc50), cmin = Math.min.apply(null, comp.concs.map(c => c.c)), cmax = Math.max.apply(null, comp.concs.map(c => c.c));
   const lo = Math.min(cmin, vals.length ? Math.min.apply(null, vals) : cmin) / 2, hi = Math.max(cmax, vals.length ? Math.max.apply(null, vals) : cmax) * 2;
-  const F1 = tpFrame({ W: half, H: o.H, pal: pal, id: 'cp1', m: { r: 10 }, x: { lo: 0, hi: tpTT(tMax), label: tpTimeLabel() }, y: { lo: lo, hi: hi, log: true, label: 'DC50', fmt: tpAxConc } });
+  const F1 = tpFrame({ W: half, H: o.H, pal: pal, id: 'cp1', view: o.view, m: { r: 10 }, x: { lo: 0, hi: tpTT(tMax), label: tpTimeLabel() }, y: { lo: lo, hi: hi, log: true, label: 'DC50', fmt: tpAxConc } });
   s += '<g>' + F1.s + '<defs>' + F1.clip + '</defs><g clip-path="url(#cp1)">';
   s += '<path d="' + tpPath(d.filter(x => x.dc50 != null && x.q === '=').map(x => [tpTT(x.t), x.dc50]), F1.X, F1.Y) + '" fill="none" stroke="' + pal.accent + '" stroke-width="2"/>';
   d.forEach(x => { if (x.dc50 == null) return; const cx = F1.X(tpTT(x.t)), cy = F1.Y(x.dc50); s += x.q === '=' ? '<circle cx="' + cx + '" cy="' + cy + '" r="4.5" fill="' + pal.accent + '"/>' : '<circle cx="' + cx + '" cy="' + cy + '" r="4.5" fill="' + pal.bg + '" stroke="' + pal.text3 + '" stroke-width="1.6"/>'; });
   s += '</g></g>';
-  const F2 = tpFrame({ W: half, H: o.H, pal: pal, id: 'cp2', m: { r: 10 }, x: { lo: 0, hi: tpTT(tMax), label: tpTimeLabel() }, y: { lo: 0, hi: 105, label: 'Dmax (%)', ticks: [0, 25, 50, 75, 100] } });
+  const F2 = tpFrame({ W: half, H: o.H, pal: pal, id: 'cp2', view: o.view, m: { r: 10 }, x: { lo: 0, hi: tpTT(tMax), label: tpTimeLabel() }, y: { ax: 'y2', lo: 0, hi: 105, label: 'Dmax (%)', ticks: [0, 25, 50, 75, 100] } });
   s += '<g transform="translate(' + (half + 20) + ' 0)">' + F2.s + '<defs>' + F2.clip + '</defs><g clip-path="url(#cp2)"><path d="' + tpPath(d.filter(x => x.dmax != null).map(x => [tpTT(x.t), x.dmax]), F2.X, F2.Y) + '" fill="none" stroke="' + pal.warn + '" stroke-width="2"/>';
   d.forEach(x => { if (x.dmax != null) s += '<circle cx="' + F2.X(tpTT(x.t)) + '" cy="' + F2.Y(x.dmax) + '" r="4.5" fill="' + pal.warn + '"/>'; });
   s += '</g></g>';
@@ -2574,7 +2627,7 @@ function tpChartRes(res, comp, i, o) {
   o = Object.assign({ W: 780, H: 300, light: false }, o || {}); const pal = tpPal(o.light), cc = comp.concs[i], f = cc && cc.fit;
   if (!f || !f.ok || !f.degrading || !f.resid) return tpSvg(o.W, 100, '<text x="20" y="40" fill="' + pal.text2 + '" font-size="13" font-family="IBM Plex Sans,Arial,sans-serif">This concentration has no fit to show residuals for.</text>', pal);
   const tmax = f.t[f.t.length - 1], rm = Math.max(0.05, Math.max.apply(null, f.resid.map(Math.abs)) * 1.15);
-  const F = tpFrame({ W: o.W, H: o.H, pal: pal, id: 'cr', x: { lo: 0, hi: tpTT(tmax), label: tpTimeLabel() }, y: { lo: -rm, hi: rm, label: 'Residual (fraction)' } });
+  const F = tpFrame({ W: o.W, H: o.H, pal: pal, id: 'cr', view: o.view, x: { lo: 0, hi: tpTT(tmax), label: tpTimeLabel() }, y: { lo: -rm, hi: rm, label: 'Residual (fraction)' } });
   let s = '<defs>' + F.clip + '</defs>' + F.s + '<g clip-path="url(#cr)"><line x1="' + F.m.l + '" x2="' + (F.m.l + F.iw) + '" y1="' + F.Y(0) + '" y2="' + F.Y(0) + '" stroke="' + pal.ink + '" stroke-width="1"/>';
   f.t.forEach((tt, k) => { s += '<circle cx="' + F.X(tpTT(tt)).toFixed(1) + '" cy="' + F.Y(f.resid[k]).toFixed(1) + '" r="2.4" fill="' + pal.accent + '" opacity=".85"/>'; });
   s += '</g><text x="' + (F.m.l + 8) + '" y="' + (F.m.t + 14) + '" font-size="11" fill="' + pal.text2 + '" font-family="IBM Plex Mono,monospace">σ ' + tpF(f.sigma, 2) + ' · ρ ' + tpF(f.rho, 2) + (f.runs && f.runs.pattern ? ' · the signs run in streaks: a pattern' : ' · no pattern') + '</text>';
@@ -2586,7 +2639,7 @@ function tpChartFO(res, comp, i, o) {
   const pts = []; f.t.forEach((tt, k) => { const lag = f.lag || 0, v = (f.y[k] - f.P) / (1 - f.P); if (v > 0.02 && tt > lag) pts.push([tpTT(tt), Math.log(v), tt]); });
   if (pts.length < 3) return tpSvg(o.W, 100, '<text x="20" y="40" fill="' + pal.text2 + '" font-size="13" font-family="IBM Plex Sans,Arial,sans-serif">Too few reads above the plateau for a first-order check.</text>', pal);
   const tmax = f.t[f.t.length - 1], yl = Math.min.apply(null, pts.map(p => p[1])) - 0.2;
-  const F = tpFrame({ W: o.W, H: o.H, pal: pal, id: 'cf', x: { lo: 0, hi: tpTT(tmax), label: tpTimeLabel() }, y: { lo: Math.min(yl, -0.5), hi: 0.2, label: 'ln( (y − Plateau) / (1 − Plateau) )' } });
+  const F = tpFrame({ W: o.W, H: o.H, pal: pal, id: 'cf', view: o.view, x: { lo: 0, hi: tpTT(tmax), label: tpTimeLabel() }, y: { lo: Math.min(yl, -0.5), hi: 0.2, label: 'ln( (y − Plateau) / (1 − Plateau) )' } });
   let s = '<defs>' + F.clip + '</defs>' + F.s + '<g clip-path="url(#cf)">';
   s += '<line x1="' + F.X(tpTT(f.lag || 0)).toFixed(1) + '" y1="' + F.Y(0).toFixed(1) + '" x2="' + F.X(tpTT(tmax)).toFixed(1) + '" y2="' + F.Y(-f.K * (tmax - (f.lag || 0))).toFixed(1) + '" stroke="' + pal.ink + '" stroke-dasharray="4 3" stroke-width="1.6"/>';
   pts.forEach(p => { s += '<circle cx="' + F.X(p[0]).toFixed(1) + '" cy="' + F.Y(p[1]).toFixed(1) + '" r="2.4" fill="' + pal.accent + '" opacity=".85"/>'; });
@@ -3234,14 +3287,14 @@ function tpRenderCurves() {
   const exPts = {}; if (cc) cc.live.forEach(id => { exPts[id] = (ex.pts[id] || []); });
   let svg;
   const W = Math.max(300, Math.min(980, ($('#pane-curves').clientWidth || 900) - (($('#pane-curves').clientWidth || 900) > 1100 ? 300 : 40)));
-  if (sub === 'kin') svg = tpChartKin(res, comp, { W: W, H: Math.round(W * .52), sel: ci, legend: true, pts: exPts, masks: ex.masks });
-  else if (sub === 'dr') svg = tpChartDR(res, comp, { W: W, H: Math.round(W * .56) });
-  else if (sub === 'k') svg = tpChartK(res, comp, { W: W, H: Math.round(W * .56) });
-  else if (sub === 't') svg = tpChartT(res, comp, { W: W, H: Math.round(W * .42) });
+  if (sub === 'kin') svg = tpChartKin(res, comp, { view: 'kin', W: W, H: Math.round(W * .52), sel: ci, legend: true, pts: exPts, masks: ex.masks });
+  else if (sub === 'dr') svg = tpChartDR(res, comp, { view: 'dr', W: W, H: Math.round(W * .56) });
+  else if (sub === 'k') svg = tpChartK(res, comp, { view: 'k', W: W, H: Math.round(W * .56) });
+  else if (sub === 't') svg = tpChartT(res, comp, { view: 't', W: W, H: Math.round(W * .42) });
   else if (sub === 'heat') svg = tpChartHeat(res, comp, { W: W });
-  else if (sub === 'res') svg = tpChartRes(res, comp, ci, { W: W, H: Math.round(W * .38) });
-  else svg = tpChartFO(res, comp, ci, { W: W, H: Math.round(W * .38) });
-  h += '<div class="chart" id="tp-chart">' + svg + '</div>';
+  else if (sub === 'res') svg = tpChartRes(res, comp, ci, { view: 'res', W: W, H: Math.round(W * .38) });
+  else svg = tpChartFO(res, comp, ci, { view: 'fo', W: W, H: Math.round(W * .38) });
+  h += tpAxBar(sub) + '<div class="chart" id="tp-chart">' + svg + '</div>';
   h += '<p class="hint" style="margin:8px 0 0">' + ({ kin: 'The dashed line is the fit; dotted lines = plateau (orange), t½ (blue), delay (green). Click a read to leave it out, a red cross to put it back. A dashed trace is a concentration past the optimum (hook). Shift-drag across the plot to leave a time range out for the whole plate.', dr: 'One dot per well at its fitted plateau; a hollow dot with an arrow reached no plateau (Dmax is then a lower bound); a diamond is a hooked concentration, left out of the fit.', k: 'K of every concentration with its 95 % interval; filled = in the fit, hollow = left out (hover for why), diamond = hook. The hyperbola is the Michaelis–Menten fit.', t: 'The same dose–response read off the plate at each reporting time (Settings → Analysis).', heat: 'Percent degradation over time for every concentration.', res: 'Residuals of the fit: they should scatter around zero with no streaks.', fo: 'If the decay is first order, ln of the fraction left to lose against time is a straight line with slope −K.' })[sub] + '</p></div>';
   h += '<div class="card">' + tpCompStats(comp, cc) + '</div>';
   h += '<div class="card"><h3>Every concentration<span class="sub">click a well to leave it out · a click on a row picks it</span></h3>' + tpConcTable(res, comp, ci) + '</div>';
@@ -3258,7 +3311,7 @@ function tpBindChart(res, comp, ci) {
     const rd = e.target.closest('.rd'); if (rd) { tpUndoMark('a read left out'); const k = +rd.dataset.k; cc.live.forEach(id => { const a = ex.pts[id] || (ex.pts[id] = []); if (a.indexOf(k) < 0) a.push(k); }); tpRefit(p, comp.key); }
   });
   // shift-drag: a time range left out for the whole plate
-  let d0 = null; const toT = ev => { const r = svg.getBoundingClientRect(), vb = svg.viewBox.baseVal, x = (ev.clientX - r.left) / r.width * vb.width; const F = { l: 58, iw: vb.width - 58 - 120 }; const tMax = res.t[res.t.length - 1]; return Math.max(0, Math.min(tMax, (x - F.l) / F.iw * tpTT(tMax) / (TP.ui.units.time === 'min' ? 60 : 1))); };
+  let d0 = null; const toT = ev => { const r = svg.getBoundingClientRect(), vb = svg.viewBox.baseVal, x = (ev.clientX - r.left) / r.width * vb.width; const F = { l: 58, iw: vb.width - 58 - 120 }, tMax = res.t[res.t.length - 1], ax = TP_AX.kin && TP_AX.kin.x, lo = ax ? ax.eff[0] : 0, hi = ax ? ax.eff[1] : tpTT(tMax); return Math.max(0, Math.min(tMax, (lo + (x - F.l) / F.iw * (hi - lo)) / (TP.ui.units.time === 'min' ? 60 : 1))); };
   svg.addEventListener('pointerdown', e => { if (!e.shiftKey) return; d0 = toT(e); try { svg.setPointerCapture(e.pointerId); } catch (_) {} e.preventDefault(); });
   svg.addEventListener('pointerup', e => { if (d0 == null) return; const d1 = toT(e), a = Math.min(d0, d1), b = Math.max(d0, d1); d0 = null; if (b - a < res.t[1] - res.t[0]) return; tpUndoMark('a time range left out'); ex.masks.push([a, b]); tpToast('Left out ' + tpFmtT(a, 3) + ' – ' + tpFmtT(b, 3) + ' for this whole plate (Settings → Analysis shows the list)'); tpRefit(p, null); });
 }
@@ -3337,7 +3390,7 @@ function tpScatter(rows, xk, yk, o) {
   if (pts.length < 1) return tpSvg(o.W, 120, '<text x="20" y="44" fill="' + pal.text2 + '" font-size="13" font-family="IBM Plex Sans,Arial,sans-serif">No compound has both numbers.</text>', pal);
   const lg = (m, v) => m.log ? Math.log10(Math.max(v, 1e-12)) : v; const rng = (m, a) => { let lo = Math.min.apply(null, a), hi = Math.max.apply(null, a); if (hi === lo) { lo -= 1; hi += 1; } const pad = (hi - lo) * .12; return [lo - pad, hi + pad]; };
   const xr = rng(X, pts.map(p => lg(X, p.x.v))), yr = rng(Y, pts.map(p => lg(Y, p.y.v)));
-  const F = tpFrame({ W: o.W, H: o.H, pal: pal, id: 'cs', x: { lo: xr[0], hi: xr[1], label: X.l, fmt: v => X.log ? tpF(Math.pow(10, v), 2) : tpF(X.fmt === TP_METRICS.kmax.fmt ? tpKV(v) : v, 2) }, y: { lo: yr[0], hi: yr[1], label: Y.l, fmt: v => Y.log ? tpF(Math.pow(10, v), 2) : tpF(Y.fmt === TP_METRICS.kmax.fmt ? tpKV(v) : v, 2) } });
+  const F = tpFrame({ W: o.W, H: o.H, pal: pal, id: 'cs', view: o.view, x: { lo: xr[0], hi: xr[1], disp: tpMetricDisp(X), label: X.l, fmt: v => X.log ? tpF(Math.pow(10, v), 2) : tpF(X.fmt === TP_METRICS.kmax.fmt ? tpKV(v) : v, 2) }, y: { lo: yr[0], hi: yr[1], disp: tpMetricDisp(Y), label: Y.l, fmt: v => Y.log ? tpF(Math.pow(10, v), 2) : tpF(Y.fmt === TP_METRICS.kmax.fmt ? tpKV(v) : v, 2) } });
   let s = '<defs>' + F.clip + '</defs>' + F.s + '<g clip-path="url(#cs)">'; const names = [...new Set(pts.map(p => p.r.comp.target || p.r.plate.name))];
   pts.forEach((p, i) => { const cx = F.X(lg(X, p.x.v)), cy = F.Y(lg(Y, p.y.v)), gi = names.indexOf(p.r.comp.target || p.r.plate.name), col = tpGroupColor(pal, gi), flagged = (p.r.comp.A && !p.r.comp.A.fail && /K:/.test(p.r.comp.A.Flag_Reason)); const q = p.x.q !== '=' || p.y.q !== '=';
     s += '<g class="sp" data-i="' + i + '" style="cursor:pointer" tabindex="0" role="button" aria-label="Open the curves of ' + esc(p.r.comp.compound || 'this compound') + '" onclick="tpOpenComp(\'' + p.r.plate.id + '\',\'' + p.r.comp.key.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + '\')" data-tip="' + esc((p.r.comp.compound || '') + ' · ' + X.l + ' ' + tpMCell(p.r.comp, xk) + ' · ' + Y.l + ' ' + tpMCell(p.r.comp, yk)) + '"><circle cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" r="6.2" fill="' + (q ? pal.bg : col) + '" stroke="' + col + '" stroke-width="2"/>' + (flagged ? '<circle cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" r="9.6" fill="none" stroke="' + pal.warn + '" stroke-width="1.4"/>' : '') + '</g>';
@@ -3382,8 +3435,8 @@ function tpOverlayK(rows, o) {
   if (!usable.length) return tpSvg(o.W, 100, '<text x="20" y="44" fill="' + pal.text2 + '" font-size="13" font-family="IBM Plex Sans,Arial,sans-serif">No compound has a K–response to overlay.</text>', pal);
   let lo = Infinity, hi = 0, kMax = 0; usable.forEach(r => r.comp.concs.forEach(c => { lo = Math.min(lo, c.c); hi = Math.max(hi, c.c); })); lo /= 2.5; hi *= 2.5; usable.forEach(r => { kMax = Math.max(kMax, r.comp.B.curve(hi) * 1.03, Math.max.apply(null, r.comp.B.points.map(p => p.K))); });
   const lgN = usable.map(r => (r.comp.compound || '').slice(0, 12)), LG = o.W < 440 ? tpLegendRows(lgN, o.W) : null, HH = o.H + (LG ? LG.extra : 0);
-  const F = tpFrame({ W: o.W, H: HH, pal: pal, id: 'ck3', m: LG ? { r: 16, t: 14 + LG.extra } : { r: 120 }, x: { lo: lo, hi: hi, log: true, label: 'Concentration', fmt: tpAxConc }, y: { lo: 0, hi: kMax * 1.08, label: tpKLabel(), fmt: v => tpF(tpKV(v), 2) } });
-  let s = '<defs>' + F.clip + '</defs>' + F.s + '<g clip-path="url(#ck3)">'; const xs = []; for (let i = 0; i <= 120; i++) xs.push(Math.pow(10, Math.log10(lo) + (Math.log10(hi) - Math.log10(lo)) * i / 120));
+  const F = tpFrame({ W: o.W, H: HH, pal: pal, id: 'ck3', view: o.view, m: LG ? { r: 16, t: 14 + LG.extra } : { r: 120 }, x: { lo: lo, hi: hi, log: true, label: 'Concentration', fmt: tpAxConc }, y: { lo: 0, hi: kMax * 1.08, disp: tpKDisp(), label: tpKLabel(), fmt: v => tpF(tpKV(v), 2) } });
+  let s = '<defs>' + F.clip + '</defs>' + F.s + '<g clip-path="url(#ck3)">'; const xs = [], xl = F.lim.x[0], xh = F.lim.x[1]; for (let i = 0; i <= 120; i++) xs.push(Math.pow(10, Math.log10(xl) + (Math.log10(xh) - Math.log10(xl)) * i / 120));
   usable.forEach((r, i) => { const col = tpGroupColor(pal, i); s += '<path d="' + tpPath(xs.map(x => [x, r.comp.B.curve(x)]), F.X, F.Y) + '" fill="none" stroke="' + col + '" stroke-width="2"/>'; r.comp.B.points.forEach(p => { s += '<circle cx="' + F.X(p.c).toFixed(1) + '" cy="' + F.Y(p.K).toFixed(1) + '" r="3.4" fill="' + col + '"/>'; }); });
   s += '</g>'; if (LG) s += tpLegendSvg(LG, lgN, usable.map((r, i) => tpGroupColor(pal, i)), pal); else usable.forEach((r, i) => { const col = tpGroupColor(pal, i), y = F.m.t + 8 + i * 17; s += '<line x1="' + (F.m.l + F.iw + 14) + '" x2="' + (F.m.l + F.iw + 32) + '" y1="' + (y - 3) + '" y2="' + (y - 3) + '" stroke="' + col + '" stroke-width="2.4"/><text x="' + (F.m.l + F.iw + 38) + '" y="' + y + '" font-size="10.5" fill="' + pal.ink + '" font-family="IBM Plex Sans,Arial,sans-serif">' + esc((r.comp.compound || '').slice(0, 12)) + '</text>'; });
   return tpSvg(o.W, HH, s, pal, 'data-chart="koverlay"');
@@ -3392,7 +3445,7 @@ function tpOverlayTraces(rows, c, o) {
   o = Object.assign({ W: 560, H: 380, light: false }, o || {}); const pal = tpPal(o.light), items = [];
   rows.forEach(r => { const cc = r.comp.concs.find(x => tpCKey(x.c) === tpCKey(c)); if (cc) items.push({ r: r, cc: cc, t: r.res.t }); });
   if (!items.length) return tpSvg(o.W, 100, '<text x="20" y="44" fill="' + pal.text2 + '" font-size="13" font-family="IBM Plex Sans,Arial,sans-serif">No compound was tested at that concentration.</text>', pal);
-  const tMax = Math.max.apply(null, items.map(i => i.t[i.t.length - 1])); const lgN = items.map(it => (it.r.comp.compound || '').slice(0, 12)), LG = o.W < 440 ? tpLegendRows(lgN, o.W) : null, HH = o.H + (LG ? LG.extra : 0); const F = tpFrame({ W: o.W, H: HH, pal: pal, id: 'ct3', m: LG ? { r: 16, t: 14 + LG.extra } : { r: 120 }, x: { lo: 0, hi: tpTT(tMax), label: tpTimeLabel() }, y: { lo: 0, hi: 1.15, label: 'Fractional signal', ticks: [0, .25, .5, .75, 1] } });
+  const tMax = Math.max.apply(null, items.map(i => i.t[i.t.length - 1])); const lgN = items.map(it => (it.r.comp.compound || '').slice(0, 12)), LG = o.W < 440 ? tpLegendRows(lgN, o.W) : null, HH = o.H + (LG ? LG.extra : 0); const F = tpFrame({ W: o.W, H: HH, pal: pal, id: 'ct3', view: o.view, m: LG ? { r: 16, t: 14 + LG.extra } : { r: 120 }, x: { lo: 0, hi: tpTT(tMax), label: tpTimeLabel() }, y: { lo: 0, hi: 1.15, label: 'Fractional signal', ticks: [0, .25, .5, .75, 1] } });
   let s = '<defs>' + F.clip + '</defs>' + F.s + '<g clip-path="url(#ct3)"><line x1="' + F.m.l + '" x2="' + (F.m.l + F.iw) + '" y1="' + F.Y(1) + '" y2="' + F.Y(1) + '" stroke="' + pal.veh + '" stroke-dasharray="5 4"/>';
   items.forEach((it, i) => { s += '<path d="' + tpPath(it.t.map((tt, k) => [tpTT(tt), it.cc.mean[k]]), F.X, F.Y) + '" fill="none" stroke="' + tpGroupColor(pal, i) + '" stroke-width="2"/>'; }); s += '</g>';
   if (LG) s += tpLegendSvg(LG, lgN, items.map((it, i) => tpGroupColor(pal, i)), pal); else items.forEach((it, i) => { const y = F.m.t + 8 + i * 17; s += '<line x1="' + (F.m.l + F.iw + 14) + '" x2="' + (F.m.l + F.iw + 32) + '" y1="' + (y - 3) + '" y2="' + (y - 3) + '" stroke="' + tpGroupColor(pal, i) + '" stroke-width="2.4"/><text x="' + (F.m.l + F.iw + 38) + '" y="' + y + '" font-size="10.5" fill="' + pal.ink + '" font-family="IBM Plex Sans,Arial,sans-serif">' + esc((it.r.comp.compound || '').slice(0, 12)) + '</text>'; });
@@ -3407,9 +3460,9 @@ function tpRenderCompare() {
   const cols = (pane.clientWidth || 900) > 1100 ? 2 : 1, W = Math.max(280, Math.min(640, ((pane.clientWidth || 900) - 40) / cols - 44));
   let h = '<div class="res-tools"><div class="sec-hd" style="margin:0"><h2>Compare</h2><span class="sec-sub">' + rows.length + ' compound' + (rows.length > 1 ? 's' : '') + '</span></div></div><div class="cmp-grid">';
   h += '<div class="card"><h3>Ranking<span class="sub">' + sel('cmpR', TP.ui.cmpR || 'logeff').replace('tpCmpSet(\'cmpR\'', 'tpCmpSet(\'cmpR\'') + '</span></h3><div class="chart">' + tpBars(rows, TP.ui.cmpR || 'logeff', { W: W }) + '</div></div>';
-  h += '<div class="card"><h3>Rate against depth<span class="sub" style="display:flex;gap:6px;flex-wrap:wrap;min-width:0">' + sel('cmpX', TP.ui.cmpX) + sel('cmpY', TP.ui.cmpY) + '</span></h3><div class="chart">' + tpScatter(rows, TP.ui.cmpX, TP.ui.cmpY, { W: W, H: Math.round(W * .72) }) + '</div><p class="hint" style="margin:8px 0 0">A hollow dot has a bound on one of its numbers; an orange ring carries a warning. Click a dot to open its curves.</p></div>';
-  h += '<div class="card"><h3>K against concentration</h3><div class="chart">' + tpOverlayK(rows, { W: W, H: Math.round(W * .66) }) + '</div></div>';
-  h += '<div class="card"><h3>Traces at one concentration<span class="sub"><select class="inp" onchange="tpCmpSet(\'cmpC\',this.value)" aria-label="Concentration">' + allC.map(c => '<option value="' + c + '"' + (+TP.ui.cmpC === c ? ' selected' : '') + '>' + esc(tpAxConc(c)) + '</option>').join('') + '</select></span></h3><div class="chart">' + tpOverlayTraces(rows, TP.ui.cmpC, { W: W, H: Math.round(W * .66) }) + '</div></div></div>';
+  h += '<div class="card"><h3>Rate against depth<span class="sub" style="display:flex;gap:6px;flex-wrap:wrap;min-width:0">' + sel('cmpX', TP.ui.cmpX) + sel('cmpY', TP.ui.cmpY) + '</span></h3>' + tpAxCard('cmpS', tpScatter(rows, TP.ui.cmpX, TP.ui.cmpY, { view: 'cmpS', W: W, H: Math.round(W * .72) })) + '<p class="hint" style="margin:8px 0 0">A hollow dot has a bound on one of its numbers; an orange ring carries a warning. Click a dot to open its curves.</p></div>';
+  h += '<div class="card"><h3>K against concentration</h3>' + tpAxCard('cmpK', tpOverlayK(rows, { view: 'cmpK', W: W, H: Math.round(W * .66) })) + '</div>';
+  h += '<div class="card"><h3>Traces at one concentration<span class="sub"><select class="inp" onchange="tpCmpSet(\'cmpC\',this.value)" aria-label="Concentration">' + allC.map(c => '<option value="' + c + '"' + (+TP.ui.cmpC === c ? ' selected' : '') + '>' + esc(tpAxConc(c)) + '</option>').join('') + '</select></span></h3>' + tpAxCard('cmpT', tpOverlayTraces(rows, TP.ui.cmpC, { view: 'cmpT', W: W, H: Math.round(W * .66) })) + '</div></div>';
   pane.innerHTML = h;
 }
 
@@ -3499,10 +3552,10 @@ function tpResultsJSON(p) { const res = tpRes(p); return { app: TP_ABOUT.ver, se
 /* charts as pictures */
 function tpChartSVGLight() {
   const p = tpPlate(), res = tpRes(p); if (!res) return null; const tab = TP.ui.tab;
-  if (tab === 'compare') return tpScatter(tpAllRows(), TP.ui.cmpX, TP.ui.cmpY, { W: 900, H: 640, light: true });
-  if (tab === 'curves' && (TP.sel.sub === 'raw' || !res.compounds.length)) return tpChartRaw(tpRawModel(p, res), { W: 1000, H: 560, light: true });
+  if (tab === 'compare') return tpScatter(tpAllRows(), TP.ui.cmpX, TP.ui.cmpY, { view: 'cmpS', W: 900, H: 640, light: true });
+  if (tab === 'curves' && (TP.sel.sub === 'raw' || !res.compounds.length)) return tpChartRaw(tpRawModel(p, res), { view: 'raw', W: 1000, H: 560, light: true });
   const comp = tpCurComp(res), ci = tpCurConc(comp), sub = TP.sel.sub, W = 1000, ex = tpEx(p), cc = comp.concs[ci], exPts = {}; cc.live.forEach(id => exPts[id] = ex.pts[id] || []);
-  return sub === 'kin' ? tpChartKin(res, comp, { W: W, H: 560, sel: ci, legend: true, light: true, pts: exPts, masks: ex.masks }) : sub === 'dr' ? tpChartDR(res, comp, { W: W, H: 560, light: true }) : sub === 'k' ? tpChartK(res, comp, { W: W, H: 560, light: true }) : sub === 't' ? tpChartT(res, comp, { W: W, H: 420, light: true }) : sub === 'heat' ? tpChartHeat(res, comp, { W: W, light: true }) : sub === 'res' ? tpChartRes(res, comp, ci, { W: W, H: 380, light: true }) : tpChartFO(res, comp, ci, { W: W, H: 380, light: true });
+  return sub === 'kin' ? tpChartKin(res, comp, { view: 'kin', W: W, H: 560, sel: ci, legend: true, light: true, pts: exPts, masks: ex.masks }) : sub === 'dr' ? tpChartDR(res, comp, { view: 'dr', W: W, H: 560, light: true }) : sub === 'k' ? tpChartK(res, comp, { view: 'k', W: W, H: 560, light: true }) : sub === 't' ? tpChartT(res, comp, { view: 't', W: W, H: 420, light: true }) : sub === 'heat' ? tpChartHeat(res, comp, { W: W, light: true }) : sub === 'res' ? tpChartRes(res, comp, ci, { view: 'res', W: W, H: 380, light: true }) : tpChartFO(res, comp, ci, { view: 'fo', W: W, H: 380, light: true });
 }
 function tpSavePNG() {
   const svg = tpChartSVGLight(); if (!svg) { tpToast('Nothing to save yet', 'warn'); return; }
