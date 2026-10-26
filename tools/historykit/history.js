@@ -1,15 +1,22 @@
 /* HistoryKit — every analysis, kept under its name, in this browser's IndexedDB.
    An analysis with data is saved by itself a moment after anything changes; opening one puts it back as it was.
    The app says three things: what to keep (current), how to put it back (open) and where the list is drawn (root).
-   HistoryKit.create({ key, noun, root, current, open, go, toast, onChange }) → { touch, save, render, load, list, id, adopt }
+   HistoryKit.create({ key, app, noun, root, shown, toast, current, open, afterOpen, onChange, onRename, adapt, classes, emptyAction })
+     → { touch, save, render, load, open, remove, pin, rename, list, id }
      key      the database is <key>_history, one store, one record per analysis
      root     the element (or its id) the list is drawn into
      current  () → null while there is nothing worth keeping, else { name, key?, bits: [], chips: [], files: [], data }
               data must survive structured clone; key is the identity of the readings, so loading the same data again in a
               new session finds its entry instead of making a second one
      open     (data, rec) → puts the analysis back; returns false when it could not
-     go       () → shows the History tab
-     toast    (message, kind) */
+     afterOpen (rec) → lands the person where the analysis is shown
+     toast    (message, kind)
+     current may also give x (small facts the app reads back from the list, kept as they are) and nameWins: true when the app
+              has its own name field, so the entry follows it; otherwise a name a person gave in History is kept
+     onRename (rec, isOpen) the app takes the new name when the entry is the one open
+     adapt    (rec) → rec  turns an entry written before the kit into the kit's shape, as it is read
+     classes  { primary, sec, danger } the app's own button classes (default primary / none / danger)
+     emptyAction { label, fn } a button under "Nothing saved yet" */
 var HistoryKit = (function(){
   var MAX = 40, GAP = 700;
   function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -27,7 +34,7 @@ var HistoryKit = (function(){
   // A small dialog of the kit's own, so a rename or a delete asks the same way in every app.
   function ask(title, body, o, cb){
     var back = document.createElement('div'); back.className = 'hk-back';
-    back.innerHTML = '<div class="hk-dlg" role="dialog" aria-modal="true" aria-label="' + esc(title) + '"><h3>' + esc(title) + '</h3>' + (body ? '<p>' + esc(body) + '</p>' : '') + (o.input ? '<input type="text" maxlength="80" spellcheck="false" autocomplete="off" value="' + esc(o.value || '') + '">' : '') + '<div class="hk-btns"><button type="button" class="btn" data-x="0">Cancel</button><button type="button" class="btn ' + (o.danger ? 'danger' : 'primary') + '" data-x="1">' + esc(o.ok || 'OK') + '</button></div></div>';
+    back.innerHTML = '<div class="hk-dlg" role="dialog" aria-modal="true" aria-label="' + esc(title) + '"><h3>' + esc(title) + '</h3>' + (body ? '<p>' + esc(body) + '</p>' : '') + (o.input ? '<input type="text" maxlength="80" spellcheck="false" autocomplete="off" value="' + esc(o.value || '') + '">' : '') + '<div class="hk-btns"><button type="button" class="btn' + (o.sec ? ' ' + o.sec : '') + '" data-x="0">Cancel</button><button type="button" class="btn ' + (o.danger ? (o.dangerCls || 'danger') : (o.primary || 'primary')) + '" data-x="1">' + esc(o.ok || 'OK') + '</button></div></div>';
     var prev = document.activeElement;
     function done(ok){ var v = o.input ? back.querySelector('input').value : null; back.remove(); document.removeEventListener('keydown', key, true); if (prev && prev.focus) { try { prev.focus({ preventScroll: true }); } catch (e) {} } cb(ok, v); }
     function key(e){ if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(false); } else if (e.key === 'Enter' && o.input) { e.preventDefault(); e.stopPropagation(); done(true); } }
@@ -38,7 +45,8 @@ var HistoryKit = (function(){
   }
   function create(o){
     var H = { dbp: null, broken: null, list: [], q: '', timer: 0, loaded: false, id: null, quiet: 0, sig: '', warned: false };
-    var noun = o.noun || 'analysis';
+    var noun = o.noun || 'analysis', K = o.classes || {};
+    function dlg(extra){ extra.sec = K.sec || ''; extra.primary = K.primary || 'primary'; extra.dangerCls = K.danger || 'danger'; return extra; }
     function rootEl(){ return typeof o.root === 'string' ? document.getElementById(o.root) : o.root; }
     function toast(m, k){ if (o.toast) o.toast(m, k); }
     function db(){
@@ -64,14 +72,15 @@ var HistoryKit = (function(){
     function changed(){ if (o.onChange) o.onChange(H.list); if (H.shown()) H.render(); }
     H.shown = function(){ return o.shown ? o.shown() : true; };
     H.load = function(){
-      return req('readonly', function(st){ return st.getAll(); }).then(function(all){ H.list = all || []; sort(); H.loaded = true; changed(); })
+      return req('readonly', function(st){ return st.getAll(); }).then(function(all){ H.list = (all || []).map(function(r){ return o.adapt && !r.data ? o.adapt(r) : r; }); sort(); H.loaded = true; changed(); })
         .catch(function(e){ H.broken = e; H.loaded = true; changed(); });
     };
     function find(id){ return H.list.filter(function(r){ return r.id === id; })[0]; }
     // Called after anything that changes the analysis. Saving waits for a quiet moment and skips what is already kept.
     H.touch = function(){
-      if (H.broken || Date.now() < H.quiet) return;
-      clearTimeout(H.timer); H.timer = setTimeout(H.save, GAP);
+      if (H.broken) return;
+      // Just after an Open the screen is still settling: look again once it has, so a change made in that moment is not lost.
+      clearTimeout(H.timer); H.timer = setTimeout(H.save, Math.max(GAP, H.quiet - Date.now()));
     };
     H.save = function(){
       clearTimeout(H.timer);
@@ -83,8 +92,8 @@ var HistoryKit = (function(){
       if (rec && H.id !== rec.id) { H.id = rec.id; H.sig = ''; }
       if (rec && sig === H.sig) return Promise.resolve();
       var now = Date.now();
-      var out = { id: rec ? rec.id : 'h' + now.toString(36) + Math.random().toString(36).slice(2, 6), dkey: cur.key || '', name: rec && rec.named ? rec.name : (cur.name || 'Untitled ' + noun), named: !!(rec && rec.named),
-        bits: cur.bits || [], chips: cur.chips || [], files: cur.files || [], data: cur.data, created: rec ? rec.created : now, updated: now, pinned: rec ? !!rec.pinned : false };
+      var out = { id: rec ? rec.id : 'h' + now.toString(36) + Math.random().toString(36).slice(2, 6), dkey: cur.key || '', name: rec && rec.named && !cur.nameWins ? rec.name : (cur.name || 'Untitled ' + noun), named: !!(rec && rec.named),
+        x: cur.x || null, bits: cur.bits || [], chips: cur.chips || [], files: cur.files || [], data: cur.data, created: rec ? rec.created : now, updated: now, pinned: rec ? !!rec.pinned : false };
       return req('readwrite', function(st){ return st.put(out); }).then(function(){
         H.id = out.id; H.sig = sig;
         var i = H.list.findIndex(function(r){ return r.id === out.id; }); if (i >= 0) H.list[i] = out; else H.list.push(out);
@@ -108,7 +117,7 @@ var HistoryKit = (function(){
       Promise.resolve(r).then(function(ok){
         if (ok === false) { toast('“' + rec.name + '” could not be opened.', 'err'); return; }
         var cur = null; try { cur = o.current(); } catch (e) {}
-        H.id = rec.id; try { H.sig = JSON.stringify([rec.named ? rec.name : (cur && cur.name), cur && cur.data]); } catch (e) { H.sig = ''; }
+        H.id = rec.id; try { H.sig = JSON.stringify([rec.named && !(cur && cur.nameWins) ? rec.name : (cur && cur.name), cur && cur.data]); } catch (e) { H.sig = ''; }
         H.quiet = Date.now() + 1200;
         if (o.afterOpen) o.afterOpen(rec);
         toast('“' + rec.name + '” is open.');
@@ -116,7 +125,7 @@ var HistoryKit = (function(){
     };
     H.remove = function(id){
       var rec = find(id); if (!rec) return;
-      ask('Delete “' + rec.name + '” from History?', 'Its readings and layout are deleted from this browser.' + (id === H.id ? ' It is the ' + noun + ' open now: it stays open, and the next change keeps it again as a new entry.' : ''), { ok: 'Delete', danger: true }, function(ok){
+      ask('Delete “' + rec.name + '” from History?', 'Its readings and layout are deleted from this browser.' + (id === H.id ? ' It is the ' + noun + ' open now: it stays open, and the next change keeps it again as a new entry.' : ''), dlg({ ok: 'Delete', danger: true }), function(ok){
         if (!ok) return;
         req('readwrite', function(st){ return st.delete(id); }).then(function(){ H.list = H.list.filter(function(r){ return r.id !== id; }); if (id === H.id) { H.id = null; H.sig = ''; } changed(); });
       });
@@ -127,18 +136,19 @@ var HistoryKit = (function(){
     };
     H.rename = function(id){
       var rec = find(id); if (!rec) return;
-      ask('Rename this ' + noun, 'History keeps it under this name.', { input: true, value: rec.name, ok: 'Rename' }, function(ok, v){
+      ask('Rename this ' + noun, 'History keeps it under this name.', dlg({ input: true, value: rec.name, ok: 'Rename' }), function(ok, v){
         v = String(v || '').replace(/\s+/g, ' ').trim().slice(0, 80); if (!ok || !v || v === rec.name) return;
         rec.name = v; rec.named = true;
+        if (o.onRename) o.onRename(rec, rec.id === H.id);
         req('readwrite', function(st){ return st.put(rec); }).then(changed);
       });
     };
     H.render = function(){
       var root = rootEl(); if (!root) return;
-      function empty(t, p){ return '<div class="hk-empty">' + IC.clock + '<h3>' + esc(t) + '</h3><p>' + esc(p) + '</p></div>'; }
+      function empty(t, p, act){ return '<div class="hk-empty">' + IC.clock + '<h3>' + esc(t) + '</h3><p>' + esc(p) + '</p>' + (act ? '<p style="margin-top:14px"><button type="button" class="btn ' + (K.primary || 'primary') + '" data-a="empty">' + esc(act.label) + '</button></p>' : '') + '</div>'; }
       if (H.broken && !H.list.length) { root.innerHTML = empty('History cannot be kept here', 'This browser would not give ' + (o.app || 'the app') + ' a place to store analyses (' + (H.broken.message || 'storage unavailable') + '). Everything else works; save the project to keep your numbers.'); return; }
       if (!H.loaded) { root.innerHTML = ''; return; }
-      if (!H.list.length) { root.innerHTML = empty('Nothing saved yet', 'Every ' + noun + ' you read is kept here by itself, under its name — open it again later exactly as you left it.'); return; }
+      if (!H.list.length) { root.innerHTML = empty('Nothing saved yet', 'Every ' + noun + ' you read is kept here by itself, under its name — open it again later exactly as you left it.', o.emptyAction); return; }
       var q = H.q.trim().toLowerCase(), shown = H.list.filter(function(r){ return !q || (r.name + ' ' + r.chips.join(' ') + ' ' + r.files.join(' ') + ' ' + r.bits.join(' ')).toLowerCase().indexOf(q) >= 0; });
       var h = '<div class="hk-bar"><div class="hk-title">History<span class="sub">' + plural(H.list.length, 'analysis') + ' · kept on this device</span></div><input class="hk-q" type="search" id="hk-q" placeholder="Find an ' + esc(noun) + ', compound or file" aria-label="Find in History" value="' + esc(H.q) + '"></div><div class="hk-list">';
       shown.forEach(function(r){
@@ -151,7 +161,7 @@ var HistoryKit = (function(){
           '<button type="button" class="hk-ic' + (r.pinned ? ' on' : '') + '" data-a="pin" data-id="' + esc(r.id) + '" title="' + (r.pinned ? 'Unpin' : 'Pin to the top') + '" aria-label="Pin">' + IC.pin + '</button>' +
           '<button type="button" class="hk-ic" data-a="ren" data-id="' + esc(r.id) + '" title="Rename" aria-label="Rename">' + IC.ren + '</button>' +
           '<button type="button" class="hk-ic" data-a="del" data-id="' + esc(r.id) + '" title="Delete from History" aria-label="Delete">' + IC.del + '</button>' +
-          '<button type="button" class="btn' + (now ? '' : ' primary') + '" data-a="open" data-id="' + esc(r.id) + '">' + (now ? 'Show' : 'Open') + '</button></div></div></div>';
+          '<button type="button" class="btn' + (now ? (K.sec ? ' ' + K.sec : '') : ' ' + (K.primary || 'primary')) + '" data-a="open" data-id="' + esc(r.id) + '">' + (now ? 'Show' : 'Open') + '</button></div></div></div>';
       });
       if (!shown.length) h += '<div class="hk-empty" style="margin:30px auto"><p>Nothing in History matches “' + esc(H.q) + '”.</p></div>';
       root.innerHTML = h + '</div><div class="hk-foot">An ' + esc(noun) + ' is saved a moment after any change. Renaming it here renames the entry.</div>';
@@ -161,6 +171,7 @@ var HistoryKit = (function(){
       root.addEventListener('click', function(e){
         var b = e.target.closest('[data-a]'); if (!b) return;
         var id = b.dataset.id, a = b.dataset.a;
+        if (a === 'empty') { if (o.emptyAction) o.emptyAction.fn(); return; }
         if (a === 'open') { if (id === H.id) { if (o.afterOpen) o.afterOpen(find(id)); } else H.open(id); }
         else if (a === 'del') H.remove(id); else if (a === 'pin') H.pin(id); else if (a === 'ren') H.rename(id);
       });
@@ -177,5 +188,5 @@ var HistoryKit = (function(){
     H.load();
     return H;
   }
-  return { create: create, ask: ask };
+  return { create: create, ask: ask, when: when };
 })();

@@ -526,13 +526,13 @@ if (run('B15')) await guard('B15', async () => {
 if (run('B16')) await guard('B16', async () => {
   const { ctx, pg } = await open('/apps/beacon/beacon.html');
   await pg.evaluate(() => { loadTestData('gain'); bRename('My NanoBRET run'); }); await pg.waitForTimeout(1500);
-  const a = await pg.evaluate(() => ({ n: BH.list.length, name: BH.list[0] && BH.list[0].name, comp: BH.list[0] && BH.list[0].compounds.length, hid: state.hid, tab: document.getElementById('bh-n').textContent }));
-  const b = await pg.evaluate(async () => { bClearAll(); document.getElementById('bea-ask-ok').click(); await new Promise(r => setTimeout(r, 900)); const id = BH.list[0].id; bhOpen(id); await new Promise(r => setTimeout(r, 100)); return { n: BH.list.length, plates: state.plates.length, ser: state.series.map(s => s.name), name: state.name, ready: bReadyPlates().length, tab: activeTab, hid: state.hid === id, fits: bFits().length }; });
+  const a = await pg.evaluate(() => ({ n: bhist.list.length, name: bhist.list[0] && bhist.list[0].name, comp: bhist.list[0] && bhist.list[0].chips.length, hid: bhist.id, tab: document.getElementById('bh-n').textContent }));
+  const b = await pg.evaluate(async () => { bClearAll(); document.getElementById('bea-ask-ok').click(); await new Promise(r => setTimeout(r, 900)); const id = bhist.list[0].id; bhOpen(id); await new Promise(r => setTimeout(r, 300)); return { n: bhist.list.length, plates: state.plates.length, ser: state.series.map(s => s.name), name: state.name, ready: bReadyPlates().length, tab: activeTab, hid: bhist.id === id, fits: bFits().length }; });
   check('B16', 'an analysis with readings is saved by itself under its name', a.n === 1 && a.name === 'My NanoBRET run' && a.comp === 4 && a.tab === '1', a);
   check('B16', 'opening it after Clear all brings back the plates, compounds, name and fits, and lands on Results', b.plates === 2 && b.ser.length === 4 && b.name === 'My NanoBRET run' && b.ready === 2 && b.fits === 4 && b.tab === 'results' && b.hid, b);
-  const c = await pg.evaluate(async () => { const id = BH.list[0].id; bRename('Renamed run'); await new Promise(r => setTimeout(r, 1200)); return { n: BH.list.length, name: BH.list[0].name }; });
+  const c = await pg.evaluate(async () => { bRename('Renamed run'); await new Promise(r => setTimeout(r, 1200)); return { n: bhist.list.length, name: bhist.list[0].name }; });
   check('B16', 'renaming the analysis renames its History entry (it does not add a second one)', c.n === 1 && c.name === 'Renamed run', c);
-  const d = await pg.evaluate(async () => { bClearAll(); document.getElementById('bea-ask-ok').click(); await new Promise(r => setTimeout(r, 1000)); return { n: BH.list.length }; });
+  const d = await pg.evaluate(async () => { bClearAll(); document.getElementById('bea-ask-ok').click(); await new Promise(r => setTimeout(r, 1000)); return { n: bhist.list.length }; });
   check('B16', 'an empty analysis is not kept, and Clear all does not delete what History holds', d.n === 1, d);
   await ctx.close();
 });

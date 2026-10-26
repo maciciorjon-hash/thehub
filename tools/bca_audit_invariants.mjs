@@ -139,7 +139,7 @@ if (run('BC5')) await guard('BC5', async () => {
   if (r.unl.length) bad('BC5', 'fields with no name: ' + r.unl.join(', ')); else ok();
   if (r.hdr) bad('BC5', `${r.hdr} row/column headers are not buttons`); else ok();
   if (r.glyph) bad('BC5', 'a typed ✕ is used as an icon'); else ok();
-  if (r.list !== 'tablist' || r.tabs !== 2 || r.sel !== 1) bad('BC5', 'tabs: ' + JSON.stringify(r)); else ok();
+  if (r.list !== 'tablist' || r.tabs !== 3 || r.sel !== 1) bad('BC5', 'tabs: ' + JSON.stringify(r)); else ok();
   const ts = await p.evaluate(() => { bcaToast('x'); const t = document.querySelector('[id*=toast]'); return t && t.getAttribute('role'); });
   if (ts !== 'status') bad('BC5', 'the toast is not role=status'); else ok();
   await p.close();

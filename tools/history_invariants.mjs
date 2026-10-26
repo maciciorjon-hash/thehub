@@ -7,7 +7,9 @@
 //   H5  rename sticks through the next save; pin puts the entry first; delete asks, then removes
 //   H6  the copy of the kit in the app is the kit (tools/sync_historykit.py --check, run by static_checks)
 //
-//   node tools/history_invariants.mjs [--app=lumina|tempo]      exit 1 on any finding
+//   H7  Beacon: an entry written before the kit (snap, info, compounds …) is listed, opens, and is rewritten in the kit's shape when pinned
+//
+//   node tools/history_invariants.mjs [--app=lumina|tempo|beacon|bca]      exit 1 on any finding
 import { chromium } from 'playwright';
 import path from 'path';
 import { execSync } from 'child_process';
@@ -39,6 +41,20 @@ const APPS = {
     what: () => JSON.stringify(tpProject().plates.map(p => [p.id, p.name, Object.keys(p.wells).length, p.times.length])), clear: async () => { TP.plates = []; TP.res = {}; TP.pi = 0; tpAfterLoad(); },
     edit: () => { TP.plates[0].name = 'Renamed plate'; tpRender(); }, tab: () => TP.ui.tab,
     hist: () => tpHist, entryName: 'Example plate A + 1 more'
+  },
+  beacon: {
+    file: 'apps/beacon/beacon.html', ready: () => typeof bhist !== 'undefined' && typeof loadTestData === 'function',
+    load: () => { loadTestData('gain'); bRename('My NanoBRET run'); return true; },
+    what: () => JSON.stringify(JSON.parse(_bSnap(), (k, v) => k === '_bb' ? undefined : v)), clear: () => { bClearAll(); const ok = document.getElementById('bea-ask-ok'); if (ok) ok.click(); },
+    edit: () => { state.series[0].name = 'Compound Z'; bAfterChange(); }, tab: () => activeTab,
+    hist: () => bhist, entryName: 'My NanoBRET run'
+  },
+  bca: {
+    file: 'apps/bca/bca.html', ready: () => typeof bcaHist !== 'undefined' && typeof loadTestData === 'function',
+    load: () => { loadTestData(); return true; },
+    what: () => JSON.stringify(bcaSession()), clear: () => { clearPlate(); },
+    edit: () => { state.plateMap.sampleGroups[0].name = 'Zed'; renderSamplesTable(); }, tab: () => activeTab,
+    hist: () => bcaHist, entryName: 'BCA · Demo data · ', prefix: true, land: 'standards'
   }
 };
 
@@ -57,12 +73,12 @@ for (const [id, A] of Object.entries(APPS)) {
   await page.evaluate(A.load); await settle();
   let r = await recs();
   check(id + ' H1 the analysis is kept by itself', r.length === 1, JSON.stringify(r));
-  check(id + ' H1 named after the plate', r[0] && r[0].name === A.entryName, r[0] && r[0].name);
+  check(id + ' H1 named after the plate', r[0] && (A.prefix ? r[0].name.indexOf(A.entryName) === 0 : r[0].name === A.entryName), r[0] && r[0].name);
 
   await page.evaluate(() => { const b = document.querySelector('.tab[data-tab="history"]'); b.click(); });
   await page.waitForTimeout(300);
   const rows = await page.evaluate(() => [...document.querySelectorAll('.hk-row')].map(x => x.innerText.replace(/\s+/g, ' ')));
-  check(id + ' H2 the tab lists it once', rows.length === 1 && rows[0].indexOf(A.entryName) >= 0 && /plate/i.test(rows[0]), JSON.stringify(rows));
+  check(id + ' H2 the tab lists it once', rows.length === 1 && rows[0].indexOf(A.entryName) >= 0 && /plate|sample/i.test(rows[0]), JSON.stringify(rows));
   check(id + ' H2 marked open now', /Open now/i.test(rows[0] || ''));
 
   await page.evaluate(A.edit); await settle();
@@ -85,7 +101,7 @@ for (const [id, A] of Object.entries(APPS)) {
   await page.waitForTimeout(1500);
   const after = await page.evaluate(A.what);
   check(id + ' H4 Open puts the analysis back exactly', after === kept, after.slice(0, 80));
-  check(id + ' H4 …on Results', (await page.evaluate(A.tab)) === 'results', await page.evaluate(A.tab));
+  check(id + ' H4 …on Results', (await page.evaluate(A.tab)) === (A.land || 'results'), await page.evaluate(A.tab));
   await settle();
   check(id + ' H4 opening does not make a second entry', (await recs()).length === 1);
 
@@ -105,6 +121,27 @@ for (const [id, A] of Object.entries(APPS)) {
   check(id + ' H5 delete asks first', (await recs()).length === 1 && !!(await page.$('.hk-dlg')));
   await page.evaluate(() => document.querySelector('.hk-dlg [data-x="1"]').click()); await page.waitForTimeout(500);
   check(id + ' H5 delete removes it', (await recs()).length === 0);
+  if (id === 'beacon') {
+    // H7 an entry from before the kit
+    await page.evaluate(A.load); await settle();
+    const legacy = await page.evaluate(() => { const comps = state.series.map(s => s.name); return { id: 'legacy1', name: 'Old run', assay: state.assayMode, info: { target: 'BRD4' }, snap: _bSnap(), created: 1700000000000, updated: 1700000000000, pinned: false, plates: state.plates.length, read: bReadyPlates().length, wells: 10, fmt: state.plates.map(() => 96), compounds: comps, files: ['old.xlsx'] }; });
+    await page.evaluate(() => new Promise(res => { const rq = indexedDB.open('beacon_history'); rq.onsuccess = () => { const t = rq.result.transaction('runs', 'readwrite'); t.objectStore('runs').clear(); t.oncomplete = () => res(); }; }));
+    await page.evaluate(l => new Promise(res => { const rq = indexedDB.open('beacon_history'); rq.onsuccess = () => { const t = rq.result.transaction('runs', 'readwrite'); t.objectStore('runs').put(l); t.oncomplete = () => res(); }; }), legacy);
+    await page.evaluate(A.clear); await page.waitForTimeout(300);
+    await page.reload(); await page.waitForFunction(A.ready, null, { timeout: 15000 }); await settle();
+    await page.evaluate(() => document.querySelector('.tab[data-tab="history"]').click()); await page.waitForTimeout(300);
+    const lrows = await page.evaluate(() => [...document.querySelectorAll('.hk-row')].map(x => x.innerText.replace(/\s+/g, ' ')));
+    check(id + ' H7 an entry from before the kit is listed with its facts', lrows.length === 1 && /Old run/.test(lrows[0]) && /BRD4/.test(lrows[0]) && /old\.xlsx/.test(lrows[0]), JSON.stringify(lrows));
+    await page.evaluate(() => document.querySelector('.hk-row [data-a="open"]').click()); await page.waitForTimeout(1500);
+    const op = await page.evaluate(() => ({ plates: state.plates.length, ser: state.series.map(s => s.name), name: state.name, tab: activeTab, n: bhist.list.length }));
+    check(id + ' H7 …opens with its plates, compounds and name', op.plates === legacy.plates && op.ser.join() === legacy.compounds.join() && op.name === 'Old run' && op.tab === 'results', JSON.stringify(op));
+    await settle();
+    check(id + ' H7 …and opening it adds no second entry', (await recs()).length === 1);
+    await page.evaluate(() => document.querySelector('.tab[data-tab="history"]').click()); await page.waitForTimeout(300);
+    await page.evaluate(() => document.querySelector('.hk-row [data-a="pin"]').click()); await page.waitForTimeout(500);
+    const lr = (await recs())[0];
+    check(id + ' H7 pinning rewrites it in the kit\'s shape, same id', lr && lr.id === 'legacy1' && lr.pinned === true && Array.isArray(lr.chips) && lr.chips.length === legacy.compounds.length, JSON.stringify(lr));
+  }
   check(id + ' no page errors', errs.length === 0, errs.join(' | '));
   await ctx.close();
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Carry the History kit (tools/historykit/) into the analysis apps that keep an analysis under its name.
 
-Echo and Beacon wrote their own History first; every other app that reads data and fits it gets this one: a list of analyses kept
+Echo wrote its own History first (it also keeps versions and a cloud copy); every other app that reads data and fits it gets this one: a list of analyses kept
 in the browser's IndexedDB, saved by themselves, searchable, pinnable, renamable, opened as they were left. An app says what to
 keep (`current`), how to put it back (`open`) and where the list is drawn.
 
@@ -12,7 +12,7 @@ Edit the kit in tools/historykit/ only — the copies say so in their first comm
 """
 import sys, re, pathlib
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-TARGETS = ['apps/lumina/lumina.html', 'apps/tempo/tempo.html']
+TARGETS = ['apps/lumina/lumina.html', 'apps/tempo/tempo.html', 'apps/beacon/beacon.html', 'apps/bca/bca.html']
 KIT = ROOT / 'tools/historykit'
 CSS = (KIT / 'history.css').read_text(encoding='utf-8').rstrip('\n')
 JS = (KIT / 'history.js').read_text(encoding='utf-8').rstrip('\n')
