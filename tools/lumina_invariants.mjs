@@ -591,6 +591,65 @@ try {
   await ev(() => { state.assayId = ''; });
   check('L21 without an Assay ID the exports keep the plate\'s name', (await ev(() => _lmFileStem())) !== 'CTG20261022_72h');
 }
+
+// ── L22 normalise X against Y ──────────────────────────────────────────────────────────────────────
+// Some wells are divided by control wells of their own (one vehicle per condition on the same plate); every other well keeps the plate's 100% control.
+try {
+  const r = await ev(() => {
+    const o = {};
+    loadLuminaTestData(); state.viabNorm = false;
+    const zones = state.layout.zones, X = zones[2].concat(zones[3]), Y = ['G12', 'H12'], rawOf = (p, w) => state.plates[p].signal[w];
+    // the vehicle of the second condition reads twice as high as the plate's control
+    state.plates.forEach(pl => { pl.signal.G12 = 200; pl.signal.H12 = 200; });
+    const mean = (p, ws) => ws.reduce((a, w) => a + +rawOf(p, w), 0) / ws.length;
+    // drive it through the panel, the way a person does
+    
+    const sel = ws => { lmSetSel(new Set(ws)); };
+    o.tabHiddenBefore = document.getElementById('tab-norm').hidden;
+    sel(X); lmSetMode('nrm'); o.goBefore = document.getElementById('lm-nrm-go').textContent;
+    document.getElementById('lm-nrm-go').click(); o.pending = LM_NX && LM_NX.length; o.idle = document.getElementById('lm-idle').textContent.slice(0, 40);
+    sel(['E1']); document.getElementById('lm-nrm-go').click(); o.overlapOk = lmRules().length === 0 && LM_NX && LM_NX.length === X.length;   // X and Y may not share a well: refused, still waiting
+    sel(Y); o.goAfter = document.getElementById('lm-nrm-go').textContent; document.getElementById('lm-nrm-go').click();
+    o.rules = JSON.parse(JSON.stringify(lmRules())); o.pendingGone = LM_NX === null; o.tabShown = !document.getElementById('tab-norm').hidden;
+    // what every row was divided by, against an independent recipe
+    state.fitSig = null; o.ok = runLuminaAnalysis({ quiet: true });
+    let worst = 0, nRule = 0, nPlain = 0, bad = [];
+    state.rawRows.forEach(rw => { const p = rw.plate - 1, inX = X.indexOf(rw.well) >= 0, ref = inX ? mean(p, Y) : mean(p, Array.from(state.ctrlWells)), want = rawOf(p, rw.well) / ref * 100, e = Math.abs(rw.measurement - want) / want; worst = Math.max(worst, e); if (inX) nRule++; else nPlain++; if (inX !== (rw.ruleNo === 1)) bad.push(rw.well); });
+    o.worst = worst; o.nRule = nRule; o.nPlain = nPlain; o.badRule = bad.length;
+    // different divisors give different numbers for the compounds under the rule, none for the others
+    const keyed = () => Object.fromEntries(state.fitResults.map(x => [x.sampleId, +x.top.toPrecision(4)]));
+    const withRule = keyed();
+    const saved = state.layout.norm; delete state.layout.norm; state.fitSig = null; runLuminaAnalysis({ quiet: true }); const without = keyed(); state.layout.norm = saved;
+    o.moved = Object.keys(withRule).filter(k => withRule[k] !== without[k]).length; o.same = Object.keys(withRule).filter(k => withRule[k] === without[k]).length;
+    // export and tab
+    state.fitSig = null; runLuminaAnalysis({ quiet: true });
+    o.hdr = _rawHeader().slice(-2); o.row = _rawRow(state.rawRows.find(rw => X.indexOf(rw.well) >= 0)).slice(-2); o.row0 = _rawRow(state.rawRows.find(rw => X.indexOf(rw.well) < 0)).slice(-2);
+    o.sheet = _lmNormAoa().map(a => a.join('|')).join('\n'); switchTab('norm'); o.tabHtml = document.getElementById('nm-root').textContent;
+    // session, undo
+    const sv = JSON.parse(JSON.stringify(lmSession())); o.sessRules = JSON.stringify(sv.layout.norm) === JSON.stringify(o.rules);
+    state.layout.norm = undefined; delete state.layout.norm; lmLoadSession(sv, null); o.loaded = JSON.stringify(lmRules()) === JSON.stringify(o.rules);
+    lmUndo(); o.undoLoad = lmHasRules();
+    // a rule whose control has no readings on a plate: those wells are left out and said, never divided by another control
+    lmLoadSession(sv, null); delete state.plates[0].signal.G12; delete state.plates[0].signal.H12;
+    state.fitSig = null; o.partOk = runLuminaAnalysis({ quiet: true });
+    o.skipped = JSON.parse(JSON.stringify(state.fitSkipped)); o.p1X = state.rawRows.filter(rw => rw.plate === 1 && X.indexOf(rw.well) >= 0).length; o.p1Rest = state.rawRows.filter(rw => rw.plate === 1 && X.indexOf(rw.well) < 0).length; o.p2Rows = state.rawRows.filter(rw => rw.plate === 2).length;
+    // clearing the wells takes them out of the rule, and an empty rule goes
+    lmLoadSession(sv, null); lmSetSel(new Set(X)); lmClearWells(); o.cleared = lmRules().length + '/' + o.rules[0].x.length; lmSetSel(new Set(Y)); lmClearWells(); o.gone = lmRules().length === 0 && document.getElementById('tab-norm').hidden;
+    return o;
+  });
+  check('L22 the Normalisation tab exists only while a rule does, and the panel walks X then Y (Normalise these wells… → against these wells)', r.tabHiddenBefore && r.tabShown && r.goBefore === 'Normalise these wells…' && r.pending > 0 && r.goAfter === 'Normalise against these wells' && r.pendingGone, JSON.stringify({ a: r.tabHiddenBefore, b: r.tabShown, c: r.goBefore, d: r.pending, e: r.goAfter, f: r.pendingGone }));
+  check('L22 X and Y may not share a well: the rule is refused and the panel keeps waiting', r.overlapOk, JSON.stringify(r.rules));
+  check('L22 a rule is x and y well lists in the layout', r.rules.length === 1 && r.rules[0].x.length === 44 && r.rules[0].y.join() === 'G12,H12', JSON.stringify(r.rules));
+  check('L22 a well under a rule is divided by the mean of its own control wells on its own plate, every other well by the plate\'s 100% control (independent recipe, to 1e-9)', r.ok && r.worst < 1e-9 && r.nRule === 44 && r.nPlain === 88, JSON.stringify({ worst: r.worst, nRule: r.nRule, nPlain: r.nPlain }));
+  check('L22 each row says which rule it is under (and no row outside a rule says one)', r.badRule === 0, r.badRule);
+  check('L22 the curves of the compounds under the rule change with their divisor; the others are untouched', r.moved > 0 && r.same > 0, JSON.stringify({ moved: r.moved, same: r.same }));
+  check('L22 the raw export names the rule and the control mean of each row, and the workbook has a Normalisation sheet that lists every rule', r.hdr.join() === 'Normalised_against,Control_mean' && /^Rule 1 \(G12:H12\)|^Rule 1/.test(r.row[0]) && r.row0[0] === '100% control' && /Every other well/.test(r.sheet) && /G12/.test(r.sheet), JSON.stringify({ hdr: r.hdr, row: r.row, row0: r.row0, sheet: r.sheet.slice(0, 200) }));
+  check('L22 the Normalisation tab lists the rule, its control wells and the vehicle line for every other well', /Every other well/.test(r.tabHtml) && /G12/.test(r.tabHtml), r.tabHtml.slice(0, 160));
+  check('L22 the session carries the rules and loading it brings them back; ⌘Z of a load takes them away again', r.sessRules && r.loaded && r.undoLoad === false, JSON.stringify({ s: r.sessRules, l: r.loaded, u: r.undoLoad }));
+  check('L22 a rule whose control wells have no readings on a plate leaves its wells out of that plate and says so; the other wells and plates stay', r.partOk && r.p1X === 0 && r.p1Rest > 0 && r.p2Rows > 0 && r.skipped.some(k => k.part && /rule 1/.test(k.why)), JSON.stringify({ p1X: r.p1X, p1Rest: r.p1Rest, p2Rows: r.p2Rows, sk: r.skipped }));
+  check('L22 clearing wells takes them out of the rules, and a rule with nothing left goes (and the tab with it)', r.gone && /\/44$/.test(r.cleared) && !/^1\/44$/.test(r.cleared), JSON.stringify({ c: r.cleared, g: r.gone }));
+} catch (err) { check('L22 the checks ran to the end', false, String(err && err.message || err).split('\n')[0]); }
+
 check('no page or console errors', errs.length === 0, errs.slice(0, 3).join(' | '));
 await browser.close();
 if (findings.length) { console.log(findings.join('\n')); console.log(`\n${findings.length} finding(s), ${passed} checks passed.`); process.exit(1); }

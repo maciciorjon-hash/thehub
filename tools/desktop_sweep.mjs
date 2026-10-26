@@ -107,6 +107,13 @@ await app('lumina', '/apps/lumina/lumina.html', async (page, m) => {
   await page.evaluate(() => loadLuminaTestData());
   await page.waitForTimeout(700);
   await m('lumina-plate');
+  // Normalise X against Y: the panel waiting for its Y wells, then the Normalisation tab
+  await page.evaluate(() => { const z = state.layout.zones; lmSetSel(new Set(z[2].concat(z[3]))); lmSetMode('nrm'); document.getElementById('lm-nrm-go').click(); lmSetSel(new Set(['G12', 'H12'])); });
+  await m('lumina-normalise-panel');
+  await page.evaluate(() => { document.getElementById('lm-nrm-go').click(); switchTab('norm'); });
+  await page.waitForTimeout(500);
+  await m('lumina-normalisation');
+  await page.evaluate(() => switchTab('input'));
   await page.evaluate(() => runLuminaAnalysis && switchTab('results'));
   await page.waitForTimeout(900);
   await m('lumina-results');

@@ -152,6 +152,17 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px soli
 .well.has-ex{position:relative;opacity:.55;}
 .well.has-ex::after{content:'';position:absolute;inset:18%;background:linear-gradient(to top right,transparent calc(50% - 1px),var(--text2) calc(50% - 1px),var(--text2) calc(50% + 1px),transparent calc(50% + 1px)),linear-gradient(to top left,transparent calc(50% - 1px),var(--text2) calc(50% - 1px),var(--text2) calc(50% + 1px),transparent calc(50% + 1px));pointer-events:none;}
 .well.has-zero{border-color:var(--accent);border-width:2px;border-style:dashed;}
+.nm-head{display:flex;flex-direction:column;gap:4px;margin-bottom:12px;}
+.nm-note,.nm-sd{color:var(--text3);font-size:var(--fs-3);}
+.nm-tbl{width:100%;font-size:var(--fs-4);}
+.nm-tbl th,.nm-tbl td{padding:8px 12px;text-align:left;vertical-align:middle;border-bottom:1px solid var(--border);font-variant-numeric:tabular-nums;}
+.nm-dot{display:inline-block;width:10px;height:10px;border-radius:var(--r-1);margin-right:8px;}
+.nm-bad{color:var(--warn-ink,var(--warn));}
+.nm-rest td{color:var(--text2);}
+#lm-tabbar .tab[hidden]{display:none;}
+.well.nrx{box-shadow:inset 0 0 0 3px var(--nc);}
+.well.nry{outline:2px dashed var(--nc);outline-offset:-4px;}
+.well.nrp{box-shadow:inset 0 0 0 3px var(--accent);border-style:dotted;}
 .well .w-val{font-size:clamp(9px,calc(var(--wpx,38px)*.24),15px);font-weight:600;color:var(--text);font-variant-numeric:tabular-nums;letter-spacing:-.01em;white-space:nowrap;}
 
 .lm-sel-count{font-size:var(--fs-4);font-weight:600;color:var(--text);}
@@ -233,6 +244,7 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px soli
 .lm-x{border:none;background:none;color:var(--text3);cursor:pointer;width:36px;height:36px;border-radius:var(--r-1);display:inline-flex;align-items:center;justify-content:center;padding:0;flex-shrink:0;}
 .lm-x:hover{background:var(--surface3);color:var(--text);}
 .lm-x svg{width:15px;height:15px;}
+.lm-sel-hd .lm-x{width:32px;height:32px;}   /* the same height as the range box beside it (32px, docs/UI.md) */
 .lm-idle{font-size:var(--fs-4);color:var(--text2);line-height:1.55;overflow-wrap:anywhere;min-width:0;}
 .lm-idle b{color:var(--text);font-weight:600;display:block;margin-bottom:2px;}
 .lm-idle .btn{display:block;margin-top:12px;}
@@ -1250,6 +1262,10 @@ var SetupKit = (function(){
     <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 20h18"/><path d="M4 7c4 0 5 1 7 5s3 5 9 5"/></svg>
     Results <span class="tab-n" id="tab-res-n"></span>
   </button>
+  <button type="button" class="tab" role="tab" tabindex="-1" aria-selected="false" aria-controls="pane-norm" data-tab="norm" id="tab-norm" hidden onclick="switchTab('norm')" title="Which wells are divided by which control wells">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"/><circle cx="12" cy="6.5" r="1.3"/><circle cx="12" cy="17.5" r="1.3"/></svg>
+    Normalisation
+  </button>
   <button type="button" class="tab" role="tab" tabindex="-1" aria-selected="false" aria-controls="pane-graph" data-tab="graph" onclick="switchTab('graph')" title="Make the figure: grouped bars or dose-response curves, colours, error bars, PNG at 1200 dpi and PDF">
     <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16"/><rect x="5" y="11" width="3" height="9" rx=".6"/><rect x="10.5" y="5" width="3" height="15" rx=".6"/><rect x="16" y="9" width="3" height="11" rx=".6"/></svg>
     Graph
@@ -1311,6 +1327,7 @@ var SetupKit = (function(){
             <button type="button" data-m="grad" onclick="lmSetMode('grad')">Gradient</button>
             <button type="button" data-m="cpd" onclick="lmSetMode('cpd')">Compounds</button>
             <button type="button" data-m="ctl" onclick="lmSetMode('ctl')">Control</button>
+            <button type="button" data-m="nrm" onclick="lmSetMode('nrm')" title="Divide some wells by control wells of their own instead of the plate's 100% control">Normalise</button>
           </div>
           <div class="lm-mode" data-m="grad">
             <div class="lm-cpd">
@@ -1338,6 +1355,12 @@ var SetupKit = (function(){
             <div class="lm-mode-row">
               <button class="btn primary lm-go" id="lm-ctrl" onclick="lmMarkCtrl('ctrl')">100% control</button>
               <button class="btn lm-go" id="lm-zero" onclick="lmMarkCtrl('zero')" style="display:none;">0% control</button>
+            </div>
+          </div>
+          <div class="lm-mode" data-m="nrm">
+            <div class="lm-mode-row">
+              <button class="btn primary lm-go" id="lm-nrm-go" onclick="lmNormGo()">Normalise these wells…</button>
+              <button class="lm-link" id="lm-nrm-cancel" onclick="lmNormCancel()" style="display:none;">Cancel</button>
             </div>
           </div>
           <div class="lm-preview" id="lm-preview"></div>
@@ -1451,6 +1474,8 @@ var SetupKit = (function(){
       </div>
     </div>
   </div>
+
+  <div class="tabpane" id="pane-norm"><div class="card"><div id="nm-root"></div></div></div>
 
   <div class="tabpane" id="pane-graph">
     <div class="card">
@@ -1600,6 +1625,9 @@ function lmLoadSession(sess, link){
     grads: _lmArr(lay.grads).map(function(g){ g = Object.assign({}, g); g.idx = g.idx || {}; return g; }),
     zones: _lmArr(lay.zones).map(function(z){ return _lmArr(z).map(String); })
   };
+  var nm = _lmArr(lay.norm).map(function(r){ return { x: _lmArr(r && r.x).map(String), y: _lmArr(r && r.y).map(String) }; }).filter(function(r){ return r.x.length && r.y.length; });
+  if (nm.length) state.layout.norm = nm;
+  LM_NX = null;
   var pls = _lmArr(sess.plates).map(function(p){ var o = { signal: Object.assign({}, p && p.signal), file: (p && p.file) || '', name: (p && p.name) || '', nameSrc: (p && p.nameSrc) || undefined }; if (p && p.viab) { o.viab = Object.assign({}, p.viab); o.viabFile = p.viabFile || ''; } return o; });
   state.plates = pls.length ? pls : [_lmNewPlate()];
   state.viabNorm = !!sess.viabNorm;
@@ -1822,7 +1850,7 @@ function _restoreSnapshot(snap){
   state.layout = snap.layout; state.plates = snap.plates; state.names = snap.names; state.plate = snap.plate; state.viabNorm = !!snap.viabNorm;
   state.ctrlWells = snap.ctrlWells;
   state.zeroCtrlWells = snap.zeroCtrlWells;
-  state.excluded = snap.excluded || new Set();
+  state.excluded = snap.excluded || new Set(); LM_NX = null;
   var keep = new Set(); LM_SEL.forEach(function(p){ var q = _rc(p); if (q.r < state.rows && q.c < state.cols) keep.add(p); }); LM_SEL = keep;
   lmAfterChange();
   // A curve edit undone from Results must show: the fit is remade from what the plate now says.
@@ -1835,7 +1863,7 @@ function _restoreSnapshot(snap){
 // The tabs are a tablist: arrows, Home and End move between them, Enter or Space opens the one that has the focus.
 document.addEventListener('keydown', function(e){
   var t = e.target && e.target.closest && e.target.closest('#lm-tabbar .tab'); if (!t) return;
-  var tabs = Array.prototype.slice.call(document.querySelectorAll('#lm-tabbar .tab')), i = tabs.indexOf(t);
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('#lm-tabbar .tab:not([hidden])')), i = tabs.indexOf(t);
   if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); switchTab(t.dataset.tab); return; }
   var j = e.key === 'ArrowRight' ? (i + 1) % tabs.length : e.key === 'ArrowLeft' ? (i + tabs.length - 1) % tabs.length : e.key === 'Home' ? 0 : e.key === 'End' ? tabs.length - 1 : -1;
   if (j < 0) return;
@@ -1848,6 +1876,7 @@ function switchTab(id){
   // Results are never stale: a changed plate or setting is refitted on the way in.
   if (id === 'results') { _lmEnsureFit(true); renderResults(); }
   if (id === 'graph') { _lmEnsureFit(true); lgGraphShow(); }
+  if (id === 'norm') renderNorm();
 }
 function switchSubtab(id){ state.activeSubtab = id; lmAfterChange(); }
 function onAssayTypeChange(){
@@ -2095,6 +2124,106 @@ function lmPlateWellData(p){
   });
   return out;
 }
+// ── Normalise X against Y ────────────────────────────────────
+// By default every compound well is divided by the plate's 100% control. A rule says that some wells (X) are
+// divided by other wells (Y) instead — one vehicle for each condition on the same plate. The rules are part of
+// the layout (state.layout.norm), so they are the same wells on every plate, undo with it, travel with the
+// session and make the fit be remade. A well is in at most one rule's X; Y wells may serve several rules.
+var LM_NX = null;              // X wells waiting for their Y while the Normalise panel is open
+var NM_COL = [[78,121,167],[242,142,43],[89,161,79],[225,87,89],[118,183,178],[237,201,72],[176,122,161],[156,117,95]];
+function lmRules(){ return (state.layout && state.layout.norm) || []; }
+function lmHasRules(){ return lmRules().length > 0; }
+function lmRuleIdx(pos){ var r = lmRules(); for (var i = r.length - 1; i >= 0; i--) if (r[i].x.indexOf(pos) >= 0) return i; return -1; }
+// The mean of a rule's Y wells on one plate (wd = lmPlateWellData of that plate); ok says it can be a divisor.
+function lmRuleMean(wd, rule, assayType){
+  var v = [];
+  rule.y.forEach(function(pos){ var d = wd[pos]; if (d && d.measurement !== undefined && d.measurement !== null && isFinite(d.measurement)) v.push(+d.measurement); });
+  var n = v.length, mean = n ? v.reduce(function(a, b){ return a + b; }, 0) / n : NaN;
+  var sd = n > 1 ? Math.sqrt(v.reduce(function(a, b){ return a + (b - mean) * (b - mean); }, 0) / (n - 1)) : 0;
+  var ok = assayType === 'gain' ? (n > 0 && isFinite(mean)) : (mean > 0 && isFinite(mean));
+  return { mean: mean, sd: sd, n: n, ok: ok, why: n ? 'its wells average ' + _num(mean) + ', so there is nothing to be a percentage of' : 'they have no readings on this plate' };
+}
+function _lmRulePrune(){
+  if (!state.layout.norm) return;
+  state.layout.norm = state.layout.norm.filter(function(r){ return r.x.length && r.y.length; });
+  if (!state.layout.norm.length) delete state.layout.norm;
+}
+function lmNormStart(){
+  if (!LM_SEL.size) { toast('Drag across the wells to normalise first.'); return; }
+  LM_NX = Array.from(LM_SEL).sort(function(a, b){ var x = _rc(a), y = _rc(b); return x.r - y.r || x.c - y.c; }); LM_MODE = 'nrm'; LM_SEL = new Set();
+  lmSyncSel(); renderGrid(); lmRenderPanel();
+}
+function lmNormGo(){ if (LM_NX) lmNormSet(); else lmNormStart(); }
+function lmNormCancel(){ LM_NX = null; LM_MODE = null; renderGrid(); lmRenderPanel(); }
+function lmNormSet(){
+  if (!LM_NX || !LM_SEL.size) { toast('Drag across the wells they are normalised against.'); return; }
+  var y = Array.from(LM_SEL), x = LM_NX.filter(function(q){ return true; });
+  if (y.some(function(q){ return x.indexOf(q) >= 0; })) { toast('A well cannot be normalised against itself — drag the control wells only.'); return; }
+  lmMark();
+  var lay = state.layout; lay.norm = (lay.norm || []).map(function(r){ return { x: r.x.filter(function(q){ return x.indexOf(q) < 0; }), y: r.y.slice() }; });
+  lay.norm.push({ x: x, y: y }); _lmRulePrune();
+  LM_NX = null; LM_MODE = null; LM_SEL = new Set();
+  lmAfterChange();
+  toast(x.length + ' well' + (x.length === 1 ? '' : 's') + ' normalised against ' + y.length + ' — the fit is remade with it.');
+}
+function lmNormDelete(i){
+  var r = lmRules(); if (!r[i]) return;
+  lmMark(); state.layout.norm.splice(i, 1); _lmRulePrune(); lmAfterChange();
+}
+// The Normalisation tab exists only while a rule does: the rules, what each divides by on each plate, and the vehicle line for every other well.
+function lmSyncNormTab(){
+  var b = document.getElementById('tab-norm'); if (!b) return;
+  var has = lmHasRules(), pane = document.getElementById('pane-norm');
+  b.hidden = !has;
+  if (!has && pane.classList.contains('active')) { switchTab('results'); return; }
+  if (has && pane.classList.contains('active')) renderNorm();
+}
+function _lmCtrlStat(wd, set){
+  var v = []; set.forEach(function(pos){ var d = wd[pos]; if (d && d.measurement !== undefined && d.measurement !== null && isFinite(d.measurement)) v.push(+d.measurement); });
+  var n = v.length, m = n ? v.reduce(function(a, b){ return a + b; }, 0) / n : NaN;
+  return { mean: m, sd: n > 1 ? Math.sqrt(v.reduce(function(a, b){ return a + (b - m) * (b - m); }, 0) / (n - 1)) : 0, n: n };
+}
+function _lmNormCell(st){ return st.n ? esc(_num(st.mean)) + ' <span class="nm-sd">± ' + esc(_num(st.sd)) + ' · n=' + st.n + '</span>' : '<span class="nm-sd">no readings</span>'; }
+function renderNorm(){
+  var el = document.getElementById('nm-root'); if (!el) return;
+  var at = document.getElementById('assay-type').value, rules = lmRules(), wds = state.plates.map(function(pl, i){ return lmPlateWellData(i); });
+  var h = '<div class="nm-head"><b>Normalisation</b><span class="nm-note">Each well is divided by the mean of its control wells on its own plate. Potencies and fits are on the normalised values; a rule changes only what the wells are divided by.</span></div>';
+  h += '<div class="rs-tbl bare"><table class="nm-tbl"><thead><tr><th>#</th><th>Wells normalised</th><th>Divided by</th>' + state.plates.map(function(pl, i){ return '<th>' + esc(lmPlateName(i)) + '</th>'; }).join('') + '<th></th></tr></thead><tbody>';
+  rules.forEach(function(r, i){
+    var c = NM_COL[i % NM_COL.length].join(',');
+    h += '<tr><td><i class="nm-dot" style="background:rgb(' + c + ')"></i>' + (i + 1) + '</td>' +
+      '<td><button class="lm-link" onclick="nmPick(' + i + ',\'x\')" title="Select these wells on the plate">' + esc(_lmRange(new Set(r.x))) + '</button> <span class="nm-sd">' + r.x.length + ' well' + (r.x.length === 1 ? '' : 's') + '</span></td>' +
+      '<td><button class="lm-link" onclick="nmPick(' + i + ',\'y\')" title="Select these wells on the plate">' + esc(_lmRange(new Set(r.y))) + '</button> <span class="nm-sd">' + r.y.length + ' well' + (r.y.length === 1 ? '' : 's') + '</span></td>' +
+      wds.map(function(wd){ var m = lmRuleMean(wd, r, at); return '<td' + (m.ok ? '' : ' class="nm-bad"') + '>' + _lmNormCell(m) + '</td>'; }).join('') +
+      '<td><button class="lm-x" onclick="lmNormDelete(' + i + ')" aria-label="Remove rule ' + (i + 1) + '" title="Remove this rule"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></td></tr>';
+  });
+  h += '<tr class="nm-rest"><td></td><td>Every other well</td><td>' + (state.ctrlWells.size ? esc(_lmRange(state.ctrlWells)) + ' <span class="nm-sd">the 100% control</span>' : '<span class="nm-sd">no 100% control marked</span>') + '</td>' +
+    wds.map(function(wd){ return '<td>' + _lmNormCell(_lmCtrlStat(wd, state.ctrlWells)) + '</td>'; }).join('') + '<td></td></tr>';
+  h += '</tbody></table></div>';
+  el.innerHTML = h;
+}
+function nmPick(i, which){
+  var r = lmRules()[i]; if (!r) return;
+  switchTab('input'); if (state.activeSubtab !== 'layout') switchSubtab('layout');
+  lmSelect(new Set(r[which]), 'nrm'); renderGrid();
+}
+// The sheet of the workbook that says what every well was divided by.
+function _lmNormAoa(){
+  var at = document.getElementById('assay-type').value, aoa = [['Normalisation — what each well is divided by'], []];
+  var head = ['Rule', 'Wells normalised', 'Count', 'Divided by', 'Count'];
+  state.plates.forEach(function(pl, i){ head.push(lmPlateName(i) + ' control mean', lmPlateName(i) + ' SD', lmPlateName(i) + ' n'); });
+  aoa.push(head);
+  var wds = state.plates.map(function(pl, i){ return lmPlateWellData(i); });
+  lmRules().forEach(function(r, i){
+    var row = [i + 1, _lmRange(new Set(r.x)), r.x.length, _lmRange(new Set(r.y)), r.y.length];
+    wds.forEach(function(wd){ var m = lmRuleMean(wd, r, at); row.push(m.n ? m.mean : '', m.n ? m.sd : '', m.n); });
+    aoa.push(row);
+  });
+  var rest = ['Every other well', '', '', state.ctrlWells.size ? _lmRange(state.ctrlWells) + ' (100% control)' : '(no 100% control)', state.ctrlWells.size];
+  wds.forEach(function(wd){ var m = _lmCtrlStat(wd, state.ctrlWells); rest.push(m.n ? m.mean : '', m.n ? m.sd : '', m.n); });
+  aoa.push(rest, [], ['A well is divided by the mean of its control wells on its own plate (viability-normalised first when that is on). Potencies and fits use the normalised values.']);
+  return aoa;
+}
 // Plates that hold readings but no viability while "Normalise to viability" is on — the analysis leaves them out and says so.
 function lmViabMissing(){
   if (!state.viabNorm) return [];
@@ -2115,10 +2244,11 @@ function _lmSortZones(){ state.layout.zones = PlateEngine.sortZones(state.layout
 function _lmPruneGrads(){ state.layout.grads = state.layout.grads.filter(function(g){ return Object.keys(g.idx).length; }); }
 // Take wells out of every part of the layout — a well is one thing at a time.
 function _lmTakeWells(set, what){
-  what = what || { zones: 1, grads: 1, ctl: 1 };
+  what = what || { zones: 1, grads: 1, ctl: 1, norm: 1 };
   if (what.zones) state.layout.zones = state.layout.zones.map(function(z){ return z.filter(function(p){ return !set.has(p); }); });
   if (what.grads) state.layout.grads.forEach(function(g){ set.forEach(function(p){ delete g.idx[p]; }); });
   if (what.ctl) set.forEach(function(p){ state.ctrlWells.delete(p); state.zeroCtrlWells.delete(p); });
+  if (what.norm && state.layout.norm) { state.layout.norm = state.layout.norm.map(function(r){ return { x: r.x.filter(function(q){ return !set.has(q); }), y: r.y.filter(function(q){ return !set.has(q); }) }; }); _lmRulePrune(); }
   _lmSortZones(); _lmPruneGrads();
 }
 
@@ -2321,7 +2451,7 @@ function _lmGradForm(){
   };
 }
 function lmSetGradDir(d){ LM_DIR = d; lmRenderPanel(); }
-function lmSetMode(m){ LM_MODE = m; lmRenderPanel(); }
+function lmSetMode(m){ LM_MODE = m; if (m !== 'nrm') LM_NX = null; lmRenderPanel(); renderGrid(); }
 function lmSetReps(n){ LM_REPS = n; lmRenderPanel(); }
 function lmSetSplit(s){ LM_SPLIT = s; lmRenderPanel(); }
 // What a selection is for, when nobody has said: controls if it is all controls, compounds if it
@@ -2329,6 +2459,7 @@ function lmSetSplit(s){ LM_SPLIT = s; lmRenderPanel(); }
 // controls, when wells off the gradient are the controls still to be marked. The Gradient ·
 // Compounds · Control switch overrides it for this selection only.
 function _lmMode(){
+  if (LM_NX) return 'nrm';
   if (LM_MODE) return LM_MODE;
   var zs = _lmS();
   if (!LM_SEL.size) { var nx = _lmNextStep(); return nx === 1 ? 'grad' : nx === 2 ? 'cpd' : 'ctl'; }
@@ -2510,6 +2641,7 @@ function lmRenderPanel(){
   idle.style.display = n ? 'none' : '';
   if (!n) idle.innerHTML = _lmIdleHtml();
   var m = _lmMode(), form = n && !sig;
+  document.getElementById('lm-modes').classList.toggle('nrm-pending', !!LM_NX);
   document.getElementById('lm-modes').style.display = form ? '' : 'none';
   document.querySelectorAll('#lm-modes button').forEach(function(b){ b.classList.toggle('active', b.dataset.m === m); });
   document.querySelectorAll('.lm-mode').forEach(function(d){ d.style.display = (form && d.dataset.m === m) ? '' : 'none'; });
@@ -2552,6 +2684,13 @@ function lmRenderPanel(){
     } else txt = '<span class="warn">Only control wells selected.</span>';
   } else if (m === 'ctl') {
     txt = 'The same wells on every plate; each plate is normalised to its own controls.';
+  } else if (m === 'nrm') {
+    txt = LM_NX ? '<b>' + LM_NX.length + ' well' + (LM_NX.length === 1 ? '' : 's') + '</b> will be divided by the wells you have selected (the mean of them, on each plate).'
+      : 'Wells outside every rule are divided by the plate&#8217;s 100% control. Select wells, then choose the wells they are divided by.';
+  }
+  if (m === 'nrm') {
+    var go = document.getElementById('lm-nrm-go'); go.textContent = LM_NX ? 'Normalise against these wells' : 'Normalise these wells…'; go.disabled = LM_NX ? !n : !n;
+    document.getElementById('lm-nrm-cancel').style.display = LM_NX ? '' : 'none';
   }
   pv.innerHTML = txt;
   pv.style.display = txt ? '' : 'none';
@@ -2566,12 +2705,15 @@ function lmRenderPanel(){
 }
 function _lmIdleHtml(){
   var sig = state.activeSubtab === 'signal', disp = document.getElementById('assay-type').value === 'displacement';
+  if (LM_NX) return '<b>Now drag across the wells they are normalised against.</b>' + LM_NX.length + ' well' + (LM_NX.length === 1 ? '' : 's') + ' (' + _lmRange(new Set(LM_NX)) + ') will be divided by the mean of those wells on each plate.<button class="btn" onclick="lmNormCancel()">Cancel</button>';
   if (sig) return '<b>Double-click a well to type or correct a reading.</b>The colour follows the reading, so a dead row or column shows at a glance. Select wells and press Delete to clear their readings.';
   var empty = !state.layout.grads.length && !_lmS() && !state.ctrlWells.size && !_lmReadCount();
-  var step = LM_MODE ? { grad: 1, cpd: 2, ctl: 3 }[LM_MODE] : _lmNextStep(), t;
+  var step = LM_MODE ? { grad: 1, cpd: 2, ctl: 3, nrm: 6 }[LM_MODE] : _lmNextStep(), t;
+  if (step === 6) t = '<b>Drag across the wells to normalise.</b>For example one condition of a compound. You then drag the wells they are divided by; everything outside a rule keeps the plate&#8217;s 100% control.';
   if (step === 1) t = '<b>Drag across the wells the dilution series covers.</b>Any shape, any direction — divide the plate into as many gradients as it holds.';
   else if (step === 2) t = !state.layout.grads.length ? '<b>Set a gradient first.</b>Compounds sit on a dilution series.'
     : '<b>Drag across the area the compounds go in.</b>It is split into bands of replicates across the gradient, numbered in reading order. More compounds than fit continue on the next plate.';
+  else if (step === 6) { /* above */ }
   else if (step === 3) t = '<b>Drag across the control wells.</b>' + (disp ? 'The 100% and the 0% control' : 'The 100% control, the vehicle') + ' — the same wells on every plate. Each plate is normalised to its own.';
   else if (step === 4) t = '<b>Name the compounds.</b>Type them, or paste a column from Excel.<button class="btn" onclick="switchSubtab(\'cpds\')">Name them</button>';
   else if (step === 5) t = '<b>Add the readings.</b>Drop the reader export anywhere on this card — one file per plate.<button class="btn" onclick="lmPickFiles()">Choose files</button>';
@@ -2708,6 +2850,7 @@ function lmAfterChange(){
   lmRenderPlates();
   lmRenderRead();
   lmRenderPanel();
+  lmSyncNormTab();
   if (list) lmRenderList();
   if (typeof lsLive === 'function') lsLive();
 }
@@ -2861,6 +3004,9 @@ function renderGrid(){
   // Every cell is placed explicitly: the zone labels are grid items spanning their wells, and
   // an auto-placed sibling would flow around them.
   var at = function(r, c){ return 'grid-row:' + r + ';grid-column:' + c + ';'; };
+  // While the Normalise panel is open each rule is drawn on the plate: X solid, Y dashed, one colour a rule.
+  var nrOpen = LM_MODE === 'nrm' || !!LM_NX, nrX = {}, nrY = {};
+  if (nrOpen) lmRules().forEach(function(rr, qi){ rr.x.forEach(function(q){ nrX[q] = qi; }); rr.y.forEach(function(q){ if (nrY[q] === undefined) nrY[q] = qi; }); });
   var html = '<div class="well-corner" title="Select the whole plate" style="' + at(1, 1) + '"></div>';
   for (var c = 0; c < cols; c++) {
     var hc = colHdr[c];
@@ -2891,8 +3037,17 @@ function renderGrid(){
       var tip = pos + (n ? ' · #' + n + ' ' + lmCpdName(n) : '') + (conc !== undefined ? ' · ' + fmtConc(conc) : '') + (isCtrl ? ' · 100% control' : '') + (isZero ? ' · 0% control' : '') + (hasM ? ' · signal ' + m : '');
       var isEx = sig && state.excluded.has(P + ':' + pos);
       if (isEx) tip += ' · left out of its curve';
-      var wellClass = 'well' + (isCtrl ? ' has-ctrl' : '') + (isZero ? ' has-zero' : '') + (isEx ? ' has-ex' : '') + (LM_SEL.has(pos) ? ' sel' : '');
-      html += '<div class="' + wellClass + '" data-pos="' + pos + '" title="' + esc(tip) + '" style="' + at(r + 2, c2 + 2) + 'width:' + cellPx + 'px;height:' + cellPx + 'px;' + bg + '">' + cellHtml + '</div>';
+      var nrCls = '', nrSty = '';
+      if (nrOpen) {
+        var ri = nrX[pos], ry = nrY[pos];
+        if (LM_NX && LM_NX.indexOf(pos) >= 0) nrCls = ' nrp';
+        else if (ri !== undefined) { nrCls = ' nrx'; nrSty = '--nc:rgb(' + NM_COL[ri % NM_COL.length].join(',') + ');'; }
+        else if (ry !== undefined) { nrCls = ' nry'; nrSty = '--nc:rgb(' + NM_COL[ry % NM_COL.length].join(',') + ');'; }
+      }
+      var nri = lmRuleIdx(pos), nrs = lmRules(), nrYi = -1; nrs.forEach(function(rr, qi){ if (nrYi < 0 && rr.y.indexOf(pos) >= 0) nrYi = qi; });
+      if (nri >= 0) tip += ' · divided by ' + _lmRange(new Set(nrs[nri].y)) + ' (rule ' + (nri + 1) + ')'; else if (nrYi >= 0) tip += ' · the control of rule ' + (nrYi + 1);
+      var wellClass = 'well' + nrCls + (isCtrl ? ' has-ctrl' : '') + (isZero ? ' has-zero' : '') + (isEx ? ' has-ex' : '') + (LM_SEL.has(pos) ? ' sel' : '');
+      html += '<div class="' + wellClass + '" data-pos="' + pos + '" title="' + esc(tip) + '" style="' + at(r + 2, c2 + 2) + nrSty + 'width:' + cellPx + 'px;height:' + cellPx + 'px;' + bg + '">' + cellHtml + '</div>';
     }
   }
   // Each compound's number and name, written once across its zone — the way it is written on
@@ -3823,7 +3978,7 @@ function lsPlace(){
     groups[key] = groups[key].concat(w.map(function(x){ return x.p; }));
   });
   var dir = runRows ? (f.dir === 'right' ? 'right' : 'left') : (f.dir === 'right' ? 'down' : 'up');
-  state.layout = { grads: order.map(function(k, i){ var plan = PlateEngine.seriesPlan(groups[k], dir); return { id: 'g' + Date.now().toString(36) + i, top: f.top, unitMul: LS_UNIT[f.unit] || 1e-6, fac: f.fac, dir: plan.dir, idx: plan.idx }; }),
+  state.layout = { norm: lmRules().slice(), grads: order.map(function(k, i){ var plan = PlateEngine.seriesPlan(groups[k], dir); return { id: 'g' + Date.now().toString(36) + i, top: f.top, unitMul: LS_UNIT[f.unit] || 1e-6, fac: f.fac, dir: plan.dir, idx: plan.idx }; }),
                    zones: PlateEngine.sortZones(bl.map(function(w){ return w.map(function(x){ return x.p; }); })) };
   _lmLastDir = dir;
   var names = lsNames(), list = [];
@@ -4197,19 +4352,31 @@ function runLuminaAnalysis(opts){
     });
     var ctrlMean = ctrlN > 0 ? ctrlSum/ctrlN : NaN;
     var zpMean = zpN > 0 ? zpSum/zpN : NaN;
+    var ruleM = lmRules().map(function(rl){ return lmRuleMean(wd, rl, assayType); });
     // A plate is normalised only to a control it has: no readings in its control wells, or controls that average
     // 0 or less (a % of that is meaningless or upside down), leave it in counts. Mixed with plates in % that would
     // print "Dmax 92783%", so once any plate has a usable control the others are left out and said so (below).
     var ctrlOK = assayType === 'gain' ? (ctrlN > 0 && isFinite(ctrlMean)) : (ctrlMean > 0 && isFinite(ctrlMean));
     if (ctrlWells.size && !ctrlOK) plateWhy[p] = ctrlN ? 'its control wells average ' + _num(ctrlMean) + ', so there is nothing to be a percentage of' : 'it has no readings in the control wells';
-    if (ctrlOK) { okPlate[p] = true; anyCtrl = true; prow.forEach(function(r){
+    // Each row is divided by its own rule's control wells where it has a rule, by the plate's 100% control otherwise.
+    // A row whose control cannot be used is left out (and said so) — it is never quietly divided by another one.
+    var plateGood = ctrlOK;
+    prow.forEach(function(r){
+      var ri = lmRuleIdx(r.well);
+      if (ri >= 0) { r.ruleNo = ri + 1; if (ruleM[ri].ok) r.ref = ruleM[ri].mean; else r.noRef = 'rule ' + (ri + 1) + '’s control wells: ' + ruleM[ri].why; }
+      else if (ctrlOK) r.ref = ctrlMean;
+      else if (lmHasRules()) r.noRef = plateWhy[p] || 'no 100% control for the wells outside a rule';
+      if (r.ref !== undefined) plateGood = true;
+    });
+    if (plateGood) { okPlate[p] = true; anyCtrl = true; prow.forEach(function(r){
+      if (r.ref === undefined) return;
       if (assayType === 'gain') {
-        r.measurement = r.measurementRaw - ctrlMean;
+        r.measurement = r.measurementRaw - r.ref;
       } else if (assayType === 'displacement' && !isNaN(zpMean)) {
-        var denom = ctrlMean - zpMean;
-        r.measurement = denom !== 0 ? ((r.measurementRaw - zpMean)/denom)*100 : (r.measurementRaw/ctrlMean)*100;
+        var denom = r.ref - zpMean;
+        r.measurement = denom !== 0 ? ((r.measurementRaw - zpMean)/denom)*100 : (r.measurementRaw/r.ref)*100;
       } else {
-        r.measurement = (r.measurementRaw/ctrlMean)*100;
+        r.measurement = (r.measurementRaw/r.ref)*100;
       }
     }); }
     plateRows[p] = prow;
@@ -4217,7 +4384,9 @@ function runLuminaAnalysis(opts){
   var rows = [], skipped = [];
   plateRows.forEach(function(prow, p){
     if (anyCtrl && !okPlate[p]) { if (prow.length) skipped.push({ plate: lmPlateName(p), why: plateWhy[p] || 'it has no usable control' }); return; }
-    rows = rows.concat(prow);
+    var lost = prow.filter(function(r){ return r.noRef; });
+    if (anyCtrl && lost.length) skipped.push({ plate: lmPlateName(p), part: true, why: lost.length + ' well' + (lost.length === 1 ? '' : 's') + ' (' + _lmRange(new Set(lost.map(function(r){ return r.well; }))) + ') divided by nothing usable — ' + lost[0].noRef });
+    rows = rows.concat(anyCtrl ? prow.filter(function(r){ return !r.noRef; }) : prow);
   });
   state.fitSkipped = skipped;
   var noViab = lmViabMissing();
@@ -4694,7 +4863,8 @@ function renderResults(){
   var note = document.getElementById('rs-note'), raw = !_lmNorm() && state.assayType !== 'gain';
   var sk = state.fitSkipped || [];
   note.hidden = !raw && !sk.length;
-  if (sk.length) note.innerHTML = '<span><b>' + esc(sk.map(function(k){ return k.plate; }).join(', ')) + ' left out of the fit</b> — ' + esc(sk.map(function(k){ return k.plate + ': ' + k.why; }).join('; ')) + '. Percentages need a control on every plate.</span><button class="lm-link" onclick="switchTab(\'input\');lmStepGo(3)">Check the controls</button>';
+  if (sk.length) { var skW = sk.filter(function(k){ return !k.part; }), skP = sk.filter(function(k){ return k.part; });
+    note.innerHTML = '<span>' + (skW.length ? '<b>' + esc(skW.map(function(k){ return k.plate; }).join(', ')) + ' left out of the fit</b> — ' + esc(skW.map(function(k){ return k.plate + ': ' + k.why; }).join('; ')) + '. Percentages need a control on every plate.' : '') + (skP.length ? (skW.length ? ' ' : '') + '<b>Wells left out of the fit</b> — ' + esc(skP.map(function(k){ return k.plate + ': ' + k.why; }).join('; ')) + '.' : '') + '</span><button class="lm-link" onclick="switchTab(\'input\');lmStepGo(3)">Check the controls</button>'; }
   else if (raw) note.innerHTML = '<span><b>No 100% control is marked</b>, so these are raw counts: the effect is the span in counts, and the percentage settings above are set aside.</span><button class="lm-link" onclick="switchTab(\'input\');lmStepGo(3)">Mark a control</button>';
   body.classList.remove('empty');
   document.getElementById('rs-curve').style.display = '';
@@ -4790,11 +4960,11 @@ function exportResultsCSV(){
 // ══════════════════════════════════════════════════════════════
 function _rawHeader(){
   var u = state.units, hu = UNITS[lmUnit()].hdr;
-  return ['Sample_ID', 'Plate', 'Well', u.log ? 'Log10_Conc_' + hu : 'Concentration_' + hu].concat(u.log ? [] : ['Log10_Conc_M']).concat(['Measurement_normalised', 'Measurement_raw', 'Is_Control', 'Excluded_from_fit']).concat(state.rawViab ? ['Signal', 'Viability_Reading'] : []);
+  return ['Sample_ID', 'Plate', 'Well', u.log ? 'Log10_Conc_' + hu : 'Concentration_' + hu].concat(u.log ? [] : ['Log10_Conc_M']).concat(['Measurement_normalised', 'Measurement_raw', 'Is_Control', 'Excluded_from_fit']).concat(state.rawViab ? ['Signal', 'Viability_Reading'] : []).concat(lmHasRules() ? ['Normalised_against', 'Control_mean'] : []);
 }
 function _rawRow(r){
   var u = state.units;
-  return [r.sampleId, r.plateName, r.well, _concNum(r.conc)].concat(u.log ? [] : [+r.log10Conc.toFixed(4)]).concat([r.measurement, r.measurementRaw, r.isCtrl ? 'Yes' : 'No', r.excl ? 'Yes' : '']).concat(state.rawViab ? [r.sigRaw === undefined ? '' : r.sigRaw, r.viab === undefined ? '' : r.viab] : []);
+  return [r.sampleId, r.plateName, r.well, _concNum(r.conc)].concat(u.log ? [] : [+r.log10Conc.toFixed(4)]).concat([r.measurement, r.measurementRaw, r.isCtrl ? 'Yes' : 'No', r.excl ? 'Yes' : '']).concat(state.rawViab ? [r.sigRaw === undefined ? '' : r.sigRaw, r.viab === undefined ? '' : r.viab] : []).concat(lmHasRules() ? [r.ruleNo && lmRules()[r.ruleNo - 1] ? 'Rule ' + r.ruleNo + ' (' + _lmRange(new Set(lmRules()[r.ruleNo - 1].y)) + ')' : '100% control', r.ref === undefined ? '' : r.ref] : []);
 }
 function exportXLSX(){
   if (!state.fitResults.length) { toast('Run an analysis first.'); return; }
@@ -4822,6 +4992,7 @@ function exportXLSX(){
   var wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(resultsAoA), 'Results');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rawAoA), 'Raw Data');
+  if (lmHasRules()) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(_lmNormAoa()), 'Normalisation');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(_buildLuminaPrismAOA(false)), 'Prism Copy');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(_buildLuminaPrismAOA(true)), 'Prism (Fraction)');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(protoAoA), 'Data Analysis Protocol');
