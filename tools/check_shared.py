@@ -30,7 +30,8 @@ FILES = {
 }
 # The functions that make up the shared engine (superset — not all exist in every app).
 FUNCS = ['_4plVal4', '_4plVal4_gain', '_4plVal3', '_4plJac4', '_4plJac4_gain',
-         '_solveLin', '_matInv', '_lmFit', '_fitBest', '_xAtYMid', '_tQ95']
+         '_solveLin', '_matInv', '_lmFit', '_fitBest', '_xAtYMid', '_tQ95',
+         '_lnGammaFn', '_betaIncReg', '_pF', '_curveVsFlat']
 
 
 def extract(src, name):

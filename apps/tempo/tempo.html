@@ -1139,7 +1139,7 @@ function _betaIncReg(x, a, b) {
 }
 function _pF(F, d1, d2) { return F <= 0 ? 1 : !isFinite(F) ? 0 : _betaIncReg(d2 / (d2 + d1 * F), d2 / 2, d1 / 2); }
 function _curveVsFlat(fit) {
-  if (!fit || !(fit.n > fit.np) || !(fit.ssTot > 0)) return null;
+  if (!fit || !(fit.n - fit.np >= 3) || !(fit.ssTot > 0)) return null;
   const d1 = fit.np - 1, d2 = fit.n - fit.np;
   const F = Math.max(0, fit.ssTot - fit.ssRes) / d1 / (Math.max(fit.ssRes, 1e-12 * fit.ssTot) / d2);
   return { F, p: _pF(F, d1, d2), df1: d1, df2: d2 };
@@ -2121,11 +2121,15 @@ function tpFitDR(pts, S, label) {
   var xMin = Math.min.apply(null, xs), xMax = Math.max.apply(null, xs);
   var sy = ys.slice().sort(function (a, b) { return a - b; }), yMinR = sy.length >= 3 ? sy[1] : sy[0];
   var topFixed = !D.topFree, topV = 100;
-  var loBot = 0, hiBot = 100, loH = 0.1, hiH = 5, topLo = topFixed ? topV : 50, topHi = topFixed ? topV : 200;
+  var loBot = 0, hiBot = 100, loH = 0.1, hiH = 5, topLo = topFixed ? topV : 50, topHi = topFixed ? topV : Math.min(200, Math.max(110, sy[sy.length - 1] + 0.25 * (sy[sy.length - 1] - sy[0])));   // a free top may sit a quarter of the readings' range above their maximum, not at 200 %
   var pInit = [Math.max(loBot, Math.min(hiBot, yMinR)), (xMin + xMax) / 2, 1, topFixed ? topV : Math.min(topHi, Math.max(topLo, sy[sy.length - 1]))];
   var fit;
   try { fit = _fitBest(xs, ys, pInit, [loBot, xMin - 1, loH, topLo], [hiBot, xMax + 1, hiH, topHi], _4plVal4, _4plJac4, 1000); } catch (e) { return { fail: 'fit-failed' }; }
   var bot = fit.params[0], logec = fit.params[1], hill = fit.params[2], tc = fit.params[3];
+  // Is there a curve at all? The 4PL returns a sigmoid for any series (a cliff at the first or last dose on a flat one). Tested against the
+  // mean of the same readings, as Echo does (F test, p < 0.05); flat at the full-effect end (under half the control) keeps its fit.
+  var cv = _curveVsFlat(fit), lvl = ys.reduce(function (a, v) { return a + v; }, 0) / ys.length, noCurve = !!(cv && cv.p >= 0.05 && lvl > 50);
+  if (noCurve) { bot = lvl; tc = lvl; logec = (xMin + xMax) / 2; hill = 1; fit = Object.assign({}, fit, { r2: 0, se: null }); }
   var nM3 = function (v) { return isFinite(v) ? +(+v).toPrecision(3) : null; };
   var dc50 = nM3(Math.pow(10, logec) * 1e9), dmax = Math.round(tc - bot);
   var se = fit.se || null, t95 = se ? _tQ95(fit.df || 10) : 0, sOK = function (i) { return se && se[i] != null && isFinite(se[i]); };
@@ -2134,9 +2138,10 @@ function tpFitDR(pts, S, label) {
   if (fit.r2 < D.minR2) flags.push('R2=' + fit.r2.toFixed(2));
   var nPts = xs.length, nPar = topFixed ? 3 : 4, dfRes = nPts - nPar;
   if (dfRes < 2) flags.push('n=' + nPts + (dfRes <= 0 ? ' (no df)' : ' (df=' + dfRes + ')'));
-  var noEff = Math.abs(tc - bot) < D.noEffectSpan, eps = 1e-9;
+  var noEff = noCurve || Math.abs(tc - bot) < D.noEffectSpan, eps = 1e-9;
   if (!noEff && logec < xMin - eps) flags.push('EC50<range'); else if (!noEff && logec > xMax + eps) flags.push('EC50>range');
-  if (noEff) flags.push('No effect (span ' + Math.round(Math.abs(tc - bot)) + '%)');
+  if (noCurve) flags.push('No effect (no dose-response: not better than a flat line, p=' + (cv.p < 0.001 ? '<0.001' : cv.p.toFixed(2)) + ')');
+  else if (noEff) flags.push('No effect (span ' + Math.round(Math.abs(tc - bot)) + '%)');
   if (hook.length) flags.push('Hookx' + hook.length);
   var absDc50 = null;
   if (bot < 50 && tc > 50 && Math.abs(hill) > 1e-6) { var sh = Math.log10((tc - 50) / (50 - bot)) / hill; try { absDc50 = nM3(Math.pow(10, logec + sh) * 1e9); } catch (e) {} }

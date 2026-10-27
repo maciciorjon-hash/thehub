@@ -2100,6 +2100,30 @@ function _xAtYMid(xArr, yArr) {
   return (pts[0].x + pts[pts.length - 1].x) / 2;
 }
 
+function _lnGammaFn(z) {
+  const c = [676.5203681218851,-1259.1392167224028,771.32342877765313,-176.61502916214059,12.507343278686905,-0.13857109526572012,9.9843695780195716e-6,1.5056327351493116e-7];
+  if (z < 0.5) return Math.log(Math.PI / Math.sin(Math.PI * z)) - _lnGammaFn(1 - z);
+  z -= 1; let x = 0.99999999999980993; for (let i = 0; i < 8; i++) x += c[i] / (z + i + 1);
+  const t = z + 7.5; return 0.5 * Math.log(2 * Math.PI) + (z + 0.5) * Math.log(t) - t + Math.log(x);
+}
+function _betaIncReg(x, a, b) {
+  const cf = (x, a, b) => { let c = 1, d = 1 - (a + b) * x / (a + 1); if (Math.abs(d) < 1e-300) d = 1e-300; d = 1 / d; let h = d;
+    for (let m = 1; m <= 300; m++) { const m2 = 2 * m;
+      let aa = m * (b - m) * x / ((a + m2 - 1) * (a + m2)); d = 1 + aa * d; if (Math.abs(d) < 1e-300) d = 1e-300; c = 1 + aa / c; if (Math.abs(c) < 1e-300) c = 1e-300; d = 1 / d; h *= d * c;
+      aa = -(a + m) * (a + b + m) * x / ((a + m2) * (a + m2 + 1)); d = 1 + aa * d; if (Math.abs(d) < 1e-300) d = 1e-300; c = 1 + aa / c; if (Math.abs(c) < 1e-300) c = 1e-300; d = 1 / d;
+      const del = d * c; h *= del; if (Math.abs(del - 1) < 1e-15) break; }
+    return h; };
+  if (x <= 0) return 0; if (x >= 1) return 1;
+  const bt = Math.exp(_lnGammaFn(a + b) - _lnGammaFn(a) - _lnGammaFn(b) + a * Math.log(x) + b * Math.log(1 - x));
+  return x < (a + 1) / (a + b + 2) ? bt * cf(x, a, b) / a : 1 - bt * cf(1 - x, b, a) / b;
+}
+function _pF(F, d1, d2) { return F <= 0 ? 1 : !isFinite(F) ? 0 : _betaIncReg(d2 / (d2 + d1 * F), d2 / 2, d1 / 2); }
+function _curveVsFlat(fit) {
+  if (!fit || !(fit.n - fit.np >= 3) || !(fit.ssTot > 0)) return null;
+  const d1 = fit.np - 1, d2 = fit.n - fit.np;
+  const F = Math.max(0, fit.ssTot - fit.ssRes) / d1 / (Math.max(fit.ssRes, 1e-12 * fit.ssTot) / d2);
+  return { F, p: _pF(F, d1, d2), df1: d1, df2: d2 };
+}
 function _lmFit(xArr, yArr, pInit, loBound, hiBound, valFn, jacFn, maxIter) {
   const n = xArr.length, np = pInit.length;
   const cl = (v, i) => Math.max(loBound[i], Math.min(hiBound[i], v));
@@ -2161,7 +2185,7 @@ function _lmFit(xArr, yArr, pInit, loBound, hiBound, valFn, jacFn, maxIter) {
   for(let i=0;i<n;i++){const jac=jacFn(xArr[i],...p);for(let a=0;a<np;a++) for(let b=0;b<np;b++) finalJtJ[a][b]+=jac[a]*jac[b];}
   const inv=_matInv(finalJtJ);
   const se=inv?inv.map((row,i)=>Math.sqrt(Math.max(0,row[i]*sigma2))):null;
-  return { params: p, r2: ssTot > 0 ? 1 - ssRes / ssTot : 0, se, df };
+  return { params: p, r2: ssTot > 0 ? 1 - ssRes / ssTot : 0, se, df, ssRes, ssTot, n, np };
 }
 
 function _fitBest(xArr, yArr, pBase, loBound, hiBound, valFn, jacFn, maxIter) {
@@ -3995,9 +4019,18 @@ function bFitPoints(raw){
   if (yHi - yLo <= Math.max(3 * sdAvg, 1e-3 * Math.max(Math.abs(yHi), Math.abs(yLo)), 1e-9)) return { pts: pts, fit: null, flat: true };
   var xArr = pts.map(function(p){ return p.logConc; }), yArr = pts.map(function(p){ return p.y; });
   var yMin = Math.min.apply(null, yArr), yMax = Math.max.apply(null, yArr), xMin = Math.min.apply(null, xArr), xMax = Math.max.apply(null, xArr);
-  var lo = [yMin - Math.abs(yMin) - 1, xMin - 2, 0.1, yMax], hi = [yMax, xMax + 2, 5, yMax + Math.abs(yMax) * 2 + 10];
+  // A plateau can sit a little beyond the readings (noise), not far beyond them: a quarter of their own range. The old limits let the top reach three times the highest reading.
+  var pad = (yMax - yMin) * 0.25;
+  var lo = [yMin - pad, xMin - 2, 0.1, yMax], hi = [yMax, xMax + 2, 5, yMax + pad];
   var fit = _fitBest(xArr, yArr, [yMin, (xMin + xMax) / 2, 1, yMax], lo, hi, bValFn(), bJacFn(), 1000);
   if (!fit || !isFinite(fit.r2) || !fit.params.every(isFinite)) return { pts: pts, fit: null, failed: true };
+  // The 4PL returns a sigmoid for anything. Is it better than a horizontal line through the same points? (F test, p < 0.05; see _curveVsFlat.)
+  var cv = _curveVsFlat(fit);
+  if (cv && cv.p >= 0.05) return { pts: pts, fit: null, flat: true };
+  // A plateau that came to rest on its limit is the data asking for more than the readings allow: the series does not reach it, so the midpoint is not inside the doses.
+  // Falling curve: the bottom at its floor means the midpoint is past the top dose; the top at its ceiling, before the lowest. A rising (gain) curve is the other way round.
+  var capLo = Math.abs(fit.params[0] - lo[0]) < 1e-6 * (1 + Math.abs(lo[0])), capHi = Math.abs(fit.params[3] - hi[3]) < 1e-6 * (1 + Math.abs(hi[3])), gainC = state.assayMode === 'gain';
+  fit.capBound = capLo ? (gainC ? '<' : '>') : capHi ? (gainC ? '>' : '<') : '';
   return { pts: pts, fit: fit };
 }
 function bTracerFit(){
@@ -4038,7 +4071,7 @@ function bFits(){
         var xs = r.pts.map(function(p){ return p.logConc; }), xMin = Math.min.apply(null, xs), xMax = Math.max.apply(null, xs), lg = f.params[1];
         o.ec50 = Math.pow(10, lg); o.bottom = f.params[0]; o.hill = f.params[2]; o.top = f.params[3]; o.r2 = f.r2;
         // A midpoint outside the doses tested is a bound, not a measurement: it fits its own half at a high R² and reaches the paper looking measured.
-        o.bound = lg > xMax + 1e-9 ? '>' : lg < xMin - 1e-9 ? '<' : '';
+        o.bound = lg > xMax + 1e-9 ? '>' : lg < xMin - 1e-9 ? '<' : (f.capBound || '');
         o.limit = o.bound === '>' ? Math.pow(10, xMax) : o.bound === '<' ? Math.pow(10, xMin) : null;
         if (tr && tr.kd > 0 && tr.T > 0 && !o.bound) o.ki = o.ec50 / (1 + tr.T / tr.kd);   // a bound on the IC50 is a bound on nothing else: no Ki is made from a number nobody measured
       }

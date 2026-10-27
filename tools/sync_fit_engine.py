@@ -26,7 +26,11 @@ TARGETS = [('Beacon', 'apps/beacon/beacon.html'), ('Lumina', 'apps/lumina/lumina
 # Shared engine functions. _4plVal3 is Echo-only (not synced). Only functions
 # present in a target get replaced.
 FUNCS = ['_4plVal4', '_4plVal4_gain', '_4plJac4', '_4plJac4_gain',
-         '_solveLin', '_matInv', '_lmFit', '_fitBest', '_xAtYMid', '_tQ95']
+         '_solveLin', '_matInv', '_lmFit', '_fitBest', '_xAtYMid', '_tQ95',
+         '_lnGammaFn', '_betaIncReg', '_pF', '_curveVsFlat']
+# The "is this curve better than a flat line" test (added 2026-10-27). Unlike the rest it is INSERTED
+# (just before _lmFit) into a target that does not have it yet, because every app that fits a 4PL needs it.
+ADD_FUNCS = ['_lnGammaFn', '_betaIncReg', '_pF', '_curveVsFlat']
 
 
 def span(src, name):
@@ -76,6 +80,12 @@ def main():
         for start, end, fn in sorted(edits, reverse=True):
             src = src[:start] + canon[fn] + src[end:]
             changed.append(fn)
+        # Functions the target lacks: insert them as a block right before _lmFit.
+        missing = [fn for fn in ADD_FUNCS if fn in canon and not span(src, fn)]
+        anchor = re.search(r'function\s+_lmFit\s*\(', src)
+        if missing and anchor:
+            src = src[:anchor.start()] + ''.join(canon[fn] + '\n' for fn in missing) + src[anchor.start():]
+            changed.extend(missing)
         if changed:
             total += len(changed)
             print(f'{name}: {"would sync" if check else "synced"} {len(changed)} fn(s) from {CANONICAL[0]}: {", ".join(reversed(changed))}')

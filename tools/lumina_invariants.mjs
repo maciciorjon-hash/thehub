@@ -23,6 +23,10 @@
 //                                 and divided back give exactly the undistorted curves, from a GloMax double read stored with the plate and from
 //                                 fluorescence-only files named for their plates; off, the distortion shows; a plate without viability is left out
 //                                 and said; the session, the raw export and ⌘Z carry it.
+//   L24 a curve must be better than a line   The 4PL returns a sigmoid for any series, so a flat one of noise got a cliff at the edge of the doses, an Emax of
+//                                 hundreds of per cent and a potency nobody measured. A fit is tested against the mean of its own readings (F test, p < 0.05):
+//                                 a flat series is the flat line (span 0, "n.d.", out of the Plot, no potency to Labbook), a real curve and a series already maximal
+//                                 at the lowest dose keep their fits, and no free plateau leaves the readings by more than a quarter of their range.
 //   L10 the potency and the effect are called what the selected assay calls them — DC50/Dmax, IC50/Span,
 //       IC50, EC50/Emax — in the table, the curve, the Plot, every export and what goes to Labbook
 //
@@ -668,6 +672,37 @@ try {
   check('L23 with a layout loaded (concentrations make the column labels taller) the panel still meets the first row of wells', r.loaded < 1.5, JSON.stringify(r));
   check('L23 the plate size dropdown is a 32px box like every other (Beacon\'s bar is the same)', Math.round(r.fmtH) === 32, JSON.stringify(r));
 } catch (err) { check('L23 the checks ran to the end', false, String(err && err.message || err).split('\n')[0]); }
+
+
+// ── L24 a curve must be better than a line ─────────────────────────────────────────────────────────────────────────
+try {
+  const r = await ev(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    loadLuminaTestData(); await wait(300);
+    let seed = 20261027; const rnd = () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; };
+    const gauss = () => Math.sqrt(-2 * Math.log(rnd() + 1e-12)) * Math.cos(2 * Math.PI * rnd());
+    const pl = state.plates[0], Z = state.layout.zones;
+    Z[0].forEach(pos => { pl.signal[pos] = Math.round((100 + 8 * gauss()) * 10) / 10; });            // Cpd-17: flat at the control, noise only
+    Z[3].forEach(pos => { pl.signal[pos] = Math.round((100 + 8 * gauss()) * 10) / 10; });            // Cpd-08: the same
+    Z[2].forEach(pos => { pl.signal[pos] = Math.round(Math.max(0, 5 + 3 * gauss()) * 10) / 10; });   // Cpd-42: maximal at every dose
+    lmAfterChange(); _lmEnsureFit(true); await wait(500);
+    const R = state.fitResults, by = id => R.find(x => x.sampleId === id), o = {};
+    const brief = r => r && { noCurve: !!r.noCurve, ec50: r.ec50M, eff: Math.round(_lmEff(r)), top: Math.round(r.top), bot: Math.round(r.bottom), range: r.flagRangeLo || r.flagRangeHi, reason: _flagReason(r) };
+    o.flat = ['Cpd-17', 'Cpd-08'].map(id => brief(by(id)));
+    o.real = brief(by('Ref-A')); o.potent = brief(by('Cpd-42'));
+    o.maxTop = Math.max(...R.map(r => r.top)); o.minBot = Math.min(...R.map(r => r.bottom));
+    state.rsTab = 'plot'; rsSetTab('plot'); plotFillSelects && plotFillSelects(); plotDraw();
+    o.plotNaN = /NaN/.test(document.getElementById('pl-svg').innerHTML);
+    o.cell = (() => { const tr = [...document.querySelectorAll('#results-table-wrap tbody tr')].find(t => /Cpd-17/.test(t.textContent)); return tr ? tr.textContent.replace(/\s+/g, ' ') : ''; })();
+    o.lb = luminaResultRows().filter(x => x.compound === 'Cpd-17').map(x => ({ p: x.potency, nd: x.nd, bound: x.bound }));
+    o.csv = getResultColumns().map(c => c.xh);
+    return o;
+  });
+  check('L24 flat series of noise are reported as the flat line: no curve, span 0, no potency', r.flat.every(f => f && f.noCurve && f.eff === 0 && !isFinite(f.ec50) && /No dose-response/.test(f.reason)), JSON.stringify(r.flat));
+  check('L24 a real curve keeps its fit, and a compound maximal at every dose is not "no curve"', r.real && !r.real.noCurve && isFinite(r.real.ec50) && r.potent && !r.potent.noCurve, JSON.stringify([r.real, r.potent]));
+  check('L24 no plateau of any curve leaves the readings behind (top and bottom stay within the scale of the plate)', r.maxTop < 160 && r.minBot > -60, JSON.stringify([r.maxTop, r.minBot]));
+  check('L24 the Plot draws no NaN, the table says n.d., and Labbook gets no potency (nd, a bound)', !r.plotNaN && /n\.d\./.test(r.cell) && r.lb.length === 1 && r.lb[0].p === null && r.lb[0].nd && r.lb[0].bound, JSON.stringify([r.plotNaN, r.cell.slice(0, 120), r.lb]));
+} catch (err) { check('L24 the checks ran to the end', false, String(err && err.message || err).split('\n')[0]); }
 
 check('no page or console errors', errs.length === 0, errs.slice(0, 3).join(' | '));
 await browser.close();

@@ -1819,9 +1819,11 @@ function luminaResultRows(){
     return {
       compound: r.sampleId || '',
       target:   '',
-      potency:  +(r.ec50M * 1e9).toFixed(1),
+      potency:  r.noCurve ? null : +(r.ec50M * 1e9).toFixed(1),
+      nd:       !!r.noCurve,
+      bound:    !!r.noCurve,
       effect:   Math.round(_lmEff(r)),
-      hill:     +r.hill.toFixed(2),
+      hill:     r.noCurve ? null : +r.hill.toFixed(2),
       r2:       +r.r2.toFixed(3),
       flag:     !!r.flagged,
       note:     _flagReason(r) || '',
@@ -2009,7 +2011,7 @@ function lmHitFinderTable(){
   cols.push([nm + '_nM', function(r){ return num(r.ec50M * 1e9); }],
     [nm + '_CI_lower_nM', function(r){ return num(r.ciEc50LowerNM); }], [nm + '_CI_upper_nM', function(r){ return num(r.ciEc50UpperNM); }]);
   if (L.hasDmax && (_lmNorm() || t === 'gain')) cols.push([(t === 'gain' ? 'Emax' : L.dmaxName) + (t === 'gain' ? '' : '_pct'), function(r){ return Math.round(_lmEff(r)); }]);
-  cols.push(['HillSlope', function(r){ return num(r.hill, 3); }], ['Top', function(r){ return num(r.top, 4); }], ['Bottom', function(r){ return num(r.bottom, 4); }],
+  cols.push(['HillSlope', function(r){ return r.noCurve ? null : num(r.hill, 3); }], ['Top', function(r){ return num(r.top, 4); }], ['Bottom', function(r){ return num(r.bottom, 4); }],
     ['R2', function(r){ return num(r.r2, 4); }], ['n', function(r){ return r.n; }], ['Flag', function(r){ return r.flagged ? 'Yes' : 'No'; }], ['Flag_Reason', function(r){ return _flagReason(r); }]);
   return [cols.map(function(c){ return c[0]; })].concat(state.fitResults.map(function(r){ return cols.map(function(c){ return c[1](r); }); }));
 }
@@ -4471,6 +4473,30 @@ function _matInv(A) {
   }
   return M.map(row=>row.slice(n));
 }
+function _lnGammaFn(z) {
+  const c = [676.5203681218851,-1259.1392167224028,771.32342877765313,-176.61502916214059,12.507343278686905,-0.13857109526572012,9.9843695780195716e-6,1.5056327351493116e-7];
+  if (z < 0.5) return Math.log(Math.PI / Math.sin(Math.PI * z)) - _lnGammaFn(1 - z);
+  z -= 1; let x = 0.99999999999980993; for (let i = 0; i < 8; i++) x += c[i] / (z + i + 1);
+  const t = z + 7.5; return 0.5 * Math.log(2 * Math.PI) + (z + 0.5) * Math.log(t) - t + Math.log(x);
+}
+function _betaIncReg(x, a, b) {
+  const cf = (x, a, b) => { let c = 1, d = 1 - (a + b) * x / (a + 1); if (Math.abs(d) < 1e-300) d = 1e-300; d = 1 / d; let h = d;
+    for (let m = 1; m <= 300; m++) { const m2 = 2 * m;
+      let aa = m * (b - m) * x / ((a + m2 - 1) * (a + m2)); d = 1 + aa * d; if (Math.abs(d) < 1e-300) d = 1e-300; c = 1 + aa / c; if (Math.abs(c) < 1e-300) c = 1e-300; d = 1 / d; h *= d * c;
+      aa = -(a + m) * (a + b + m) * x / ((a + m2) * (a + m2 + 1)); d = 1 + aa * d; if (Math.abs(d) < 1e-300) d = 1e-300; c = 1 + aa / c; if (Math.abs(c) < 1e-300) c = 1e-300; d = 1 / d;
+      const del = d * c; h *= del; if (Math.abs(del - 1) < 1e-15) break; }
+    return h; };
+  if (x <= 0) return 0; if (x >= 1) return 1;
+  const bt = Math.exp(_lnGammaFn(a + b) - _lnGammaFn(a) - _lnGammaFn(b) + a * Math.log(x) + b * Math.log(1 - x));
+  return x < (a + 1) / (a + b + 2) ? bt * cf(x, a, b) / a : 1 - bt * cf(1 - x, b, a) / b;
+}
+function _pF(F, d1, d2) { return F <= 0 ? 1 : !isFinite(F) ? 0 : _betaIncReg(d2 / (d2 + d1 * F), d2 / 2, d1 / 2); }
+function _curveVsFlat(fit) {
+  if (!fit || !(fit.n - fit.np >= 3) || !(fit.ssTot > 0)) return null;
+  const d1 = fit.np - 1, d2 = fit.n - fit.np;
+  const F = Math.max(0, fit.ssTot - fit.ssRes) / d1 / (Math.max(fit.ssRes, 1e-12 * fit.ssTot) / d2);
+  return { F, p: _pF(F, d1, d2), df1: d1, df2: d2 };
+}
 function _lmFit(xArr, yArr, pInit, loBound, hiBound, valFn, jacFn, maxIter) {
   const n = xArr.length, np = pInit.length;
   const cl = (v, i) => Math.max(loBound[i], Math.min(hiBound[i], v));
@@ -4532,7 +4558,7 @@ function _lmFit(xArr, yArr, pInit, loBound, hiBound, valFn, jacFn, maxIter) {
   for(let i=0;i<n;i++){const jac=jacFn(xArr[i],...p);for(let a=0;a<np;a++) for(let b=0;b<np;b++) finalJtJ[a][b]+=jac[a]*jac[b];}
   const inv=_matInv(finalJtJ);
   const se=inv?inv.map((row,i)=>Math.sqrt(Math.max(0,row[i]*sigma2))):null;
-  return { params: p, r2: ssTot > 0 ? 1 - ssRes / ssTot : 0, se, df };
+  return { params: p, r2: ssTot > 0 ? 1 - ssRes / ssTot : 0, se, df, ssRes, ssTot, n, np };
 }
 function _tQ95(df){
   df = Math.max(1, +df || 1);
@@ -4745,8 +4771,11 @@ function runLuminaAnalysis(opts){
 
     var effBotFloor = (!effFixBot && botFloorEnabled) ? botFloorVal : -Infinity;
     var pInit = [effFixBot ? effBotVal : Math.max(effBotFloor, yMin), (xMin+xMax)/2, gainMode?1:1, effFreeTop ? yMax : (topEnabled?topVal:yMax)];
-    var loBound = [effFixBot ? effBotVal : effBotFloor, xMin-1, fixHill ? hillVal : 0.05, effFreeTop ? -Infinity : (topEnabled?topVal:-Infinity)];
-    var hiBound = [effFixBot ? effBotVal : Infinity, xMax+1, fixHill ? hillVal : 10, effFreeTop ? Infinity : (topEnabled?topVal:Infinity)];
+    // A free plateau used to be unbounded: a series with no plateau in it returned a top of 1,400 % (or a bottom of -900 %) and an
+    // Emax to match. A plateau can sit a little beyond the readings (noise), not a hundred points beyond them: a quarter of their own range.
+    var _pad = (yMax - yMin) * 0.25, _pLo = _pad > 0 ? yMin - _pad : -Infinity, _pHi = _pad > 0 ? yMax + _pad : Infinity;
+    var loBound = [effFixBot ? effBotVal : Math.max(effBotFloor, _pLo), xMin-1, fixHill ? hillVal : 0.05, effFreeTop ? _pLo : (topEnabled?topVal:_pLo)];
+    var hiBound = [effFixBot ? effBotVal : _pHi, xMax+1, fixHill ? hillVal : 10, effFreeTop ? _pHi : (topEnabled?topVal:_pHi)];
 
     var fit;
     try { fit = _fitBest(xArr, yArr, pInit, loBound, hiBound, valFn, jacFn, 1000); }
@@ -4755,13 +4784,20 @@ function runLuminaAnalysis(opts){
 
     var params = fit.params; // [bot, logec50, hill, top]
     var bottom = params[0], logEC50 = params[1], hill = params[2], top = params[3];
-    var ec50M = Math.pow(10, logEC50);
+    // Is there a curve at all? The 4PL returns a sigmoid for anything: a flat series of noise gets one too, usually a cliff at the first or
+    // last dose with an Emax of several hundred per cent and a potency outside the doses. Tested against the mean of the same readings
+    // (F test, p < 0.05, the same as Echo). A series flat at the FULL-EFFECT end (under half the control) is the opposite case — maximal at
+    // the lowest dose — and keeps its fit. Only on the % of control scale: on raw counts "flat and low" cannot be told from "flat and inactive".
+    var cv = (doNormalize && !gainMode) ? _curveVsFlat(fit) : null, level = yArr.reduce(function(a, v){ return a + v; }, 0) / yArr.length;
+    var noCurve = !!(cv && cv.p >= 0.05 && level > 50), noCurveP = noCurve ? cv.p : null;
+    if (noCurve) { bottom = level; top = level; logEC50 = (xMin + xMax) / 2; hill = 1; }   // the flat line, not a sigmoid it did not earn
+    var ec50M = noCurve ? NaN : Math.pow(10, logEC50);
 
     // 95% CI on EC50 (delta method via the fit's parameter covariance),
     // mirrors Echo's _tQ95/se-based CI_DC50_lower/upper computation.
     var t95 = fit.se ? _tQ95(fit.df) : 0;
-    var ciEc50LowerNM = fit.se ? (Math.pow(10, logEC50 - t95*fit.se[1]) * 1e9) : null;
-    var ciEc50UpperNM = fit.se ? (Math.pow(10, logEC50 + t95*fit.se[1]) * 1e9) : null;
+    var ciEc50LowerNM = fit.se && !noCurve ? (Math.pow(10, logEC50 - t95*fit.se[1]) * 1e9) : null;
+    var ciEc50UpperNM = fit.se && !noCurve ? (Math.pow(10, logEC50 + t95*fit.se[1]) * 1e9) : null;
 
     // Replicate SD at each concentration (for QC)
     var byConc = {};
@@ -4774,7 +4810,7 @@ function runLuminaAnalysis(opts){
       if (sd > maxSdAtConc) maxSdAtConc = sd;
     });
 
-    var flagR2 = r2Enabled && fit.r2 < minR2;
+    var flagR2 = r2Enabled && !noCurve && fit.r2 < minR2;
     var flagSD = sdEnabled && maxSdAtConc > maxSd;
     // A midpoint outside the doses actually tested is not a measurement: the curve never
     // turned inside the range, so the number is an extrapolation the data cannot support. R²
@@ -4787,15 +4823,23 @@ function runLuminaAnalysis(opts){
     // stops just short of its bound slips through: a curve still climbing at the top dose fit
     // at 9.1 µM from doses reaching 1 µM, R²=1, unflagged. Strictly outside, so a real potency
     // sitting exactly at the lowest or highest dose tested is not flagged.
-    var _ecEps = 1e-9, flagRangeLo = (logEC50 < xMin - _ecEps), flagRangeHi = (logEC50 > xMax + _ecEps);
-    var flagged = flagR2 || flagSD || isHook || flagRangeLo || flagRangeHi;
+    var _ecEps = 1e-9, flagRangeLo = !noCurve && (logEC50 < xMin - _ecEps), flagRangeHi = !noCurve && (logEC50 > xMax + _ecEps);
+    // A plateau that came to rest on its limit is the data asking for more than the readings allow: the series does not reach it, so the midpoint is not
+    // inside the doses. Falling curve: a bottom at its floor means the midpoint is past the top dose, a top at its ceiling that it is before the lowest dose.
+    // Rising (gain) curve: the ceiling is the high side. (A bottom resting on the user's own floor is not this: that is where a full response ends.)
+    if (!noCurve && isFinite(_pLo) && isFinite(_pHi)) {
+      var _capLo = !effFixBot && loBound[0] === _pLo && Math.abs(bottom - _pLo) < 1e-6 * (1 + Math.abs(_pLo)),
+          _capHi = effFreeTop && Math.abs(top - _pHi) < 1e-6 * (1 + Math.abs(_pHi));
+      if (!flagRangeLo && !flagRangeHi) { if (gainMode) { if (_capHi) flagRangeHi = true; else if (_capLo) flagRangeLo = true; } else { if (_capLo) flagRangeHi = true; else if (_capHi) flagRangeLo = true; } }
+    }
+    var flagged = flagR2 || flagSD || isHook || flagRangeLo || flagRangeHi || noCurve;
 
     summary.push({
       sampleId: sid, n: sdata.length, plates: Array.from(new Set(sdata.map(function(r){ return r.plateName; }))), plateIdx: sdata[0].plate - 1, top: top, bottom: bottom, hill: hill,
-      logEC50: logEC50, ec50M: ec50M, r2: fit.r2, maxSD: maxSdAtConc,
+      logEC50: logEC50, ec50M: ec50M, r2: noCurve ? 0 : fit.r2, maxSD: maxSdAtConc,
       ciEc50LowerNM: ciEc50LowerNM, ciEc50UpperNM: ciEc50UpperNM,
       flagR2: flagR2, flagSD: flagSD, isHook: isHook, hookCount: hookConcs.size,
-      flagRangeLo: flagRangeLo, flagRangeHi: flagRangeHi, flagged: flagged,
+      flagRangeLo: flagRangeLo, flagRangeHi: flagRangeHi, noCurve: noCurve, noCurveP: noCurveP, flagged: flagged,
       xArr: sdata.map(function(r){ return r.log10Conc; }), yArr: sdata.map(function(r){ return r.measurement; }),
       yArrRaw: sdata.map(function(r){ return r.measurementRaw; }),
       // Which well each point is, parallel to xArr — what a click on the curve needs to leave it out.
@@ -4853,6 +4897,7 @@ function _num(v){
   return String(Number(v.toPrecision(3)));
 }
 function fmtPot(M){
+  if (M !== null && M !== undefined && M !== '' && isNaN(M)) return 'n.d.';   // a curve that is not better than a flat line has no potency
   if (M === null || M === undefined || !isFinite(M)) return '—';
   var u = state.units;
   if (u.log) return _num(Math.log10(M / UNITS[lmUnit()].mul));
@@ -4871,6 +4916,7 @@ function _lmCIwithUnit(r){
 }
 // A potency as a number for a file: in the chosen unit, or its log₁₀.
 function _concNum(M){
+  if (!isFinite(M)) return '';
   var v = M / UNITS[lmUnit()].mul;
   return state.units.log ? +Math.log10(v).toPrecision(6) : +v.toPrecision(6);
 }
@@ -5007,7 +5053,7 @@ function drawCurve(sid){
 
   var statsEl = document.getElementById('curve-stats');
   var items = [
-    [curveL.ec50Name, _potWithUnit(r.ec50M)], ['95% CI', _lmCIwithUnit(r) || '—']].concat(curveL.hasDmax ? [[state.assayType === 'gain' ? 'Emax' : curveL.dmaxName, _lmEffText(r)]] : [], [['Hill', r.hill.toFixed(2)],
+    [curveL.ec50Name, _potWithUnit(r.ec50M)], ['95% CI', _lmCIwithUnit(r) || '—']].concat(curveL.hasDmax ? [[state.assayType === 'gain' ? 'Emax' : curveL.dmaxName, _lmEffText(r)]] : [], [['Hill', r.noCurve ? 'n.d.' : r.hill.toFixed(2)],
     ['Top', _statNum(r.top)], ['Bottom', _statNum(r.bottom)],
     ['R²', r.r2.toFixed(3)], ['n', r.n + ((r.exPts || []).length ? ' <span class="cs-ex">(' + r.exPts.length + ' left out)</span>' : '')]]);
   statsEl.innerHTML = (isRaw ? '<span class="cs-item">The fit is made on the normalised data</span>' : '') + items.map(function(it){ return '<span class="cs-item">'+it[0]+' <b>'+it[1]+'</b></span>'; }).join('');
@@ -5079,6 +5125,7 @@ function _flagReason(r){
   if (r.flagSD) f.push('SD=' + r.maxSD.toFixed(1));
   if (r.isHook) f.push('Hookx' + r.hookCount);
   var L = assayFitLabels(state.assayType);
+  if (r.noCurve) f.push('No dose-response (not better than a flat line, p=' + (r.noCurveP < 0.001 ? '<0.001' : r.noCurveP.toFixed(2)) + ')');
   if (r.flagRangeLo) f.push(L.ec50Name + '<range');
   if (r.flagRangeHi) f.push(L.ec50Name + '>range');
   return f.join('; ');
@@ -5099,11 +5146,11 @@ function getResultColumns(){
   );
   // The molar log and the p-value are the conventional way to quote a potency; they are always
   // there unless the columns above already are exactly that.
-  if (!(log && lmUnit() === 'M')) cols.push({ xh:L.logCol, get:function(r){ return +r.logEC50.toFixed(3); } });
-  cols.push({ xh:L.pCol, get:function(r){ return +(-r.logEC50).toFixed(3); } });
+  if (!(log && lmUnit() === 'M')) cols.push({ xh:L.logCol, get:function(r){ return r.noCurve ? '' : +r.logEC50.toFixed(3); } });
+  cols.push({ xh:L.pCol, get:function(r){ return r.noCurve ? '' : +(-r.logEC50).toFixed(3); } });
   if (L.hasDmax) { var dName = t==='gain' ? 'Emax' : L.dmaxName; cols.push({ xh:dName+(t==='gain' ? '' : (_lmNorm() ? '_pct' : '_counts')), get:function(r){ return Math.round(_lmEff(r)); } }); }
   cols.push(
-    { xh:'HillSlope', get:function(r){ return +r.hill.toFixed(2); } },
+    { xh:'HillSlope', get:function(r){ return r.noCurve ? '' : +r.hill.toFixed(2); } },
     { xh:'Top', get:function(r){ return +r.top.toFixed(2); } },
     { xh:'Bottom', get:function(r){ return +r.bottom.toFixed(2); } },
     { xh:'R2', get:function(r){ return +r.r2.toFixed(3); } },
@@ -5136,7 +5183,7 @@ function renderResultsTable(){
       (multi ? '<td class="pl" title="' + esc((r.plates || []).join(' + ')) + '">' + esc((r.plates || []).join(' + ')) + '</td>' : '') +
       '<td class="num">' + fmtPot(r.ec50M) + '</td><td class="num ci">' + (_lmCI(r) || '—') + '</td>' +
       (eff ? '<td class="num">' + _lmEffText(r) + '</td>' : '') +
-      '<td class="num">' + r.hill.toFixed(2) + '</td><td class="num' + (r.flagR2 ? ' flag-bad' : '') + '">' + r.r2.toFixed(3) + '</td>' +
+      '<td class="num">' + (r.noCurve ? 'n.d.' : r.hill.toFixed(2)) + '</td><td class="num' + (r.flagR2 ? ' flag-bad' : '') + '">' + r.r2.toFixed(3) + '</td>' +
       '<td>' + (r.flagged ? '<span class="qc-chip">' + esc(_flagReason(r)) + '</span>' : '') + ((r.exPts || []).length ? ' <span class="ex-chip" title="' + r.exPts.length + ' reading' + (r.exPts.length === 1 ? '' : 's') + ' left out of this curve — select it and right-click a cross to put one back">&#10005; ' + r.exPts.length + '</span>' : '') + '</td></tr>';
   });
   wrap.innerHTML = html + '</tbody></table>';
@@ -5318,7 +5365,7 @@ function plotParams(){
   out.push({ id: 'pot', name: L.ec50Name, conc: true, get: function(r){ return Math.log10(r.ec50M); } });
   if (L.hasDmax) out.push({ id: 'eff', name: t === 'gain' ? 'Emax' : L.dmaxName + (_lmNorm() ? ' (%)' : ' (counts)'), pct: t !== 'gain' && _lmNorm(), get: function(r){ return _lmEff(r); } });
   out.push(
-    { id: 'hill', name: 'Hill slope', zero: true, get: function(r){ return r.hill; } },
+    { id: 'hill', name: 'Hill slope', zero: true, get: function(r){ return r.noCurve ? NaN : r.hill; } },
     { id: 'r2', name: 'R²', get: function(r){ return r.r2; } },
     { id: 'top', name: 'Top', get: function(r){ return r.top; } },
     { id: 'bottom', name: 'Bottom', get: function(r){ return r.bottom; } },
@@ -5382,8 +5429,10 @@ function _plotAxisTitle(p){
 function _plotEsc(s){ return String(s).replace(/[&<>"]/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 // Builds the picture. Returns {svg, pts} — pts carry pixel positions for hover and click.
 function _plotSvg(W, H, pal, o){
-  var R = state.fitResults, ps = plotParams();
+  var ps = plotParams();
   var px = ps.filter(function(p){ return p.id === PLOT.x; })[0], py = ps.filter(function(p){ return p.id === PLOT.y; })[0];
+  // A curve with no potency (not better than a flat line) has no place on a potency axis.
+  var R = state.fitResults.filter(function(r){ return isFinite(px.get(r)) && isFinite(py.get(r)); });
   var small = W < 460, fs = small ? 10.5 : 11.5;
   var pad = { l: small ? 46 : 58, r: 18, t: 14, b: small ? 44 : 50 };
   var iw = W - pad.l - pad.r, ih = H - pad.t - pad.b;

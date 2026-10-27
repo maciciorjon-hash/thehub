@@ -54,6 +54,10 @@
 //   E23 the results table      A confidence limit is never printed as a long run of digits (three significant figures, a power of ten outside
 //                              0.01–99,999, ∞ for an unbounded limit), and column widths follow the content: Flag and the numbers take what
 //                              they need, Reason is the widest and wraps. The app is called Echo Dose Response in the setup header.
+//   E81 a curve must be      The 4PL returns a sigmoid for any series, so a flat one of noise got a cliff at the edge of the doses, a Dmax of 90 %
+//       better than a line     and a potency outside the range. A fit is tested against the mean of its own readings (F test, p < 0.05): 99 % of flat
+//                              series are reported as the flat line with "No effect (no dose-response…)", a real curve is never taken for one, a series
+//                              already maximal at the lowest dose keeps its EC50<range, and a free top stays within a quarter of the readings' range.
 //   E24 a setting is a      An emptied number on the Setup form uses its default and says so (no NaN anywhere, no gate switched off in silence);
 //       number or an error  a top, a Hill slope or a fixed bottom that cannot mean anything stops the run with the reason instead of
 //                           flagging every curve; an empty control range is an error, not raw counts; "B1-O2" is a rectangle and
@@ -2978,6 +2982,44 @@ if (run('E80')) await guard('E80', async () => {
     check('E80', 'the Curves painter strokes the fit from the first to the last tested dose, not to the axis edges', r.n > 100 && Math.abs(r.ends[0] - r.want[0]) < 1.5 && Math.abs(r.ends[1] - r.want[1]) < 1.5, r);
     check('E80', 'the thumbnail\'s curve starts and ends inside the plot (on its first and last point), not at the plot edges', !r.thumb || (r.thumb[0] > 40 && r.thumb[1] < 190), r);
   }
+});
+
+
+if (run('E81')) await guard('E81', async () => {
+  await BACK_TO_ANALYSIS();
+  await runWith({});
+  const r = await E(() => {
+    let seed = 20261027; const rnd = () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; };
+    const gauss = () => Math.sqrt(-2 * Math.log(rnd() + 1e-12)) * Math.cos(2 * Math.PI * rnd());
+    const xs = []; for (let i = 0; i < 8; i++) for (let k = 0; k < 2; k++) xs.push(-9 + i * 0.5);
+    const rows = f => xs.map(x => ({ log10Conc: x, measurement: f(x) }));
+    const fit = f => window._echoFitOne('G', 'S', rows(f));
+    const o = { flat: { n: 0, nd: 0, big: 0 }, real: { n: 0, nd: 0, off: 0 }, potent: { n: 0, nd: 0, lo: 0 } };
+    for (let t = 0; t < 100; t++) { const r = fit(() => 100 + 8 * gauss()); if (!r) continue; o.flat.n++; if (/No effect \(no dose-response/.test(r.Flag_Reason)) { o.flat.nd++; if (r.Dmax_pct !== 0 || Math.abs(r.Top_val - r.Bot_val) > 1e-6) o.flat.big++; } }
+    for (let t = 0; t < 60; t++) { const r = fit(x => 100 / (1 + Math.pow(10, x - -7)) + 8 * gauss()); if (!r) continue; o.real.n++; if (/No effect/.test(r.Flag_Reason)) o.real.nd++; if (!(r.DC50_nM > 50 && r.DC50_nM < 200)) o.real.off++; }
+    for (let t = 0; t < 40; t++) { const r = fit(() => Math.max(0, 5 + 4 * gauss())); if (!r) continue; o.potent.n++; if (/No effect/.test(r.Flag_Reason)) o.potent.nd++; if (/EC50<range/.test(r.Flag_Reason)) o.potent.lo++; }
+    const cap = typeof _topCapPct === 'function' ? _topCapPct : () => NaN; o.cap = [cap(20, 105), cap(0, 100), cap(90, 100), cap(-50, 300)];
+    return o;
+  });
+  check('E81', 'flat series of noise: at least 95 of 100 are reported as the flat line', r.flat.nd >= 95, r.flat);
+  check('E81', 'a series reported as flat has a Dmax of 0 and Top = Bottom (no cliff kept)', r.flat.big === 0, r.flat);
+  check('E81', 'a real curve (EC50 100 nM, 8 % noise) is never reported as flat and keeps its potency', r.real.n >= 55 && r.real.nd === 0 && r.real.off === 0, r.real);
+  check('E81', 'a compound already maximal at the lowest dose is not "no effect": it keeps EC50<range', r.potent.n >= 35 && r.potent.nd === 0 && r.potent.lo >= r.potent.n * 0.8, r.potent);
+  check('E81', 'the cap on a free top: a quarter of the readings\' range above their maximum, between 110 and 200', Math.abs(r.cap[0] - 126.25) < 1e-6 && Math.abs(r.cap[1] - 125) < 1e-6 && r.cap[2] === 110 && r.cap[3] === 200, r.cap);
+  // free top, a shallow curve already on its slope at the first dose (no top plateau in the data): the top cannot leave the readings behind
+  await runWith({ 'p-top-en': false });
+  const f = await E(() => {
+    const xs = []; for (let i = 0; i < 8; i++) for (let k = 0; k < 2; k++) xs.push(-9 + i * 0.5);
+    let worst = 0; let seed = 99; const rnd = () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; };
+    for (let t = 0; t < 40; t++) {
+      const rows = xs.map((x, i) => ({ log10Conc: x, measurement: 100 / (1 + Math.pow(10, (x + 8.5) * 0.5)) + 6 * (rnd() - 0.5) }));
+      const ys = rows.map(r => r.measurement), yMax = Math.max(...ys), yMin = Math.min(...ys), r = window._echoFitOne('G', 'S', rows);
+      if (r) worst = Math.max(worst, r.Top_val - (typeof _topCapPct === 'function' ? _topCapPct(yMin, yMax) : 110));
+    }
+    return { worst };
+  });
+  check('E81', 'free top: Top never exceeds the cap on a series with no top plateau', f.worst <= 0.011, f);
+  await runWith({});
 });
 
 await browser.close();

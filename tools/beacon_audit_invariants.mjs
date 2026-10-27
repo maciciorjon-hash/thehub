@@ -14,6 +14,9 @@
 //   BA8  dialogs and rows work   Esc closes Setup and Tab stays in it wherever the focus was, the focus goes back to the opener; a compound row of Results is a tab stop that Enter picks
 //                                and the arrow keys carry the focus along; no typed ✓ ‹ › glyph (a drawn check, svg chevrons); --warn / --danger exist; text of a well is on the type scale.
 //   BA9  one button, one input  (docs/UI.md, decided 2026-10-21) Every .btn is 32px (.btn-sm 28) with --r-1 corners, every text box and select is 32px, --r-1, --fs-3, on every screen and in both themes.
+//   BA10 a curve must be better than a line  The 4PL returns a sigmoid for any series, so a flat one of noise got a cliff at the edge of the doses and a potency nobody
+//                                measured. A fit is tested against the mean of its own points (F test, p < 0.05, the engine's _curveVsFlat): a flat series is "n.d.", a real
+//                                curve keeps its fit, and a plateau that rests on its limit (a curve cut off before its midpoint) makes the potency a bound, not a value.
 //   BA7  a reload is not a loss  An empty plate after a reload says which analysis it was on and opens it in one click.
 //
 // Usage (repo root, serve it first: python3 -m http.server 8791):  node tools/beacon_audit_invariants.mjs [--only=BA1,BA2] [--file=path] [--verbose]
@@ -272,6 +275,23 @@ if (run('BA9')) await guard('BA9', async () => {
     await ctx.close();
   }
   check('BA9', 'every .btn is 32px (btn-sm 28) with --r-1 and every text box / select is 32px, --r-1, 12px across ' + states.length + ' screens', bad.size === 0, [...bad].slice(0, 8));
+});
+
+if (run('BA10')) await guard('BA10', async () => {
+  const { ctx, pg } = await open();
+  const r = await pg.evaluate(W(`(() => {
+    let seed = 20261027; const rnd = () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; };
+    const gauss = () => Math.sqrt(-2 * Math.log(rnd() + 1e-12)) * Math.cos(2 * Math.PI * rnd());
+    function build(f){ __reset(); const pl = state.plates[0]; __fill(pl, (r, c) => [1000, c < 1 ? 500 : c < 2 ? 1500 : 500 + f(c)]); for (let r = 0; r < 8; r++) { pl.map[bPos(r, 0)] = { k: 'noLigand' }; pl.map[bPos(r, 1)] = { k: 'veh' }; } const s = bNewSeries('A'); for (let c = 2; c < 12; c++) pl.map[bPos(0, c)] = { k: 'cpd', s: s.id, c: 10000 / Math.pow(3, c - 2) }; bAfterChange(); return bFits()[0]; }   // one well per dose: no replicate SD for the old flat test to compare the range with
+    state.assayMode = 'displacement';   // the response falls with dose
+    const o = { flat: 0, n: 40, real: 0 };
+    for (let t = 0; t < o.n; t++) { const f = build(() => 600 + 60 * gauss()); if (f && f.flat && !f.fit) o.flat++; }
+    for (let t = 0; t < 20; t++) { const f = build(c => 50 + 900 / (1 + Math.pow(10, (Math.log10(10000 / Math.pow(3, c - 2)) - 2.5))) + 40 * gauss()); if (f && f.fit && !f.flat) o.real++; else if (!o.why) o.why = f ? { flat: f.flat, failed: f.failed, n: f.pts.length, y: f.pts.map(p => Math.round(p.y)) } : 'no fit'; }
+    return o;
+  })()`));
+  check('BA10', 'at least 36 of 40 flat series of noise are n.d. ("the series is flat"), none draws a cliff', r.flat >= 36, r);
+  check('BA10', 'a real curve (IC50 inside the doses, 4 % noise) keeps its fit in every one of 20 runs', r.real === 20, r);
+  await ctx.close();
 });
 
 await browser.close(); server.close();

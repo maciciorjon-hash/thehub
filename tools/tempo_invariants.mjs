@@ -906,6 +906,22 @@ try {
   }
 } catch (e) { findings.push('✗ the run stopped: ' + (e && e.stack || e)); console.log('✗ the run stopped: ' + (e && e.stack || e)); }
 
+// ── DR1 a dose-response must be better than a flat line (Echo's E81; the engine is _curveVsFlat) ─────────────────────────────
+try {
+  const r = await ev(() => {
+    let seed = 20261027; const rnd = () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; };
+    const gauss = () => Math.sqrt(-2 * Math.log(rnd() + 1e-12)) * Math.cos(2 * Math.PI * rnd());
+    const pts = f => { const o = []; for (let i = 0; i < 8; i++) for (let k = 0; k < 2; k++) { const x = -9 + i * 0.5; o.push({ x, y: f(x) }); } return o; };
+    const o = { flat: 0, real: 0, potent: 0, n: 60 };
+    for (let t = 0; t < o.n; t++) { const r = tpFitDR(pts(() => 100 + 8 * gauss()), null, 'x'); if (r && /No effect \(no dose-response/.test(r.Flag_Reason) && r.Dmax_pct === 0) o.flat++; }
+    for (let t = 0; t < 30; t++) { const r = tpFitDR(pts(x => 100 / (1 + Math.pow(10, x + 7)) + 8 * gauss()), null, 'x'); if (r && !/No effect/.test(r.Flag_Reason) && r.DC50_nM > 50 && r.DC50_nM < 200) o.real++; }
+    for (let t = 0; t < 30; t++) { const r = tpFitDR(pts(() => Math.max(0, 5 + 3 * gauss())), null, 'x'); if (r && !/No effect/.test(r.Flag_Reason)) o.potent++; }
+    return o;
+  });
+  check('DR1 flat dose series are the flat line (No effect, Dmax 0): at least 57 of 60', r.flat >= 57, JSON.stringify(r));
+  check('DR1 a real curve keeps its fit (30 of 30) and a compound maximal at every dose is not "no effect" (30 of 30)', r.real === 30 && r.potent === 30, JSON.stringify(r));
+} catch (e) { findings.push('✗ DR1 the checks ran to the end: ' + String(e && e.message || e).split('\n')[0]); }
+
 await browser.close();
 if (findings.length) { console.log('\n' + findings.length + ' finding(s), ' + passed + ' checks passed.'); process.exit(1); }
 console.log('Tempo invariants: ' + passed + ' checks passed.');

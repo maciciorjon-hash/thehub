@@ -4464,7 +4464,20 @@ function _lmFit(xArr, yArr, pInit, loBound, hiBound, valFn, jacFn, maxIter) {
   for(let i=0;i<n;i++){const jac=jacFn(xArr[i],...p);for(let a=0;a<np;a++) for(let b=0;b<np;b++) finalJtJ[a][b]+=jac[a]*jac[b];}
   const inv=_matInv(finalJtJ);
   const se=inv?inv.map((row,i)=>Math.sqrt(Math.max(0,row[i]*sigma2))):null;
-  return { params: p, r2: ssTot > 0 ? 1 - ssRes / ssTot : 0, se, df };
+  return { params: p, r2: ssTot > 0 ? 1 - ssRes / ssTot : 0, se, df, ssRes, ssTot, n, np };
+}
+
+// Is this curve any better than a horizontal line? The 4PL always returns a sigmoid — a flat series of
+// noise gets one too, usually a cliff at the edge of the doses, with a potency and a span nobody
+// measured. Extra-sum-of-squares F test of the fitted curve (np parameters) against the mean of the
+// same points (1 parameter). Measured on flat series with 10 % noise: 99 % of them fail p < 0.05, while
+// a curve whose midpoint is inside the doses passes at 100 %. null: too few points to ask (under 3 residual
+// degrees of freedom the test has no power: a clean 5-point curve would fail it).
+function _curveVsFlat(fit) {
+  if (!fit || !(fit.n - fit.np >= 3) || !(fit.ssTot > 0)) return null;
+  const d1 = fit.np - 1, d2 = fit.n - fit.np;
+  const F = Math.max(0, fit.ssTot - fit.ssRes) / d1 / (Math.max(fit.ssRes, 1e-12 * fit.ssTot) / d2);
+  return { F, p: _pF(F, d1, d2), df1: d1, df2: d2 };
 }
 
 // Multi-start LM: tries 5 evenly-spaced logEC50 seeds plus a 6th "X at YMID" seed
@@ -4947,7 +4960,9 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
         // Hoisted: the flag block below asks whether a fitted parameter came to rest exactly on
         // the bound it was given, which needs the bounds still in scope.
         const topLo = gainMode ? 0.1 : (skipNorm ? _dataMax * 0.3 : 50);
-        const topHi = gainMode ? Math.max(yMax2 * 5, 1) : (skipNorm ? _dataMax * 3.0 : 200);
+        // A free top on the % scale was allowed up to 200 %, so a series with no top plateau in it returned an Emax of
+        // 190 %. A plateau can sit a little above the highest readings (noise), not a hundred points above them.
+        const topHi = gainMode ? Math.max(yMax2 * 5, 1) : (skipNorm ? _dataMax * 3.0 : _topCapPct(yMin2, yMax2));
         if (_effFreeTop) {
           const pInit = [
             Math.max(loBotEff, Math.min(hiBotEff, _yMinRobust)),
@@ -4955,23 +4970,40 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
             Math.max(loHillEff, Math.min(hiHillEff, 1)),
             Math.max(topLo, Math.min(topHi, _yMaxRobust))
           ];
-          const { params, r2, se, df } = _fitBest(xArr, yArr, pInit,
+          const _fb = _fitBest(xArr, yArr, pInit,
             [loBotEff, xMin - 1, loHillEff, topLo], [hiBotEff, xMax + 1, hiHillEff, topHi],
             gainMode ? _4plVal4_gain : _4plVal4, gainMode ? _4plJac4_gain : _4plJac4, 1000);
-          fitResult = { bot: params[0], logec50: params[1], hill: params[2], tc: params[3], r2, se, df };
+          const { params, r2, se, df } = _fb;
+          fitResult = { bot: params[0], logec50: params[1], hill: params[2], tc: params[3], r2, se, df, _fit: _fb };
         } else {
           const pInit = [
             Math.max(loBotEff, Math.min(hiBotEff, _yMinRobust)),
             Math.max(xMin - 1, Math.min(xMax + 1, (xMin + xMax) / 2)),
             Math.max(loHillEff, Math.min(hiHillEff, 1))
           ];
-          const { params, r2, se, df } = _fitBest(xArr, yArr, pInit,
+          const _fb = _fitBest(xArr, yArr, pInit,
             [loBotEff, xMin - 1, loHillEff], [hiBotEff, xMax + 1, hiHillEff],
             (xi, b, l, h) => _4plVal3(xi, b, l, h, _tc),
             (xi, b, l, h) => _4plJac3(xi, b, l, h, _tc), 1000);
-          fitResult = { bot: params[0], logec50: params[1], hill: params[2], tc: _tc, r2, se, df };
+          const { params, r2, se, df } = _fb;
+          fitResult = { bot: params[0], logec50: params[1], hill: params[2], tc: _tc, r2, se, df, _fit: _fb };
         }
 
+        // Is there a curve at all? The 4PL returns a sigmoid for anything, and a flat series of noise gets one too —
+        // typically a cliff at the first or last dose with a Dmax of 90 % and a potency outside the doses. Tested against
+        // the mean of the same readings (F test, p < 0.05). A series flat at the FULL-EFFECT end (below half the control)
+        // is the opposite case — a compound already maximal at the lowest dose, EC50<range — and keeps its fit. Only where
+        // the scale is known (% of control, loss of signal): on raw counts "flat and low" cannot be told from "flat and inactive".
+        let _noCurve = null;
+        if (!gainMode && !skipNorm && !_rawCounts) {
+          const _cv = _curveVsFlat(fitResult._fit), _lvl = yArr.reduce((s, v) => s + v, 0) / yArr.length;
+          if (_cv && _cv.p >= NO_CURVE_P && _lvl > 50) _noCurve = { p: _cv.p, level: _lvl };
+        }
+        if (_noCurve) {
+          // Report the flat line, not a sigmoid it did not earn: span 0, no midpoint, no interval.
+          const _lv = _noCurve.level;
+          fitResult = { bot: _lv, logec50: (xMin + xMax) / 2, hill: 1, tc: _lv, r2: 0, se: null, df: fitResult.df, _fit: fitResult._fit };
+        }
         const { bot, logec50, hill, tc, r2 } = fitResult;
         // Three significant figures, not one decimal: a 0.04 nM potency printed as 0, and its
         // lower confidence limit with it ("0–14888").
@@ -5019,8 +5051,8 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
         // it is where the search stopped — a bottom of -20% or a top of 140% on a normalised
         // scale is not something a plate can produce.
         const _atBound = (val, lo, hi) => Math.abs(val - lo) < 1e-6 || Math.abs(val - hi) < 1e-6;
-        if (!_fixBot2 && _atBound(bot, loBotEff, hiBotEff)) flags.push('Bottom at bound');
-        if (_effFreeTop && _atBound(tc, topLo, topHi)) flags.push('Top at bound');
+        if (!_noCurve && !_fixBot2 && _atBound(bot, loBotEff, hiBotEff)) flags.push('Bottom at bound');
+        if (!_noCurve && _effFreeTop && _atBound(tc, topLo, topHi)) flags.push('Top at bound');
 
         // An EC50 that landed on its bound is not a measurement: the curve never turned inside
         // the doses actually tested, and the fitter says so in its own confidence interval —
@@ -5040,9 +5072,13 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
         const _ecEps = 1e-9;
         // A flat curve (below) has no midpoint, so "EC50<range" on one — more potent than the
         // lowest dose — said the opposite of the truth. The range test is for curves that move.
-        const _noEffect = Math.abs(tc - bot) < NO_EFFECT_SPAN;
+        const _noEffect = !!_noCurve || Math.abs(tc - bot) < NO_EFFECT_SPAN;
+        // A free top that came to rest on its ceiling (a quarter of the readings' range above their maximum, _topCapPct) is the data asking
+        // for a plateau higher than any reading: the first dose is already on the slope, so the midpoint is not inside the doses.
+        const _topCapHit = !_noEffect && !gainMode && !skipNorm && _effFreeTop && Math.abs(tc - topHi) < 1e-6 && topHi < 200;
         if (!_noEffect && logec50 < xMin - _ecEps) flags.push('EC50<range');
         else if (!_noEffect && logec50 > xMax + _ecEps) flags.push('EC50>range');
+        else if (_topCapHit) flags.push('EC50<range');
 
         // A curve that barely moves has no midpoint to measure. The fitter still returns one
         // (a flat line fits any EC50 equally badly), and the test data had BRD3:EDA-132 — 6%
@@ -5050,7 +5086,8 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
         // because R² happened to be switched on. Below NO_EFFECT_SPAN points of the normalised
         // scale the potency is past the range tested, which is how it is labelled and how
         // Labbook treats it: counted, never averaged.
-        if (_noEffect) flags.push('No effect (span ' + Math.round(Math.abs(tc - bot)) + '%)');
+        if (_noCurve) flags.push('No effect (no dose-response: not better than a flat line, p=' + (_noCurve.p < 0.001 ? '<0.001' : _noCurve.p.toFixed(2)) + ')');
+        else if (_noEffect) flags.push('No effect (span ' + Math.round(Math.abs(tc - bot)) + '%)');
 
         const concGroups = {};
         for (const row of fitSdata) {
@@ -5225,6 +5262,10 @@ var ECHO_ASSAY_LABELS = {
 };
 // Points of the normalised (0–100) scale a curve must move before its midpoint is a potency.
 const NO_EFFECT_SPAN = 20;
+// A curve must beat a horizontal line at this p (extra-sum-of-squares F test, _curveVsFlat) to have a potency.
+const NO_CURVE_P = 0.05;
+// Highest a FREE top may go on the % scale: a quarter of the readings' own range above their maximum (never under 110 %, never over 200 %).
+function _topCapPct(yMin, yMax) { return Math.min(200, Math.max(110, yMax + 0.25 * Math.max(0, yMax - yMin))); }
 function echoResultRows(onlyType){
   var d = (typeof _lastResultsData !== 'undefined' && _lastResultsData) || [];
   if (onlyType) d = d.filter(function (r) { return r._assayType === onlyType; });
@@ -5373,7 +5414,7 @@ function renderResults(data) {
   const _noGain = _t==='displacement';
   const _vl = window._bpVarLabels || {};
   const _colLbls = {DC50_nM:_vl['DC50_nM']||'DC50 (nM)',AbsDC50_nM:_vl['AbsDC50_nM']||'Abs DC50 (nM)',Dmax_pct:_vl['Dmax_pct']||'Dmax (%)',LogIC50_M:_vl['LogIC50_M']||'LogIC50 (M)',pDC50:_vl['pDC50']||'pDC50 (M)',HillSlope:'Hill',R2:'R²',Flag:'Flag',Flag_Reason:'Reason'};
-  const _ND_TIP = 'No effect: the curve barely moves, so there is no midpoint to report. This value is where the fit stopped, not a potency.';
+  const _ND_TIP = 'No effect: the curve barely moves, or is no better than a flat line through the same readings, so there is no midpoint to report. This value is where the fit stopped, not a potency.';
   const _isND = r => /No effect/.test(r.Flag_Reason || '');
   const _tdv = (r, v) => _isND(r) ? '<td class="nd" title="' + _ND_TIP + (_ndOn() ? ' (fitted value: ' + String(v).replace(/[<>"]/g, '') + ')' : '') + '">' + (_ndOn() ? ND_TEXT : v) + '</td>' : '<td>' + v + '</td>';
   const _cellFn = {
@@ -10100,7 +10141,7 @@ function fit4PL_JS(pts, topFixed=true, topVal=100, botFixed=false, botVal=null, 
       (xi,b,l,h)=>_4plVal3(xi,b,l,h,tc), (xi,b,l,h)=>_4plJac3(xi,b,l,h,tc), 1000);
     [bot,logec50,hill]=params; top=tc;
   } else {
-    const loTop=topFixed?t0-0.01:50, hiTop=topFixed?t0+0.01:200;
+    const loTop=topFixed?t0-0.01:50, hiTop=topFixed?t0+0.01:_topCapPct(yMn,yMx);
     const pBase=[Math.max(loBot,Math.min(hiBot,b0)), (xMn+xMx)/2, h0, Math.max(loTop,Math.min(hiTop,t0))];
     const {params}=_fitBest(xs, ys, pBase, [loBot,loEC,loHill,loTop], [hiBot,hiEC,hiHill,hiTop],
       _4plVal4, _4plJac4, 1000);
@@ -16163,7 +16204,7 @@ var tourRegister, appTour, tourEnd, tourGuideRefresh, tourOffer;
           ['95 % CI', 'The confidence interval of the DC50.'],
           ['Normalisation · vs plain mean', 'How the 100 % reference of the curve’s plates was set, and whether the potency changes if the plain plate mean is used instead — **Same** or **Differs**.'],
           ['Buttons', '**Compare…** (two analyses from History), **Copy TSV**, **Export ▾** — the results workbook (with every well in its *Raw data* sheet), the Screen table Hit Finder reads, the curve PDFs — and inside dHUB **Send to ▾** — Labbook, Hit Finder, Ribbon.']],
-        watch: [{ k: 'tip', t: 'A curve flagged *No effect* barely moves — its potency is n.d. and it is left off potency plots. A midpoint beyond the doses tested is a bound, not a value.' }],
+        watch: [{ k: 'tip', t: 'A curve flagged *No effect* barely moves, or is no better than a flat line through its own readings (F test, p ≥ 0.05) — its potency is n.d. and it is left off potency plots. A midpoint beyond the doses tested is a bound, not a value.' }],
         steps: [
           { sel: '#results-panel .results-tbl-scroll', t: 'One row per curve', place: 'top', miss: MISS,
             b: 'DC50, Dmax, Hill, R², the flag and why, the confidence interval and how the curve was normalised. **Click a header to sort**; hover an n.d. for the number behind it.' },
