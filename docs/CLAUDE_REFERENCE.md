@@ -8468,3 +8468,15 @@ Jon copied a time course that used OA and could not take the OA block out of the
 - An experiment now saves `setupHide` / `setupAdd` on its own record at Apply (`e.setupAdd` was read before but never written after creation); the diff on the right lists removed and added questions too.
 - The popup (`.modal.es`): up to 1180 px, questions left under sentence-case headings, "What will change" right and always in view, footer fixed; one column under 760 px. A question's edit/× sit top-right and appear on hover (always on touch). The plate note under a number stays a grid sibling of its cell (T16) and `_platesNoteRefresh` looks for it beside the `.q-i` cell.
 - Invariant `tools/labbook_audit_invariants.mjs` L13 (fails on the old code: no `.q-i` cells).
+
+## The experiment header: bar, Details and the dialogs behind them (HB1–HB10, 2026-10-27)
+
+Jon: "toda esta barra y los submenus necesitan un rework… busca fallos… aplícalo a todos, nuevos y viejos". Everything is drawn from the live record, so stored runs get it with no migration. Faults found by driving the bar:
+- A **note** got What you need / Bench sheet / Save as preset / Close / Repeat (Repeat silently did nothing). `expActs` returns only Duplicate + Delete for a non-coded entry.
+- **Refresh wording** was a standing button that opened "Nothing to update" for nearly every run. Removed from the bar: `presetStaleHtml` (above the Steps) says when there is something and carries the button; the row menu keeps it.
+- **Unarchive** left "On hold" locked and closed (`expClosed`), so a run you came back to never re-entered the planner. The bar's second state is now **Reopen** (`reopenExperiment`: unarchive + release the lock + status from the ticks); `expReopenable(e)` = archived or `statusLocked`, so runs already stranded that way get the button. `closeExperiment` is one undo step (was two).
+- **Start date** re-dated ticked steps (a record). `setField('startDate')` now moves only steps not ticked and says how many stayed. `setField('type')` redraws.
+- **Details** lost its Status select (Close/Reopen decide; ticks derive) except for a run with no steps. The line under the title now carries `n/N steps` and "archived".
+- **Save as preset** never makes two presets of one name (`name (2)`); **Delete** says what the run carries (`_delHas`); **Repeat** names "Replicate n of CODE"; **What you need** lost the "named in the setup · named on the experiment" notes and its three-line preamble.
+- Help KB (`tools/assist/kb/labbook.js`) updated (Update wording, Reopen). Invariant `tools/labbook_header_invariants.mjs` HB1–HB10 (in CI); each fails on the code before this change.
+- Left to the Setup session: the bar's **Setup** button and the Setup section's **Edit** do the same thing (one is redundant); Details › Cell lines repeats Setup › Cell line.
