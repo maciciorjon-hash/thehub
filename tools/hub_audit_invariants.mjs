@@ -21,6 +21,9 @@
 //                                  for a code, and an unlock made now survives a reload
 //   H14 a calculation, answered  The search, signed in or not, answers "10 mM to 50 µM in 1 mL" with the pipetting as its first row, Enter copies it as text,
 //                                  an ordinary query gets no such row, and the empty box says it can (the arithmetic itself is tools/calckit_invariants.mjs)
+//   H15 one SheetJS, shared        The shell carries the only copy of SheetJS (Echo, Beacon and BCA hold none and take the shell's), an .xlsx whose bytes were made
+//                                  as an ArrayBuffer INSIDE an app frame still reads there (a frame's ArrayBuffer is a foreign object to the shell's SheetJS), and Echo's
+//                                  test data is a file beside the build that 'Load test data' fetches on first use
 //
 //   node tools/hub_audit_invariants.mjs [--shell=PATH] [--only=H2]      exit 1 on any finding
 import { chromium } from 'playwright';
@@ -407,6 +410,51 @@ if (run('H13') && /[\\/]dist[\\/]/.test(SHELL)) {
   shellFonts >= 3 ? ok() : bad('H13', 'with Google blocked the shell loaded ' + shellFonts + ' Plex faces, expected 3 or more');
   await ctx.close();
 }
+// H15 — SheetJS once, and test data outside the bundle. Echo, Beacon and BCA used to embed their own 639 KB copy; they take the shell's through hubXLSX(), which has to
+// accept the ArrayBuffers an app makes in its own frame (File.arrayBuffer(), FileReader), because SheetJS in the shell's realm reads a foreign ArrayBuffer as text.
+if (run('H15')) {
+  const html = fs.readFileSync(SHELL, 'utf8');
+  const MARK = '2013-present SheetJS';
+  const count = t => t.split(MARK).length - 1;
+  count(html) === 1 ? ok() : bad('H15', 'the shell should carry exactly one SheetJS, it has ' + count(html));
+  for (const id of ['echo', 'beacon', 'spectra']) {
+    const m = html.match(new RegExp('\\b' + id + ': "([^"]*)"'));
+    const own = m ? count(Buffer.from(m[1], 'base64').toString('utf8')) : -1;
+    own === 0 ? ok() : bad('H15', id + ' still embeds its own SheetJS (' + own + ' copies) in the bundle');
+  }
+  if (!fs.existsSync(path.join(path.dirname(SHELL), 'echo-testdata.js'))) bad('H15', 'echo-testdata.js is not beside the build — Echo\'s "Load test data" has nothing to fetch'); else ok();
+  const { context, page, errs } = await open({ mode: 'admin' });
+  await context.route(/cdnjs\.cloudflare\.com/, r => r.abort());
+  for (const id of ['echo', 'beacon', 'spectra']) {
+    await page.evaluate(i => openApp(i), id);
+    await page.waitForFunction(i => { const f = document.getElementById('frame-' + i); return f && f.contentWindow && f.contentWindow.XLSX; }, id, { timeout: 12000 }).catch(() => {});
+    const r = await page.evaluate(i => {
+      const w = document.getElementById('frame-' + i).contentWindow;
+      if (!w.XLSX) return { err: 'no XLSX in the frame' };
+      try {
+        const wb = w.eval("(function(){ var b = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(b, XLSX.utils.aoa_to_sheet([['ok', 2], [3, 4]]), 'S'); return b; })()");
+        const u8 = new w.Uint8Array(w.XLSX.write(wb, { type: 'array', bookType: 'xlsx' }));
+        const ab = u8.slice().buffer;                                  // a frame-realm ArrayBuffer, as File.arrayBuffer() makes
+        if (ab instanceof ArrayBuffer) return { err: 'the test buffer is not foreign' };
+        const back = w.XLSX.read(ab, { type: 'array' });
+        return { sheets: back.SheetNames.join(','), a1: back.Sheets.S && back.Sheets.S.A1 && back.Sheets.S.A1.v };
+      } catch (e) { return { err: String(e && e.message || e) }; }
+    }, id);
+    !r.err && r.sheets === 'S' && r.a1 === 'ok' ? ok() : bad('H15', id + ': a workbook built from the frame\'s own ArrayBuffer did not read back: ' + JSON.stringify(r));
+  }
+  await page.evaluate(() => openApp('echo'));
+  await page.waitForFunction(() => { const f = document.getElementById('frame-echo'); return f && f.contentWindow && typeof f.contentWindow.loadTestData === 'function'; }, null, { timeout: 12000 }).catch(() => {});
+  const t = await page.evaluate(async () => {
+    const w = document.getElementById('frame-echo').contentWindow;
+    const before = w.eval('typeof _TEST_ECHO_B64');
+    await w.loadTestData(); await new Promise(r => setTimeout(r, 150));
+    return { before, after: w.eval('typeof _TEST_ECHO_B64'), readers: Object.keys(w.eval('readerFiles')).length, echo: w.eval('echoFiles.length') };
+  });
+  t.before === 'undefined' && t.after === 'string' && t.readers === 6 && t.echo === 1 ? ok() : bad('H15', 'Echo\'s test data was not fetched on first use: ' + JSON.stringify(t));
+  const own = errs.filter(e => !/sandbox/.test(e)); if (own.length) bad('H15', own[0]);
+  await context.close();
+}
+
 await browser.close();
 for (const f of findings) console.log(f);
 console.log(`\n${passed} passed, ${findings.length} finding${findings.length === 1 ? '' : 's'}`);

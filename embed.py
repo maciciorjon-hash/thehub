@@ -472,6 +472,17 @@ from inline_3dmol import inline as _inline_3dmol
 
 src = open(SHELL, encoding='utf-8').read()
 errors = []
+# SheetJS, once for the whole Hub. The shell carries it and a srcdoc frame is same-origin, so Echo, Beacon and BCA take
+# window.parent.XLSX instead of each embedding the same 639 KB (about 850 KB once base64'd) — the source files keep their
+# copy so each app still opens on its own; only the bundle drops it. With no parent copy (an app opened alone) the shim
+# falls back to the CDN tag the other apps use.
+_SHEETJS_BLOCK = re.compile(r'<script>\s*/\*! xlsx\.js \(C\) 2013-present SheetJS[^\n]*\n[\s\S]*?</script>')
+_SHEETJS_SHIM = ('<script>/* SheetJS: the Hub shell\'s copy (embed.py removed this app\'s own) */(function(){ var p; try{ p = window.parent; }catch(e){}\n'
+                 'if (p && p !== window && p.XLSX) { window.XLSX = p.hubXLSX ? p.hubXLSX() : p.XLSX; }\n'
+                 'else { document.write(\'<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"><\\/script>\'); } })();</script>')
+SHEETJS_SHARED = ('echo', 'beacon', 'spectra')
+if not _SHEETJS_BLOCK.search(src):
+    errors.append('shell: its SheetJS block is missing — the apps would have no XLSX to take from it')
 # A deployed build (an output path was given, i.e. dist/) carries IBM Plex as files next to index.html instead of asking Google for it:
 # the same face with no third-party request, and the first paint does not wait on one. (A srcdoc frame resolves a relative URL against
 # its parent's, so fonts/plex.css works inside every app frame; the Labbook/Archive PWA profiles already do this.) The personal
@@ -542,6 +553,15 @@ for key, rel in APPS:
         except (ValueError, OSError) as e:
             errors.append('ribbon: could not embed 3Dmol - %s' % e)
             continue
+    if key in SHEETJS_SHARED:
+        html_txt, n_js = _SHEETJS_BLOCK.subn(lambda m: _SHEETJS_SHIM, data.decode('utf-8'))
+        if n_js != 1:
+            errors.append('%s: expected 1 inline SheetJS block to replace, got %d' % (key, n_js))
+            continue
+        data = html_txt.encode('utf-8')
+    if key == 'echo':
+        # Echo's test data is a file beside the build (see _ensureTestData in echo.html), not 870 KB inside every Hub.
+        ECHO_TESTDATA = open(os.path.join(BASE, 'apps/echo/echo-testdata.js'), 'rb').read()
     if SELF_FONTS:
         data = _FONT_LINK.sub('<link rel="stylesheet" href="fonts/plex.css">', data.decode('utf-8')).encode('utf-8')
     b64 = base64.b64encode(data).decode('ascii')
@@ -563,6 +583,9 @@ if out_dir:
     os.makedirs(out_dir, exist_ok=True)
 open(OUT, 'w', encoding='utf-8').write(src)
 print(f'Output: {OUT} ({len(src):,} chars)')
+if any(k == 'echo' for k, _ in APPS) and out_dir:
+    open(os.path.join(out_dir, 'echo-testdata.js'), 'wb').write(ECHO_TESTDATA)
+    print(f'Wrote {os.path.join(out_dir, "echo-testdata.js")} (Echo test data, fetched on first use)')
 if SELF_FONTS and out_dir:
     import shutil
     fdir = os.path.join(out_dir, 'fonts'); os.makedirs(fdir, exist_ok=True)
