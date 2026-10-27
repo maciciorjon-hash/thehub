@@ -217,11 +217,11 @@ body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);f
   transition:transform var(--dur-2) var(--ease-out),width var(--dur-2) var(--ease-out);}
 .cells-tabs .hub-ink{background:var(--accent);}
 .inked>.set-tab.on,.inked>.cells-tab.on{border-bottom-color:transparent;}
-@keyframes hub-tab-in{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:none;}}
+@keyframes hub-tab-in{from{opacity:.35;transform:translateY(2px);}to{opacity:1;transform:none;}}
 @keyframes hub-frame-in{from{opacity:0;}to{opacity:1;}}
-.tab-in{animation:hub-tab-in var(--dur-2) var(--ease-out);}
+.tab-in{animation:hub-tab-in var(--dur-1) var(--ease-out);}
 @keyframes hub-tab-out{from{opacity:1;}to{opacity:0;}}
-.tab-out{animation:hub-tab-out var(--dur-2) var(--ease) forwards;pointer-events:none;}
+.tab-out{animation:hub-tab-out var(--dur-1) var(--ease) forwards;pointer-events:none;}
 iframe.tab-in{animation:hub-frame-in var(--dur-2) var(--ease);}
 .set-note{font-size:var(--fs-2);color:var(--text3);line-height:1.55;margin:2px 0 10px;}
 .opts-action-btn.danger{color:var(--danger);border-color:var(--danger);}
@@ -294,19 +294,19 @@ body.hub-announcing #hub-home{margin-top:calc(var(--top) + 40px + var(--hub-noti
 #egg-list{padding:12px 12px 16px;}
 
 /* ── Card entrance animation ─────────────────────────────────────── */
-@keyframes cardIn{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
+@keyframes cardIn{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:translateY(0);}}
 /* Applied by _enter() to freshly rendered content only. It used to sit on .card itself, so
    every card replayed its entrance on every re-render — a flash on each section change. */
-.ld-enter > *{animation:cardIn var(--dur-3) var(--ease) both;}
-.ld-enter .ld-grid > *{animation:cardIn var(--dur-3) var(--ease) both;}
+.ld-enter > *{animation:cardIn var(--dur-1) var(--ease) both;}
+.ld-enter .ld-grid > *{animation:cardIn var(--dur-1) var(--ease) both;}
 /* A grid should arrive as one gesture, so the stagger is small and capped: past ~8 cards
    the tail would be waiting on an animation rather than reading a page. */
 .ld-enter .ld-grid > *:nth-child(1){animation-delay:0ms}
-.ld-enter .ld-grid > *:nth-child(2){animation-delay:26ms}
-.ld-enter .ld-grid > *:nth-child(3){animation-delay:52ms}
-.ld-enter .ld-grid > *:nth-child(4){animation-delay:78ms}
-.ld-enter .ld-grid > *:nth-child(5){animation-delay:96ms}
-.ld-enter .ld-grid > *:nth-child(n+6){animation-delay:110ms}
+.ld-enter .ld-grid > *:nth-child(2){animation-delay:12ms}
+.ld-enter .ld-grid > *:nth-child(3){animation-delay:24ms}
+.ld-enter .ld-grid > *:nth-child(4){animation-delay:36ms}
+.ld-enter .ld-grid > *:nth-child(5){animation-delay:44ms}
+.ld-enter .ld-grid > *:nth-child(n+6){animation-delay:50ms}
 /* Motion is decoration here: every transition above is a nicety and none of it carries
    meaning that survives being turned off. Only Cuppa honoured this before. */
 @media (prefers-reduced-motion: reduce){
@@ -2071,7 +2071,7 @@ function openCells(tab, item, context){
     // beat between the two — the "bump".
     if (!f) return;
     if (t.id === tab) { f.style.display = ''; f.style.zIndex = '1'; f.classList.remove('tab-out'); if (switching) _hubTabAnim(f); }
-    else if (switching && t.id === prevTab) { f.style.display = ''; f.style.zIndex = '0'; f.classList.add('tab-out'); clearTimeout(f._outT); f._outT = setTimeout(function(){ if (_cellsTab !== t.id) { f.style.display = 'none'; f.classList.remove('tab-out'); } }, 260); }
+    else if (switching && t.id === prevTab) { f.style.display = ''; f.style.zIndex = '0'; f.classList.add('tab-out'); clearTimeout(f._outT); f._outT = setTimeout(function(){ if (_cellsTab !== t.id) { f.style.display = 'none'; f.classList.remove('tab-out'); } }, 170); }
     else { f.style.display = 'none'; f.classList.remove('tab-out'); }
   });
   if (small) tabs.forEach(function(t){ if (t.id !== tab && loaded[t.id]) _unloadApp(t.id); });
@@ -2169,7 +2169,8 @@ function openApp(id, tab, item, context) {
     if (v !== view) { v.style.display = 'none'; v.style.opacity = ''; }
   });
   var _org = (_wasIn !== id) ? _takeOrigin() : null;
-  view.style.opacity = _org ? '1' : '0';
+  var _same = (_wasIn === id) && view.style.display === 'flex';   // a section change inside the app on screen: nothing to fade
+  if (!_same) view.style.opacity = _org ? '1' : '0';
   view.style.display = 'flex';
   // Fade the home out as the app comes in. .app-view has an opaque background, so once it
   // lands it covers — but for the length of the fade you were looking through a half-
@@ -2183,7 +2184,7 @@ function openApp(id, tab, item, context) {
   // invisible for good. That was survivable only because the home was still lit underneath;
   // fading the home out turned it into a blank screen, which is how I found it.
   if (_org) _expandFrom(view, _org);
-  else { void view.offsetWidth; view.style.opacity = '1'; }
+  else if (!_same) { void view.offsetWidth; view.style.opacity = '1'; }
   setTimeout(function() { if(currentApp===id) enterAppNav(id); }, 0);
   setTimeout(function() { if(currentApp===id) _focusApp(id); }, 450);
   if (document.body.classList.contains('ws')) renderRail();
@@ -3536,28 +3537,11 @@ function wsGo(id){
     wsSetWhere(n.name);
     return;
   }
-  var fromApp=!!currentApp;
   if(currentApp) backToHub({plain:true});   // leave whatever app is open; the section is already set — and its card is not on the next landing
-  // One landing to another cross-fades: a copy of the one you are leaving stays where it was and fades out
-  // over the new one arriving, instead of the page being replaced in one frame.
-  if(!fromApp && _was!==id) _landingGhost();
+  // One landing to another is a cut and a short arrival of the cards (.ld-enter): a copy of the old one fading
+  // over the new one read as a smear of two grids, so there is none.
   renderLanding(id);
   wsSetWhere(n.name);
-}
-function _landingGhost(){
-  try{
-    if(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    var host=document.getElementById('hub-suites'); if(!host||!host.children.length||host.style.display==='none') return;
-    var r=host.getBoundingClientRect(); if(r.height<10) return;
-    var old=document.getElementById('ld-ghost'); if(old) old.remove();
-    var g=host.cloneNode(true); g.id='ld-ghost'; g.setAttribute('aria-hidden','true'); g.inert=true;
-    g.classList.remove('ld-enter');
-    g.style.cssText='position:fixed;left:'+r.left+'px;top:'+r.top+'px;width:'+r.width+'px;margin:0;pointer-events:none;z-index:2;opacity:1;transition:opacity 160ms var(--ease),transform 160ms var(--ease);will-change:opacity,transform;';
-    g.querySelectorAll('[id]').forEach(function(e){ e.removeAttribute('id'); });
-    document.body.appendChild(g);
-    requestAnimationFrame(function(){ g.style.opacity='0'; g.style.transform='translateY(-4px)'; });
-    setTimeout(function(){ g.remove(); }, 220);
-  }catch(e){}
 }
 function wsSetWhere(text){
   var w=document.getElementById('ws-where'); if(w) w.textContent=text||'';
@@ -4015,7 +3999,7 @@ function _hubInk(host, edge){
   if(ink.style.transition==='none') requestAnimationFrame(function(){ ink.style.transition=''; });
 }
 function _hubTabAnim(n){ if(!n) return; n.classList.remove('tab-in'); void n.offsetWidth; n.classList.add('tab-in');
-  clearTimeout(n._tabT); n._tabT=setTimeout(function(){ n.classList.remove('tab-in'); },320); }
+  clearTimeout(n._tabT); n._tabT=setTimeout(function(){ n.classList.remove('tab-in'); },170); }
 function renderSetTabs(){
   var host=document.getElementById('set-tabs'); if(!host) return;
   var tabs=SET_TABS.filter(function(t){ return !t.admin || isAdmin; });

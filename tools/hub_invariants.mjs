@@ -4,7 +4,8 @@
 //                         recently or often each was opened (it used to lead with the last opened)
 //   S2  clean cards       no app card carries a tag line ("HiBiT · FP · DC50"); each says what it is in one
 //                         sentence, and no description is cut on a landing at 1440px
-//   S3  smooth changes    one landing to another cross-fades (a copy of the old one fades out, then goes); a data write
+//   S3  smooth changes    one landing to another is a cut with a short arrival of the cards, never a copy of the old one fading
+//                         over the new (two grids at half strength read as a smear); a data write
 //                         replaces the live band only, not the cards; a Cells tab switch keeps the tab bar's buttons
 //                         and fades the old frame out under the new one instead of hiding it in one frame
 //   S4  preload           while the intro plays the likely apps are loaded one after another — for a visitor, never
@@ -17,6 +18,9 @@
 //   S8  lands on Today     an admin opening dHUB starts on Labbook's Today, whatever the last session left (Week, Designer, Experiments)
 //   S7  opaque links      a public app's link is an opaque slug, never its name: opening Echo writes the slug to the URL, the
 //                         slug opens it for anyone, and #echo opens only for the admin or a visitor who typed Echo's word
+//
+//   S9  navigation is quick  a rail click between sections changes the screen at full strength within a frame or two and has
+//                         settled inside 200 ms: no crossfade copy, no section animation longer than --dur-1 + stagger
 //
 //   node tools/hub_invariants.mjs [--shell=PATH] [--only=S1]      exit 1 on any finding
 import { chromium } from 'playwright';
@@ -100,6 +104,7 @@ if (run('S3')) {
     const card = document.querySelector('#hub-suites .ld-card');
     wsGo('more'); await new Promise(r => setTimeout(r, 40));
     const g = document.getElementById('ld-ghost'), op = g ? +getComputedStyle(g).opacity : null;
+    const arriving = document.getElementById('hub-suites').classList.contains('ld-enter');
     await new Promise(r => setTimeout(r, 320));
     const gone = !document.getElementById('ld-ghost');
     // a data write: the band changes, the cards stay the same elements
@@ -118,9 +123,10 @@ if (run('S3')) {
         await new Promise(r => setTimeout(r, 400)); cells.oldHidden = fOld && fOld.style.display === 'none'; }
       backToHub({ plain: true });
     } catch (e) { cells = { err: e.message }; }
-    return { ghost: !!g, op, gone, same, cells };
+    return { ghost: !!g, op, arriving, gone, same, cells };
   });
-  if (!r.ghost || !(r.op < 1)) bad('S3', 'no cross-fade between landings: ' + JSON.stringify(r)); else ok();
+  if (r.ghost) bad('S3', 'a copy of the old landing was laid over the new one: ' + JSON.stringify(r)); else ok();
+  if (!r.arriving) bad('S3', 'the new landing did not arrive (no .ld-enter): ' + JSON.stringify(r)); else ok();
   if (!r.gone) bad('S3', 'the old landing copy was left on the page'); else ok();
   if (!r.same) bad('S3', 'a data write re-rendered the landing cards'); else ok();
   if (r.cells && (r.cells.err || !r.cells.kept || !r.cells.oldShown || !r.cells.fading || !r.cells.oldHidden)) bad('S3', 'Cells tab switch: ' + JSON.stringify(r.cells)); else ok();
@@ -246,6 +252,35 @@ if (run('S7')) {
   if (r.urlInApp !== '#' + r.copy || r.urlInApp === '#echo') bad('S7', 'inside Echo the URL reads ' + r.urlInApp + ', not its slug'); else ok();
   if (r.unlocked.app !== 'echo') bad('S7', '#echo did not open Echo for a visitor who typed its word'); else ok();
   if (r.admin.app !== 'echo') bad('S7', '#echo did not open Echo for the admin'); else ok();
+}
+
+if (run('S9')) {
+  const r = await page.evaluate(async () => {
+    isAdmin = true; document.body.classList.add('ws'); wsGo('planner'); await new Promise(r => setTimeout(r, 1200));
+    const out = { ghosts: 0, longest: 0, dips: [] };
+    const css = [...document.styleSheets].flatMap(s => { try { return [...s.cssRules]; } catch (e) { return []; } });
+    const rule = n => { const k = css.find(x => x.selectorText === n); return k ? k.cssText : null; };
+    out.cardIn = rule('.ld-enter > *'); out.tabIn = rule('.tab-in'); out.tabOut = rule('.tab-out');
+    const lb = document.getElementById('frame-labbook').contentDocument;
+    for (const id of ['experiments', 'planner', 'notebook', 'designer', 'experiments']) {
+      wsGo(id);
+      const t0 = performance.now();
+      await new Promise(r => setTimeout(r, 30));
+      if (lb.querySelector('.lb-ghost') || document.getElementById('ld-ghost')) out.ghosts++;
+      const ed = lb.getElementById('pane-ed');
+      const kid = ed && ed.firstElementChild, op = kid ? +getComputedStyle(kid).opacity : 1;
+      if (op < 0.4) out.dips.push(id + ':' + op.toFixed(2));
+      await new Promise(r => setTimeout(r, 260));
+      const still = lb.querySelector('.pane-ed.screen-in, .tab-in');
+      if (still) out.longest = Math.max(out.longest, performance.now() - t0);
+    }
+    return out;
+  });
+  if (r.ghosts) bad('S9', 'a section change laid a copy of the old screen over the new one'); else ok();
+  if (r.dips.length) bad('S9', 'the new screen started nearly transparent (unreadable for the first frames): ' + r.dips.join(' ')); else ok();
+  if (r.longest) bad('S9', 'a section animation was still running ' + Math.round(r.longest) + ' ms after the click'); else ok();
+  if (!/var\(--dur-1\)/.test(r.cardIn || '')) bad('S9', 'landing cards animate with ' + r.cardIn + ', not one --dur-1'); else ok();
+  if (!/var\(--dur-1\)/.test(r.tabIn || '')) bad('S9', 'a tab body animates with ' + r.tabIn + ', not one --dur-1'); else ok();
 }
 
 for (const e of errs) bad('page', e);

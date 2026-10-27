@@ -971,12 +971,8 @@ html.lb-loading body > *{visibility:hidden;}
 .rc-tabs.inked .rc-tab.on{border-bottom-color:transparent;}
 /* What a tab shows arrives rather than appears. Opacity and a 4px rise only — a transform on a
    container is harmless here: nothing inside a tab body is dragged. */
-@keyframes lb-tab-in{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:none;}}
-.tab-in{animation:lb-tab-in var(--dur-2) var(--ease-out);}
-/* The screen you are leaving, as a picture that fades while the new one comes in. */
-.lb-ghost{position:fixed;overflow:hidden;pointer-events:none;z-index:5;background:var(--surface);
-  opacity:1;transition:opacity 180ms var(--ease);}
-.lb-ghost.go{opacity:0;}
+@keyframes lb-tab-in{from{opacity:.35;transform:translateY(2px);}to{opacity:1;transform:none;}}
+.tab-in{animation:lb-tab-in var(--dur-1) var(--ease-out);}
 .rc-note{font-size:var(--fs-3);color:var(--text2);line-height:1.5;margin-bottom:12px;}
 .rc-act{display:flex;gap:9px;flex-wrap:wrap;}
 .rc-row{display:flex;align-items:center;gap:10px;padding:8px 4px;border-top:1px solid var(--border);}
@@ -2774,8 +2770,8 @@ a,button,input,select,textarea,
    Only when the screen actually changed — renderEditor() runs on every tick, every calculator
    keystroke and every save, and a fade on each of those would be a strobe. renderEditor
    derives the key and adds the class; see _edScreenKey. */
-@keyframes lb-screen-in{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
-.pane-ed.screen-in>*{animation:lb-screen-in var(--dur-3) var(--ease-out);}
+@keyframes lb-screen-in{from{opacity:.45;}to{opacity:1;}}
+.pane-ed.screen-in>*{animation:lb-screen-in var(--dur-1) linear;}
 /* The toast rises rather than materialising in place. */
 #lb-toast{transition:opacity var(--dur-2) var(--ease),transform var(--dur-2) var(--ease-out)!important;}
 
@@ -15287,53 +15283,21 @@ function _edScreenKey(){
   return k+':'+(n.projectId||'')+':'+(n.sectionId||'');
 }
 var _edKey=null, _edScroll={}, _edAnimT=null;
-// The screen being left fades out over the new one arriving — a crossfade, where before the
-// old screen vanished in one frame and only the new one moved. It is a copy of what is on
-// screen, placed where it was, so nothing about the render itself changes: callers that act on
-// the new DOM straight after renderAll() still find it there. Skipped for a very large screen,
-// where copying it would cost more than the fade is worth, and when motion is reduced.
-var _GHOST_MAX=3500;
-function _screenGhost(host){
-  try{
-    if(!host||!host.firstElementChild||_reducedMotion()) return null;
-    if(host.getElementsByTagName('*').length>_GHOST_MAX) return null;
-    var r=host.getBoundingClientRect(); if(r.width<40||r.height<40) return null;
-    var g=document.createElement('div'); g.className='lb-ghost'; g.setAttribute('aria-hidden','true');
-    // A picture of the screen you left, not the screen: a copied editor could take the caret
-    // (Tab reached it) for the 300 ms it fades.
-    g.setAttribute('inert','');
-    g.style.left=r.left+'px'; g.style.top=r.top+'px'; g.style.width=r.width+'px'; g.style.height=r.height+'px';
-    var inner=document.createElement('div');
-    inner.style.cssText='position:absolute;left:0;top:0;width:'+host.clientWidth+'px;transform:translateY('+(-host.scrollTop)+'px);';
-    Array.prototype.forEach.call(host.children,function(c){ var k=c.cloneNode(true);
-      Array.prototype.forEach.call(k.querySelectorAll('[id]'),function(n){ n.removeAttribute('id'); });
-      k.removeAttribute('id'); inner.appendChild(k); });
-    // The pane's own padding, so the copy sits where the original sat.
-    var cs=getComputedStyle(host); inner.style.padding=cs.padding; inner.style.boxSizing='border-box';
-    g.appendChild(inner);
-    return g;
-  }catch(e){ return null; }
-}
 function _reducedMotion(){ try{ return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(e){ return false; } }
 function renderEditor(){
   var host=el('pane-ed'), key=_edScreenKey(), moved=(key!==_edKey);
   if(host && _edKey!==null && moved) _edScroll[_edKey]=host.scrollTop;
-  var ghost=(host && _edKey!==null && moved) ? _screenGhost(host) : null;
   _edKey=key;
   _renderEditorBody();
-  if(ghost){ document.body.appendChild(ghost);
-    requestAnimationFrame(function(){ requestAnimationFrame(function(){ ghost.classList.add('go'); }); });
-    setTimeout(function(){ if(ghost.parentNode) ghost.parentNode.removeChild(ghost); },260); }
   if(host && moved){
     host.scrollTop=_edScroll[key]||0;
-    // Re-adding a class an element already carries does not restart its animation, and the
-    // reflow is what commits the removal before the re-add.
+    // The new screen is there from the first frame and settles with a short fade. Re-adding a class it
+    // already carries restarts nothing, so the reflow commits the removal; a timer takes it off again
+    // (a backgrounded tab never fires animationend), or every re-render would replay it — the strobe the
+    // screen key exists to prevent. A crossfade with a copy of the old screen was tried and dropped: two
+    // text-heavy screens at half strength read as a smear, and the copy had to be cloned on every click.
     host.classList.remove('screen-in'); void host.offsetWidth; host.classList.add('screen-in');
-    // And it has to come off again. The rule is `.pane-ed.screen-in>*`, so a class left on the
-    // pane would re-run the animation on the *new* child every re-render — every tick, every
-    // calculator keystroke — which is the strobe the screen key exists to prevent. A timer,
-    // not animationend: a backgrounded tab never fires the event and the class would stick.
-    clearTimeout(_edAnimT); _edAnimT=setTimeout(function(){ host.classList.remove('screen-in'); }, 360);
+    clearTimeout(_edAnimT); _edAnimT=setTimeout(function(){ host.classList.remove('screen-in'); }, 160);
   }
   try{ xpInitAll(); }catch(_e){}
 }
@@ -25213,7 +25177,7 @@ function _tabInk(tabs){
 // nothing, and the reflow is what commits the removal. Taken off by a timer, not animationend:
 // a background tab never fires the event (the rule renderEditor's screen-in already follows).
 function _tabAnim(n){ if(!n) return; n.classList.remove('tab-in'); void n.offsetWidth; n.classList.add('tab-in');
-  clearTimeout(n._tabT); n._tabT=setTimeout(function(){ n.classList.remove('tab-in'); },320); }
+  clearTimeout(n._tabT); n._tabT=setTimeout(function(){ n.classList.remove('tab-in'); },180); }
 function _tabSwap(body,html){ if(!body) return; body.innerHTML=html; body.scrollTop=0; _tabAnim(body); }
 function _tabMark(tabs,id){ if(!tabs) return; Array.prototype.forEach.call(tabs.querySelectorAll('.rc-tab'),function(b){ b.classList.toggle('on',b.getAttribute('data-t')===id); }); _tabInk(tabs); }
 function _tabsOpened(){ requestAnimationFrame(function(){ _tabInk(document.querySelector('#lb-dialog-card .rc-tabs')); }); }
@@ -25813,9 +25777,9 @@ window.addEventListener('message', function(e){
     // The older views stay answered so a saved link or an old shell keeps working.
     // The Hub's first words after it loads are "Planner": that is the landing, and the landing is Today, not
     // wherever the last session ended. Later Planner clicks still return to where you were.
-    if(v==='planner'){ if(_first) selectNode('journal'); else openPlannerWs(); }
+    if(v==='planner'){ if(_first) selectNode('journal'); else if(!journalSurface(SEL.node.kind)) openPlannerWs(); }
     else if(v==='notebook'){ if(lbWorkspace()!=='notebook') openJournalWs(); }
-    else if(v==='experiments') openExperimentsWs();
+    else if(v==='experiments'){ if(!expsSurface(SEL.node.kind)) openExperimentsWs(); }
   else if(v==='visualize') openPlannerWs();
     else if(v==='designer') selectNode('design');
     else if(v==='home') selectNode('home');

@@ -8501,3 +8501,19 @@ Jon: "en dose response… aunque no haya ninguna curva la app siempre intenta fi
 - **A plateau resting on its cap is a bound.** Capping alone broke Beacon BA2 (a curve cut off before its midpoint now bent inside the data and read as measured). So: bottom at its floor ⇒ midpoint past the top dose (`>`), top at its ceiling ⇒ before the lowest (`<`), reversed for gain; Echo adds `EC50<range` when the free top sits on `_topCapPct` (< 200), Lumina sets `flagRangeHi/Lo`, Beacon `fit.capBound` → `o.bound`. A bottom resting on the user's own floor (Bottom ≥ 0) is not this.
 - Invariants (each proven against HEAD): `echo_invariants.mjs` **E81** (≥ 95/100 flat series reported flat, Dmax 0, real curve never, maximal-at-every-dose keeps EC50<range, cap values, free top within cap), `lumina_invariants.mjs` **L24** (flat → noCurve/n.d./out of the Plot/no Labbook potency; real and potent keep their fits), `beacon_audit_invariants.mjs` **BA10** (one well per dose: 0/40 on the old build). Probe scripts were scratch; the numbers above came from 300–1,500 simulated series per cell.
 - Not done: Echo's gain-of-signal / raw-count assays and Beacon-style scale-free exemption (the verdict is skipped there on purpose); the ChartKit figure's refit (`egGraphDoc` / Lumina's twin, unbounded 4PL for a hand-edited figure curve) still has no plateau limits.
+
+## Navigation: a cut and a short arrival, no crossfade copy (2026-10-27)
+
+Jon: *"la navegación entre menús (journal, cells, exps…) es un poco laggy… smooth y seamless."*
+Measured on the real backup: the work is small (a rail click is ~5 ms of shell JS, `renderAll` 4–20 ms, no leak —
+node count returns to baseline after GC). The lag was **choreography**: Labbook laid an opaque clone of the old
+screen (`_screenGhost`) over the new one and faded it for 180 ms *after two rAFs* while the new screen also faded
+in from 0 over 300 ms with a 6 px rise, and the columns did their own `tab-in`; the landings did the same with
+`_landingGhost` + `cardIn` 300 ms + stagger to 110 ms. Two text-heavy screens at half strength read as a smear
+and the new screen was unreadable for ~200 ms; the whole thing settled at ~300 ms.
+- Now: the new screen is drawn at once and settles with `lb-screen-in` (opacity .45 → 1, `--dur-1` = 120 ms);
+  `tab-in`/`tab-out`/`cardIn` are `--dur-1` too (stagger capped at 50 ms). Both ghosts are gone.
+- `openApp` into the app already on screen no longer drops opacity to 0 and forces a reflow; Labbook's `lb:go` for
+  Planner/Experiments does nothing when you are already on that surface (the Designer click still resets).
+- Invariant **S9** (`tools/hub_invariants.mjs`): no ghost, new screen never starts near-transparent, nothing animating
+  30–290 ms after a click, cards/tab bodies use `--dur-1`; proved by putting `--dur-3` back. S3 now asserts *no* copy.
