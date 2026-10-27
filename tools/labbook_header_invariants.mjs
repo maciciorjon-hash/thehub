@@ -56,7 +56,14 @@ const CHECKS = [
     var l=H.labels(); if(l.join('|')!=='Duplicate|Delete') bad.push('a note\\'s bar is ['+l.join(', ')+'], it should be [Duplicate, Delete]');
     delete LB.data.experiments[n.id]; SEL.page=null; renderAll(); return bad; })()`],
   ['HB2', `(async function(){ var H=__H, bad=[], e=H.mk('NB_SPARK_SCREEN96','HB2_RUN'); H.open(e);
-    var l=H.labels(), seen={}; ['What you need','Bench sheet','Setup','Save as preset','Close','Repeat','Duplicate','Delete'].forEach(function(w){ if(l.indexOf(w)<0) bad.push('the bar has no "'+w+'" ['+l.join(', ')+']'); });
+    var l=H.labels(), seen={}; ['What you need','Bench sheet','Save as preset','Close','Repeat','Duplicate','Delete'].forEach(function(w){ if(l.indexOf(w)<0) bad.push('the bar has no "'+w+'" ['+l.join(', ')+']'); });
+    // one way into the setup editor, not two: the Setup block's Edit, or the bar's Setup only when that block is empty
+    var blockEdit=!!document.querySelector('#pane-ed .exh-setup-edit'), barSetup=l.indexOf('Setup')>=0;
+    if(blockEdit&&barSetup) bad.push('the Setup block has Edit and the bar also says Setup (two buttons for one dialog)');
+    if(!blockEdit&&!barSetup) bad.push('no way into the setup editor: no Edit in the block and no Setup in the bar');
+    var keep=JSON.stringify(e.setup); e.setup={}; e.imported=null; H.open(e); var l2=H.labels();
+    if(document.querySelector('#pane-ed .exh-setup-edit')||l2.indexOf('Setup')<0) bad.push('a setup with no answers to show must keep the bar\\'s Setup ['+l2.join(', ')+']');
+    e.setup=JSON.parse(keep);
     if(l.indexOf('Refresh wording')>=0) bad.push('"Refresh wording" is a standing button again'); if(l.indexOf('Unarchive')>=0) bad.push('"Unarchive" is on an open run');
     l.forEach(function(x){ if(seen[x]) bad.push('two buttons say "'+x+'"'); seen[x]=1; });
     [].forEach.call(document.querySelectorAll('.exh .exh-grp .exh-act'),function(b){ if(!(b.title||'').trim()) bad.push('a button has no tooltip'); });
