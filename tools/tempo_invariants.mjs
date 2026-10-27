@@ -365,6 +365,8 @@ try {
       await pg.route(/^https?:/, r => r.abort());
       await pg.addInitScript(t => { try { localStorage.clear(); localStorage.setItem('hub_theme', t); } catch (e) {} }, theme);
       await pg.goto('file://' + FILE); await pg.waitForFunction(() => typeof tpTab === 'function');
+      // a wide system font, as CI's DejaVu is: at 768px the tab bar was 21px wider than the window there and fit on a Mac
+      await pg.addStyleTag({ content: ':root{--sans:"DejaVu Sans",Verdana,sans-serif !important;--mono:"DejaVu Sans Mono",Menlo,monospace !important}' });
       await pg.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
       const run = async tag => {
         await pg.waitForTimeout(400);

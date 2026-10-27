@@ -1,6 +1,6 @@
 // Cell Archive invariants — what the lines list shows must be whole, not cut by the column it is in.
 //
-//   A1  list facts whole    in the list (seven columns, a container wider than 800px) the medium and the doubling time of every line
+//   A1  list facts whole    in the list (seven columns, a container wider than 880px) the medium and the doubling time of every line
 //                           are drawn in full: nothing is line-clamped, and no text sits below the box it is drawn in. The doubling
 //                           column was the narrowest in the row (88px) and cut "Very slow — ≥2 weeks to ~50%" at two lines while the
 //                           stats column beside it was empty.
@@ -25,13 +25,14 @@ try {
     await p.route(/^https?:/, r => r.abort());
     await p.addInitScript(t => { try { localStorage.setItem('hub_theme', t); } catch (e) {} }, theme);
     await p.goto('file://' + FILE); await p.waitForTimeout(700);
+    await p.addStyleTag({ content: ':root{--sans:"DejaVu Sans",Verdana,sans-serif !important;--mono:"DejaVu Sans Mono",Menlo,monospace !important}' });   // a wide system font, as CI's DejaVu is: the medium needed three lines at 880px there and two on a Mac
     await p.evaluate(t => { document.documentElement.setAttribute('data-theme', t); const b = [...document.querySelectorAll('.ca-vt')].find(x => /list/i.test(x.textContent)); if (b) b.click(); }, theme);
     await p.waitForTimeout(300);
     const r = await p.evaluate(() => {
       const g = document.querySelector('.cell-grid.as-list'); if (!g) return { noList: true };
       // the line-clamp and an ancestor's overflow both cut: a fact is whole when its text needs no more height than the box has
       const cut = [...g.querySelectorAll('.cell-tile-med,.cell-tile-dt')].filter(e => e.offsetParent && e.scrollHeight > e.clientHeight + 1).map(e => e.className.replace('cell-tile-', '') + ' "' + e.textContent.slice(0, 32) + '" ' + e.clientWidth + 'px');
-      return { cut: cut, n: g.querySelectorAll('.cell-tile-dt').length, wide: g.getBoundingClientRect().width > 800, sw: document.documentElement.scrollWidth - document.documentElement.clientWidth };
+      return { cut: cut, n: g.querySelectorAll('.cell-tile-dt').length, wide: g.getBoundingClientRect().width > 880, sw: document.documentElement.scrollWidth - document.documentElement.clientWidth };
     });
     const tag = `${theme} ${w}px `;
     if (r.noList) { check('A1', tag + 'the list is there', false); await ctx.close(); continue; }

@@ -361,6 +361,15 @@ try {
       await page.locator('#es-fields .q-i[data-q="intervalMin"] .ds-mb.x').click();
       if (await page.locator('#lb-dialog.open').count()) await page.click('#lb-dlg-ok');
       if (await page.locator('#es-fields .q-i[data-q="intervalMin"]').count()) bad('L13', 'a type question stayed after it was removed');
+      // the "Not asked" note wraps when the list is long or the font wide (CI's DejaVu did): a row that starts after a bare word is the align audit's
+      // 'wrapped rows start at different left edges', so every line of the note starts at the same edge whatever the width
+      const nl = await page.evaluate(() => { const n = document.querySelector('#es-fields .q-gone'); if (!n) return null; const w0 = n.style.width; n.style.width = '120px';
+        const rows = []; [...n.children].forEach(c => { const r = c.getBoundingClientRect(); const g = rows.find(x => !(r.bottom <= x.top + 2 || r.top >= x.bottom - 2)); if (g) g.left = Math.min(g.left, r.left); else rows.push({ top: r.top, bottom: r.bottom, left: r.left }); });
+        n.style.width = w0; const ls = rows.map(x => Math.round(x.left)), lead = [...n.childNodes].find(x => x.nodeType === 1 || x.textContent.trim()); return { lead: !!lead && lead.nodeType === 1, rows: rows.length, spread: Math.max(...ls) - Math.min(...ls) }; });
+      if (!nl) bad('L13', 'removing questions left no "Not asked" note to restore them from');
+      else if (!nl.lead) bad('L13', 'the lead-in word of the "Not asked" note is bare text: when the note wraps the first line starts after it and the rest start at the edge');
+      else if (nl.rows < 2) bad('L13', 'the "Not asked" note did not wrap at 120px (the test is void)');
+      else if (nl.spread > 8) bad('L13', `the lines of the "Not asked" note start ${nl.spread}px apart (the lead-in word is not an element, so the first line starts after it)`);
       await page.locator('#es-fields .q-gone button:has-text("Read interval")').click();
       if (!await page.locator('#es-fields .q-i[data-q="intervalMin"]').count()) bad('L13', 'a removed type question could not be restored');
       // add and edit one of our own
