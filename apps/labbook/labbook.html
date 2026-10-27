@@ -3579,7 +3579,7 @@ var CalcKit = (function(){
       </div>
       <div id="pl-side" class="pl-side"></div>
     </div>
-    <div class="modal-act"><button class="btn ghost sm" onclick="lbUndo()" title="Undo the last change (&#8984;/Ctrl+Z)">Undo</button><span class="grow"></span><button class="btn" onclick="closePlateEditor()">Done</button></div>
+    <div class="modal-act"><button class="btn ghost sm" onclick="lbUndo()" title="Undo the last change (&#8984;/Ctrl+Z)">Undo</button><button class="btn ghost sm" id="pl-clearall" onclick="plClearPlate()" title="Empty the plate: every well, block and label round it (Undo brings it back)">Clear plate</button><span class="grow"></span><button class="btn" onclick="closePlateEditor()">Done</button></div>
   </div>
 </div>
 
@@ -6859,7 +6859,7 @@ function _mixWhite(hex,t){ var m=/^#?([0-9a-f]{6})$/i.exec(hex||''); if(!m) retu
 // derived shades and is only on the copy that plateView() hands the renderers, never in the record.
 function plateShadeMap(p){ var m=new Map(), groups={};
   Object.keys(p.wells||{}).forEach(function(id){ var w=p.wells[id]; if(!w||!w.conc||w.typeId==='blank') return;
-    var v=_parseConcNM(w.conc); if(!(isFinite(v)&&v>0)) return;
+    var v=_parseConcAny(w.conc); if(!(isFinite(v)&&v>0)) return;
     var k=w.sid||(w.groupId?('g:'+w.groupId):'all'), g=groups[k]||(groups[k]={w:[],v:{}}); g.w.push([w,v]); g.v[v]=1; });
   Object.keys(groups).forEach(function(k){ var g=groups[k], vs=Object.keys(g.v).map(Number).sort(function(a,b){ return b-a; }), n=vs.length;
     g.w.forEach(function(x){ m.set(x[0], n>1?Math.round(vs.indexOf(x[1])/(n-1)*0.8*1000)/1000:0); }); });
@@ -6869,7 +6869,7 @@ function plateShadeMap(p){ var m=new Map(), groups={};
 // columns needs no "write the headers" step. A plate of one concentration has nothing to read.
 function plateColLabelsOf(p){ var out={}; if(!p) return out; var per={};
   Object.keys(p.wells||{}).forEach(function(id){ var w=p.wells[id]; if(!w||!w.conc||w.typeId==='blank') return;
-    var x=wellRC(id); if(!x) return; var v=_parseConcNM(w.conc); if(!(isFinite(v)&&v>0)) return;
+    var x=wellRC(id); if(!x) return; var v=_parseConcAny(w.conc); if(!(isFinite(v)&&v>0)) return;
     var o=per[x.c]||(per[x.c]={n:0,v:{},s:w.conc}); o.n++; o.v[v]=1; });
   var auto={}, seen={}; Object.keys(per).forEach(function(c){ var o=per[c]; if(o.n>=2&&Object.keys(o.v).length===1){ auto[c]=o.s; seen[Object.keys(o.v)[0]]=1; } });
   if(Object.keys(seen).length>1) Object.keys(auto).forEach(function(c){ out[c]=auto[c]; });
@@ -7084,6 +7084,12 @@ function plateToCSV(p){ var d=plateDims(p), out=['Well,Type,Cell line,Compound,C
 function _parseConcNM(s){ var m=/^\s*(\d*[.,]?\d+(?:e[+\-]?\d+)?)\s*(fM|pM|nM|µM|uM|mM|M)?\s*$/i.exec(String(s||'')); if(!m) return NaN;
   var v=parseFloat(m[1].replace(',','.')), u=(m[2]||'nM').toLowerCase();
   return v*(u==='fm'?1e-6:(u==='pm'?1e-3:(u==='nm'?1:(u==='mm'?1e6:(u==='m'?1e9:1e3)))))  ; }
+// A concentration as a number to rank and fit by, in its own family (nM for molar, ng/mL for mass per volume). Only for
+// comparing wells that share a family; anything that needs real nM keeps _parseConcNM, which says NaN to a mass.
+function _parseConcAny(s){ var m=/^\s*(\d*[.,]?\d+(?:e[+\-]?\d+)?)\s*(pg|ng|µg|ug|mg)\s*\/\s*mL\s*$/i.exec(String(s||''));
+  if(!m) return _parseConcNM(s);
+  var u=m[2].toLowerCase().replace('u','µ');
+  return parseFloat(m[1].replace(',','.'))*({pg:1e-3,ng:1,'µg':1e3,mg:1e6}[u]); }
 // Collapse a set of well ids into as few readable ranges as possible ("C1–E12, H1–H6").
 function _compactRanges(ids){
   var byRow={};
@@ -7110,7 +7116,7 @@ function _seriesText(seq){
   var uniq={}; seq.forEach(function(v){ uniq[v]=1; });
   var keys=Object.keys(uniq);
   if(keys.length<=1) return {text:seq[0]||'',varies:false};
-  var nm=seq.map(_parseConcNM), ok=nm.length>2&&nm.every(function(v){ return v>0; });
+  var nm=seq.map(function(x){ return _parseConcAny(x); }), ok=nm.length>2&&nm.every(function(v){ return v>0; });
   var fold=null;
   // A series laid out low → high (the ← and ↑ directions in the plate editor) is as much a series
   // as one laid out high → low. It was read only one way, so it came out as "12 concentrations".
@@ -8554,7 +8560,7 @@ var PLATE_CARD_WPX_MAX={'6':80,'12':64,'24':48,'48':40,'96':34,'384':18};
 // width and the headers alternate between two rows — evens up, odds down — each one aligned to
 // the edge of its own column, and the space before the unit goes ("12.3nM"). Same rule in the
 // preview and the editor, so the two never disagree about what a header says.
-function _plHdrCompact(t){ return String(t||'').replace(/\s+(?=[µunpmkM]?M$|%$)/,''); }
+function _plHdrCompact(t){ return String(t||'').replace(/\s+(?=[µunpmkM]?M$|%$|[pnµum]g\/mL$)/,''); }
 function _plHdrCell(ca, ncols, stag, rowBase){
   // returns {row, col:'a/b', align} for column index ca (0-based); rowBase is the first header row
   if(!stag) return {row:rowBase, col:String(ca+1), cls:''};
@@ -9273,7 +9279,7 @@ function plSelectRangeText(v){ var p=plCur(); if(!p) return; var r=PlateEngine.p
 function plSelectBlockOf(id){ var p=plCur(); if(!p) return; var g=((p.wells||{})[id]||{}).groupId; if(!g) return;
   PL.sel={}; Object.keys(p.wells).forEach(function(k){ if(p.wells[k].groupId===g) PL.sel[k]=1; }); PL.anchor=id; plRender(); }
 // Read from what was typed (kept on PL as it is typed), so a redraw mid-form reads the same numbers.
-function _plSeriesForm(){ return { top:_toNM(PL.doseTop!=null?PL.doseTop:'1000', PL.doseUnit||'nM'), fac:+(PL.doseFold!=null?PL.doseFold:'3')||0 }; }
+function _plSeriesForm(){ var u=PL.doseUnit||'nM'; return { top:_toBase(PL.doseTop!=null?PL.doseTop:'1000', u), mass:_isMassUnit(u), fac:+(PL.doseFold!=null?PL.doseFold:'3')||0 }; }
 function plApplySeries(){ var p=plCur(); if(!p) return; var ids=plSelIds(); if(!ids.length) return;
   var f=_plSeriesForm(), plan=PlateEngine.seriesPlan(ids, PL.dir||PL.lastDir);
   if(!(f.top>0)){ var t=el('pl-dose-top'); if(t) t.focus(); toast('Give the series a top concentration'); return; }
@@ -9282,10 +9288,10 @@ function plApplySeries(){ var p=plCur(); if(!p) return; var ids=plSelIds(); if(!
   var sid='s'+Date.now().toString(36);
   ids.forEach(function(id){ var fresh=!(p.wells||{})[id], w=_plWell(p,id);
     if(fresh||!w.typeId||w.typeId==='blank') w.typeId='dose';
-    w.conc=_fmtConc(PlateEngine.seriesConc(f.top,f.fac,plan.idx[id])); w.sid=sid; });
+    w.conc=_fmtConcU(PlateEngine.seriesConc(f.top,f.fac,plan.idx[id]),f.mass); w.sid=sid; });
   if(plan.n>1) PL.lastDir=plan.dir;
   platePersist(PL.key); plRender();
-  toast(plan.n+'-point series'+(plan.n>1?(', '+f.fac+'-fold'):'')+', from '+_fmtConc(f.top)+(plan.lines>1?(' · '+plan.lines+' lines deep'):'')); }
+  toast(plan.n+'-point series'+(plan.n>1?(', '+f.fac+'-fold'):'')+', from '+_fmtConcU(f.top,f.mass)+(plan.lines>1?(' · '+plan.lines+' lines deep'):'')); }
 // Where compounds would go in this selection. On a series the replicates run across it, so the
 // series decides rows or columns; a block never straddles two series.
 function _plCpdPlan(p,ids){
@@ -9629,7 +9635,7 @@ function plRenderSide(){ plSyncGhosts(); var p=plCur(), host=el('pl-side'); if(!
       var dirs=[['left','&#8592;','Highest on the right'],['right','&#8594;','Highest on the left'],['up','&#8593;','Highest at the bottom'],['down','&#8595;','Highest at the top']];
       var prevS=_plSeriesPrev(p,ids,gp,f);
       var dilHtml='<div class="pl-sub-t">1 · Dilution series</div><div class="cc-inputs"><label class="ci-f"><span>Top concentration</span><input type="number" id="pl-dose-top" value="'+esc(PL.doseTop||'1000')+'" oninput="PL.doseTop=this.value;_plPrevUpd()" onkeydown="if(event.key===\'Enter\'){event.preventDefault();plApplySeries();}"></label>'
-        +'<label class="ci-f"><span>Unit</span><select id="pl-dose-unit" onchange="PL.doseUnit=this.value;_plPrevUpd()">'+['nM','µM','mM'].map(function(u){ return '<option'+((PL.doseUnit||'nM')===u?' selected':'')+'>'+u+'</option>'; }).join('')+'</select></label>'
+        +'<label class="ci-f"><span>Unit</span><select id="pl-dose-unit" onchange="PL.doseUnit=this.value;_plPrevUpd()">'+[['Molar',['nM','µM','mM']],['Mass per volume',['pg/mL','ng/mL','µg/mL','mg/mL']]].map(function(g){ return '<optgroup label="'+g[0]+'">'+g[1].map(function(u){ return '<option'+((PL.doseUnit||'nM')===u?' selected':'')+'>'+u+'</option>'; }).join('')+'</optgroup>'; }).join('')+'</select></label>'
         +'<label class="ci-f"><span>Dilution factor</span><input type="number" id="pl-dose-fold" value="'+esc(PL.doseFold||'3')+'" step="0.5" oninput="PL.doseFold=this.value;_plPrevUpd()" onkeydown="if(event.key===\'Enter\'){event.preventDefault();plApplySeries();}"></label></div>'
         +'<div class="pl-sub-t" style="margin-top:9px">Highest concentration</div><div class="pl-dirs">'+dirs.map(function(x){ return '<button class="pl-btn'+(gp&&gp.dir===x[0]?' on':'')+'" title="'+x[2]+'" onclick="plSetDir(\''+x[0]+'\')">'+x[1]+'</button>'; }).join('')+'</div>'
         +'<div class="pl-row2"><button class="pl-btn primary" onclick="plApplySeries()">Set the series ⏎</button></div>'
@@ -9714,7 +9720,7 @@ function _plDataTab(p){
 // The preview line under the Dilution form, repainted as the numbers are typed (never the form).
 function _plSeriesPrev(p,ids,gp,f){ if(!gp) return '';
   var t='<b>'+gp.n+' point'+(gp.n===1?'':'s')+'</b> along '+(gp.dir==='right'||gp.dir==='left'?'the columns':'the rows')+(gp.lines>1?(' × '+gp.lines+' lines'):'');
-  if(f.top>0){ if(gp.n>1&&f.fac>1) t+=' · '+_fmtConc(f.top)+' → '+_fmtConc(PlateEngine.seriesConc(f.top,f.fac,gp.n-1)); else if(gp.n===1) t+=' · '+_fmtConc(f.top); else t+=' · <span class="warn">the dilution factor has to be above 1</span>'; }
+  if(f.top>0){ if(gp.n>1&&f.fac>1) t+=' · '+_fmtConcU(f.top,f.mass)+' → '+_fmtConcU(PlateEngine.seriesConc(f.top,f.fac,gp.n-1),f.mass); else if(gp.n===1) t+=' · '+_fmtConcU(f.top,f.mass); else t+=' · <span class="warn">the dilution factor has to be above 1</span>'; }
   if(ids.some(function(id){ return ((p.wells||{})[id]||{}).conc; })) t+=' · <span class="warn">replaces the concentrations here</span>';
   return t; }
 function _plPrevUpd(){ var p=plCur(), pv=el('pl-prev'); if(!p||!pv) return; var ids=plSelIds();
@@ -9892,6 +9898,17 @@ function plApplyFields(){ var p=plCur(), host=el('pl-side'); if(!p||!host) retur
     ids.forEach(function(id){ var w=_plWell(p,id); if(v==='') delete w[k]; else w[k]=v; }); });
   platePersist(PL.key); plRenderGrid(); plRenderSum();
   var t=el('pl-count'); if(t) t.textContent=plateCount(p)+' / '+(plateDims(p).r*plateDims(p).c)+' wells used'; }
+// Everything drawn on the plate — wells, blocks, column headers and the words round it — in one go, for starting the
+// design again. The format, title and palette stay, and so do reader values: a recorded number has its own button.
+function plClearPlate(){ var p=plCur(); if(!p) return;
+  var has=Object.keys(p.wells||{}).length||Object.keys(p.groups||{}).length||Object.keys(p.colLabels||{}).length||p.colTitle||(p.edges&&p.edges.length);
+  if(!has){ toast('The plate is already empty'); return; }
+  lbConfirm('Clear this plate? Every well, block and label on it goes'+((p.values&&p.values.data)?' — the reader values stay, remove them from the Plate step if you want them gone':'')+'. Undo brings it back.',
+    {danger:true,title:'Clear plate',ok:'Clear plate'}).then(function(ok){ if(!ok) return;
+    plMark('Clear plate');
+    p.wells={}; delete p.groups; delete p.colLabels; delete p.colTitle; delete p.edges;
+    PL.sel={}; PL.anchor=null;
+    platePersist(PL.key); plRender(); toast('Plate cleared'); }); }
 function plEraseSel(){ var p=plCur(); if(!p) return; if(!plSelIds().length) return; plMark('Clear wells');
   plSelIds().forEach(function(id){ delete p.wells[id]; });
   platePersist(PL.key); plRender(); }
@@ -10002,10 +10019,23 @@ function plSetFormat(f){ var p=plCur(); if(!p) return; var d=PLATE_FORMATS[Strin
   platePersist(PL.key); plRender();
   if(lost) toast(lost+' well'+(lost!==1?'s':'')+' fell outside the '+f+'-well grid and '+(lost!==1?'were':'was')+' dropped'); }
 // Concentration formatting — nM/µM/mM chosen automatically as the series steps down.
-function _toNM(v,unit){ return (+v||0)*(unit==='mM'?1e6:(unit==='µM'?1e3:1)); }
+// A dose series is molar (a compound) or mass per volume (doxycycline, a ligand, an antibody, a cytokine): the
+// two cannot be converted without a molecular weight, so a series stays in the family it was typed in. Base
+// units are nM and ng/mL, and a mass concentration is never read as nM (_parseConcNM refuses it).
+var _MASS_NG={'pg/mL':1e-3,'ng/mL':1,'µg/mL':1e3,'mg/mL':1e6};
+function _isMassUnit(u){ return _MASS_NG[u]!=null; }
+function _toBase(v,unit){ return (+v||0)*(_MASS_NG[unit]||(unit==='mM'?1e6:(unit==='µM'?1e3:1))); }
 function _cn(x){ var v=+x; if(!isFinite(v)) return '0';
   var s=(v>=100)?v.toFixed(0):((v>=10)?v.toFixed(1):v.toFixed(2));
   return s.indexOf('.')<0?s:s.replace(/0+$/,'').replace(/\.$/,''); }
+// The same for mass per volume, from ng/mL: 0.5 µg/mL, 250 ng/mL, 12.3 pg/mL.
+function _fmtMass(ng){ if(!isFinite(ng)||ng<=0) return '0';
+  ng=+ng.toPrecision(3);
+  if(ng>=1e6) return _cn(ng/1e6)+' mg/mL';
+  if(ng>=1e3) return _cn(ng/1e3)+' µg/mL';
+  if(ng>=1)   return _cn(ng)+' ng/mL';
+  var pg=ng*1e3; return (pg>=1?_cn(pg):String(+pg.toPrecision(3)))+' pg/mL'; }
+function _fmtConcU(v,mass){ return mass?_fmtMass(v):_fmtConc(v); }
 // Steps right down to fM so a long series never collapses to "0 nM".
 function _fmtConc(nM){ if(!isFinite(nM)||nM<=0) return '0';
   // _cn renders below 10 with toFixed(2), so anything under 0.005 fM came out as a bare "0" —

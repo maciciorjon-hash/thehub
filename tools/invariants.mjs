@@ -193,6 +193,8 @@
 //                            another label; the card, the PNG, the print table and a copied layout all carry it. (the plate map could not say what a column was)
 //   B53 time course       Time Course is Kinetic degradation with the compound left open: type KD (Tempo still takes it), code tag TC, the same steps, waits and measures,
 //                            no compound of the lab's own named in the prose, and an experiment from it keeps the 900 min / 5 min run and its plate The kinetic assay medium is named in full (CO2-independent medium + 10% FBS) in every step of KD, Time Course and the SPARK NS preset.
+//   B58 mass series,      A dose series can run in pg/ng/µg/mg per mL (doxycycline, a ligand, an antibody) as well as nM/µM/mM: written in its own family, shaded high to low, headed by its columns, described as an n-fold series, never read as nM (the setup's top concentration is not rewritten from it); molar is as before. Clear plate (in the footer, every step) asks, then empties wells, blocks, column headers and the words round the plate, keeps format/title/palette, and Undo brings it all back
+//       clear plate
 //   B57 old words, new     The suspension-and-seed step of a run made before the split ("… + seed": prose with 90 µL typed in, "the labelling is covalent…", a list of what
 //       words, same numbers  was done) says what its OWN calculator says — in a run that is done as in one not started (that is split into the two steps), in a copy of a
 //                            finished run, and in the next run made from the preset: a stored preset the app itself rewrote (tick lists flattened) is not "edited". The old read's
@@ -3144,6 +3146,64 @@ async function suite(opts) {
       // a layout copied to the next plate brings them, as copies
       const t2 = newPlate('96'); _plCopyLayout(E.plate, t2);
       if (!t2.edges || t2.edges.length !== E.plate.edges.length || t2.edges === E.plate.edges) bad('B54', 'copy', 'a copied layout does not carry its labels (or shares them with the source)');
+    });
+
+    // B58 — a dose series in mass per volume (doxycycline, a ligand, an antibody), and a button that clears the whole plate.
+    if (run('B58')) await guard('B58', 'mass series, clear plate', async () => {
+      const P = (LB.data.projects || []).find(p => (p.sections || []).length);
+      const key = 'NB_BIO_RTX96', tpl = LB.data.presets[key];
+      const su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup || {})));
+      const before = new Set(Object.keys(LB.data.experiments));
+      buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-10-01', type: 'NB', title: 'INV mass series', code: 'INV_B58', setup: su, plate: true });
+      const e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); if (!e) { bad('B58', 'create', 'no experiment was made'); return; }
+      clean.push(e); e.plate = newPlate('96'); delete e.morePlates; openExp(e.id); tick('B58');
+      const q = s => [...document.querySelectorAll(s)];
+      const sel = async (r0, r1, c0, c1) => { PL.sel = {}; for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) PL.sel[wellIdOf(r, c)] = 1; plRender(); await sleep(40); };
+      openPlateEditor('exp:' + e.id); await sleep(80);
+      plSetDosing(true); plSetMode('dose'); await sleep(40);
+      // the unit list offers mass per volume beside molar
+      await sel(0, 1, 0, 5);
+      const units = q('#pl-dose-unit option').map(o => o.value);
+      ['nM', 'µM', 'mM', 'ng/mL', 'µg/mL', 'mg/mL'].forEach(u => { if (units.indexOf(u) < 0) bad('B58', 'units', 'the dilution unit list has no ' + u + ': ' + units.join(' ')); });
+      // a two-fold series from 10 µg/mL over two rows of six
+      PL.doseTop = '10'; PL.doseUnit = 'µg/mL'; PL.doseFold = '2'; await sel(0, 1, 0, 5); plApplySeries(); await sleep(40);
+      let p = plCur(); const want = ['10 µg/mL', '5 µg/mL', '2.5 µg/mL', '1.25 µg/mL', '625 ng/mL'];
+      want.forEach((w, c) => { const got = (p.wells[wellIdOf(0, c)] || {}).conc, got2 = (p.wells[wellIdOf(1, c)] || {}).conc;
+        if (got !== w || got2 !== w) bad('B58', 'series', 'column ' + (c + 1) + ' should hold ' + w + ', the wells hold ' + got + ' / ' + got2); });
+      if (Object.keys(p.wells).some(id => /\d (f|p|n|µ|m)?M$/.test(p.wells[id].conc || ''))) bad('B58', 'family', 'a mass series was written in molar units');
+      // it is read as a series: shaded high to low, headed by its columns, described as a two-fold series, and never taken for nM
+      const view = plateView(p), sh = id => view._shW.get(p.wells[id]);
+      if (sh('A1') !== 0 || !(sh('A6') > 0.7)) bad('B58', 'shade', 'a mass series is not shaded high to low: ' + sh('A1') + ' … ' + sh('A6'));
+      const cl = plateColLabelsOf(p); if (cl[0] !== '10 µg/mL') bad('B58', 'headers', 'the columns are not headed by their concentration: ' + JSON.stringify(cl));
+      const desc = _concDesc(p, ['A1', 'A2', 'A3', 'A4', 'A5', 'A6']); if (!/2-fold/.test(desc) || !/µg\/mL/.test(desc)) bad('B58', 'description', 'the layout sentence does not describe the series: ' + desc);
+      if (!isNaN(_parseConcNM('10 µg/mL'))) bad('B58', 'not nM', '_parseConcNM reads a mass concentration as nM');
+      const top0 = e.setup.topConc; plateDoseSeries(p); syncSetupFromPlate(LB.data.experiments[e.id]);
+      if (plateDoseSeries(p) !== null) bad('B58', 'setup', 'a mass series was offered to the setup as a molar top concentration');
+      if (LB.data.experiments[e.id].setup.topConc !== top0) bad('B58', 'setup moved', 'the setup top concentration was rewritten from a mass series');
+      if (_fmtMass(0.5) !== '500 pg/mL' || _fmtMass(1e6) !== '1 mg/mL' || _fmtMass(999.95) !== '1 µg/mL') bad('B58', 'format', '_fmtMass: ' + [_fmtMass(0.5), _fmtMass(1e6), _fmtMass(999.95)].join(' | '));
+      // molar is as it was
+      PL.doseTop = '1000'; PL.doseUnit = 'nM'; PL.doseFold = '3'; await sel(3, 3, 0, 3); plApplySeries(); await sleep(40);
+      p = plCur(); if ((p.wells.D1 || {}).conc !== '1 µM' || (p.wells.D4 || {}).conc !== '37 nM') bad('B58', 'molar', 'a molar series changed: ' + (p.wells.D1 || {}).conc + ' … ' + (p.wells.D4 || {}).conc);
+      // clear plate: the button is there on every step, asks, empties wells, blocks and every label, keeps format/title/palette, and Undo brings it all back
+      plSetMode('plate'); await sleep(30);
+      const btn = document.getElementById('pl-clearall'); if (!btn || !btn.offsetParent) { bad('B58', 'button', 'there is no visible Clear plate button'); return; }
+      p = plCur(); p.title = 'Mine'; p.colTitle = 'Dose'; p.colLabels = Object.assign({}, p.colLabels, { 7: 'x' }); p.groups = { g1: { label: 'Block' } }; p.wells.A8 = { typeId: p.types[0].id, groupId: 'g1' };
+      p.edges = [{ id: 'n1', side: 't', a: 0, b: 3, text: '+ dox' }]; plRender(); await sleep(40);
+      const nWells = Object.keys(p.wells).length, nTypes = p.types.length, fmt = p.format;
+      const lc = window.lbConfirm; let asked = 0;
+      try {
+        window.lbConfirm = () => { asked++; return Promise.resolve(false); }; btn.click(); await sleep(60);
+        if (!asked || Object.keys(plCur().wells).length !== nWells) bad('B58', 'confirm', 'Clear plate did not ask first, or cleared when told no');
+        window.lbConfirm = () => { asked++; return Promise.resolve(true); }; btn.click(); await sleep(80);
+        p = plCur();
+        if (Object.keys(p.wells || {}).length || p.groups || p.colLabels || p.colTitle || p.edges) bad('B58', 'cleared', 'something is left on the plate: ' + JSON.stringify({ w: Object.keys(p.wells || {}).length, g: p.groups, c: p.colLabels, t: p.colTitle, e: p.edges }));
+        if (p.format !== fmt || p.title !== 'Mine' || p.types.length !== nTypes) bad('B58', 'kept', 'Clear plate took the format, title or palette with it');
+        if (q('#pl-grid .pl-nt').length || q('#pl-grid .pl-w.on, #pl-grid .pl-w.sel').length) bad('B58', 'grid', 'the grid still draws labels or a selection after Clear plate');
+        const n0 = asked; btn.click(); await sleep(60); if (asked !== n0) bad('B58', 'empty', 'Clear plate asks about a plate that is already empty');
+        lbUndo(); await sleep(80); p = plCur();
+        if (Object.keys(p.wells || {}).length !== nWells || !p.edges || p.edges.length !== 1 || !p.colLabels || p.colTitle !== 'Dose') bad('B58', 'undo', 'Undo did not bring the cleared plate back (' + Object.keys(p.wells || {}).length + ' wells)');
+      } finally { window.lbConfirm = lc; }
+      closePlateEditor(); await sleep(60);
     });
 
     // B28 — a date typed into Repeat is a real day or it is refused.
