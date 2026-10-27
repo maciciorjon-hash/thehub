@@ -8452,3 +8452,11 @@ Jon (Spanish): the Labbook plate map's dose series needs µg/mL etc. (doxycyclin
 - **Clear plate** (`plClearPlate`, footer button `#pl-clearall` beside Undo, every step): asks, then empties `wells`, `groups`, `colLabels`, `colTitle`, `edges`; keeps format, title, palette and reader values (a recorded number has its own "Remove reader values"); one Undo step ("Clear plate"). An empty plate just says so.
 - **B58** (`tools/invariants.mjs`): unit list, series written/shaded/headed/described, never nM, setup untouched, molar unchanged; Clear plate asks/empties/keeps/undoes. Proven by putting back `_parseConcNM` in the shade map and by not deleting `edges`.
 - Not done: the in-well text of a long mass concentration is cut by the ellipsis at 96-well size (the column header and the tooltip carry it whole).
+
+## 1% P/S in every medium the apps ship (2026-10-27)
+
+Jon: "para todos mis medios en toda la app siempre añade pen strep al 1%, siempre uso antibióticos". The first rule (`cultureMedium` / `labMedium`, new cultures only) left the recipes themselves bare. Now the recipes carry it: shell `CELL_ARCHIVE_BUILTIN`, Incubator `CELL_REF`, Cell Archive's "Complete medium" cards (all end in ` + 1% P/S`); Cell Archive's add-a-line save goes through `caMedium` (same rule as the other two); Archive protocol steps that name a growth medium (single-cell cloning feed, lentivirus refresh/harvest/transduction/selection) say `+ 1% P/S`.
+- **Left bare on purpose**: steps that say *no antibiotics / no Pen/Strep* (lentivirus transfection mix, conditioned-medium dilution), reverse transfection, Labbook's assay media (Opti-MEM + 4% FBS, CO₂-independent + Endurazine), sorting/FACS buffers, freezing media. Ask Jon before changing those.
+- **Not touched**: a culture that already holds its own medium text (a recorded text is not rewritten).
+- Cell Archive list: medium column `1.8fr → 2.8fr` (the insulin line with P/S ran to three lines at 880 px, A1).
+- Invariants: `tools/media_invariants.mjs` M2 (three copies agree), M3 (add-a-line passes through `caMedium`), M4 (no shipped recipe without an antibiotic), proven by putting the bug back; CA4 now expects `+ 1% P/S`.

@@ -42,7 +42,7 @@ try {
     await p.evaluate(() => closeAddLine());
     // CA4
     const row = await p.evaluate(() => { const t = document.querySelector('.cell-tile[data-user]'); return { med: t.querySelector('.cell-tile-med') && t.querySelector('.cell-tile-med').textContent, dt: t.querySelector('.cell-tile-dt') && t.querySelector('.cell-tile-dt').textContent }; });
-    check('CA4', 'the line you added shows its medium and doubling time in the list', row.med === 'DMEM + 10% FBS' && /24\.5/.test(row.dt || ''), JSON.stringify(row));
+    check('CA4', 'the line you added shows its medium and doubling time in the list', row.med === 'DMEM + 10% FBS + 1% P/S' && /24\.5/.test(row.dt || ''), JSON.stringify(row));
     // CA1
     await p.focus('.cell-tile[data-user]'); await p.keyboard.press('Enter'); await p.waitForTimeout(150);
     await p.click('#cell-full-u_' + (await p.evaluate(() => getUserLines()[0].id)) + ' .cell-close-btn');
