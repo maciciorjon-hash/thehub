@@ -24,6 +24,9 @@
 //                           transaction), never written over it: a device that never heard of a folder, or holds an older list with a newer
 //                           `updated`, refreshes without erasing it; a folder made offline survives the cloud winning the tree; a deletion still
 //                           goes. (the list was one cloud value, last writer wins: the folder vanished and its experiment became an orphan)
+//   L13 a setup can be changed  Every question of an experiment's setup can be removed (a copy of a run that used OA need not ask for OA), a removed
+//                           type question can be restored, one of your own can be added and edited, and the experiment keeps the change; the Designer's
+//                           parameters step does the same. (Edit setup could only answer the fixed questions; the Designer could not remove a design's own)
 //   L7 an import is one undo step  Importing one experiment from a file is undone by one ⌘Z (the bundle had it; the single import did not)
 //
 //   node tools/labbook_audit_invariants.mjs [--url=URL] [--only=L1,L3]
@@ -332,8 +335,65 @@ try {
     }
     await ctx.close();
   }
+  // ── L13 ──
+  if (run('L13')) {
+    counts.L13 = 1;
+    const ctx = await newCtx(); const { page, errs } = await open(ctx);
+    const id = await page.evaluate(() => { const P = LB.data.projects.find(p => (p.sections || []).length), S = P.sections[0], key = 'KD_TC_SPARKNS';
+      const tpl = LB.data.presets[key] || EXTRA_PRESET_SEED[key]; if (!tpl) return null;
+      const su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup || {})));
+      const before = Object.assign({}, LB.data.experiments);
+      buildExperimentFrom({ pid: P.id, sid: S.id, key, tpl, startDate: todayStr(), type: presetBase(key), title: tpl.title || key, code: 'AU_L13', setup: su, plate: true });
+      save(); return Object.values(LB.data.experiments).find(x => !before[x.id]).id; });
+    if (!id) bad('L13', 'the OA time course preset is gone (the test is void)');
+    else {
+      const has = k => page.evaluate(([id, k]) => expSetupFields(LB.data.experiments[id]).some(f => f.f === k), [id, k]);
+      await page.evaluate(id => openSetupEditor(id), id);
+      const n0 = await page.locator('#es-fields .q-i').count();
+      for (const k of ['oligoHi', 'antiHi', 'oligoLo', 'antiLo']) {
+        await page.locator(`#es-fields .q-i[data-q="${k}"] .ds-mb.x`).click();
+        if (await page.locator('#lb-dialog.open').count()) await page.click('#lb-dlg-ok');   // the steps quote it: say so, then go
+        await page.waitForTimeout(80);
+      }
+      const n1 = await page.locator('#es-fields .q-i').count();
+      if (n1 !== n0 - 4) bad('L13', `removing four questions left ${n1} of ${n0} (every question needs a way out)`);
+      // one of the type's own goes and comes back
+      await page.locator('#es-fields .q-i[data-q="intervalMin"] .ds-mb.x').click();
+      if (await page.locator('#lb-dialog.open').count()) await page.click('#lb-dlg-ok');
+      if (await page.locator('#es-fields .q-i[data-q="intervalMin"]').count()) bad('L13', 'a type question stayed after it was removed');
+      await page.locator('#es-fields .q-gone button:has-text("Read interval")').click();
+      if (!await page.locator('#es-fields .q-i[data-q="intervalMin"]').count()) bad('L13', 'a removed type question could not be restored');
+      // add and edit one of our own
+      await page.click('#es-modal .q-add');
+      await page.fill('#dsp-l', 'Medium change (h)'); await page.fill('#dsp-d', '4'); await page.click('#dsp-ok');
+      const k = await page.evaluate(() => ES_ADD.filter(f => f.lbl === 'Medium change (h)').map(f => f.f)[0]);
+      if (!k) bad('L13', 'the parameter added in Edit setup is not there');
+      else {
+        await page.locator(`#es-fields .q-i[data-q="${k}"] .ds-mb:not(.x)`).click();
+        await page.fill('#dsp-l', 'Medium change (min)'); await page.click('#dsp-ok');
+        await page.click('#es-modal .es-foot .btn:not(.ghost)'); await page.waitForTimeout(200);
+        const r = await page.evaluate(([id, k]) => { const e = LB.data.experiments[id]; return { oa: expSetupFields(e).some(f => /oligoHi|antiHi|oligoLo|antiLo/.test(f.f)), mine: expSetupFields(e).filter(f => f.f === k).map(f => f.lbl)[0], v: e.setup[k], oaKept: Object.keys(e.setup).some(x => /oligoHi|antiHi|oligoLo|antiLo/.test(x)), chips: setupSummaryHtml(e).indexOf('OA high') >= 0 }; }, [id, k]);
+        if (r.oa || r.chips) bad('L13', 'OA is still asked, or still on the setup line, after it was removed and applied');
+        if (r.oaKept) bad('L13', 'removed questions left their answers in the setup');
+        if (r.mine !== 'Medium change (min)' || String(r.v) !== '4') bad('L13', `the added parameter was not kept as edited (${r.mine} = ${r.v})`);
+        await page.evaluate(id => openSetupEditor(id), id);
+        if (await page.locator('#es-fields .q-i[data-q="oligoHi"]').count()) bad('L13', 'reopening Edit setup asked the removed question again');
+        await page.click('#es-modal .es-foot .btn.ghost');
+      }
+      // the Designer, from the same design: its own questions can go too
+      const d = await page.evaluate(() => { const p = LB.data.projects.find(p => (p.sections || []).length); dsOpen({ mode: 'exp', pid: p.id, sid: p.sections[0].id }); dsLoadPreset('KD_TC_SPARKNS'); DS.step = 1; dsDraw();
+        return [...document.querySelectorAll('#ds-body .q-i')].map(c => '{{' + c.dataset.q + '}}'); });
+      if (!d.includes('{{oligoHi}}')) bad('L13', 'the Designer did not list the design\'s own questions with controls: ' + d.join(' '));
+      else {
+        await page.locator('#ds-body .q-i[data-q="oligoHi"] .ds-mb.x').click();
+        if (await page.locator('#lb-dialog.open').count()) await page.click('#lb-dlg-ok');
+        if (await page.evaluate(() => dsFields(DS).some(f => f.f === 'oligoHi'))) bad('L13', 'a question of the design could not be removed in the Designer');
+      }
+    }
+    errs.forEach(m => bad('L13', 'page error: ' + m)); await ctx.close();
+  }
 } finally { await browser.close(); if (srv) srv.kill(); }
-for (const id of ['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8', 'L9', 'L10', 'L11', 'L12']) { if (ONLY && !ONLY.includes(id)) continue; const fs_ = findings.filter(f => f.id === id); process.stdout.write(`  ${fs_.length ? '✗' : '✓'} ${id}${fs_.length ? '  — ' + fs_.length + ' finding(s)' : ''}\n`); }
+for (const id of ['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8', 'L9', 'L10', 'L11', 'L12', 'L13']) { if (ONLY && !ONLY.includes(id)) continue; const fs_ = findings.filter(f => f.id === id); process.stdout.write(`  ${fs_.length ? '✗' : '✓'} ${id}${fs_.length ? '  — ' + fs_.length + ' finding(s)' : ''}\n`); }
 const seen = new Set(); findings.forEach(f => { const k = f.id + f.m; if (seen.has(k)) return; seen.add(k); process.stdout.write(`     [${f.id}] ${f.m}\n`); });
 if (!findings.length) process.stdout.write('\nLabbook audit invariants hold.\n');
 process.exit(findings.length ? 1 : 0);

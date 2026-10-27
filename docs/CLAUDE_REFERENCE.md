@@ -8460,3 +8460,11 @@ Jon: "para todos mis medios en toda la app siempre añade pen strep al 1%, siemp
 - **Not touched**: a culture that already holds its own medium text (a recorded text is not rewritten).
 - Cell Archive list: medium column `1.8fr → 2.8fr` (the insulin line with P/S ran to three lines at 880 px, A1).
 - Invariants: `tools/media_invariants.mjs` M2 (three copies agree), M3 (add-a-line passes through `caMedium`), M4 (no shipped recipe without an antibiotic), proven by putting the bug back; CA4 now expects `+ 1% P/S`.
+
+## Edit setup: every question can go, come back, be added or edited; the popup is a wide two-pane sheet (L13, 2026-10-27)
+
+Jon copied a time course that used OA and could not take the OA block out of the copy, nor add or change anything. Cause: Edit setup (`openSetupEditor`) only drew the fixed questions, and the Designer could remove only `custom` ones, never a design's own (`setupAdd` from a seed) or the type's.
+- One list builder `_setupQs(type,hide,add,su)` (`expSetupFields`, `dsFields`) and one set of controls `qCtx/qWrap/qDel/qRestore/qRestoreHtml/qParamDlg(h,idx)` with `h` = `'ds'` (Designer draft) or `'es'` (experiment). A type question is hidden (its answer stays, steps may still read it); an added one is spliced out with its answer. A step that quotes `{{key}}` triggers a confirm. A hidden type question comes back from the "Not asked" line.
+- An experiment now saves `setupHide` / `setupAdd` on its own record at Apply (`e.setupAdd` was read before but never written after creation); the diff on the right lists removed and added questions too.
+- The popup (`.modal.es`): up to 1180 px, questions left under sentence-case headings, "What will change" right and always in view, footer fixed; one column under 760 px. A question's edit/× sit top-right and appear on hover (always on touch). The plate note under a number stays a grid sibling of its cell (T16) and `_platesNoteRefresh` looks for it beside the `.q-i` cell.
+- Invariant `tools/labbook_audit_invariants.mjs` L13 (fails on the old code: no `.q-i` cells).
