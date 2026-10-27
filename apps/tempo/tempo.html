@@ -249,6 +249,17 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
 
 /* ── Results / Compare ───────────────────────────── */
 .res-tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between;margin-bottom:12px;}
+.mth h3 .sub{display:block;margin-top:2px;}
+.mth-short p{margin:0 0 6px;font-size:var(--fs-4);color:var(--text);line-height:1.5;}
+.mth details{margin-top:10px;border-top:1px solid var(--border);padding-top:10px;}
+.mth summary{cursor:pointer;font-size:var(--fs-4);font-weight:600;color:var(--accent-ink);}
+.mth-s{margin-top:14px;} .mth-s h4{margin:0 0 6px;font-size:var(--fs-4);color:var(--text);}
+.mth-t{margin:4px 0;font-size:var(--fs-3);color:var(--text2);line-height:1.5;}
+.mth-r{display:grid;grid-template-columns:minmax(120px,210px) minmax(0,1fr);gap:4px 14px;padding:5px 0;border-bottom:1px solid var(--border);font-size:var(--fs-3);}
+.mth-k{color:var(--text2);overflow-wrap:anywhere;} .mth-v{color:var(--text);line-height:1.5;overflow-wrap:anywhere;}
+.mth-eq{font-family:var(--mono);font-size:var(--fs-3);color:var(--text);background:var(--surface2);border-radius:var(--r-1);padding:3px 7px;overflow-wrap:anywhere;line-height:1.5;}
+.mth-bt{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;}
+@media (max-width:560px){.mth-r{grid-template-columns:minmax(0,1fr);}}
 .cmp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,520px),1fr));gap:14px;}
 .cmp-grid .card+.card{margin-top:0;}
 
@@ -294,7 +305,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
   @page{size:A4;margin:14mm;}
   #tp-print h1{font-size:16pt;margin:0 0 2mm;} #tp-print h2{font-size:11pt;margin:5mm 0 2mm;border-bottom:1px solid #999;padding-bottom:1mm;}
   #tp-print table{border-collapse:collapse;width:100%;font-size:8.5pt;} #tp-print th,#tp-print td{border-bottom:.5pt solid #bbb;padding:1.2mm 1.5mm;text-align:right;} #tp-print th:first-child,#tp-print td:first-child{text-align:left;}
-  #tp-print svg{max-width:100%;height:auto;}
+  #tp-print svg{max-width:100%;height:auto;} #tp-print h3{font-size:9.5pt;margin:3mm 0 1mm;}
   #tp-print .pg{page-break-inside:avoid;}
 }
 
@@ -1109,6 +1120,30 @@ function _matInv(A) {
   }
   return M.map(row=>row.slice(n));
 }
+function _lnGammaFn(z) {
+  const c = [676.5203681218851,-1259.1392167224028,771.32342877765313,-176.61502916214059,12.507343278686905,-0.13857109526572012,9.9843695780195716e-6,1.5056327351493116e-7];
+  if (z < 0.5) return Math.log(Math.PI / Math.sin(Math.PI * z)) - _lnGammaFn(1 - z);
+  z -= 1; let x = 0.99999999999980993; for (let i = 0; i < 8; i++) x += c[i] / (z + i + 1);
+  const t = z + 7.5; return 0.5 * Math.log(2 * Math.PI) + (z + 0.5) * Math.log(t) - t + Math.log(x);
+}
+function _betaIncReg(x, a, b) {
+  const cf = (x, a, b) => { let c = 1, d = 1 - (a + b) * x / (a + 1); if (Math.abs(d) < 1e-300) d = 1e-300; d = 1 / d; let h = d;
+    for (let m = 1; m <= 300; m++) { const m2 = 2 * m;
+      let aa = m * (b - m) * x / ((a + m2 - 1) * (a + m2)); d = 1 + aa * d; if (Math.abs(d) < 1e-300) d = 1e-300; c = 1 + aa / c; if (Math.abs(c) < 1e-300) c = 1e-300; d = 1 / d; h *= d * c;
+      aa = -(a + m) * (a + b + m) * x / ((a + m2) * (a + m2 + 1)); d = 1 + aa * d; if (Math.abs(d) < 1e-300) d = 1e-300; c = 1 + aa / c; if (Math.abs(c) < 1e-300) c = 1e-300; d = 1 / d;
+      const del = d * c; h *= del; if (Math.abs(del - 1) < 1e-15) break; }
+    return h; };
+  if (x <= 0) return 0; if (x >= 1) return 1;
+  const bt = Math.exp(_lnGammaFn(a + b) - _lnGammaFn(a) - _lnGammaFn(b) + a * Math.log(x) + b * Math.log(1 - x));
+  return x < (a + 1) / (a + b + 2) ? bt * cf(x, a, b) / a : 1 - bt * cf(1 - x, b, a) / b;
+}
+function _pF(F, d1, d2) { return F <= 0 ? 1 : !isFinite(F) ? 0 : _betaIncReg(d2 / (d2 + d1 * F), d2 / 2, d1 / 2); }
+function _curveVsFlat(fit) {
+  if (!fit || !(fit.n > fit.np) || !(fit.ssTot > 0)) return null;
+  const d1 = fit.np - 1, d2 = fit.n - fit.np;
+  const F = Math.max(0, fit.ssTot - fit.ssRes) / d1 / (Math.max(fit.ssRes, 1e-12 * fit.ssTot) / d2);
+  return { F, p: _pF(F, d1, d2), df1: d1, df2: d2 };
+}
 function _lmFit(xArr, yArr, pInit, loBound, hiBound, valFn, jacFn, maxIter) {
   const n = xArr.length, np = pInit.length;
   const cl = (v, i) => Math.max(loBound[i], Math.min(hiBound[i], v));
@@ -1170,7 +1205,7 @@ function _lmFit(xArr, yArr, pInit, loBound, hiBound, valFn, jacFn, maxIter) {
   for(let i=0;i<n;i++){const jac=jacFn(xArr[i],...p);for(let a=0;a<np;a++) for(let b=0;b<np;b++) finalJtJ[a][b]+=jac[a]*jac[b];}
   const inv=_matInv(finalJtJ);
   const se=inv?inv.map((row,i)=>Math.sqrt(Math.max(0,row[i]*sigma2))):null;
-  return { params: p, r2: ssTot > 0 ? 1 - ssRes / ssTot : 0, se, df };
+  return { params: p, r2: ssTot > 0 ? 1 - ssRes / ssTot : 0, se, df, ssRes, ssTot, n, np };
 }
 function _fitBest(xArr, yArr, pBase, loBound, hiBound, valFn, jacFn, maxIter) {
   const loEC = loBound[1], hiEC = hiBound[1];
@@ -3634,6 +3669,8 @@ function tpRenderResults() {
     void ref;
   });
   h += '</tbody></table></div><p class="hint" style="margin:10px 0 0">A bound is written as such (&gt; ≥ &lt;) and never as a plain number. “n.d.” is a curve that does not move enough to have a midpoint. K at c_ref, t½, onset and recovery belong to the reference concentration: the lowest one within 20% of the best initial rate. Click a row to see its curves.</p></div>';
+  h += '<div class="card mth" id="tp-method"><h3>How this was calculated<span class="sub">normalisation · equations · what was left out</span></h3><div class="mth-short">' + tpMethodShort().map(t => '<p>' + esc(t) + '</p>').join('') + '</div>' +
+    '<details' + (TP.ui.mthOpen ? ' open' : '') + ' ontoggle="TP.ui.mthOpen=this.open"><summary>Every step, equation and setting</summary>' + tpMethodHTML() + '<div class="mth-bt"><button class="btn" onclick="tpCopyMethod()">Copy</button><button class="btn" onclick="tpSaveMethod()">Save as text</button></div></details></div>';
   pane.innerHTML = h;
 }
 function tpOpenComp(plateId, key) { const i = TP.plates.findIndex(p => p.id === plateId); if (i < 0) return; TP.pi = i; TP.sel.comp = key; TP.sel.conc = null; tpTab('curves'); }
@@ -3744,6 +3781,126 @@ function tpSettingsLines() {
   L.push(['Reporting times (h)', (S.report.times || []).join(', ')]);
   return L;
 }
+/* ───── §8a what the analysis did ─────
+   One record, built from the live settings, the plates and the choices made by hand. The Method card on Results, the Method sheet of the workbook, the header of the
+   Prism tables, the Method text file, the printed report, the JSON and the footnote under a saved figure all print it, so no number leaves Tempo without the rules
+   that made it. A line is ['t', text] · ['kv', label, value] · ['eq', label, equation]. Every sentence follows the code (tpNormalise, tpFitTrace, tpFitDR, tpMM). */
+function tpMethod() {
+  const S = TP.S, N = S.norm, F = S.fit, D = S.dr, M = S.mm, sec = [], plates = TP.plates.filter(p => tpRes(p));
+  const rng = ids => { try { return SetupKit.rangeStr(ids, tpsPos); } catch (e) { return ids.join(', '); } };
+  const add = (h, lines) => sec.push({ h: h, lines: lines.filter(Boolean) });
+  const wl = n => n + ' well' + (n === 1 ? '' : 's');
+  // 1 · the data
+  add('Data', plates.map(p => {
+    const ids = Object.keys(p.wells), n = r => ids.filter(i => tpRole(p.wells[i]) === r).length, dts = []; for (let i = 1; i < p.times.length; i++) dts.push(p.times[i] - p.times[i - 1]); const dt = tpMedian(dts);
+    return ['kv', p.name, p.source + ' · ' + wl(ids.length) + ' (' + n('dose') + ' compound, ' + n('veh') + ' vehicle, ' + n('bkg') + ' background' + (n('blank') ? ', ' + n('blank') + ' blank' : '') + ') · ' + p.times.length + ' reads' + (dt ? ' every ' + tpF(dt, 3) + ' min' : '') + ' · time zero at ' + tpF(p.tZero != null ? p.tZero : p.times[0], 4) + ' min'];
+  }));
+  // 2 · normalisation
+  const nl = [['t', 'Every well becomes a fractional signal y(t): 1 = the signal it would have without degradation, 0 = no signal left. x is the well after background, x0 its own start, V the vehicle trace.'],
+    ['eq', 'Time', 't = (read time − time zero) / 60    [h]'],
+    ['eq', '1 · Background', N.bkg ? 'x(w,t) = RLU(w,t) − mean of the background wells at t' : 'x(w,t) = RLU(w,t)    (background not subtracted)'],
+    ['t', (N.bkg ? 'A reading at or below the background cannot be a denominator: it is treated as missing, never as 0. ' : '') + 'A blank or overflow reading is missing, never 0. BLANK wells are not used.']];
+  if (N.veh === 'perTime') {
+    nl.push(['eq', '2 · Vehicle at each read', 'y(w,t) = x(w,t) / mean of the vehicle wells v of x(v,t)']);
+    nl.push(['t', 'Each read is divided by the vehicle read of the same time (AN331); the well’s own T0 is not used.' + (N.smooth === 'med3' ? ' The vehicle trace is smoothed with a running median of 3 reads.' : '')]);
+  } else {
+    nl.push(['eq', '2 · Own start', 'u(w,t) = x(w,t) / x0(w),   x0(w) = mean of x(w,·) over ' + (N.t0n === 1 ? 'the first read' : 'the first ' + N.t0n + ' reads') + (N.t0src === 'pre' ? ' (the last pre-reads before time zero when the plate has them, else from time zero)' : ' from time zero')]);
+    nl.push(['eq', '3 · Vehicle', N.veh === 'ratioOfMeans' ? 'V(t) = mean of x(v,t) / mean of x0(v)    over the vehicle wells v (ratio of means: the wells pooled)' : N.veh === 'meanOfRatios' ? 'V(t) = mean of [ x(v,t) / x0(v) ]    over the vehicle wells v (mean of ratios)' : 'V(t) = 1    (no vehicle step: substrate depletion is NOT corrected)']);
+    if (N.smooth === 'med3' && N.veh !== 'none') nl.push(['t', 'V(t) is smoothed with a running median of 3 reads.']);
+    nl.push(['eq', '4 · Fractional signal', N.veh === 'none' ? 'y(w,t) = u(w,t)' : 'y(w,t) = u(w,t) / V(t)    (so y = 1 at T0 for the vehicle: Y0 = 1)']);
+  }
+  nl.push(['kv', 'Discordant vehicle wells', N.veh === 'perTime' ? 'not tested' : (N.vehOutlier ? 'a vehicle well whose level sits more than 3.5 robust SD from the median is left out of V (unless more than a quarter of them do)' : 'kept in V (as ProNect does); a far-off well is only reported')]);
+  plates.forEach(p => {
+    const res = tpRes(p), nm = res.nm, ids = Object.keys(p.wells).sort(tpNatCmp), exs = new Set(tpEx(p).wells), by = r => ids.filter(i => tpRole(p.wells[i]) === r && !exs.has(i));
+    if (p.preNorm) { nl.push(['kv', p.name, 'the file holds ProNect’s own normalised traces; they are used as supplied (Tempo did no background, T0 or vehicle step on this plate)']); return; }
+    nl.push(['kv', p.name + ' · background', N.bkg ? (by('bkg').length ? rng(by('bkg')) + ' (' + wl(by('bkg').length) + ')' : 'none on this plate: nothing subtracted') : 'not subtracted']);
+    nl.push(['kv', p.name + ' · vehicle', nm.vehUsed.length ? rng(nm.vehUsed) + ' (' + wl(nm.vehUsed.length) + ')' + (nm.vehDropped.length ? '; left out as discordant: ' + rng(nm.vehDropped) : '') + (nm.vehCVmean != null ? '; scatter between them ' + (nm.vehCVmean * 100).toFixed(1) + ' %' : '') : 'none: curves are read against their own T0 only']);
+    (nm.rules || []).forEach(r => nl.push(['kv', p.name + ' · rule ' + (r.i + 1), r.ok ? rng(r.x) + ' (' + wl(r.x.length) + ') are divided by their own control ' + rng(r.used) + ' (' + wl(r.used.length) + ') instead of the plate vehicle' : rng(r.x) + ': its control wells have no usable trace, so these wells have no normalised curve (never read against another vehicle)']));
+    if ((nm.rules || []).length) nl.push(['kv', p.name + ' · other wells', 'wells under no rule use the plate vehicle']);
+    (nm.notes || []).forEach(t => nl.push(['kv', p.name + ' · note', t]));
+  });
+  add('Normalisation: what each reading was divided by', nl);
+  // 3 · the kinetic fit
+  const y0 = F.y0 === 'free' ? 'y0' : '1';
+  add('Kinetic fit of every concentration', [
+    ['eq', 'Model', 'y(t) = P + (' + y0 + ' − P)·exp(−K·τ),   τ = max(0, t − delay)   [t in h, K in h-1]'],
+    ['kv', 'Parameters', 'y0 ' + (F.y0 === 'free' ? 'free' : 'fixed at 1 (the normalisation puts the start at 1)') + '; P ≥ 0 (the plateau, as a fraction of the vehicle); K > 0, searched between 0.3 / (length of the read) and 3 / (read interval)'],
+    ['kv', 'What is fitted', 'the mean of the replicate wells of a concentration, read by read, over the whole trace' + (F.skip === 'auto' ? '; a dip below the start that recovers within the first 16 reads is skipped as an artefact, otherwise nothing is skipped' : '; the first ' + F.skip + ' read' + (+F.skip === 1 ? ' is' : 's are') + ' skipped') + '. The same model is also fitted to every well on its own (no delay): those plateaus feed Analysis A.'],
+    ['kv', 'Method', 'variable projection: for a fixed K the model is linear in P (and y0), so K is scanned on a log grid, the linear part is solved in closed form and the best cell is refined'],
+    ['kv', 'Delay', F.lag ? 'a delay before the decay starts is fitted and kept only if it lowers AICc by at least 6 (and P < 0.98)' : 'not allowed (τ = t)'],
+    ['kv', 'Plateau', F.plateau === 'auto' ? 'free; when it is not reached (K·T < 2.3, or the interval of P wider than 0.35) P is fixed to the mean of the last ' + F.lastN + ' reads and the result is marked: Dmax ≥, K biased high' : 'free always'],
+    ['kv', 'Degradation counted when', 'a decay beats a flat line by ΔAICc ≥ 10 and the drop is at least max(' + F.minEffect + ', 4 standard errors), or the last quarter of the trace sits at least 15 % (and 6 noise SD) below 1; otherwise “no degradation resolved”'],
+    ['kv', 'After the plateau', 'if the signal recovers (rebound) or falls again late, the fit window ends there and a flag says where'],
+    ['kv', 'Interval of K', '95 %, exact profile likelihood (the SSE profile is walked to the threshold on both sides; no bound = no interval), widened by (1 + ρ)/(1 − ρ), ρ = lag-1 autocorrelation of the residuals, at most 25 ×'],
+    ['kv', 'Bounds', 'K “>” = faster than the read interval (1/Δt is then a lower bound); Dmax “≥” = plateau not reached. A bound is never written as a plain number.'],
+    ['eq', 'Dmax of a concentration', 'Dmax = 1 − P'],
+    ['eq', 't½, t90', 't½ = ln 2 / K + delay,   t90 = ln 10 / K + delay'],
+    ['eq', 'Initial rate', 'v0 = K · Dmax'],
+    ['eq', 'Time-averaged loss', 'mean of (1 − y) over the read = (1/T)·∫(1 − y)dt   (trapezoids, from time zero)'],
+    ['eq', 'Recovery', '100 · (mean of the last 3 reads − nadir) / (1 − nadir),   nadir = lowest point of the smoothed trace'],
+    ['kv', 'Onset', 'the fitted delay when there is one, otherwise the first of two consecutive smoothed reads below 1 − max(0.03, 3 × read-to-read noise)']
+  ]);
+  // 4 · analysis A
+  add('Analysis A · Promega style: DC50 (Dmax50) and Dmax', [
+    ['kv', 'Input', 'the plateau of every well, in % of the vehicle remaining (100·P; a well with no degradation enters at its mean level), against log10 of the concentration. At least 4 concentrations.'],
+    ['eq', 'Model (4PL)', '% remaining = Bot + (Top − Bot) / (1 + 10^( h·(log10 c − log10 DC50) ))'],
+    ['kv', 'Limits', 'Top ' + (D.topFree ? 'free (50 to 200 %)' : 'fixed at 100 %') + '; Bot 0 to 100 %; Hill slope h 0.1 to 5. Levenberg–Marquardt, the same engine as Echo’s dose–response.'],
+    ['eq', 'Dmax, DC50', 'Dmax = Top − Bot  (%);   DC50 (Dmax50) = the concentration halfway between Top and Bot, i.e. at half of Dmax'],
+    ['kv', 'Hook', D.hookOn ? 'from the highest concentration down (at most 3): a concentration is left out of the fit when its mean sits more than ' + D.hookThr + ' points above the mean two concentrations lower (Echo’s rule)' : 'off: every concentration is fitted'],
+    ['kv', 'Interval', '95 % t-interval on log10 DC50 from the fit’s standard error (so asymmetric in nM)'],
+    ['kv', 'Flagged / not reported', 'R² < ' + D.minR2 + '; DC50 outside the concentrations tested (written “<” or “>”); a span (Top − Bot) under ' + D.noEffectSpan + ' % is “n.d.” (no effect); fewer than 4 concentrations: no fit'],
+    ['kv', 'DC50 over time', 'the same dose–response on the mean of 3 reads around each reporting time: ' + ((S.report.times || []).join(', ') || '—') + ' h']
+  ]);
+  // 5 · analysis B
+  add('Analysis B · Michaelis–Menten on K (the lab’s Prism analysis)', [
+    ['eq', 'Model', 'K(c) = KDegMax · c / (KDeg50 + c)    [K in h-1, c in nM]'],
+    ['eq', 'Efficiency', 'KDegMax / KDeg50    [nM-1·h-1];   Log[KDegMax/KDeg50] = log10 of it (the ranking number)'],
+    ['kv', 'Which K enter', 'concentrations that degrade with a plateau below ' + M.flatP + ' (flat curves are out); K not faster than the read interval' + (M.ciRule ? '; K well determined (its interval excludes 0 and is at most 10 × K)' : '') + (M.fixedPlateau === 'exclude' ? '; plateau reached (a fixed plateau biases K high)' : '; K with a fixed plateau is kept, and marked') + '. Each concentration can be forced in or out by hand (listed below).'],
+    ['kv', 'Hook', 'a concentration above the K peak whose K is more than ' + Math.round(M.hookK * 100) + ' % lower than the peak ' + (M.hookMode === 'si' ? 'is kept and the hyperbola is extended with substrate inhibition: K = KDegMax·c / (KDeg50 + c + c²/Ki)' : M.hookMode === 'exclude' ? 'is left out of the fit' : 'is left as it is') + ' (it needs a rising limb below the peak)'],
+    ['kv', 'Fit', 'least squares in log10 parameters (log10 of the efficiency and of KDegMax), Levenberg–Marquardt from many starting points; at least 3 valid K values (fewer than ' + M.minPts + ' are flagged: wide intervals)'],
+    ['kv', 'Intervals', '95 % t-intervals in log10 space from the covariance σ²(JᵀJ)⁻¹; the interval of KDeg50 uses the covariance of both parameters'],
+    ['kv', 'Bounds', 'if K does not saturate over the concentrations tested, KDegMax and KDeg50 are only “≥” and the efficiency (the initial slope) is the number to read; KDeg50 below the lowest concentration is “<”']
+  ]);
+  // 6 · reference concentration and the headline
+  add('Reference concentration and headline', [
+    ['kv', 'c_ref', 'K at c_ref, t½, onset and recovery belong to the reference concentration: the lowest concentration whose initial rate v0 = K·Dmax is within 20 % of the best one among the concentrations with a valid K'],
+    ['kv', 'Headline', S.headline === 'promega' ? 'Promega (DC50, Dmax) sorts the tables; both analyses are always computed' : S.headline === 'mm' ? 'Michaelis–Menten (efficiency) sorts the tables; both analyses are always computed' : 'both analyses side by side; neither is hidden']
+  ]);
+  // 7 · what was done by hand
+  const hand = [];
+  plates.forEach(p => {
+    const ex = tpEx(p), nPts = Object.keys(ex.pts || {}).reduce((s, k) => s + (ex.pts[k] || []).length, 0);
+    if (ex.wells.length) hand.push(['kv', p.name + ' · wells left out', ex.wells.join(', ')]);
+    if (nPts) hand.push(['kv', p.name + ' · single reads left out', nPts + ' read' + (nPts === 1 ? '' : 's') + ' in ' + wl(Object.keys(ex.pts).filter(k => (ex.pts[k] || []).length).length)]);
+    if (ex.masks.length) hand.push(['kv', p.name + ' · time ranges left out (h)', ex.masks.map(m => tpF(m[0], 3) + '–' + tpF(m[1], 3)).join('; ')]);
+    Object.keys(ex.mm || {}).forEach(k => { const a = k.split('\u0002'), cp = (a[0] || '').split('\u0001')[0]; hand.push(['kv', p.name + ' · K fit', cp + ' at ' + tpAxConc(+a[1]) + ': ' + (ex.mm[k] === 'in' ? 'forced into' : 'left out of') + ' the Michaelis–Menten fit']); });
+  });
+  add('Left out or forced by hand', hand.length ? hand : [['t', 'Nothing was left out or forced by hand.']]);
+  // 8 · conventions
+  add('Conventions', [['kv', 'Units', 'concentration in nM, time in h, K in h-1, Dmax and DC50 as above; the Settings sheet lists every option'], ['kv', 'Software', 'Tempo (' + TP_ABOUT.ver + ') · ' + new Date().toISOString().slice(0, 10)]]);
+  return sec;
+}
+function tpMethodText(sec) { const o = []; (sec || tpMethod()).forEach(s => { o.push('', s.h.toUpperCase()); s.lines.forEach(l => o.push(l[0] === 't' ? l[1] : l[1] + ':  ' + l[2])); }); return o.slice(1); }
+function tpMethodAoA(sec) { const o = [['Section', 'Item', 'What was done / the equation']]; (sec || tpMethod()).forEach(s => s.lines.forEach((l, i) => o.push([i ? '' : s.h, l[0] === 't' ? '' : l[1], l[0] === 't' ? l[1] : l[2]]))); return o; }
+// the same in four lines, for a footnote under a figure and a note under a table
+function tpMethodShort() {
+  const S = TP.S, N = S.norm, F = S.fit, D = S.dr, pre = TP.plates.some(q => q.preNorm);
+  return ['Normalised: ' + (N.veh === 'perTime' ? (N.bkg ? 'background subtracted, ' : '') + 'each read ÷ the vehicle read of the same time.' : (N.bkg ? 'background (mean of the background wells at each read) subtracted, ' : '') + 'each well ÷ its own T0' + (N.veh === 'none' ? '.' : ', ÷ the vehicle trace treated the same way (' + (N.veh === 'ratioOfMeans' ? 'ratio of means' : 'mean of ratios') + '), so Y0 = 1.')) + (pre ? ' (a plate whose file holds ProNect’s normalised traces is used as supplied)' : ''),
+    'K: y = P + (' + (F.y0 === 'free' ? 'y0' : '1') + ' − P)·e^(−K·t)' + (F.lag ? ', delay allowed' : '') + ', fitted to the mean trace of each concentration; 95 % profile-likelihood interval; Dmax = 1 − P.',
+    'Analysis A: 4PL on the well plateaus, top ' + (D.topFree ? 'free' : 'fixed at 100 %') + ' → DC50 (Dmax50), Dmax. Analysis B: K = KDegMax·c/(KDeg50 + c) → KDegMax, KDeg50, KDegMax/KDeg50.'];
+}
+function tpMethodHTML(sec) {
+  return (sec || tpMethod()).map(s => '<div class="mth-s"><h4>' + esc(s.h) + '</h4>' + s.lines.map(l => l[0] === 't' ? '<p class="mth-t">' + esc(l[1]) + '</p>' : '<div class="mth-r"><div class="mth-k">' + esc(l[1]) + '</div>' + (l[0] === 'eq' ? '<code class="mth-eq">' + esc(l[2]) + '</code>' : '<div class="mth-v">' + esc(l[2]) + '</div>') + '</div>').join('') + '</div>').join('');
+}
+function tpSaveMethod() { const t = tpMethodText(); if (!TP.plates.some(p => tpRes(p))) { tpToast('Nothing to describe yet', 'warn'); return; } tpDownload(tpBase() + '_tempo_method.txt', tpBlob('Tempo · how this analysis was calculated\r\n' + t.join('\r\n'), 'text/plain')); tpToast('Method written'); }
+function tpCopyMethod() { const t = tpMethodText().join('\n'); (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(() => tpToast('Method copied'), () => tpToast('Copy was blocked', 'warn')); }
+// a note under a saved figure: the SVG grows by the lines it needs
+function tpFootSvg(svg) {
+  const m = /viewBox="0 0 (\d+(?:\.\d+)?) (\d+(?:\.\d+)?)"/.exec(svg); if (!m) return svg; const W = +m[1], H = +m[2], per = Math.max(30, Math.floor((W - 40) / 5.6)), L = [];
+  tpMethodShort().forEach(t => { let cur = ''; t.split(' ').forEach(w => { if ((cur + ' ' + w).length > per && cur) { L.push(cur); cur = w; } else cur = cur ? cur + ' ' + w : w; }); if (cur) L.push(cur); });
+  const h = 14 * L.length + 18, txt = L.map((t, i) => '<text x="20" y="' + (H + 16 + i * 14) + '" font-size="10" fill="#5f647e" font-family="IBM Plex Sans,Arial,sans-serif">' + esc(t) + '</text>').join('');
+  return svg.replace(m[0], 'viewBox="0 0 ' + W + ' ' + (H + h) + '"').replace(/<rect width="[\d.]+" height="[\d.]+"/, '<rect width="' + W + '" height="' + (H + h) + '"').replace('</svg>', '<line x1="20" x2="' + (W - 20) + '" y1="' + (H + 4) + '" y2="' + (H + 4) + '" stroke="#bbb" stroke-width=".6"/>' + txt + '</svg>');
+}
 function tpRowsFlat() { return tpAllRows(); }
 function tpExportXLSX() {
   if (!window.XLSX) { tpToast('Excel export needs SheetJS, which did not load (offline?). Use the CSV exports.', 'warn'); return; }
@@ -3754,7 +3911,8 @@ function tpExportXLSX() {
   add('Results', [(multi ? ['Plate'] : []).concat(['Compound', 'Target', 'DC50 (Dmax50) (nM)', 'DC50 qualifier', 'DC50 CI low (nM)', 'DC50 CI high (nM)', 'Dmax (%)', 'Hill', 'R2', 'K at c_ref (h-1)', 'c_ref (nM)', 't1/2 (h)', 'Onset (h)', 'Recovery (%)', 'Time-averaged loss (%)', 'Class', 'Flags'])].concat(tpSortRows(rows, tpResultsCols(multi)).map(r => {
     const c = r.comp, A = c.A, ok = A && !A.fail, nd = ok && /No effect/.test(A.Flag_Reason), q = ok ? (nd ? 'n.d.' : /EC50>range/.test(A.Flag_Reason) ? '>' : /EC50<range/.test(A.Flag_Reason) ? '<' : '=') : null, f = c.ref;
     return (multi ? [r.plate.name] : []).concat([c.compound, c.target, ok && !nd ? A.DC50_nM : null, q, ok && !nd ? A.CI_DC50_lower : null, ok && !nd ? A.CI_DC50_upper : null, ok ? A.Dmax_pct : null, ok && !nd ? A.HillSlope : null, ok ? A.R2 : null, f ? tpSigF(f.K) : null, f ? c.cref : null, f ? tpSigF(f.t12) : null, f && (f.lag != null || f.onset != null) ? tpSigF(f.lag != null ? f.lag : f.onset) : null, f ? (f.rebound ? tpSigF(f.rebound.pct, 3) : 0) : null, f && f.auc ? tpSigF(f.auc.mean * 100, 4) : null, c.cls, tpFlagsOf(c)]);
-  })));
+  }).concat([[]], tpMethodShort().map(t => [t]), [['Every step, equation and setting: sheet “Method”.']])));
+  add('Method', tpMethodAoA());
   // The Michaelis–Menten sheet, with the headers exactly as the lab writes them
   add('Michaelis-Menten', [(multi ? ['Plate'] : []).concat(['Compound', 'Target', 'KDegMax\n(h-1)', 'KDeg50\n(nM)', 'KDegMax/KDeg50\n(nM-1*h-1)', 'Log[KDegMax/KDeg50\n(nM-1*h-1)]', 'KDegMax CI low', 'KDegMax CI high', 'KDeg50 CI low', 'KDeg50 CI high', 'Efficiency CI low', 'Efficiency CI high', 'Valid K values (n)', 'R2', 'KDegMax is', 'KDeg50 is', 'Efficiency is', 'Concentrations left out', 'Hook handling', 'Note'])].concat(tpSortRows(rows, tpResultsCols(multi)).map(r => {
     const B = r.comp.B, ok = B && B.ok; return (multi ? [r.plate.name] : []).concat([r.comp.compound, r.comp.target, ok ? tpSigF(B.Kmax) : null, ok ? tpSigF(B.K50) : null, ok ? tpSigF(B.Eff) : null, ok ? tpSigF(B.LogEff) : null, ok && B.KmaxCI ? tpSigF(B.KmaxCI[0]) : null, ok && B.KmaxCI ? tpSigF(B.KmaxCI[1]) : null, ok && B.K50CI ? tpSigF(B.K50CI[0]) : null, ok && B.K50CI ? tpSigF(B.K50CI[1]) : null, ok && B.EffCI ? tpSigF(B.EffCI[0]) : null, ok && B.EffCI ? tpSigF(B.EffCI[1]) : null, ok ? B.n : null, ok ? tpSigF(B.r2, 4) : null, ok ? (B.saturated ? 'a value' : 'a lower bound (K does not saturate)') : null, ok ? (B.K50q === '=' ? 'a value' : B.K50q === '<' ? 'an upper bound' : 'a lower bound') : null, ok ? (B.effq === '≥' ? 'a lower bound' : 'a value') : null, (B.rows || []).filter(x => !x.use).map(x => tpAxConc(x.c) + ' (' + x.reason + ')').join('; '), B.hookConcs && B.hookConcs.length ? (B.mode === 'si' ? 'modelled' : 'left out') : '', ok ? B.note || '' : B.why]);
@@ -3784,7 +3942,7 @@ function tpExportCSV() {
 // Prism: a table per compound — time down, one column per concentration (mean), then the same for SD and N
 function tpExportPrism() {
   const rows = tpRowsFlat(); if (!rows.length) { tpToast('Nothing to export yet', 'warn'); return; }
-  const out = [];
+  const out = [['Method']].concat(tpMethodText().map(t => [t]), [[]]);
   rows.forEach(r => { const c = r.comp, cs = c.concs; out.push(['Compound', c.compound, 'Target', c.target, 'Plate', r.plate.name]); out.push(['Fractional signal (mean)', 'Time (h)'].concat(cs.map(x => tpNMConc(x.c)))); r.res.t.forEach((t, k) => out.push(['', tpSigF(t, 6)].concat(cs.map(x => tpSigF(x.mean[k], 6))))); out.push([]); out.push(['SD', 'Time (h)'].concat(cs.map(x => tpNMConc(x.c)))); r.res.t.forEach((t, k) => out.push(['', tpSigF(t, 6)].concat(cs.map(x => tpSigF(x.sd[k], 6))))); out.push([]);
     out.push(['K against concentration', 'Concentration (nM)', 'K (h-1)', 'Used in the fit']); c.concs.forEach((cc, i) => { const f = cc.fit, b = c.B.rows[i]; out.push(['', tpNMConc(cc.c), f && f.degrading ? tpSigF(f.K) : null, b ? (b.use ? 'yes' : 'no') : '']); }); out.push([]);
     out.push(['Dmax against concentration', 'Concentration (nM)', 'Dmax (%)']); c.concs.forEach(cc => out.push(['', tpNMConc(cc.c), cc.fit && cc.fit.degrading ? tpSigF(cc.fit.Dmax * 100, 4) : (cc.fit && cc.fit.ok ? 0 : null)])); out.push([], []); });
@@ -3803,12 +3961,12 @@ function tpExportProNect() {
   p.times.forEach(t => raw.push([t])); bk.concat(samp).forEach(id => { const w = p.wells[id]; p.times.forEach((t, k) => raw[7 + k].push(w.raw ? w.raw[k] : '')); });
   const nm = [['Wells', ''].concat(samp)].concat(tpPNMeta(p, samp).map(r => [r[0], ''].concat(r.slice(1)))); nm.push(['Time (min)', 'Time (h)'].concat(new Array(samp.length).fill('')));
   res.t.forEach((t, k) => nm.push([tpSigF(t * 60, 8), tpSigF(t, 9)].concat(samp.map(id => tpSigF(res.nm.frac[id] ? res.nm.frac[id][k] : null, 9)))));
-  const js = tpToProNectJSON(p); js.Name = p.name; js.Results = tpResultsJSON(p);
+  const js = tpToProNectJSON(p); js.Name = p.name; js.Results = tpResultsJSON(p); js.NormKineticNote = 'NormKinetic in this file is always the ProNect-compatible normalisation (background − own T0 − vehicle, ratio of means) whatever the settings in Tempo; norm_kinetic.csv and Results.method follow the settings in use.';
   const dl = (n, b, d) => setTimeout(() => tpDownload(n, b), d); const b = tpBase();
   dl(b + '_raw_kinetic.csv', tpBlob(tpCSV(raw)), 0); dl(b + '_norm_kinetic.csv', tpBlob(tpCSV(nm)), 350); dl(b + '_normalized_data.json', new Blob([JSON.stringify(js)], { type: 'application/json' }), 700);
   tpToast('Three files written: raw_kinetic.csv, norm_kinetic.csv, normalized_data.json (same layout ProNect writes)' + (tpRules(p).length ? ' — wells under a normalisation rule are read against their own control, which ProNect cannot reproduce' : ''));
 }
-function tpResultsJSON(p) { const res = tpRes(p); return { app: TP_ABOUT.ver, settings: TP.S, compounds: res.compounds.map(c => ({ compound: c.compound, target: c.target, class: c.cls, cref_nM: c.cref, promega: c.A && !c.A.fail ? { DC50_nM: c.A.DC50_nM, Dmax_pct: c.A.Dmax_pct, hill: c.A.HillSlope, R2: c.A.R2, flags: c.A.Flag_Reason } : null, michaelisMenten: c.B && c.B.ok ? { KDegMax_per_h: c.B.Kmax, KDeg50_nM: c.B.K50, efficiency: c.B.Eff, logEfficiency: c.B.LogEff, n: c.B.n, R2: c.B.r2, saturated: c.B.saturated } : null, concentrations: c.concs.map(cc => ({ nM: cc.c, K_per_h: cc.fit && cc.fit.degrading ? cc.fit.K : null, plateau: cc.fit && cc.fit.degrading ? cc.fit.P : null, class: cc.fit && cc.fit.ok ? cc.fit['class'] : null })) })) }; }
+function tpResultsJSON(p) { const res = tpRes(p); return { app: TP_ABOUT.ver, settings: TP.S, method: tpMethodText(), compounds: res.compounds.map(c => ({ compound: c.compound, target: c.target, class: c.cls, cref_nM: c.cref, promega: c.A && !c.A.fail ? { DC50_nM: c.A.DC50_nM, Dmax_pct: c.A.Dmax_pct, hill: c.A.HillSlope, R2: c.A.R2, flags: c.A.Flag_Reason } : null, michaelisMenten: c.B && c.B.ok ? { KDegMax_per_h: c.B.Kmax, KDeg50_nM: c.B.K50, efficiency: c.B.Eff, logEfficiency: c.B.LogEff, n: c.B.n, R2: c.B.r2, saturated: c.B.saturated } : null, concentrations: c.concs.map(cc => ({ nM: cc.c, K_per_h: cc.fit && cc.fit.degrading ? cc.fit.K : null, plateau: cc.fit && cc.fit.degrading ? cc.fit.P : null, class: cc.fit && cc.fit.ok ? cc.fit['class'] : null })) })) }; }
 /* charts as pictures */
 function tpChartSVGLight() {
   const p = tpPlate(), res = tpRes(p); if (!res) return null; const tab = TP.ui.tab;
@@ -3818,12 +3976,12 @@ function tpChartSVGLight() {
   return sub === 'kin' ? tpChartKin(res, comp, { view: 'kin', W: W, H: 560, sel: ci, legend: true, light: true, pts: exPts, masks: ex.masks }) : sub === 'dr' ? tpChartDR(res, comp, { view: 'dr', W: W, H: 560, light: true }) : sub === 'k' ? tpChartK(res, comp, { view: 'k', W: W, H: 560, light: true }) : sub === 't' ? tpChartT(res, comp, { view: 't', W: W, H: 420, light: true }) : sub === 'heat' ? tpChartHeat(res, comp, { W: W, light: true }) : sub === 'res' ? tpChartRes(res, comp, ci, { view: 'res', W: W, H: 380, light: true }) : tpChartFO(res, comp, ci, { view: 'fo', W: W, H: 380, light: true });
 }
 function tpSavePNG() {
-  const svg = tpChartSVGLight(); if (!svg) { tpToast('Nothing to save yet', 'warn'); return; }
+  const svg0 = tpChartSVGLight(), svg = svg0 && tpFootSvg(svg0); if (!svg) { tpToast('Nothing to save yet', 'warn'); return; }
   const m = /viewBox="0 0 (\d+(?:\.\d+)?) (\d+(?:\.\d+)?)"/.exec(svg), W = +m[1], H = +m[2], img = new Image(), url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }));
   img.onload = () => { const c = document.createElement('canvas'); c.width = W * 3; c.height = H * 3; const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url); c.toBlob(b => { tpDownload(tpBase() + '_' + (TP.ui.tab === 'compare' ? 'compare' : (tpCurComp(tpRes()).compound + '_' + TP.sel.sub)).replace(/[^\w.-]+/g, '_') + '.png', b); tpToast('PNG saved'); }, 'image/png'); };
   img.onerror = () => { URL.revokeObjectURL(url); tpToast('The picture could not be made', 'err'); }; img.src = url;
 }
-function tpSaveSVG() { const svg = tpChartSVGLight(); if (!svg) return; tpDownload(tpBase() + '_chart.svg', new Blob([svg], { type: 'image/svg+xml' })); }
+function tpSaveSVG() { const svg0 = tpChartSVGLight(); if (!svg0) return; tpDownload(tpBase() + '_chart.svg', new Blob([tpFootSvg(svg0)], { type: 'image/svg+xml' })); }
 function tpPrint() {
   const p = tpPlate(), res = tpRes(p); if (!res) { tpToast('Nothing to print yet', 'warn'); return; }
   const rows = tpAllRows(), cols = tpResultsCols(false).filter(c => ['name', 'dc50', 'dmax', 'kmax', 'k50', 'eff', 'logeff', 'kref', 't12', 'cls'].indexOf(c.k) >= 0);
@@ -3831,6 +3989,7 @@ function tpPrint() {
   const comp = tpCurComp(res), ci = tpCurConc(comp);
   $('#tp-print').innerHTML = '<h1>' + esc(p.name) + '</h1><div>Kinetic degradation · ' + p.times.length + ' reads · ' + esc(tpNormName()) + ' · Tempo ' + esc(TP_ABOUT.ver) + ' · ' + new Date().toLocaleDateString() + '</div><h2>Results</h2>' + tb +
     '<h2>' + esc(comp.compound) + '</h2><div class="pg">' + tpChartKin(res, comp, { W: 900, H: 470, sel: ci, legend: true, light: true, pts: {}, masks: [] }) + '</div><div class="pg">' + tpChartK(res, comp, { W: 900, H: 440, light: true }) + '</div><div class="pg">' + tpChartDR(res, comp, { W: 900, H: 440, light: true }) + '</div>' +
+    '<h2>How this was calculated</h2>' + tpMethod().map(s => '<h3>' + esc(s.h) + '</h3><table>' + s.lines.map(l => l[0] === 't' ? '<tr><td colspan="2" style="text-align:left">' + esc(l[1]) + '</td></tr>' : '<tr><td style="width:32%">' + esc(l[1]) + '</td><td style="text-align:left' + (l[0] === 'eq' ? ';font-family:monospace' : '') + '">' + esc(l[2]) + '</td></tr>').join('') + '</table>').join('') +
     '<h2>Settings</h2><table>' + tpSettingsLines().map(r => '<tr><td>' + esc(r[0]) + '</td><td>' + esc(String(r[1])) + '</td></tr>').join('') + '</table>';
   setTimeout(() => window.print(), 80);
 }
@@ -3838,7 +3997,7 @@ function tpPrint() {
 function tpExportMenu(btn) {
   const old = $('#tp-exp-menu'); if (old) { old.remove(); return; }
   const m = document.createElement('div'); m.id = 'tp-exp-menu'; m.className = 'ctx open'; m.setAttribute('role', 'menu');
-  const items = [['Excel workbook', 'tpExportXLSX', 'results, both analyses, every trace'], ['ProNect-compatible files (3)', 'tpExportProNect', 'raw_kinetic.csv · norm_kinetic.csv · normalized_data.json'], ['Tidy CSV', 'tpExportCSV', 'one row per well and read'], ['Prism tables', 'tpExportPrism', 'traces, K and Dmax against concentration'], ['Screen table for Hit Finder', 'tpExportScreenCSV', 'one record per compound, Echo’s columns'], null, ['This chart as PNG', 'tpSavePNG', 'white ground, 3×'], ['This chart as SVG', 'tpSaveSVG', ''], ['Print summary', 'tpPrint', 'one page, A4'], null, ['Save project', 'tpSaveProject', 'the plates, layout, left-out points and settings'], ['Open project…', 'tpOpenProjectDlg', '']];
+  const items = [['Excel workbook', 'tpExportXLSX', 'results, both analyses, every trace, the method'], ['ProNect-compatible files (3)', 'tpExportProNect', 'raw_kinetic.csv · norm_kinetic.csv · normalized_data.json'], ['Tidy CSV', 'tpExportCSV', 'one row per well and read'], ['Prism tables', 'tpExportPrism', 'traces, K and Dmax against concentration'], ['Screen table for Hit Finder', 'tpExportScreenCSV', 'one record per compound, Echo’s columns'], null, ['This chart as PNG', 'tpSavePNG', 'white ground, 3×, method under it'], ['This chart as SVG', 'tpSaveSVG', ''], ['Print summary', 'tpPrint', 'results, charts, method and settings'], ['Method as text', 'tpSaveMethod', 'normalisation, equations, what was left out'], null, ['Save project', 'tpSaveProject', 'the plates, layout, left-out points and settings'], ['Open project…', 'tpOpenProjectDlg', '']];
   m.style.cssText = 'position:fixed;z-index:9000;min-width:280px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-2);box-shadow:var(--shadow-lg);padding:5px;';
   m.innerHTML = items.map(i => i ? '<button class="mi" style="display:flex;flex-direction:column;align-items:flex-start;width:100%;padding:7px 10px;border:0;background:none;border-radius:var(--r-1);cursor:pointer;font-family:inherit;color:var(--text);text-align:left" onmouseover="this.style.background=\'var(--surface2)\'" onmouseout="this.style.background=\'none\'" onclick="document.getElementById(\'tp-exp-menu\').remove();' + i[1] + '()"><span style="font-size:var(--fs-3);font-weight:600">' + i[0] + '</span>' + (i[2] ? '<span style="font-size:var(--fs-2);color:var(--text2)">' + i[2] + '</span>' : '') + '</button>' : '<div style="height:1px;background:var(--border);margin:5px 4px"></div>').join('');
   document.body.appendChild(m); const r = btn.getBoundingClientRect(); m.style.top = (r.bottom + 6) + 'px'; m.style.left = Math.max(8, Math.min(innerWidth - m.offsetWidth - 8, r.right - m.offsetWidth)) + 'px';

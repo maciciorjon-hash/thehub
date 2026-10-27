@@ -8422,6 +8422,15 @@ Jon (Spanish): in Tempo the data sometimes ran past the y axis (the Kinetics y s
 - Not covered: the Compare ranking bars (no number axis to cut). Ranges are not saved with the project.
 - Invariant `tools/tempo_invariants.mjs` K23. Found on the way: a 5 px sideways scroll at 320 px on Compare from the row's inputs (fixed: `.ax-g` wraps); K14 failed in the shared tree for a while because another session's header button was uncommitted — not this change.
 
+## Tempo says what the analysis did: one Method record in every output (K24, 2026-10-27)
+
+Jon (Spanish): in Tempo, make clear in the outputs and exports what the analysis did, what it was normalised with, the equations followed.
+
+- **One source, `tpMethod()` (§8a in `tempo.html`)**: sections Data · Normalisation (step by step: background, own T0, vehicle, fractional signal; per plate the background wells, the vehicle wells used or dropped, the X-against-Y rules, the engine's notes) · Kinetic fit (model, parameters, variable projection, delay, plateau rule, degradation gate, rebound cut, profile-likelihood CI with the autocorrelation inflation, Dmax, t½, v0, time-averaged loss, recovery, onset) · Analysis A (4PL form, limits, Dmax = Top − Bot, DC50 = halfway, hook rule, CI, flags) · Analysis B (Michaelis–Menten, efficiency, which K enter, hook, fit, intervals, bounds) · c_ref and headline · what was left out or forced by hand · conventions. Lines are `['t'|'kv'|'eq', …]`; **every sentence is built from `TP.S`, the plates and `tpEx`, never fixed text**, so changing a setting changes the sentence.
+- **Where it prints:** Results › *How this was calculated* (a 3-line note always visible, the full record in a `<details>`, Copy / Save as text) · workbook sheet **Method** (second sheet, three columns) plus a note under the Results table · Prism tables (top block) · printed report (a *How this was calculated* section before Settings) · `normalized_data.json` (`Results.method`, and `NormKineticNote`) · **Method as text** in the export menu (`_tempo_method.txt`) · a footnote under a saved PNG/SVG figure (`tpFootSvg`: viewBox and background rect grow together).
+- **Left alone on purpose:** the tidy CSV, the ProNect-compatible CSVs and the Hit Finder screen table stay pure data (other programs read them); the method for them is the text file, the workbook or the project file. **Found, not changed:** `NormKinetic` inside `normalized_data.json` is always the ProNect-compatible normalisation (`tpToProNectJSON` calls `tpNormalise(plate, {}, {})`) while `norm_kinetic.csv` follows the settings in use; the JSON now says so.
+- Invariant `tools/tempo_invariants.mjs` K24 (card, default sentences, the written normalisation equation recomputed from raw against the normalised trace to 1e-9, sentences follow the normalisation and fit settings, hand choices listed, workbook sheet order, Prism/figure/print/JSON/text/menu); proven by putting two wrong sentences back.
+
 ## History in every analysis app: one kit (Lumina, Tempo, Beacon, BCA; 2026-10-26)
 
 Jon (Spanish): the History mode Dose Response has was missing in Tempo — it must be in all the Data Analysis apps.

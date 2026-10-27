@@ -22,6 +22,8 @@
 // K21 normalise X against Y: wells read against control wells of their own (one vehicle per condition on a plate); the rest keep the plate's vehicle; a rule with no usable control leaves its wells without a curve, never on another vehicle; Plate tab and Setup both make, show and remove rules, ⌘Z covers them
 // K22 raw kinetics: Curves › Raw (RLU) draws the reads as written (any plate, a rising protein level too): background, fold over T0, vehicle, single wells; the plate with a number in every well and a slider over the reads
 // K23 axis ranges: every Tempo chart takes a minimum and a maximum for each axis (typed in the unit it is read in; a range that is not one stays on automatic and says so), also in the saved figure
+// K24 the method travels with the numbers: Results has a “How this was calculated” card, and the workbook, the Prism tables, the printed report, the JSON, the Method text and a saved figure all print the same record —
+//     normalisation step by step, the equations, what was left out — and it follows the settings (change one and the sentence changes), never a fixed text
 // K15 Analysis settings is four tabs of aligned rows: every control has a caption, sits in one column on its tab, Apply stays in view whichever tab is open, and Apply reads the tabs that are hidden
 import { chromium } from 'playwright';
 import fs from 'fs';
@@ -828,6 +830,56 @@ try {
     check('K23 Compare: a metric shown as itself (a log10 scale) is typed as itself, and the traces plot takes a range', r.cmpT && r.cmpS, JSON.stringify([r.cmpT, r.cmpS]));
     check('K23 no page error through any of it', e9.length === 0, e9.slice(0, 2).join(' | '));
     await c9.close();
+  }
+
+  /* ───── K24 the method travels with the numbers ───── */
+  {
+    const c10 = await browser.newContext({ viewport: { width: 1440, height: 1100 } }), pg = await c10.newPage(), e10 = [];
+    pg.on('pageerror', e => e10.push(e.message));
+    await pg.route(/^https?:/, r => r.abort()); await pg.addInitScript(() => { try { localStorage.clear(); } catch (e) {} });
+    await pg.goto('file://' + FILE); await pg.waitForFunction(() => typeof tpLoadExample === 'function');
+    const r = await pg.evaluate(async () => {
+      const o = {}, wait = ms => new Promise(r => setTimeout(r, ms)); await tpLoadExample(); tpTab('results'); await wait(400);
+      const txt = () => tpMethodText().join('\n');
+      // the card on Results
+      const card = document.querySelector('#tp-method'); o.card = !!card; o.short = card ? card.querySelectorAll('.mth-short p').length : 0;
+      o.heads = card ? [...card.querySelectorAll('.mth-s h4')].map(h => h.textContent) : []; o.eqs = card ? card.querySelectorAll('.mth-eq').length : 0;
+      const t0 = txt(); o.def = { bkg: /x\(w,t\) = RLU\(w,t\) − mean of the background wells at t/.test(t0), veh: /V\(t\) = mean of x\(v,t\) \/ mean of x0\(v\)/.test(t0), fin: /y\(w,t\) = u\(w,t\) \/ V\(t\)/.test(t0), model: /y\(t\) = P \+ \(1 − P\)·exp\(−K·τ\)/.test(t0), dr: /Top − Bot\) \/ \(1 \+ 10\^\( h·\(log10 c − log10 DC50\)/.test(t0), mm: /K\(c\) = KDegMax · c \/ \(KDeg50 \+ c\)/.test(t0), top: /Top fixed at 100 %/.test(t0), none: /Nothing was left out or forced by hand/.test(t0), junk: /undefined|NaN|\[object|null/.test(t0) };
+      // the equation is the one the code uses: recompute one well from the sentence and compare with the normalised trace
+      { const p = tpPlate(), res = tpRes(p), ids = Object.keys(p.wells), role = i => tpRole(p.wells[i]), bk = ids.filter(i => role(i) === 'bkg'), vh = res.nm.vehUsed, dz = ids.filter(i => role(i) === 'dose' && res.nm.frac[i])[0], idx = res.nm.idx;
+        const bkg = k => bk.reduce((s, i) => s + p.wells[i].raw[k], 0) / bk.length, x = (i, k) => p.wells[i].raw[k] - bkg(k), x0 = i => x(i, idx[0]), mean = a => a.reduce((s, v) => s + v, 0) / a.length;
+        let worst = 0; [0, 5, 20, idx.length - 1].forEach(j => { const k = idx[j], V = mean(vh.map(i => x(i, k))) / mean(vh.map(x0)), y = x(dz, k) / x0(dz) / V; worst = Math.max(worst, Math.abs(y - res.nm.frac[dz][j])); }); o.eqWorst = worst; }
+      // it follows the settings
+      const N = TP.S.norm, F = TP.S.fit, D = TP.S.dr, M = TP.S.mm; const keep = JSON.stringify(TP.S);
+      N.veh = 'perTime'; N.bkg = false; o.perTime = txt(); N.veh = 'meanOfRatios'; N.bkg = true; N.t0n = 3; o.mor = txt(); N.veh = 'none'; o.vnone = txt(); N.veh = 'ratioOfMeans'; N.t0n = 1;
+      F.lag = false; F.y0 = 'free'; F.plateau = 'free'; D.topFree = true; D.hookOn = false; M.hookMode = 'si'; M.ciRule = false; o.fit = txt();
+      TP.S = JSON.parse(keep);
+      // what was left out by hand
+      const p = tpPlate(), ex = tpEx(p), w = Object.keys(p.wells).find(i => tpRole(p.wells[i]) === 'dose'); ex.wells.push(w); ex.masks.push([1, 2]); o.hand = txt(); ex.wells.pop(); ex.masks.pop(); o.handW = w;
+      // the workbook: sheet order, the note under Results, a Method sheet of three columns
+      const wb = { sheets: [] }; window.XLSX = { utils: { book_new: () => wb, aoa_to_sheet: a => a, book_append_sheet: (b, ws, n) => b.sheets.push([n, ws]) }, writeFile: () => {} }; tpExportXLSX();
+      const sn = wb.sheets.map(s => s[0]); o.sheets = sn; const res = wb.sheets.find(s => s[0] === 'Results')[1], met = wb.sheets.find(s => s[0] === 'Method');
+      o.xNote = res.slice(-4).map(r => r[0]).join(' | '); o.xMethod = !!met && met[1].every(r => r.length === 3) && met[1].length > 25 && met[1][0][0] === 'Section';
+      // Prism, the figure, the printed report, the JSON, the text file
+      const got = {}; window.tpDownload = (n, b) => { got[n] = b; }; tpExportPrism(); tpTab('curves'); tpSub('kin'); tpSaveSVG(); window.print = () => {}; tpPrint();
+      const names = Object.keys(got); const prism = got[names.find(n => /prism/.test(n))], svg = got[names.find(n => /\.svg$/.test(n))];
+      o.prism = (await prism.text()).replace(/^﻿/, '').split('\r\n').slice(0, 3).join(' | '); const st = await svg.text(); o.svg = { foot: /Normalised: background/.test(st), grew: (() => { const m = /viewBox="0 0 (\d+) (\d+)"/.exec(st); return m && +m[2] > 560; })(), rect: (() => { const m = /viewBox="0 0 (\d+) (\d+)"/.exec(st), q = /<rect width="(\d+)" height="(\d+)"/.exec(st); return m && q && m[1] === q[1] && m[2] === q[2]; })() };
+      const pr = document.querySelector('#tp-print').innerHTML; o.print = /How this was calculated/.test(pr) && /y\(w,t\) = u\(w,t\)/.test(pr);
+      const js = tpResultsJSON(tpPlate()); o.json = Array.isArray(js.method) && js.method.length > 20 && /NORMALISATION/.test(js.method.join('\n'));
+      tpSaveMethod(); o.txt = names.concat(Object.keys(got)).some(n => /_tempo_method\.txt$/.test(n));
+      o.menu = (tpExportMenu(document.body), !!document.querySelector('#tp-exp-menu') && /Method as text/.test(document.querySelector('#tp-exp-menu').textContent));
+      return o;
+    });
+    check('K24 Results carries a “How this was calculated” card: a short note, then every step with its equations', r.card && r.short === 3 && r.eqs >= 12 && ['Data', 'Normalisation: what each reading was divided by', 'Kinetic fit of every concentration', 'Analysis A · Promega style: DC50 (Dmax50) and Dmax', 'Analysis B · Michaelis–Menten on K (the lab’s Prism analysis)', 'Reference concentration and headline', 'Left out or forced by hand', 'Conventions'].every(h => r.heads.indexOf(h) >= 0), JSON.stringify([r.short, r.eqs, r.heads]));
+    check('K24 the default record names the background, the vehicle ratio, Y0 = 1, the one-phase model, the 4PL and the Michaelis–Menten equation, with nothing undefined in it', Object.keys(r.def).filter(k => k !== 'junk').every(k => r.def[k]) && !r.def.junk, JSON.stringify(r.def));
+    check('K24 the normalisation equation as written reproduces the normalised trace (worst well and read within 1e-9)', r.eqWorst < 1e-9, String(r.eqWorst));
+    check('K24 the record follows the settings: vehicle at each read, mean of ratios with three reads as T0, no vehicle, no background', /y\(w,t\) = x\(w,t\) \/ mean of the vehicle wells/.test(r.perTime) && /not subtracted|background not subtracted/.test(r.perTime) && /mean of \[ x\(v,t\) \/ x0\(v\) \]/.test(r.mor) && /first 3 reads/.test(r.mor) && /V\(t\) = 1/.test(r.vnone) && /NOT corrected/.test(r.vnone) && /y\(w,t\) = u\(w,t\)\n|y\(w,t\) = u\(w,t\)$/m.test(r.vnone), r.vnone.slice(0, 600));
+    check('K24 the record follows the fit settings: free y0, no delay, free plateau, free top, hook off, substrate inhibition, no CI rule', /\(y0 − P\)/.test(r.fit) && /not allowed/.test(r.fit) && /Plateau:  free always/.test(r.fit) && /Top free/.test(r.fit) && /Hook:  off/.test(r.fit) && /c²\/Ki/.test(r.fit) && !/its interval excludes 0/.test(r.fit), r.fit.slice(0, 200));
+    check('K24 what was left out by hand is listed (the well, the time range), and nothing is claimed when nothing was', new RegExp('wells left out:  ' + r.handW).test(r.hand) && /time ranges left out \(h\):  1.*2/.test(r.hand), r.hand.slice(-300));
+    check('K24 the workbook has a Method sheet right after Results (three columns), and a note under the Results table that points to it', r.sheets[0] === 'Results' && r.sheets[1] === 'Method' && r.xMethod && /Every step, equation and setting/.test(r.xNote), JSON.stringify([r.sheets, r.xNote, r.xMethod]));
+    check('K24 the Prism tables start with the method, the saved figure carries it as a footnote (viewBox and background grown together), the printed report, the JSON and the Method text file have it', /^Method \|/.test(r.prism) && r.svg.foot && r.svg.grew && r.svg.rect && r.print && r.json && r.txt && r.menu, JSON.stringify([r.prism, r.svg, r.print, r.json, r.txt, r.menu]));
+    check('K24 no page error through any of it', e10.length === 0, e10.slice(0, 2).join(' | '));
+    await c10.close();
   }
 
   /* ───── the real ProNect files, when they are here ───── */
