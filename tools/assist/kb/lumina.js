@@ -116,7 +116,7 @@
       { id: 'flags', t: 'Why is a curve flagged?', group: 'Results', on: ['results'],
         q: ['flagged', 'flag', 'qc', 'warning', 'bad curve', 'range', 'hook', 'low r2', 'replicates differ', 'curva marcada', 'aviso', 'fuera de rango', 'outside range', 'greater than', 'less than'],
         a: 'A flag says why a number should be looked at before it is used:',
-        steps: ['**R² below the limit** — a poor fit.', '**Replicates differ** by more than the SD limit.', '**Hook** — the top doses rise again (HiBiT and CTG).', '**>range / <range** — the potency sits outside the doses tested, so it is an extrapolation.'],
+        steps: ['**R² below the limit** — a poor fit.', '**Replicates differ** by more than the SD limit.', '**Hook** — the top doses rise again (HiBiT and viability).', '**>range / <range** — the potency sits outside the doses tested, so it is an extrapolation.'],
         tip: 'A flagged curve keeps its number, visibly flagged. You can change every limit in **Fit settings**.',
         prep: results, show: [{ sel: '#rs-set-btn', say: 'The limits are in Fit settings.', miss: FIT1 }], see: ['fit-settings', 'exclude-point'] },
       { id: 'fit-settings', t: 'Fit settings', group: 'Results', on: ['results'],
