@@ -96,6 +96,8 @@
           '**Plate quality** — one row per plate: baseline, vehicle, window, S/B and Z′.',
           '**Controls** — donor and acceptor counts for each control you marked, with a plate switch when there are several.',
           '**Export** — an Excel workbook (results, every well of every plate, Prism tables, protocol), **Copy for Prism** (concentration in nM down one column, every compound’s replicates beside it), the plate mBRET alone, a CSV, a copy-paste table, or the plot as an image.',
+          '**Curve · Data** over the curve: **Data** lists every reading of the selected compound the way Prism lays it out. Click a reading (⇧ for a block, ⌘/Ctrl to add) and press **⌘E**, or right-click, to **leave it out of the fit**; the same again puts it back. The well stays on the plate and in the workbook, marked Excluded_from_fit.',
+          '**Send to Labbook** (inside dHUB) attaches the potencies and their curves to an experiment — you choose which one.',
           'Press **↑ ↓** (or **j k**, **Home**, **End**) to move between compounds and **← →** to switch the plate shown under Controls.'],
         ref: [['Pooled · Per plate', 'The same compound name on several plates is one compound: its replicates pool. **Per plate** gives one row per compound per plate.'],
           ['EC50 · IC50 · Ki', 'EC50 in protein–protein, IC50 in displacement; Ki = IC50 ÷ (1 + [T]/Kd) once the tracer titration has a Kd.'],
@@ -105,7 +107,7 @@
       { id: 'graph', label: 'Graph', sel: '.tab[data-tab="graph"]', go: function(){ switchTab('graph'); }, needs: 'data',
         lead: 'The figure, made like a Prism graph: grouped **bars** when a compound has fewer than four concentrations, **curves** when it has more — both drawn from the readings in Results.',
         do: ['Click anything on the chart to edit it. **Drag** the titles and the legend; they **snap** to each other, to the plot and to the middle of the figure (hold **Alt** to move freely, **arrow keys** nudge, ⌘Z undoes).',
-          '**Data** has a tick beside every compound (a figure starts with none drawn) and an arrow to open its replicates: click one to **leave it out** of the figure — the mean, the error bar and the fit are made again without it. (This changes the figure only, not Results.)',
+          '**Data** has a tick beside every compound (a figure starts with none drawn) and an arrow to open its replicates: click one to **leave it out** of the figure — the mean, the error bar and the fit are made again without it. (This changes the figure only; a reading left out on Results is out of the figure too.)',
           '**Colours** has palettes (Prism, colour-blind safe, pastel, one-hue, greys…) and a colour for each compound; **Style** has the error bars (SD, SEM, 95 % CI, range), bar width and gaps, markers and the legend; **Axes** has the ranges, ticks, labels and the reference line; **Page** the size of the figure.',
           'Export a **PNG at 300, 600 or 1200 dpi** (the file is tagged with its dpi), a **vector PDF**, or an SVG.'],
         ref: [['Auto · Bars · Curves', 'Auto chooses from the data. Force bars or curves with the switch above the chart.'],
@@ -134,6 +136,6 @@
       ['R² is red', 'The fit is unreliable. Check for a missing well, a plate without its baseline, or too few points around the inflection.'],
       ['A well is blank', 'Its donor or acceptor reading is missing, zero or negative, so there is no ratio — it is never shown as 0.'],
       ['Which reader files work?', 'PHERAstar `.xlsx` exports are read directly. For anything else, copy the donor grid and the acceptor grid in Excel and press ⌘V, or drop them as `.csv`.']],
-    keys: [['↑ ↓ · j k', 'Results: move between compounds'], ['← →', 'Results: switch the plate under Controls'], ['Drag', 'Select wells'], ['Shift · ⌘/Ctrl', 'Extend · add to the selection'], ['Enter', 'Apply what the panel shows'], ['Delete', 'Clear the selected wells'], ['⌘V', 'Paste values copied from Excel'], ['⌘Z · ⇧⌘Z', 'Undo · redo']]
+    keys: [['↑ ↓ · j k', 'Results: move between compounds'], ['← →', 'Results: switch the plate under Controls'], ['⌘E', 'Results › Data: leave the picked reading out of the fit / put it back'], ['Drag', 'Select wells'], ['Shift · ⌘/Ctrl', 'Extend · add to the selection'], ['Enter', 'Apply what the panel shows'], ['Delete', 'Clear the selected wells'], ['⌘V', 'Paste values copied from Excel'], ['⌘Z · ⇧⌘Z', 'Undo · redo']]
   });
 })();

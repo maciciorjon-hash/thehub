@@ -3664,6 +3664,26 @@ async function suite(opts) {
       } finally { window.lbPrompt = lbPrompt1; }
     });
 
+    // B38 — numbers sent from an analysis app are filed where the person says, not wherever Labbook is open.
+    if (run('B38')) await guard('B38', 'send picks', async () => {
+      const a = await mkB(), b = await mkB(); clean.push(a, b); tick('B38'); openExp(a.id);
+      const asked = []; const pick0 = window.lbPicker; window.lbPicker = (t, items, cb) => { asked.push(items.map(x => x.id)); cb(items.find(x => x.id === b.id)); };
+      const send = ctx => { _mergeDHubContext(ctx); };
+      try {
+        LB.data.experiments[a.id].integration = { results: [] }; LB.data.experiments[b.id].integration = { results: [] };
+        send({ source: 'beacon', experiment: null, results: [{ id: 'b38-1', rows: [{ compound: 'X', potency: 5 }] }] });
+        const inB = ((LB.data.experiments[b.id].integration || {}).results || []).length, inA = ((LB.data.experiments[a.id].integration || {}).results || []).length;
+        if (asked.length !== 1) bad('B38', 'ask', 'with an experiment open, results naming none were attached without asking');
+        else if (asked[0][0] !== a.id) bad('B38', 'first', 'the open experiment is not offered first');
+        if (inB !== 1 || inA !== 0) bad('B38', 'filed', `the choice was not honoured: chosen ${inB}, open ${inA}`);
+        send({ source: 'beacon', experiment: null, results: [{ id: 'b38-1', rows: [{ compound: 'X', potency: 6 }] }] });
+        const rs = (LB.data.experiments[b.id].integration || {}).results || [];
+        if (asked.length !== 1 || rs.length !== 1 || rs[0].rows[0].potency !== 6) bad('B38', 'resend', 'sending the same analysis again asked again or doubled it instead of updating the set where it is filed');
+        send({ source: 'lumina', experiment: { id: a.id }, results: [{ id: 'b38-2', rows: [{ compound: 'Y', potency: 1 }] }] });
+        if (asked.length !== 1 || ((LB.data.experiments[a.id].integration || {}).results || []).length !== 1) bad('B38', 'named', 'an experiment named in the message was asked about again');
+      } finally { window.lbPicker = pick0; }
+    });
+
     clean.forEach(cleanup);
     window.lbAlert = lbAlert0; window.lbPrompt = lbPrompt0; window.lbChoose = lbChoose0; window.lbPicker = lbPicker0; window.toast = toast0; window._dl = dl0;
     try { selectNode('home'); } catch (x) {}

@@ -126,7 +126,7 @@
         prep: results, show: [{ sel: '#rs-set-btn', say: 'Fit settings open here.', miss: FIT1 }] },
       { id: 'exclude-point', t: 'Leave out a bad point', group: 'Results', on: ['results'],
         q: ['exclude point', 'remove point', 'outlier', 'leave out', 'ignore point', 'excluir punto', 'quitar punto', 'punto raro', 'put back', 'include point', 'refit'],
-        a: 'On the curve, click a point to leave it out; the fit updates at once and a cross marks where it was. Click or right-click the cross to put it back.',
+        a: 'On the curve, click a point to leave it out; the fit updates at once and a cross marks where it was. Click or right-click the cross to put it back. The **Data** tab lists every reading of the compound in a table: click one (⇧ for a block), press **⌘E** or right-click, and it is out of the fit; the same again puts it back.',
         prep: results, show: [{ sel: '#curve-canvas', say: 'Click a point on the curve.', miss: FIT1 }] },
       { id: 'units', t: 'Change the concentration units', group: 'Results', on: ['results'],
         q: ['units', 'nm', 'um', 'pm', 'molar', 'log', 'log10', 'unidades', 'cambiar unidades', 'change units', 'scale', 'escala'],

@@ -108,7 +108,7 @@
         show: [{ sel: '#fx-drop', say: 'Drop the picklist here.', miss: NOEXP }] },
       { id: 'results', t: 'Get potencies into the experiment', group: 'Experiments', on: ['exp'],
         q: ['results', 'dc50', 'potency', 'send results', 'from echo', 'from lumina', 'flagged', 'exclude a result', 'resultados', 'potencia', 'enviar resultados', 'desde echo', 'excluir', 'n=3', 'replicates statistics', 'geometric mean'],
-        a: 'In dHUB, **Send to Labbook** in Echo Dose Response, Lumina, BCA or Blueprint attaches the numbers to an experiment (you are asked which one). A **Results** section appears with the potencies, and each keeps its QC flag.',
+        a: 'In dHUB, **Send to Labbook** in Echo Dose Response, Lumina, Beacon, BCA or Blueprint attaches the numbers to an experiment (you are asked which one). A **Results** section appears with the potencies, and each keeps its QC flag.',
         steps: ['You can add a note to a measurement and **exclude** it: an excluded row stays in the table, struck through, but leaves the results sentence.', 'Repeat an experiment as a replicate and the Results show n biological replicates: technical duplicates are averaged first, and potencies use a geometric mean.'],
         tip: 'The fitter’s flag is its opinion; excluding is yours. Only yours removes a number from the text.' },
       { id: 'setup-edit', t: 'Change the setup of an experiment', group: 'Experiments', on: ['exp'],

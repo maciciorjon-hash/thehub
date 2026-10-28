@@ -582,6 +582,15 @@ button:focus-visible,summary:focus-visible,[role=button]:focus-visible,[role=tab
 .rs-curve{position:static;}
 .rs-sub .seg{margin-left:auto;}
 .rs-card .rs-curve .rs-canvas{height:340px;}
+.bd-hd{margin-top:14px;}
+.bd-tbl{margin-top:2px;max-height:min(320px,calc(100dvh - 420px));min-height:0;overflow:auto;}
+.bd-tbl tbody tr{cursor:default;}
+.bd-tbl tbody tr:hover td{background:transparent;}
+.bd-tbl td.bd-c{cursor:pointer;user-select:none;-webkit-user-select:none;}
+.bd-tbl td.bd-c:hover{background:var(--surface2);}
+.bd-tbl td.bd-c.sel{background:var(--accent-dim);box-shadow:inset 0 0 0 1.5px var(--accent);}
+.bd-tbl td.bd-c.ex{color:var(--text3);text-decoration:line-through;}
+.bd-keys{margin-top:8px;}
 /* Graph: the editor takes the whole tab */
 #bg-root .ck-root{margin-top:0;}
 .bg-ybar{display:inline-flex;align-items:center;gap:8px;font-size:var(--fs-3);color:var(--text2);}
@@ -2282,6 +2291,9 @@ function bRaw(pl, pos){
   if (!_bretUsable(d) || !_bretUsable(a)) return null;
   return mBU(rawRatio(d, a));
 }
+// A reading can be left out of its compound's curve (Results › Data). The well stays on the plate and in every export, marked; only the
+// fit, the Prism copy and the Graph stop using it. It lives on the plate (pl.excl = {pos:1}), so Undo and History carry it.
+function bEx(pl, pos){ return !!(pl && pl.excl && pl.excl[pos]); }
 // The correction: the mean raw mBRET of the plate's own no-ligand wells (cached per revision).
 function bBase(pl){
   if (pl._bb && pl._bb.rev === state.rev) return pl._bb.v;
@@ -3900,7 +3912,7 @@ function bDoseData(rel){
       var pi = state.plates.indexOf(pl);
       Object.keys(pl.map).forEach(function(p){
         var m = pl.map[p], v;
-        if (m.s === s.id && m.c > 0) { v = bVal(pl, p, true); if (v !== null) { var k = m.c.toPrecision(6); (by[k] = by[k] || { c: m.c, reps: [] }).reps.push({ id: pi + ':' + p, v: v, pi: pi, p: p }); } }
+        if (m.s === s.id && m.c > 0) { v = bEx(pl, p) ? null : bVal(pl, p, true); if (v !== null) { var k = m.c.toPrecision(6); (by[k] = by[k] || { c: m.c, reps: [] }).reps.push({ id: pi + ':' + p, v: v, pi: pi, p: p }); } }
         else if (m.k === 'veh') { v = bVal(pl, p, true); if (v !== null) veh.push(v); }
       });
     });
@@ -4002,6 +4014,8 @@ function bGraphShow(){
 var RS_PER = false;      // one row per compound per plate
 var RS_SEL = null;       // the row drawn beside the table
 var RS_PLATE = null;     // the plate the controls card shows; null = the one on screen
+var RS_VIEW = (function(){ try { return localStorage.getItem('beacon_rsview') === 'data' ? 'data' : 'curve'; } catch(e){ return 'curve'; } })();   // the curve card: the curve alone, or the curve with its data table under it
+var BD_SEL = new Set(), BD_ANCHOR = null, _bLastExMark = -1;   // cells picked in the data table ('plate:well'), the cell a Shift-click extends from
 var _bFitC = null;
 
 function bPotencyName(){ return state.assayMode === 'displacement' ? 'IC50' : 'EC50'; }
@@ -4056,16 +4070,16 @@ function bFits(){
     if (!on.length) return;
     var groups = RS_PER ? on.map(function(pl){ return [pl]; }) : [on];
     groups.forEach(function(g){
-      var raw = [], unc = [], veh = [], nW = 0;
+      var raw = [], unc = [], veh = [], nW = 0, reps = [];
       g.forEach(function(pl){
         var base = bBase(pl); if (!base) unc.push(pl);
         Object.keys(pl.map).forEach(function(p){
           var m = pl.map[p], v;
-          if (m.s === s.id && m.c > 0) { v = bVal(pl, p, true); if (v !== null) { raw.push({ c: m.c, v: v }); nW++; } }
+          if (m.s === s.id && m.c > 0) { v = bVal(pl, p, true); if (v !== null) { var xo = bEx(pl, p); reps.push({ c: m.c, v: v, pi: state.plates.indexOf(pl), p: p, ex: xo }); if (!xo) { raw.push({ c: m.c, v: v }); nW++; } } }
           else if (m.k === 'veh') { v = bVal(pl, p, true); if (v !== null) veh.push(v); }
         });
       });
-      var r = bFitPoints(raw), f = r.fit, o = { key: s.id + (RS_PER ? '@' + state.plates.indexOf(g[0]) : ''), sid: s.id, name: s.name, plates: g.map(function(pl){ return state.plates.indexOf(pl); }), pts: r.pts, fit: f, unc: unc.map(function(pl){ return state.plates.indexOf(pl); }), nW: nW, failed: !!r.failed, flat: !!r.flat,
+      var r = bFitPoints(raw), f = r.fit, o = { key: s.id + (RS_PER ? '@' + state.plates.indexOf(g[0]) : ''), sid: s.id, name: s.name, plates: g.map(function(pl){ return state.plates.indexOf(pl); }), pts: r.pts, fit: f, reps: reps, unc: unc.map(function(pl){ return state.plates.indexOf(pl); }), nW: nW, failed: !!r.failed, flat: !!r.flat,
         veh: veh.length ? { y: meanOf(veh), sd: veh.length > 1 ? sdOf(veh) : 0, n: veh.length } : null };
       if (f) {
         var xs = r.pts.map(function(p){ return p.logConc; }), xMin = Math.min.apply(null, xs), xMax = Math.max.apply(null, xs), lg = f.params[1];
@@ -4080,6 +4094,35 @@ function bFits(){
   });
   _bFitC = { key: key, v: out };
   return out;
+}
+// ── Send to Labbook ─────────────────────────────────────────────────────────────────────────
+// The same `dhub:context v1` shape Echo and Lumina post. No experiment is named: Labbook asks which one, so the potencies are filed
+// where the person says, not wherever Labbook happens to be open. The flag travels with the row (a midpoint outside the doses is
+// `EC50>range`, which Labbook's own sentence reads as a bound), and the curve travels as data so the notebook can draw it.
+function bInHub(){ try { return !!(window.parent && window.parent !== window && window.parent.openApp); } catch(e){ return false; } }
+function bResultRows(){
+  var disp = state.assayMode === 'displacement', pn = bPotencyName(), R = function(v, d){ return isFinite(v) ? +(+v).toFixed(d) : 0; };
+  return bFits().map(function(f){
+    var note = f.bound ? pn + f.bound + 'range' : (!f.fit ? (f.failed ? 'No fit: did not converge' : f.flat ? 'No dose-response: the series is flat' : 'No fit: needs 4 concentrations') : '');
+    var nEx = (f.reps || []).filter(function(r){ return r.ex; }).length, inn = (f.reps || []).filter(function(r){ return !r.ex; });
+    var o = { compound: f.name, target: '', potency: f.fit ? R(f.ec50, 3) : null, nd: !f.fit, bound: !!f.bound, effect: f.fit ? R(f.top - f.bottom, 1) : null, hill: f.fit ? R(f.hill, 2) : null, r2: f.fit ? R(f.r2, 3) : null,
+      flag: !!(f.bound || !f.fit || (f.fit && f.r2 < 0.9)), note: note, flagReason: note || (f.fit && f.r2 < 0.9 ? 'R2=' + f.r2.toFixed(2) : ''), assay: disp ? 'displacement' : 'gain', potencyLabel: pn + ' (nM)', effectLabel: 'Window (mBU)',
+      plate: f.plates.map(bPlateName).join(' + ') };
+    if (f.ki) o.ki = R(f.ki, 3);
+    if (inn.length) o.curve = { x: inn.map(function(r){ return R(Math.log10(r.c) - 9, 4); }), y: inn.map(function(r){ return R(r.v, 2); }), ex: (f.reps || []).filter(function(r){ return r.ex; }).map(function(r){ return [R(Math.log10(r.c) - 9, 4), R(r.v, 2)]; }),
+      p: f.fit ? [f.bottom, Math.log10(f.ec50) - 9, f.hill, f.top].map(function(v){ return R(v, 4); }) : [], gain: state.assayMode === 'gain', n: inn.length, ci: null, yl: 'Corrected mBRET (mBU)' };
+    return o;
+  });
+}
+function sendResultsToLabbook(){
+  var rows = bResultRows();
+  if (!rows.length) { beaconToast('No compound has a dose series yet — mark one on the Plate tab, then send the results.', 'err'); return; }
+  if (!bInHub()) { beaconToast('Open Beacon inside dHUB to send results to Labbook.', 'err'); return; }
+  var pn = bPotencyName(), id = 'beacon-' + bhKey().replace(/^beacon-/, '');
+  var ctx = { source: 'beacon', experiment: null, cellLines: [], plateMaps: [], protocols: [], compounds: rows.map(function(r){ return { name: r.compound }; }),
+    results: [{ id: id, source: 'Beacon', origin: 'beacon', assayId: bAnalysisName(), label: (bAnalysisName() ? bAnalysisName() + ' · ' : '') + pn + ' · ' + bPlural(rows.length, 'compound') + ' · NanoBRET', assay: state.assayMode === 'displacement' ? 'displacement' : 'gain',
+      potencyLabel: pn + ' (nM)', effectLabel: 'Window (mBU)', potencyUnit: 'nM', effectUnit: 'mBU', rows: rows, createdAt: new Date().toISOString() }] };
+  try { window.parent.openApp('labbook', undefined, undefined, ctx); } catch(e){ beaconToast('Could not reach Labbook.', 'err'); }
 }
 function bPlateQC(pl){
   var base = bBase(pl), veh = [];
@@ -4217,7 +4260,8 @@ function renderResults(){
     '<button role="menuitem" onclick="rsCloseExport();exportPlateMBretXLSX()"><b>Plate mBRET (.xlsx)</b><span>Every well of every plate, raw and corrected</span></button>' +
     '<button role="menuitem" onclick="rsCloseExport();exportResultsCSV()"><b>Results (.csv)</b><span>The table as a plain file</span></button>' +
     '<button role="menuitem" onclick="rsCloseExport();copyResultsTSV()"><b>Copy table</b><span>Paste into Excel or a notebook</span></button>' +
-    '<button role="menuitem" onclick="rsCloseExport();rsSavePNG()"><b>Plot as image (.png)</b><span>The curves as they are drawn now</span></button></div></div></div></div>';
+    '<button role="menuitem" onclick="rsCloseExport();rsSavePNG()"><b>Plot as image (.png)</b><span>The curves as they are drawn now</span></button></div></div>' +
+    (bInHub() ? '<button class="btn btn-primary" id="rs-lb" onclick="sendResultsToLabbook()" title="Attach these potencies to an experiment — you choose which; they land on its Results tab and feed its Methods paragraph">Send to Labbook</button>' : '') + '</div></div>';
 
   // Plate quality: one row per plate — what a second plate does to this card is add a row.
   var qc = plates.map(function(pl){ return { pl: pl, q: bPlateQC(pl) }; });
@@ -4274,7 +4318,7 @@ function renderResults(){
     });
     cD += '</tbody></table></div><div class="rs-keys"><kbd>↑</kbd> <kbd>↓</kbd> move between compounds · <kbd>Home</kbd> <kbd>End</kbd> first and last' + (P > 1 ? ' · <kbd>←</kbd> <kbd>→</kbd> switch the plate under Controls' : '') + '</div>' +
       '<p class="rs-foot">' + pn + ' is the midpoint of a 4-parameter curve fitted to the mean of each concentration (Levenberg–Marquardt, multi-start). Points × wells per concentration.' + (disp ? ' Ki = IC50 / (1 + [T]/Kd), from the tracer titration below.' : '') + '</p></div>';
-    cV = '<div class="card rs-card"><div class="card-hdr"><span id="rs-curve-t" class="rs-curve-t">' + rsCurveTitle(sel, pn) + '</span></div><div class="rs-curve"><canvas id="rs-curve" class="rs-canvas" style="height:340px"></canvas><div class="cv-hint">The selected compound in colour, the others grey. Bars are the SD across replicate wells; the grey dot is the vehicle, not in the fit.</div></div></div>';
+    cV = '<div class="card rs-card"><div class="rs-sub"><div class="card-hdr" style="margin:0"><span id="rs-curve-t" class="rs-curve-t">' + rsCurveTitle(sel, pn) + '</span></div><div class="seg" id="rs-view" role="tablist" aria-label="Curve or data"><button role="tab" data-v="curve" class="' + (RS_VIEW === 'curve' ? 'active' : '') + '" aria-selected="' + (RS_VIEW === 'curve') + '" onclick="rsSetView(\'curve\')">Curve</button><button role="tab" data-v="data" class="' + (RS_VIEW === 'data' ? 'active' : '') + '" aria-selected="' + (RS_VIEW === 'data') + '" onclick="rsSetView(\'data\')" title="Every reading of the selected compound in a table, the way Prism lays it out — leave single readings out of the fit">Data</button></div></div><div class="rs-curve"><canvas id="rs-curve" class="rs-canvas" style="height:' + (RS_VIEW === 'data' ? 260 : 340) + 'px"></canvas><div class="cv-hint">The selected compound in colour, the others grey. Bars are the SD across replicate wells; the grey dot is the vehicle, not in the fit; a grey cross is a reading left out.</div></div><div id="rs-data">' + (RS_VIEW === 'data' ? bDataHtml(sel) : '') + '</div></div>';
   } else {
     cD = '<div class="card rs-card"><div class="card-hdr">Dose–response</div><p class="empty-note">Mark a dose series on the Plate tab — every compound then gets its curve and its ' + bPotencyName() + ' here. <button class="lm-link" style="min-height:0;display:inline" onclick="bGoCompounds()">Mark compounds</button></p></div>';
   }
@@ -4327,8 +4371,114 @@ function rsPick(k, scroll){
     if (on && scroll) tr.scrollIntoView({ block: 'nearest' });
   });
   var t = document.getElementById('rs-curve-t'); if (t) t.innerHTML = rsCurveTitle(sel, bPotencyName());
+  var dh = document.getElementById('rs-data'); if (dh && RS_VIEW === 'data') { BD_SEL = new Set(); BD_ANCHOR = null; dh.innerHTML = bDataHtml(sel); }
   bDrawCurves(document.getElementById('rs-curve'));
 }
+// ── The data table: every reading of the selected compound, left out one by one ──────────────────────────────────────────
+// A row is a concentration, a column a replicate (Prism's XY table). Click picks a reading, Shift-click a block, ⌘/Ctrl-click adds one;
+// ⌘E (or right-click) leaves the picked readings out of the fit, and the same again puts them back. Nothing is deleted: the well stays
+// on the plate and in every export, marked Excluded_from_fit.
+function bDataRows(f){
+  var by = {};
+  (f.reps || []).forEach(function(r){ var k = r.c.toPrecision(6); (by[k] = by[k] || { c: r.c, reps: [] }).reps.push(r); });
+  return Object.keys(by).map(function(k){ return by[k]; }).sort(function(a, b){ return b.c - a.c; });
+}
+function bDataHtml(f){
+  if (!f) return '';
+  var rows = bDataRows(f), multi = state.plates.length > 1, nc = Math.max.apply(null, [1].concat(rows.map(function(r){ return r.reps.length; }))), nEx = (f.reps || []).filter(function(r){ return r.ex; }).length;
+  var h = '<div class="rs-sub bd-hd"><div class="card-hdr" style="margin:0">' + esc(f.name) + ' — readings<span class="sub">' + (nEx ? nEx + ' left out' : 'all in the fit') + '</span></div>' +
+    (nEx ? '<button class="lm-link" style="min-height:0" onclick="bRestoreAll()">Put back all</button>' : '') + '</div>';
+  if (!rows.length) return h + '<p class="empty-note">This compound has no readings yet.</p>';
+  h += '<div class="rs-tbl bare bd-tbl"><table><thead><tr><th class="num">Conc.</th>' + Array.from({ length: nc }, function(_, i){ return '<th class="num">Y' + (i + 1) + '</th>'; }).join('') + '<th class="num">Mean</th><th class="num">n</th></tr></thead><tbody>';
+  rows.forEach(function(g, ri){
+    var inn = g.reps.filter(function(r){ return !r.ex; });
+    h += '<tr data-c="' + esc(g.c.toPrecision(6)) + '"><td class="num"><b>' + esc(bFmtConc(g.c)) + '</b></td>';
+    for (var i = 0; i < nc; i++) {
+      var r = g.reps[i];
+      if (!r) { h += '<td class="num bd-none"></td>'; continue; }
+      var key = r.pi + ':' + r.p;
+      h += '<td class="num bd-c' + (r.ex ? ' ex' : '') + (BD_SEL.has(key) ? ' sel' : '') + '" data-k="' + esc(key) + '" data-r="' + ri + '" data-i="' + i + '" title="' + esc((multi ? bPlateName(r.pi) + ' · ' : '') + r.p + (r.ex ? ' — left out of the fit' : '')) + '">' + esc(bSig(r.v, 4)) + '</td>';
+    }
+    h += '<td class="num">' + (inn.length ? esc(bSig(meanOf(inn.map(function(r){ return r.v; })), 4)) : '–') + '</td><td class="num">' + inn.length + (inn.length < g.reps.length ? '<span class="ci"> / ' + g.reps.length + '</span>' : '') + '</td></tr>';
+  });
+  return h + '</tbody></table></div><div class="rs-keys bd-keys"><kbd>click</kbd> pick a reading · <kbd>⇧</kbd> a block · <kbd>' + CTX_MOD + 'E</kbd> leave out / put back · right-click for more</div>';
+}
+function rsSetView(v){
+  RS_VIEW = v === 'data' ? 'data' : 'curve'; try { localStorage.setItem('beacon_rsview', RS_VIEW); } catch(e){}
+  BD_SEL = new Set(); BD_ANCHOR = null;
+  renderResults();
+}
+function _bDataSel(){ return bFits().filter(function(f){ return f.key === RS_SEL; })[0] || null; }
+function _bDataPaint(){
+  document.querySelectorAll('#rs-data .bd-c').forEach(function(td){ td.classList.toggle('sel', BD_SEL.has(td.dataset.k)); });
+}
+function bDataPick(td, e){
+  var k = td.dataset.k;
+  if (e.shiftKey && BD_ANCHOR) {
+    var a = document.querySelector('#rs-data .bd-c[data-k="' + BD_ANCHOR + '"]');
+    if (a) {
+      var r0 = Math.min(+a.dataset.r, +td.dataset.r), r1 = Math.max(+a.dataset.r, +td.dataset.r), c0 = Math.min(+a.dataset.i, +td.dataset.i), c1 = Math.max(+a.dataset.i, +td.dataset.i);
+      BD_SEL = new Set();
+      document.querySelectorAll('#rs-data .bd-c').forEach(function(c){ if (+c.dataset.r >= r0 && +c.dataset.r <= r1 && +c.dataset.i >= c0 && +c.dataset.i <= c1) BD_SEL.add(c.dataset.k); });
+      _bDataPaint(); return;
+    }
+  }
+  if (e.metaKey || e.ctrlKey) { if (BD_SEL.has(k)) BD_SEL.delete(k); else BD_SEL.add(k); }
+  else BD_SEL = new Set([k]);
+  BD_ANCHOR = k; _bDataPaint();
+}
+// keys are 'plate:well'. on = leave out; the fit, the curve and the potency are made again at once.
+function bSetExcluded(keys, on){
+  var f = _bDataSel(); if (!f) return false;
+  var mine = keys.filter(function(k){ return f.reps.some(function(r){ return r.pi + ':' + r.p === k && !!r.ex !== !!on; }); });
+  if (!mine.length) return false;
+  bMark(); _bLastExMark = _bUndo.length;
+  mine.forEach(function(k){ var a = k.split(':'), pl = state.plates[+a[0]]; if (!pl) return; if (on) { pl.excl = pl.excl || {}; pl.excl[a[1]] = 1; } else if (pl.excl) { delete pl.excl[a[1]]; if (!Object.keys(pl.excl).length) delete pl.excl; } });
+  var name = f.name, key = f.key;
+  BD_SEL = new Set(mine);
+  bAfterChange();
+  var nf = bFits().filter(function(x){ return x.key === key; })[0];
+  beaconToast((on ? 'Left out ' : 'Put back ') + (mine.length === 1 ? mine[0].split(':')[1] : mine.length + ' readings') + ' — ' + name + (nf ? (nf.fit ? ', ' + bPotencyName() + ' now ' + (nf.bound ? nf.bound + ' ' + bFmtConc(nf.limit) : bFmtConc(nf.ec50)) : ', no longer enough to fit') : '') + '. ' + CTX_MOD + 'Z undoes.');
+  return true;
+}
+// ⌘E: if any picked reading is still in the fit they all go out; if every one is already out, they all come back.
+function bToggleExcluded(){
+  var f = _bDataSel(); if (!f || !BD_SEL.size) { beaconToast('Click a reading in the data table first, then ' + CTX_MOD + 'E leaves it out.'); return; }
+  var cur = f.reps.filter(function(r){ return BD_SEL.has(r.pi + ':' + r.p); });
+  bSetExcluded(cur.map(function(r){ return r.pi + ':' + r.p; }), cur.some(function(r){ return !r.ex; }));
+}
+function bExcludeDose(c, on){
+  var f = _bDataSel(); if (!f) return;
+  bSetExcluded(f.reps.filter(function(r){ return Math.abs(r.c - c) < c * 1e-6; }).map(function(r){ return r.pi + ':' + r.p; }), on);
+}
+function bRestoreAll(){ var f = _bDataSel(); if (f) bSetExcluded(f.reps.filter(function(r){ return r.ex; }).map(function(r){ return r.pi + ':' + r.p; }), false); }
+// Right-click on a reading (the kit's resolve): the menu is about the picked readings, or the one under the pointer.
+function bDataCtx(e, t){
+  var td = t.closest && t.closest('#rs-data .bd-c'); if (!td) return null;
+  var f = _bDataSel(); if (!f) return null;
+  if (!BD_SEL.has(td.dataset.k)) { BD_SEL = new Set([td.dataset.k]); BD_ANCHOR = td.dataset.k; _bDataPaint(); }
+  var cur = f.reps.filter(function(r){ return BD_SEL.has(r.pi + ':' + r.p); }), out = cur.some(function(r){ return !r.ex; }), n = cur.length;
+  var c = cur[0] && cur[0].c, at = c ? f.reps.filter(function(r){ return Math.abs(r.c - c) < c * 1e-6; }) : [], nEx = f.reps.filter(function(r){ return r.ex; }).length;
+  var items = [{ hd: n > 1 ? n + ' readings' : (cur[0] ? cur[0].p : 'Reading') },
+    { label: out ? (n > 1 ? 'Leave these ' + n + ' out of the fit' : 'Leave this reading out of the fit') : (n > 1 ? 'Put these ' + n + ' back' : 'Put this reading back'), k: CTX_MOD + 'E', act: bToggleExcluded }];
+  if (at.length > 1 && at.some(function(r){ return !r.ex; })) items.push({ label: 'Leave out all ' + at.length + ' at this concentration', act: function(){ bExcludeDose(c, true); } });
+  if (at.length > 1 && at.some(function(r){ return r.ex; })) items.push({ label: 'Put back all at this concentration', act: function(){ bExcludeDose(c, false); } });
+  if (nEx > (out ? 0 : n)) items.push({ label: 'Put back all ' + nEx + ' left out of ' + f.name, act: bRestoreAll });
+  return items;
+}
+(function wireData(){
+  var root = document.getElementById('rs-root'); if (!root) return;
+  root.addEventListener('click', function(e){ var td = e.target.closest && e.target.closest('.bd-c'); if (td) bDataPick(td, e); else if (e.target.closest && !e.target.closest('#rs-data') && BD_SEL.size) { BD_SEL = new Set(); _bDataPaint(); } });
+  root.addEventListener('mousedown', function(e){ if (e.shiftKey && e.target.closest && e.target.closest('.bd-c')) e.preventDefault(); });
+})();
+document.addEventListener('keydown', function(e){
+  if (activeTab !== 'results') return;
+  var t = e.target, tag = t && t.tagName; if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (t && t.isContentEditable)) return;
+  var mod = e.metaKey || e.ctrlKey, k = (e.key || '').toLowerCase();
+  if (mod && !e.altKey && !e.shiftKey && k === 'e' && RS_VIEW === 'data') { e.preventDefault(); bToggleExcluded(); }
+  else if (mod && !e.altKey && k === 'z' && _bLastExMark >= 0 && _bUndo.length === _bLastExMark) { e.preventDefault(); if (e.shiftKey) bRedo(); else { bUndo(); _bLastExMark = -1; } }
+  else if (e.key === 'Escape' && BD_SEL.size) { BD_SEL = new Set(); _bDataPaint(); }
+});
 function rsStep(d, abs){
   var F = bFits(); if (!F.length) return;
   var i = F.findIndex(function(f){ return f.key === RS_SEL; });
@@ -4390,6 +4540,7 @@ function bDrawCurves(canvas){
   sel.pts.forEach(function(p){ ys.push(p.y, p.y + p.sd, p.y - p.sd); });
   fits.forEach(function(f){ f.pts.forEach(function(p){ ys.push(p.y); }); });
   if (sel.veh) ys.push(sel.veh.y);
+  (sel.reps || []).forEach(function(r){ if (r.ex) { xs.push(Math.log10(r.c)); ys.push(r.v); } });
   var xMin = Math.min.apply(null, xs) - (sel.veh ? 1.2 : 0.2), xMax = Math.max.apply(null, xs) + 0.2, yMin = Math.min.apply(null, ys), yMax = Math.max.apply(null, ys), yPad = (yMax - yMin) * 0.12 || 10;
   yMin -= yPad; yMax += yPad;
   function px(x, y){ return [padL + (x - xMin) / (xMax - xMin) * (w - padL - padR), h - padB - (y - yMin) / (yMax - yMin) * (h - padT - padB)]; }
@@ -4418,6 +4569,7 @@ function bDrawCurves(canvas){
     if (p.sd > 0) { var a = px(p.logConc, p.y + p.sd), b = px(p.logConc, p.y - p.sd); ctx.strokeStyle = col; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(q[0], a[1]); ctx.lineTo(q[0], b[1]); ctx.moveTo(q[0] - 4, a[1]); ctx.lineTo(q[0] + 4, a[1]); ctx.moveTo(q[0] - 4, b[1]); ctx.lineTo(q[0] + 4, b[1]); ctx.stroke(); }
     ctx.fillStyle = col; ctx.beginPath(); ctx.arc(q[0], q[1], 4, 0, 2 * Math.PI); ctx.fill();
   });
+  (sel.reps || []).forEach(function(r){ if (!r.ex) return; var q = px(Math.log10(r.c), r.v); ctx.strokeStyle = C.text3; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.moveTo(q[0] - 4, q[1] - 4); ctx.lineTo(q[0] + 4, q[1] + 4); ctx.moveTo(q[0] + 4, q[1] - 4); ctx.lineTo(q[0] - 4, q[1] + 4); ctx.stroke(); });
   if (sel.veh) { var qv = px(Math.min.apply(null, sel.pts.map(function(p){ return p.logConc; })) - 1, sel.veh.y); ctx.fillStyle = C.text3; ctx.beginPath(); ctx.arc(qv[0], qv[1], 4, 0, 2 * Math.PI); ctx.fill(); ctx.font = '10px IBM Plex Sans, sans-serif'; ctx.textAlign = 'left'; ctx.fillText('vehicle', qv[0] + 7, qv[1] + 4); }
 }
 function bDrawTracer(canvas){
@@ -4509,7 +4661,7 @@ function rsSavePNG(){
   var a = document.createElement('a'); a.href = c.toDataURL('image/png'); a.download = _bFileStem() + '-curves.png'; document.body.appendChild(a); a.click(); a.remove();
 }
 function bPlateLongRows(){
-  var rows = [['Plate', 'Well', 'Role', 'Compound', 'Concentration (nM)', 'Donor', 'Acceptor', 'Raw mBRET', 'Corrected mBRET']];
+  var rows = [['Plate', 'Well', 'Role', 'Compound', 'Concentration (nM)', 'Donor', 'Acceptor', 'Raw mBRET', 'Corrected mBRET', 'Excluded_from_fit']];
   state.plates.forEach(function(pl, pi){
     if (!bHasReads(pl)) return;
     var base = bBase(pl);
@@ -4517,7 +4669,7 @@ function bPlateLongRows(){
       var pos = bPos(r, c), m = pl.map[pos], raw = bRaw(pl, pos);
       if (!m && raw === null && pl.donor[pos] === undefined && pl.acceptor[pos] === undefined) continue;
       rows.push([bPlateName(pi), pos, m ? (m.k === 'cpd' ? 'Compound' : m.k === 'trc' ? 'Tracer' : bRoleLabel(m.k)) : '', m && m.s ? (bSeriesById(m.s) || { name: '' }).name : '', m && m.c !== undefined ? m.c : '',
-        pl.donor[pos] === undefined ? '' : pl.donor[pos], pl.acceptor[pos] === undefined ? '' : pl.acceptor[pos], raw === null ? '' : +raw.toFixed(3), raw === null || !base ? '' : +(raw - base.mean).toFixed(3)]);
+        pl.donor[pos] === undefined ? '' : pl.donor[pos], pl.acceptor[pos] === undefined ? '' : pl.acceptor[pos], raw === null ? '' : +raw.toFixed(3), raw === null || !base ? '' : +(raw - base.mean).toFixed(3), bEx(pl, pos) ? 'Yes' : '']);
     }
   });
   return rows;
@@ -4543,7 +4695,7 @@ function _bProtocolAoa(){
     ["Z' factor", '1 - [3xSD(vehicle) + 3xSD(no ligand)] / |Mean(vehicle) - Mean(no ligand)|, raw mBU, needs 2+ wells of each'], [],
     ['--- DOSE-RESPONSE FITTING ---'], ['Model', state.assayMode === 'gain' ? 'Y = Bottom + (Top-Bottom) / (1 + 10^(Hill*(LogEC50-X)))  [gain: increasing]' : 'Y = Bottom + (Top-Bottom) / (1 + 10^(Hill*(X-LogEC50)))'],
     ['X variable', 'log10(concentration in nM)'], ['Fitted to', 'the mean of each concentration; the same compound name on several plates is pooled, each plate corrected against its own baseline'],
-    ['Fitting method', 'Levenberg-Marquardt, multi-start, best R2 wins, up to 1000 iterations'], ['Bound', 'A midpoint outside the concentrations tested is reported as a bound (> or <), not a value'], ['Vehicle', 'Drawn as the zero-dose reference one log10 unit left of the lowest dose; not in the fit'], ['Normalisation', 'Relative values: every well divided by the mean of the vehicle wells of its plate' + (bHasRules() ? ', except the wells a normalisation rule sets against other wells (Normalisation sheet)' : '') + '; each plate first corrected against its own baseline']];
+    ['Fitting method', 'Levenberg-Marquardt, multi-start, best R2 wins, up to 1000 iterations'], ['Bound', 'A midpoint outside the concentrations tested is reported as a bound (> or <), not a value'], ['Readings left out', (function(){ var n = 0; state.plates.forEach(function(pl){ n += Object.keys(pl.excl || {}).length; }); return n ? n + ' reading' + (n === 1 ? '' : 's') + ' left out of the fits by hand (Results › Data); marked Excluded_from_fit in the plate sheet' : 'none'; })()], ['Vehicle', 'Drawn as the zero-dose reference one log10 unit left of the lowest dose; not in the fit'], ['Normalisation', 'Relative values: every well divided by the mean of the vehicle wells of its plate' + (bHasRules() ? ', except the wells a normalisation rule sets against other wells (Normalisation sheet)' : '') + '; each plate first corrected against its own baseline']];
   if (disp) rows.push([], ['--- TRACER TITRATION ---'], ['Model', 'signal = Bmax * [tracer] / (Kd + [tracer])  (one-site binding), raw mBU'], ['Working concentration', (TRACER_WORKING_FRACTION * 100) + '% of Bmax = Kd; at [T]=Kd, IC50 = 2*Ki (EUbOPEN recommends [T] <= Kd)'], ['Ki (Cheng-Prusoff)', 'Ki = IC50 / (1 + [T]/Kd,tracer)'], ['Reference', 'Cheng Y, Prusoff WH (1973) Biochem Pharmacol 22:3099-3108']);
   return rows;
 }
@@ -5331,7 +5483,7 @@ var ctxClose, ctxIsOpen, ctxOpen, ctxBind, ctxApp;
 <script>
 /* ctx-app:begin — generated by tools/sync_ctxkit.py from tools/ctxkit/apps/beacon.js; do not edit here */
 // Beacon: readings in, results out.
-ctxApp(null, { acts: [
+ctxApp(function(e, t){ return typeof bDataCtx === 'function' ? bDataCtx(e, t) : null; }, { acts: [
   { l: 'Choose reader files…', f: 'bPickFiles' },
   { l: 'Paste values from the clipboard', f: 'bPasteButton' },
   { l: 'Set up the analysis…', f: 'bsOpen' },
@@ -5340,6 +5492,7 @@ ctxApp(null, { acts: [
   { l: 'Download results (.csv)', f: 'exportResultsCSV' },
   { l: 'Copy for Prism', f: 'copyPrism' },
   { l: 'Copy the results table', f: 'copyResultsTSV' },
+  { l: 'Send to Labbook…', f: 'sendResultsToLabbook' },
   { l: 'Clear all', f: 'bClearAll' },
   { l: 'Download the full workbook (.xlsx)', f: 'generateOutputXLSX' }
 ] });
@@ -5815,6 +5968,8 @@ var tourRegister, appTour, tourEnd, tourGuideRefresh, tourOffer;
           '**Plate quality** — one row per plate: baseline, vehicle, window, S/B and Z′.',
           '**Controls** — donor and acceptor counts for each control you marked, with a plate switch when there are several.',
           '**Export** — an Excel workbook (results, every well of every plate, Prism tables, protocol), **Copy for Prism** (concentration in nM down one column, every compound’s replicates beside it), the plate mBRET alone, a CSV, a copy-paste table, or the plot as an image.',
+          '**Curve · Data** over the curve: **Data** lists every reading of the selected compound the way Prism lays it out. Click a reading (⇧ for a block, ⌘/Ctrl to add) and press **⌘E**, or right-click, to **leave it out of the fit**; the same again puts it back. The well stays on the plate and in the workbook, marked Excluded_from_fit.',
+          '**Send to Labbook** (inside dHUB) attaches the potencies and their curves to an experiment — you choose which one.',
           'Press **↑ ↓** (or **j k**, **Home**, **End**) to move between compounds and **← →** to switch the plate shown under Controls.'],
         ref: [['Pooled · Per plate', 'The same compound name on several plates is one compound: its replicates pool. **Per plate** gives one row per compound per plate.'],
           ['EC50 · IC50 · Ki', 'EC50 in protein–protein, IC50 in displacement; Ki = IC50 ÷ (1 + [T]/Kd) once the tracer titration has a Kd.'],
@@ -5824,7 +5979,7 @@ var tourRegister, appTour, tourEnd, tourGuideRefresh, tourOffer;
       { id: 'graph', label: 'Graph', sel: '.tab[data-tab="graph"]', go: function(){ switchTab('graph'); }, needs: 'data',
         lead: 'The figure, made like a Prism graph: grouped **bars** when a compound has fewer than four concentrations, **curves** when it has more — both drawn from the readings in Results.',
         do: ['Click anything on the chart to edit it. **Drag** the titles and the legend; they **snap** to each other, to the plot and to the middle of the figure (hold **Alt** to move freely, **arrow keys** nudge, ⌘Z undoes).',
-          '**Data** has a tick beside every compound (a figure starts with none drawn) and an arrow to open its replicates: click one to **leave it out** of the figure — the mean, the error bar and the fit are made again without it. (This changes the figure only, not Results.)',
+          '**Data** has a tick beside every compound (a figure starts with none drawn) and an arrow to open its replicates: click one to **leave it out** of the figure — the mean, the error bar and the fit are made again without it. (This changes the figure only; a reading left out on Results is out of the figure too.)',
           '**Colours** has palettes (Prism, colour-blind safe, pastel, one-hue, greys…) and a colour for each compound; **Style** has the error bars (SD, SEM, 95 % CI, range), bar width and gaps, markers and the legend; **Axes** has the ranges, ticks, labels and the reference line; **Page** the size of the figure.',
           'Export a **PNG at 300, 600 or 1200 dpi** (the file is tagged with its dpi), a **vector PDF**, or an SVG.'],
         ref: [['Auto · Bars · Curves', 'Auto chooses from the data. Force bars or curves with the switch above the chart.'],
@@ -5853,7 +6008,7 @@ var tourRegister, appTour, tourEnd, tourGuideRefresh, tourOffer;
       ['R² is red', 'The fit is unreliable. Check for a missing well, a plate without its baseline, or too few points around the inflection.'],
       ['A well is blank', 'Its donor or acceptor reading is missing, zero or negative, so there is no ratio — it is never shown as 0.'],
       ['Which reader files work?', 'PHERAstar `.xlsx` exports are read directly. For anything else, copy the donor grid and the acceptor grid in Excel and press ⌘V, or drop them as `.csv`.']],
-    keys: [['↑ ↓ · j k', 'Results: move between compounds'], ['← →', 'Results: switch the plate under Controls'], ['Drag', 'Select wells'], ['Shift · ⌘/Ctrl', 'Extend · add to the selection'], ['Enter', 'Apply what the panel shows'], ['Delete', 'Clear the selected wells'], ['⌘V', 'Paste values copied from Excel'], ['⌘Z · ⇧⌘Z', 'Undo · redo']]
+    keys: [['↑ ↓ · j k', 'Results: move between compounds'], ['← →', 'Results: switch the plate under Controls'], ['⌘E', 'Results › Data: leave the picked reading out of the fit / put it back'], ['Drag', 'Select wells'], ['Shift · ⌘/Ctrl', 'Extend · add to the selection'], ['Enter', 'Apply what the panel shows'], ['Delete', 'Clear the selected wells'], ['⌘V', 'Paste values copied from Excel'], ['⌘Z · ⇧⌘Z', 'Undo · redo']]
   });
 })();
 /* tour-js:end */

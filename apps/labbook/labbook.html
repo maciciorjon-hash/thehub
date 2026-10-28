@@ -25684,7 +25684,13 @@ function _carryRowNotes(old,now){
 function _mergeDHubContext(ctx){
   ctx=_cleanCtx(ctx||{});
   var owner=null; (ctx.results||[]).some(function(r){ return r&&r.id&&(owner=_findSetOwner(r.id)); });
-  var e=owner||(ctx.experiment&&LB.data.experiments[ctx.experiment.id])||_curExp();
+  var named=owner||(ctx.experiment&&LB.data.experiments[ctx.experiment.id]);
+  // Numbers, tables and pictures are filed under an experiment the sender chose or one the person picks now —
+  // having one open on screen is not a choice. A set already filed (a re-send) and an experiment named in the
+  // message (Edit in … and back) go straight there; the open experiment is only offered first in the list.
+  var payload=(ctx.results&&ctx.results.length)||(ctx.tables&&ctx.tables.length)||(ctx.images&&ctx.images.some(function(im){ var fg=im&&(im.ribbon||im.blot); return !(fg&&_findFigFile(fg.id)); }))||(ctx.plate&&ctx.plate.wells);
+  if(!named&&payload){ _pickExpForContext(ctx); return; }
+  var e=named||_curExp();
   // Nothing open to attach to. Telling the user to go back and press Send again *after* opening
   // the right experiment throws away a whole analysis for a reason they could not have known
   // about — and this is the path most people are on, because you fit curves in Echo with
@@ -25731,16 +25737,17 @@ function _mergeDHubContext(ctx){
 function _pickExpForContext(ctx){
   var n=((ctx.results||[]).concat(ctx.tables||[]).reduce(function(a,r){ return a+((r.rows||[]).length||0); },0));
   var ni=(ctx.images||[]).length, what=n?(n+' row'+(n===1?'':'s')):(ctx.plate?'this plate map':(ni?(ni+' plate picture'+(ni===1?'':'s')):'this data'));
-  var items=Object.keys(LB.data.experiments).map(function(k){ return LB.data.experiments[k]; })
+  var cur=_curExp(), items=Object.keys(LB.data.experiments).map(function(k){ return LB.data.experiments[k]; })
     .filter(function(x){ return x && x.kind!=='note'; })
     .sort(function(a,b){
       var la=(a.archived||a.status==='abandoned')?1:0, lb=(b.archived||b.status==='abandoned')?1:0;
+      if(cur&&a.id===cur.id) return -1; if(cur&&b.id===cur.id) return 1;
       return (la-lb) || ((b.updated||0)-(a.updated||0)); })
     .slice(0,60)
     .map(function(x){
       var pj=projById(x.projectId)||{};
       return {id:x.id, label:(x.code?(x.code+' · '):'')+(x.title||'Untitled'),
-              sub:[pj.name, x.startDate?fmtDate(x.startDate):'', x.status||''].filter(Boolean).join(' · '),
+              sub:[cur&&x.id===cur.id?'open now':'', pj.name, x.startDate?fmtDate(x.startDate):'', x.status||''].filter(Boolean).join(' · '),
               ic:'E', c:pj.color||'#5e87c5'};
     });
   if(!items.length){ lbAlert('There is no experiment to attach these results to yet. Create one, then send them again from '
@@ -26429,7 +26436,7 @@ var assistRegister, assistOpen, assistClose, assistAsk, assistToggle;
         show: [{ sel: '#fx-drop', say: 'Drop the picklist here.', miss: NOEXP }] },
       { id: 'results', t: 'Get potencies into the experiment', group: 'Experiments', on: ['exp'],
         q: ['results', 'dc50', 'potency', 'send results', 'from echo', 'from lumina', 'flagged', 'exclude a result', 'resultados', 'potencia', 'enviar resultados', 'desde echo', 'excluir', 'n=3', 'replicates statistics', 'geometric mean'],
-        a: 'In dHUB, **Send to Labbook** in Echo Dose Response, Lumina, BCA or Blueprint attaches the numbers to an experiment (you are asked which one). A **Results** section appears with the potencies, and each keeps its QC flag.',
+        a: 'In dHUB, **Send to Labbook** in Echo Dose Response, Lumina, Beacon, BCA or Blueprint attaches the numbers to an experiment (you are asked which one). A **Results** section appears with the potencies, and each keeps its QC flag.',
         steps: ['You can add a note to a measurement and **exclude** it: an excluded row stays in the table, struck through, but leaves the results sentence.', 'Repeat an experiment as a replicate and the Results show n biological replicates: technical duplicates are averaged first, and potencies use a geometric mean.'],
         tip: 'The fitter’s flag is its opinion; excluding is yours. Only yours removes a number from the text.' },
       { id: 'setup-edit', t: 'Change the setup of an experiment', group: 'Experiments', on: ['exp'],

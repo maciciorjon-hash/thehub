@@ -31,6 +31,8 @@
 //                               so the last rows of a plate taller than the window can be drawn.
 //   B21 X against Y          Any wells can be normalised against any other wells: Plate › Normalise (drag X, "Normalise these wells…", drag Y, "Normalise against these wells") makes a rule drawn on the plate; a well is in one rule, never its
 //                            own control; every value is divided by the mean of its rule's wells (else the vehicle's), so the figure, the Prism copy and the workbook follow; the Normalisation tab exists only while a rule does; undo, History keep it.
+//   B23 a reading can be left out  Results › Data lists every reading of the selected compound; picking one and pressing ⌘E (or right-click) takes it out of the fit, the curve, the Prism copy and the Graph's
+//                              numbers, marks it in the workbook, and puts it back with the same key; ⌘Z undoes it. Send to Labbook names no experiment (Labbook asks) and carries the flag and the curve.
 //   B22 the panel meets the plate  The side panel (Select wells…) starts level with the first row of wells, not with the size dropdown and readings strip above the plate: the plate column is a subgrid
 //                              of two rows, and the panel follows the plate when the column labels above the wells grow (concentrations) or the format changes.
 //
@@ -681,6 +683,40 @@ if (run('B21')) await guard('B21', async () => {
   check('B21', 'deleting the last rule hides the tab; the snapshot (History) brings the rule back; "Layout → all plates" copies it', JSON.stringify(r.deleted) === '[0,true]' && r.restored === 1 && r.copied === 1, { deleted: r.deleted, restored: r.restored, copied: r.copied });
   check('B21', 'the figure says it is relative to its control, and the workbook has a Normalisation sheet', /its control/.test(r.yTitle) && r.aoa === 5 && r.prism > 2, { y: r.yTitle, aoa: r.aoa });
   check('B21', 'with the rules gone the tab is hidden and skipped by the arrow keys, and every value is the vehicle\'s again', r.tab2 === true && !r.keys.includes('norm') && r.back.every(Boolean), { keys: r.keys, back: r.back });
+  await ctx.close();
+});
+
+if (run('B23')) await guard('B23', async () => {
+  const { ctx, pg } = await open('/apps/beacon/beacon.html');
+  const r = await pg.evaluate(async () => {
+    const wait = ms => new Promise(res => setTimeout(res, ms));
+    loadTestData('gain'); document.getElementById('bs') && document.getElementById('bs').classList.add('hidden');
+    switchTab('results'); await wait(200); rsSetView('data'); await wait(200);
+    const o = {}, f0 = bFits()[0], key0 = f0.key;
+    o.cells = document.querySelectorAll('#rs-data .bd-c').length; o.reps = f0.reps.length; o.ec0 = f0.ec50; o.pr0 = _bPrismBlock(true).aoa.slice(2).reduce((a, r) => a + r.slice(1, 5).filter(v => v !== '').length, 0);
+    const td = document.querySelectorAll('#rs-data .bd-c')[4]; td.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    o.picked = BD_SEL.size;
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'e', metaKey: true, bubbles: true })); await wait(150);
+    const f1 = bFits().find(x => x.key === key0);
+    o.ex = f1.reps.filter(x => x.ex).length; o.ec1 = f1.ec50; o.exCells = document.querySelectorAll('#rs-data .bd-c.ex').length; o.nW = f1.nW;
+    o.pr1 = _bPrismBlock(true).aoa.slice(2).reduce((a, r) => a + r.slice(1, 5).filter(v => v !== '').length, 0);
+    o.long = bPlateLongRows().filter(r => r[9] === 'Yes').length; o.head = bPlateLongRows()[0][9];
+    o.rows = bResultRows().find(x => x.compound === f1.name); o.snap = JSON.stringify(state.plates).indexOf('"excl"') > 0;
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'e', metaKey: true, bubbles: true })); await wait(150);
+    const f2 = bFits().find(x => x.key === key0); o.back = f2.reps.filter(x => x.ex).length; o.ec2 = f2.ec50;
+    td.dispatchEvent(new MouseEvent('click', { bubbles: true })); bToggleExcluded(); await wait(100);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true, bubbles: true })); await wait(150);
+    o.undone = bFits().find(x => x.key === key0).reps.filter(x => x.ex).length;
+    td.dispatchEvent(new MouseEvent('click', { bubbles: true })); bToggleExcluded(); await wait(100);
+    const items = bDataCtx({}, document.querySelector('#rs-data .bd-c.ex')); o.menu = items.map(i => i.label || i.hd);
+    return o;
+  });
+  check('B23', 'Data lists every reading of the compound, one cell each (4 replicates × 10 concentrations), nothing left out to start with', r.cells === 40 && r.reps === 40 && r.picked === 1, { cells: r.cells, reps: r.reps, picked: r.picked });
+  check('B23', '⌘E on a picked reading takes it out of the fit: the cell is struck, the compound has 39 readings in its fit, the EC50 moves and the Prism copy has one value fewer', r.ex === 1 && r.exCells === 1 && r.nW === 39 && Math.abs(r.ec1 - r.ec0) > 1e-9 && r.pr1 === r.pr0 - 1, { ex: r.ex, nW: r.nW, ec0: r.ec0, ec1: r.ec1, pr0: r.pr0, pr1: r.pr1 });
+  check('B23', 'the workbook lists the well as Excluded_from_fit, and the exclusion is on the plate, so Undo and History carry it', r.head === 'Excluded_from_fit' && r.long === 1 && r.snap, { head: r.head, long: r.long, snap: r.snap });
+  check('B23', 'the same key again puts it back and the EC50 returns to the number it was; ⌘Z takes an exclusion back', r.back === 0 && Math.abs(r.ec2 - r.ec0) < 1e-9 && r.undone === 0, { back: r.back, ec2: r.ec2, ec0: r.ec0, undone: r.undone });
+  check('B23', 'right-click on a reading offers to put a reading back (or leave it out) and to act on its whole concentration', r.menu.length >= 2 && /Put this reading back/.test(r.menu[1]) && r.menu.some(m => /at this concentration/.test(m)), r.menu);
+  check('B23', 'the rows sent to Labbook carry the potency in nM and the curve as data without the reading left out (39 points) — and the sender names no experiment', r.rows && r.rows.potency > 0 && r.rows.curve && r.rows.curve.x.length === 39 && r.rows.curve.ex.length === 1 && r.rows.curve.p.length === 4, r.rows);
   await ctx.close();
 });
 

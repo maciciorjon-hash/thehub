@@ -82,6 +82,8 @@ try {
     for (let t = 0; t < 100 && !e; t++) { e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); if (!e) await new Promise(r => setTimeout(r, 60)); }
     openExp(e.id); return e.id;
   });
+  // Labbook asks which experiment results naming none are filed under (B38); here the person picks the one that is open.
+  await lb.evaluate(id => { window.lbPicker = (t, items, cb) => cb(items.find(x => x.id === id) || items[0]); }, expId);
   const sets = () => lb.evaluate(id => ((LB.data.experiments[id].integration || {}).results || []).map(r => ({ id: r.id, origin: r.origin, n: (r.rows || []).length, hasSession: !!r.session, rows: r.rows })), expId);
 
   // ── T1 / T2: Lumina → Labbook ───────────────────────────────────────────────────────────

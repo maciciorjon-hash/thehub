@@ -972,6 +972,7 @@ async function rb17() {
     let e = null; for (let t = 0; t < 100 && !e; t++) { e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); if (!e) await new Promise(r => setTimeout(r, 60)); }
     openExp(e.id); return e.id;
   });
+  await lb.evaluate(id => { window.lbPicker = (t, items, cb) => cb(items.find(x => x.id === id) || items[0]); }, expId);   // Labbook asks which experiment a new figure is filed under (B38); the person picks the open one
   await rb.evaluate(() => { document.getElementById('pdbInput').value = '4LIG'; handleSubmit(); }); await sleep(3000);
   await rb.evaluate(() => { selectChain('A'); const i = document.getElementById('cp-label-input'); i.value = 'To the notebook'; i.dispatchEvent(new Event('input')); closeChainPopup(); });
   await pg.evaluate(() => show('ribbon')); await sleep(700);   // the frame was hidden while it loaded, as in the Hub, and fits itself when it is shown
@@ -2630,6 +2631,7 @@ async function rb32() {
     let e = null; for (let t = 0; t < 100 && !e; t++) { e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); if (!e) await new Promise(r => setTimeout(r, 60)); }
     openExp(e.id); return e.id; });
   await pg.evaluate(() => show('ribbon'));
+  await lb.evaluate(id => { window.lbPicker = (t, items, cb) => cb(items.find(x => x.id === id) || items[0]); }, expId);   // Labbook asks which experiment a new figure is filed under (B38); the person picks the open one
   await rb.evaluate(() => { document.getElementById('pdbInput').value = '4LIG'; handleSubmit(); }); await sleep(3000);
   await rb.evaluate(() => { runCommand('color chain A red', { noHistory: true }); runCommand('label chain A "Figure one"', { noHistory: true }); runCommand('bg white', { noHistory: true }); openExport(); document.getElementById('exLabbook').click(); });
   await sleep(2500);

@@ -138,6 +138,6 @@
       ['Can I use a reader other than PHERAstar?', 'Yes. Copy the 96- or 384-well block from any spreadsheet and press `⌘V` with the plate in view.']],
     keys: [['Drag', 'Select a rectangle of wells'], ['Shift · ⌘ / Ctrl', 'Extend · add or remove wells'], ['Enter', 'Apply the panel (and advance the compound name)'], ['Delete', 'Clear the selected wells'],
       ['⌘C  ⌘X  ⌘V', 'Copy, cut and paste a block — or paste values from Excel'], ['⌘Z  ⌘⇧Z', 'Undo / redo (Plate); curve edits only (Results)'], ['F2', 'Rename the plate'],
-      ['↑ ↓  ← →', 'Results: compound · fit / raw'], ['P  C', 'Results: Plot · Curve']]
+      ['↑ ↓  ← →', 'Results: compound · fit / raw'], ['P  C  D', 'Results: Plot · Curve · Data'], ['⌘E', 'Results › Data: leave the picked reading out of the fit / put it back']]
   });
 })();
