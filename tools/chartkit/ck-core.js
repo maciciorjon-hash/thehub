@@ -50,6 +50,7 @@ var ChartKitCore = (function(){
       xy: { marker: 'circle', msize: 2.8, lw: 1.4, fit: true, points: true, open: false, dash: false, extend: false },
       ref: { show: true, y: null, dash: true, w: 0.9, label: true },
       legend: { show: true, size: 9, swatch: 9, pos: 'auto', float: false },
+      table: { show: false, size: 8 },                  // the results table under the figure (the app says what is in it: doc.table)
       hidden: {}, seen: {}, omit: {}, pos: {}, margin: { l: 0, r: 0, t: 0, b: 0 },
       snap: true, grid2: false
     };
@@ -58,7 +59,7 @@ var ChartKitCore = (function(){
   // What a number in the spec may be. A field the person is typing in passes through every value on the way to the one
   // they mean ("" → 0 → 8, "99" on the way to "9.9"), and a spec kept in localStorage may hold anything: none of it may
   // reach the drawing as a figure 71 892 pt wide (a 16 000 × 1 px PNG) or a font of 0. null stays null (auto).
-  var RANGE = { w: [3, 20], h: [2.6, 20], axisW: [0.25, 5], tick: [0, 12], 'x.size': [4, 40], 'y.size': [4, 40], 'xTitle.size': [4, 60], 'yTitle.size': [4, 60], 'legend.size': [4, 40],
+  var RANGE = { w: [3, 20], h: [2.6, 20], axisW: [0.25, 5], tick: [0, 12], 'x.size': [4, 40], 'y.size': [4, 40], 'xTitle.size': [4, 60], 'yTitle.size': [4, 60], 'legend.size': [4, 40], 'table.size': [4, 24],
     'bar.width': [0.2, 1.2], 'bar.gap': [0, 4], 'bar.inner': [0, 1], 'bar.border': [0, 5], 'err.cap': [0, 16], 'err.w': [0.25, 5], 'xy.msize': [0.8, 14], 'xy.lw': [0.25, 6], 'ref.w': [0.25, 5],
     'margin.l': [-40, 200], 'margin.r': [-40, 200], 'margin.t': [-40, 200], 'margin.b': [-40, 200], 'y.dec': [0, 6], 'y.major': [0, 1e6] };
   function getp(o, path){ return path.split('.').reduce(function(a, k){ return a == null ? a : a[k]; }, o); }
@@ -136,6 +137,35 @@ var ChartKitCore = (function(){
     return spec.colors[it.id] || (pal.ramp ? blueRamp(idx, n || 6) : pal.c[idx % pal.c.length]);
   }
 
+  // R² of a curve against the replicates that are in the figure (the ones left out are not): 1 - SSres / SStot, over every replicate
+  function r2Of(fn, pts){
+    var ys = [], rs = [];
+    pts.forEach(function(p){ p.kept.forEach(function(r){ var f = fn(p.x); if (fin(r.v) && fin(f)) { ys.push(r.v); rs.push(r.v - f); } }); });
+    if (ys.length < 3) return null;
+    var m = ys.reduce(function(a, b){ return a + b; }, 0) / ys.length, tot = ys.reduce(function(a, v){ return a + (v - m) * (v - m); }, 0), res = rs.reduce(function(a, v){ return a + v * v; }, 0);
+    return tot > 0 ? 1 - res / tot : null;
+  }
+  // The usual four-parameter table. An app names its potency (DC50, IC50, EC50) and its effect (Dmax, Span, Emax); each fit it hands over
+  // carries ec50nM, hill, bot and top, and the table follows the curve actually drawn (a refit after a replicate is left out too).
+  function potText(nM){
+    if (!fin(nM) || nM <= 0) return 'n.d.';
+    var v = nM, u = 'nM'; if (v >= 1000) { v /= 1000; u = '\u00b5M'; } else if (v < 1) { v *= 1000; u = 'pM'; }
+    return String(+v.toPrecision(3)) + '\u2009' + u;
+  }
+  function fourPL(o){
+    var cols = [{ id: 'pot', label: o.potency }];
+    if (o.effect) cols.push({ id: 'eff', label: o.effect });
+    cols.push({ id: 'hill', label: 'Hill' }, { id: 'r2', label: 'R\u00b2' });
+    return { cols: cols, note: o.note || '', cells: function(it, fit, ctx){
+      var f = fit && fit.fn ? fit : null, c = {};
+      c.pot = !f ? 'n.d.' : it.nd ? 'n.d.' : potText(f.ec50nM);
+      if (o.effect) { var g = it._gain !== undefined ? !!it._gain : !!o.gain, e = !f ? null : (g ? f.top : f.top - f.bot); c.eff = !fin(e) ? 'n.d.' : o.pct && !g ? Math.round(e) + '%' : String(+e.toPrecision(o.sig || 3)); }
+      c.hill = !f || it.nd || !fin(f.hill) ? 'n.d.' : f.hill.toFixed(2);
+      c.r2 = f && fin(ctx.r2) ? ctx.r2.toFixed(3) : '\u2014';
+      return c;
+    } };
+  }
+
   // ── the data the chart shows, with omitted replicates left out ──
   function model(doc, spec){
     var items = [];
@@ -153,7 +183,9 @@ var ChartKitCore = (function(){
         if (anyOmit && doc.refit) { try { fit = doc.refit(it, pts.filter(function(p){ return p.st.n; }).map(function(p){ return { x: p.x, y: p.st.mean, sd: p.st.sd, n: p.st.n, reps: p.kept.map(function(r){ return r.v; }) }; })); } catch (e) { fit = null; } refitFailed = !fit && !!it.fit; }
         else fit = it.fit || null;
       }
-      items.push({ id: it.id, name: it.name, idx: idx, color: col, pts: pts, fit: fit, refitFailed: refitFailed, hidden: !!spec.hidden[it.id] });
+      var cells = null;
+      if (doc.table && doc.table.cells) { try { cells = doc.table.cells(it, fit, { pts: pts, r2: fit && fit.fn ? r2Of(fit.fn, pts) : null }); } catch (e) { cells = null; } }
+      items.push({ id: it.id, name: it.name, idx: idx, color: col, pts: pts, fit: fit, cells: cells, refitFailed: refitFailed, hidden: !!spec.hidden[it.id] });
     });
     return items;
   }
@@ -226,10 +258,56 @@ var ChartKitCore = (function(){
       if (q.kids) q.kids = q.kids.map(sp);
       return q;
     }
-    sc.prims = sc.prims.map(sp); sc.W *= k; sc.H *= k;
+    sc.prims = sc.prims.map(sp); sc.W *= k; sc.H *= k; if (sc.figH) sc.figH *= k;
     ['plot', 'clip'].forEach(function(f){ var o = sc[f]; if (o) Object.keys(o).forEach(function(a){ o[a] *= k; }); });
     if (sc.grew) ['w', 'h', 'askedW', 'askedH'].forEach(function(a){ sc.grew[a] *= k; });
     sc.k = k; return sc;
+  }
+  // The table is laid out from its own strings: columns as wide as their widest cell, the spare width shared out between the value columns,
+  // smaller type (to 6 pt) and then cut names when the figure is too narrow. Rules, not boxes: a heavy rule above and below, a light one under the header, a faint band on every second row.
+  function tableBlock(vis, T, spec, kind, W, H, F){
+    var rows = vis.filter(function(i){ return i.cells; });
+    if (!rows.length || !rows.some(function(i){ return i.fit; })) return null;
+    var cols = T.cols, x0 = 12, avail = W - 2 * x0, size = spec.table.size, prims = [];
+    function widths(sz){
+      var pad = sz * 0.9, sw = sz * 1.9;
+      var nw = Math.max.apply(null, rows.map(function(i){ return measure(i.name, sz, false, false, F); }).concat([measure('Compound', sz, true, false, F)])) + sw + pad;
+      var cw = cols.map(function(c){ return Math.max.apply(null, rows.map(function(i){ return measure(String(i.cells[c.id] == null ? '' : i.cells[c.id]), sz, false, false, F); }).concat([measure(c.label, sz, true, false, F)])) + pad * 2; });
+      return { pad: pad, sw: sw, nw: nw, cw: cw, total: nw + cw.reduce(function(a, b){ return a + b; }, 0) };
+    }
+    var wd = widths(size);
+    while (wd.total > avail && size > 6) { size = Math.max(6, size - 0.5); wd = widths(size); }
+    var nameMax = null;
+    if (wd.total > avail) { nameMax = Math.max(measure('Compound', size, true, false, F) + wd.sw, wd.nw - (wd.total - avail)); wd.nw = nameMax + wd.pad; wd.total = wd.nw + wd.cw.reduce(function(a, b){ return a + b; }, 0); }
+    var extra = Math.max(0, avail - wd.total) / cols.length, tw = Math.min(avail, wd.total), rowH = size * 1.95, y0 = H + 8;
+    if (extra > 0) tw = avail;
+    var cx = [x0 + wd.nw], edges = [];
+    cols.forEach(function(c, j){ var w = wd.cw[j] + extra; edges.push([cx[j], w]); cx.push(cx[j] + w); });
+    var head = y0 + rowH, bodyEnd = head + rows.length * rowH;
+    // bands, then rules, then text
+    rows.forEach(function(it, r){ if (r % 2 === 1) prims.push({ t: 'rect', x: x0, y: head + r * rowH, w: tw, h: rowH, fill: '#f1f4f9' }); });
+    prims.push({ t: 'line', x1: x0, y1: y0, x2: x0 + tw, y2: y0, stroke: '#000000', sw: 1.1 });
+    prims.push({ t: 'line', x1: x0, y1: head, x2: x0 + tw, y2: head, stroke: '#000000', sw: 0.6 });
+    prims.push({ t: 'line', x1: x0, y1: bodyEnd, x2: x0 + tw, y2: bodyEnd, stroke: '#000000', sw: 1.1 });
+    var base = size * 0.35;
+    function tx(text, x, y, o){ o = o || {}; return { t: 'text', text: text, x: x, y: y, size: size, bold: !!o.bold, italic: false, anchor: o.anchor || 'start', rot: 0, fill: o.fill || '#000000', font: F, drag: false, w: measure(text, size, o.bold, false, F) }; }
+    prims.push(tx('Compound', x0 + wd.pad * 0.6 + wd.sw, y0 + rowH / 2 + base, { bold: true }));
+    cols.forEach(function(c, j){ prims.push(tx(c.label, edges[j][0] + edges[j][1] / 2, y0 + rowH / 2 + base, { bold: true, anchor: 'middle' })); });
+    rows.forEach(function(it, r){
+      var cy = head + r * rowH + rowH / 2, sx = x0 + wd.pad * 0.6, sh = size * 0.8;
+      if (kind === 'bars') prims.push({ t: 'rect', x: sx, y: cy - sh / 2, w: sh * 1.3, h: sh, fill: it.color, stroke: darken(it.color, 0.35), sw: 0.6 });
+      else { prims.push({ t: 'line', x1: sx, y1: cy, x2: sx + sh * 1.5, y2: cy, stroke: it.color, sw: spec.xy.lw }); prims.push({ t: 'marker', type: spec.xy.marker === 'auto' ? MARKERS[it.idx % MARKERS.length] : spec.xy.marker, cx: sx + sh * 0.75, cy: cy, r: Math.min(spec.xy.msize, size * 0.4), fill: spec.xy.open ? '#ffffff' : it.color, stroke: it.color, sw: 0.8 }); }
+      var nm = nameMax !== null ? fitText(it.name, size, nameMax - wd.sw, F) : it.name;
+      prims.push(tx(nm, x0 + wd.pad * 0.6 + wd.sw, cy + base));
+      cols.forEach(function(c, j){ var v = it.cells[c.id]; prims.push(tx(v == null ? '' : String(v), edges[j][0] + edges[j][1] / 2, cy + base, { anchor: 'middle' })); });
+    });
+    var h = 8 + rowH * (rows.length + 1);
+    if (T.note) {
+      var ns = Math.max(5.5, size * 0.85), nt = fitText(T.note, ns, tw, F);
+      prims.push({ t: 'text', text: nt, x: x0, y: bodyEnd + ns * 1.25, size: ns, bold: false, italic: true, anchor: 'start', rot: 0, fill: '#555555', font: F, drag: false, w: measure(nt, ns, false, true, F) });
+      h += ns * 1.7;
+    }
+    return { prims: prims, h: h + 6 };
   }
   function buildRef(doc, specIn){
     var spec = specIn, kind = spec.kind === 'auto' ? autoKind(doc, spec) : spec.kind;
@@ -425,7 +503,13 @@ var ChartKitCore = (function(){
       });
       prims.push(g);
     }
-    return { W: W, H: H, prims: prims, plot: plot, kind: kind, font: F, clip: { x: plot.x, y: plot.y - 2, w: plot.w, h: plot.h + 4 }, items: items, yTicks: yTicks, titles: titles.length, grew: grew };
+    // results table under the figure: one row per compound drawn, the columns the app asked for
+    var tableH = 0;
+    if (spec.table.show && doc.table && doc.table.cols && doc.table.cols.length) {
+      var TB = tableBlock(vis, doc.table, spec, kind, W, H, F);
+      if (TB) { TB.prims.forEach(function(p){ prims.push(p); }); tableH = TB.h; }
+    }
+    return { W: W, H: H + tableH, figH: H, prims: prims, plot: plot, kind: kind, font: F, clip: { x: plot.x, y: plot.y - 2, w: plot.w, h: plot.h + 4 }, items: items, yTicks: yTicks, titles: titles.length, grew: grew };
   }
   function autoKind(doc, spec){
     var vis = (doc.items || []).filter(function(i){ return !spec.hidden[i.id]; });
@@ -433,5 +517,5 @@ var ChartKitCore = (function(){
     return vis.every(function(i){ return (i.points || []).length < 4; }) ? 'bars' : 'xy';
   }
 
-  return { build: build, defaults: defaults, withDefaults: withDefaults, sanitize: sanitize, RANGE: RANGE, decadeLabels: decadeLabels, PALETTES: PALETTES, MARKERS: MARKERS, REF_W: REF_W, blueRamp: blueRamp, autoKind: autoKind, model: model, stats: stats, measure: measure, lighten: lighten, darken: darken, rgb: rgb, hex: hex, fin: fin, itemColor: itemColor, merge: merge };
+  return { build: build, defaults: defaults, withDefaults: withDefaults, sanitize: sanitize, RANGE: RANGE, decadeLabels: decadeLabels, PALETTES: PALETTES, MARKERS: MARKERS, REF_W: REF_W, blueRamp: blueRamp, autoKind: autoKind, fourPL: fourPL, potText: potText, r2Of: r2Of, model: model, stats: stats, measure: measure, lighten: lighten, darken: darken, rgb: rgb, hex: hex, fin: fin, itemColor: itemColor, merge: merge };
 })();

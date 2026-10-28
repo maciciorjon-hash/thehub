@@ -46,6 +46,10 @@
 //   K25 colour in the     The colour card has Within the palette (swatches) and Full spectrum (picker, hex); it opens on the one the colour belongs to
 //       palette or not
 //
+//   K26 results table     A switch puts a table of the fitted values (potency, effect, Hill, R²) under the figure — one row per compound drawn, in the PNG, PDF and SVG too. It follows the curve drawn (a refit after
+//                         a replicate is left out changes it), leaves out a hidden compound, stays inside the page at any width, and each app names its own columns (DC50/Dmax, IC50/Span, EC50/Emax) with the
+//                         numbers its Results table has.
+//
 //   node tools/chartkit_invariants.mjs        exit 1 on any finding
 import { chromium } from 'playwright';
 import path from 'node:path';
@@ -351,6 +355,35 @@ const k10core = await ev(() => {
 });
 check('K10 every label and the legend lie inside the figure and on no other label — 6 page sizes × 1–63 compounds × short/long names × bars/curves', Object.keys(k10core).length === 0, JSON.stringify(k10core).slice(0, 400));
 
+// K26 — the results table, in the core
+await open('xy');
+const k26 = await ev(async () => {
+  const C = ChartKitCore, X = ChartKitExport, o = {};
+  const curve = (ec) => x => 10 + 90 / (1 + Math.pow(x / ec, 1.2));
+  const mk = (id, name, ec) => { const fn = curve(ec); return { id, name, fit: { fn, ec50nM: ec, hill: 1.2, bot: 10, top: 100 }, points: [1000, 300, 100, 30, 10, 3, 1].map((c, j) => ({ x: c, reps: [0, 1].map(r => ({ id: id + j + r, v: fn(c) })) })) }; };
+  const doc = { title: ['T', '', ''], xTitle: 'x', yTitle: 'y', table: C.fourPL({ potency: 'DC50', effect: 'Dmax', pct: true, note: 'a note' }), items: [mk('a', 'Alpha', 12.5), mk('b', 'Beta', 2400), mk('c', 'Gamma', 0.4)],
+    refit: (it, pts) => ({ fn: curve(30), ec50nM: 30, hill: 1, bot: 10, top: 100 }) };
+  const texts = sc => sc.prims.filter(p => p.t === 'text').map(p => p.text);
+  const off = C.build(doc, { kind: 'xy' }); o.off = { same: Math.abs(off.H - off.figH) < 0.01, hdr: texts(off).includes('DC50') };
+  const on = C.build(doc, { kind: 'xy', table: { show: true } }); o.on = { grew: on.H > on.figH + 20, texts: texts(on).filter(t => /DC50|Dmax|Hill|R²|Alpha|Beta|Gamma|nM|µM|pM|%|^\d\.\d+$|note|Compound/.test(t)) };
+  const sp = { kind: 'xy', table: { show: true }, hidden: { b: true } }; o.hiddenB = texts(C.build(doc, sp)).some(t => /Beta/.test(t));
+  const om = C.build(doc, { kind: 'xy', table: { show: true }, omit: { a00: true } }); o.refit = texts(om).filter(t => /nM|µM|pM/.test(t));
+  const inside = (sc) => { const bad = []; sc.prims.forEach(p => { if (p.t !== 'text' || p.y <= sc.figH) return; const l = p.anchor === 'middle' ? p.x - p.w / 2 : p.x, r = l + p.w; if (l < -0.5 || r > sc.W + 0.5 || p.y > sc.H + 0.5) bad.push(p.text); }); sc.prims.forEach(p => { if (p.t === 'line' && p.y1 > sc.figH && (p.x1 < -0.5 || p.x2 > sc.W + 0.5)) bad.push('rule'); }); return bad; };
+  const long = { title: ['', '', ''], table: doc.table, items: Array.from({ length: 6 }, (_, i) => mk('n' + i, 'A-very-long-compound-identifier-number-' + i, 10 * (i + 1))) };
+  o.narrow = [3, 3.4, 5, 9].map(w => inside(C.build(long, { kind: 'xy', w, h: w * 0.62, table: { show: true } })).length);
+  const sc = C.build(doc, { kind: 'xy', table: { show: true } });
+  o.svg = /Alpha/.test(X.toSVG(sc)) && />DC50</.test(X.toSVG(sc));
+  const pdf = new TextDecoder('latin1').decode(new Uint8Array(await X.toPDF(sc).arrayBuffer())); o.pdf = /\(DC50\)/.test(pdf) && /\(Alpha\)/.test(pdf) && /MediaBox \[0 0 468 \d+/.test(pdf);
+  o.dims = [sc.W, sc.H];
+  const noFit = C.build({ items: [{ id: 'z', name: 'Z', points: [{ x: 1, reps: [{ id: 'z', v: 1 }] }] }], table: doc.table }, { kind: 'xy', table: { show: true } }); o.noFit = noFit.H === noFit.figH;
+  return o;
+});
+check('K26 the table is off until asked for (the figure is the page, no table text) and a switch adds it under the figure', k26.off.same && !k26.off.hdr && k26.on.grew, JSON.stringify(k26.off));
+check('K26 one row per compound with the potency in its own unit, the effect, Hill and R² (a perfect curve is R² 1.000)', ['DC50', 'Dmax', 'Hill', 'R²', 'Alpha', 'Beta', 'Gamma', '12.5\u2009nM', '2.4\u2009\u00b5M', '400\u2009pM', '90%', '1.20', '1.000', 'a note'].every(t => k26.on.texts.includes(t)), JSON.stringify(k26.on.texts));
+check('K26 a hidden compound is not in the table, and a replicate left out changes it through the refit', !k26.hiddenB && k26.refit.includes('30\u2009nM') && !k26.refit.includes('12.5\u2009nM') && k26.refit.includes('2.4\u2009\u00b5M'), JSON.stringify({ h: k26.hiddenB, r: k26.refit }));
+check('K26 at 3 to 9 in wide, with six long names, every cell and rule lies inside the page', k26.narrow.every(n => n === 0), JSON.stringify(k26.narrow));
+check('K26 the SVG and the vector PDF carry the table (the PDF page is as tall as the figure plus the table); no table without any fitted curve', k26.svg && k26.pdf && k26.noFit, JSON.stringify({ svg: k26.svg, pdf: k26.pdf, noFit: k26.noFit, dims: k26.dims }));
+
 for (const name of Object.keys(APPS)) {
   const { c, pg, e, a } = await openApp(name);
   const E = (f, x) => pg.evaluate(f, x);
@@ -423,6 +456,20 @@ for (const name of Object.keys(APPS)) {
     check('K13 echo: the compound count ("6 of 63") is on one line (its class once collided with the Gradient Planner\'s 20 px round badge and wrapped to three)', k13.nLines === 1 && k13.nW >= 30, JSON.stringify({ lines: k13.nLines, width: k13.nW }));
     check('K13 echo: a figure holds at most 24 compounds, and a compound\'s key is protein, name and assay panel, unique', k13.cap === 24 && k13.docItems === 24 && k13.unique && k13.keyHasPanel, JSON.stringify(k13));
     check('K13 echo: other results with the same count and first compound start with the default choice and nothing left out', k13.reset[0] === 6 && k13.reset[1] === 0, JSON.stringify(k13.reset));
+  }
+  // K26 — each app's own columns, and the numbers its Results table has
+  const k26a = await E(k => { const kit = window[k], sp = kit.spec(); sp.hidden = {}; sp.table.show = false; kit.refresh(); const off = kit.scene().H - kit.scene().figH; sp.table.show = true; kit.refresh();
+    const sc = kit.scene(), tx = sc.prims.filter(p => p.t === 'text' && p.y > sc.figH).map(p => p.text), hdr = tx.slice(0, 5);
+    const first = kit.scene().items[0], cell = tx[5 + 1];
+    return { off: Math.abs(off) < 0.01, hdr, firstName: tx[5], cell, chk: !document.querySelector('.ck-tblchk').hidden, on: sc.H > sc.figH + 20, n: tx.length }; }, a.kit);
+  check('K26 ' + name + ': the table is off by default, the switch is in the toolbar and the table names this app\'s columns', k26a.off && k26a.chk && k26a.on && k26a.hdr[0] === 'Compound' && k26a.hdr[4] === 'R\u00b2' && ({ echo: 'DC50', lumina: 'DC50', beacon: 'EC50' })[name] === k26a.hdr[1], JSON.stringify(k26a));
+  if (name === 'echo') {
+    const r = await E(() => { const row = egRows().find(x => egKey(x) === _egKit.scene().items[0].id), cell = _egKit.scene().items[0].cells.pot; return { cell, dc50: row.DC50_nM, dmax: row.Dmax_pct, eff: _egKit.scene().items[0].cells.eff }; });
+    check('K26 echo: the potency and Dmax in the table are the Results table\'s (same nM, same %)', Math.abs(parseFloat(r.cell) - r.dc50) <= 0.006 * r.dc50 && r.eff === Math.round(r.dmax) + '%', JSON.stringify(r));
+  }
+  if (name === 'lumina') {
+    const r = await E(() => { const res = state.fitResults[0], it = _lgKit.scene().items.find(i => i.id === res.sampleId); return { cell: it.cells.pot, ec: res.ec50M * 1e9, eff: it.cells.eff, d: Math.round(res.top - res.bottom) }; });
+    check('K26 lumina: the potency and Dmax in the table are the Results table\'s', Math.abs(parseFloat(r.cell) - r.ec) <= 0.006 * r.ec && r.eff === r.d + '%', JSON.stringify(r));
   }
   } catch (err) { check('K9-K15 ' + name + ': the checks ran to the end', false, String(err && err.message || err).split('\n')[0]); }
   e.forEach(x => appErrs.push(x));
