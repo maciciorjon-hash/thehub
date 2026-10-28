@@ -31,7 +31,7 @@ var ChartKit = (function(){
           '<span class="ck-sep"></span>' +
           '<button type="button" class="ck-btn" data-a="undo" title="Undo (⌘Z)">Undo</button><button type="button" class="ck-btn" data-a="redo" title="Redo (⇧⌘Z)">Redo</button>' +
           '<label class="ck-chk" title="Titles and the legend snap to each other, to the plot and to the centre of the figure. Hold Alt to move freely."><input type="checkbox" data-a="snap"> Snap &amp; align</label>' +
-          '<label class="ck-chk ck-tblchk" title="A table of the fitted values (potency, effect, Hill, R²) for the compounds drawn, under the figure. It is part of the PNG, PDF and SVG." hidden><input type="checkbox" data-p="table.show" data-t="bool"> Results table</label>' +
+          '<label class="ck-chk ck-tblchk" title="Add a table of the fitted values for the compounds drawn under the figure. It is part of the PNG, PDF and SVG; what it holds is set under Table." hidden><input type="checkbox" data-p="table.show" data-t="bool"> Add table</label>' +
           '<span class="ck-gap"></span>' +
           '<select class="ck-dpi" aria-label="PNG resolution" data-a="dpi"><option value="300">300 dpi</option><option value="600">600 dpi</option><option value="1200">1200 dpi</option></select>' +
           '<button type="button" class="ck-btn ck-pri" data-a="png">PNG</button><button type="button" class="ck-btn ck-pri" data-a="pdf">PDF</button><button type="button" class="ck-btn" data-a="svg">SVG</button>' +
@@ -45,7 +45,7 @@ var ChartKit = (function(){
         '<div class="ck-body"></div>' +
       '</div>';
     var svg = root.querySelector('.ck-svg'), panel = root.querySelector('.ck-body'), selBox = root.querySelector('.ck-sel'), tabsEl = root.querySelector('.ck-tabs'), status = root.querySelector('.ck-status');
-    ['data:Data', 'text:Text', 'axes:Axes', 'style:Style', 'colors:Colours', 'page:Page'].forEach(function(t){ var p = t.split(':'); var b = document.createElement('button'); b.type = 'button'; b.dataset.tab = p[0]; b.textContent = p[1]; tabsEl.appendChild(b); });
+    ['data:Data', 'text:Text', 'axes:Axes', 'style:Style', 'table:Table', 'colors:Colours', 'page:Page'].forEach(function(t){ var p = t.split(':'); var b = document.createElement('button'); b.type = 'button'; b.dataset.tab = p[0]; b.textContent = p[1]; tabsEl.appendChild(b); });
 
     function toast(m, k){ if (opts.toast) opts.toast(m, k); status.textContent = m; status.classList.remove('ck-warnline'); lastFitNote = ''; }
     // Only the style is kept between visits. What was omitted, hidden, recoloured, moved or retitled belongs to the data it
@@ -65,6 +65,7 @@ var ChartKit = (function(){
     function doRedo(){ if (!redo.length) return; undo.push(JSON.stringify(spec)); restore(redo.pop()); }
     function syncBar(){
       root.querySelector('[data-a=undo]').disabled = !undo.length; root.querySelector('[data-a=redo]').disabled = !redo.length;
+      var hasT = !!(doc.table && doc.table.cols && doc.table.cols.length), tb = tabsEl.querySelector('[data-tab=table]'); if (tb) tb.hidden = !hasT; if (!hasT && tab === 'table') { tab = 'data'; renderTabs(); renderPanel(); }
       var tc = root.querySelector('.ck-tblchk'); if (tc) { tc.hidden = !(doc.table && doc.table.cols && doc.table.cols.length); tc.querySelector('input').checked = !!spec.table.show; }
       root.querySelector('[data-a=snap]').checked = !!spec.snap; root.querySelector('[data-a=dpi]').value = String(dpi);
       root.querySelectorAll('.ck-kind button').forEach(function(b){ b.classList.toggle('active', b.dataset.kind === spec.kind); });
@@ -164,6 +165,38 @@ var ChartKit = (function(){
       if (type === 'sel') return '<label class="ck-f"><span>' + label + '</span><select class="ck-in" data-p="' + path + '" data-t="' + (o.num ? 'selnum' : 'str') + '">' + o.opts.map(function(x){ return '<option value="' + x[0] + '"' + (String(v) === String(x[0]) ? ' selected' : '') + '>' + x[1] + '</option>'; }).join('') + '</select></label>';
       return '<label class="ck-f"><span>' + label + '</span><input class="ck-in" type="number" step="' + (o.step || 'any') + '"' + (o.min !== undefined ? ' min="' + o.min + '"' : '') + (o.max !== undefined ? ' max="' + o.max + '"' : '') + ' data-p="' + path + '" data-t="' + (o.auto ? 'numauto' : 'num') + '" value="' + (v === null || v === undefined ? '' : v) + '"' + (o.auto ? ' placeholder="auto"' : '') + '></label>';
     }
+    // ── the results table's panel: whether, which parameters, how it is laid out and written, and its data ──
+    function tableHtml(){
+      var T = doc.table; if (!T || !T.cols) return '<div class="ck-hint">This figure has no table of fitted values.</div>';
+      var t = spec.table, on = function(c){ return t.cols[c.id] === undefined ? c.on : !!t.cols[c.id]; }, none = !T.cols.some(on);
+      var segB = function(path, v, label){ return '<button type="button" class="' + (get(spec, path) === v ? 'active' : '') + '" data-tset="' + path + '" data-v="' + v + '">' + label + '</button>'; };
+      return '<label class="ck-chk ck-f2 ck-tbltop"><input type="checkbox" data-p="table.show" data-t="bool"' + (t.show ? ' checked' : '') + '> <b>Add the table under the figure</b></label>' +
+        '<div class="ck-note">One row per compound that is drawn (ticked under Data). It follows the curve drawn: leave a replicate out and the table is refitted too.</div>' +
+        '<div class="ck-grp">Parameters</div><div class="ck-tcols">' + T.cols.map(function(c){ return '<label class="ck-chk ck-f2"><input type="checkbox" data-tcol="' + esc(c.id) + '"' + (on(c) ? ' checked' : '') + '> ' + esc(c.label) + '</label>'; }).join('') + '</div>' +
+        (none ? '<div class="ck-note ck-warnline">Switch on at least one parameter.</div>' : '') +
+        '<div class="ck-grp">Layout</div><div class="ck-row"><span class="ck-seg" role="group" aria-label="Orientation">' + segB('table.orient', 'rows', 'Compounds in rows') + segB('table.orient', 'cols', 'Compounds in columns') + '</span></div>' +
+        '<div class="ck-row"><span class="ck-seg" role="group" aria-label="Look">' + segB('table.style', 'banded', 'Banded') + segB('table.style', 'rules', 'Rules') + segB('table.style', 'grid', 'Grid') + '</span></div>' +
+        '<div class="ck-grid">' + fld('Text size', 'table.size', 'num', { step: 0.5, min: 4, max: 24 }) + '</div>' +
+        fld('Colour mark beside each compound', 'table.swatch', 'bool') + fld('Footnote (how it was fitted)', 'table.note', 'bool') +
+        '<div class="ck-grp">Format</div><div class="ck-grid">' + fld('Potency unit', 'table.potUnit', 'sel', { opts: [['auto', 'Automatic (pM, nM, µM)'], ['pM', 'pM'], ['nM', 'nM'], ['\u00b5M', 'µM'], ['mM', 'mM']] }) + fld('Significant figures', 'table.sig', 'num', { step: 1, min: 1, max: 8 }) + fld('Decimals (Hill, R², p-values)', 'table.dec', 'num', { step: 1, min: 0, max: 6, auto: true }) + fld('Units written', 'table.units', 'sel', { opts: [['cell', 'Beside each value'], ['header', 'In the column title']] }) + '</div>' +
+        '<div class="ck-grp">The data</div><div class="ck-row"><button type="button" class="ck-btn" data-a="tbl-copy">Copy</button><button type="button" class="ck-btn" data-a="tbl-csv">CSV</button>' + (window.XLSX ? '<button type="button" class="ck-btn" data-a="tbl-xlsx">Excel</button>' : '') + '</div>' +
+        '<div class="ck-note">Copy is for pasting into Excel, Prism or Word. The files hold the numbers themselves (potency in one unit named in its column title, 6 figures), laid out as the table is.</div>';
+    }
+    function tableAoa(raw){ try { return C.tableData(doc, spec, raw); } catch (e) { return null; } }
+    function tableOut(kind){
+      var a = tableAoa(kind !== 'copy'); if (!a) { toast('There is no table to export — draw a compound with a fitted curve and switch a parameter on.', 'err'); return; }
+      if (kind === 'copy') {
+        var txt = a.map(function(r){ return r.map(function(c){ return String(c).replace(/[\t\r\n]+/g, ' '); }).join('\t'); }).join('\n');
+        var ok = function(){ toast('Table copied — ' + (a.length - 1) + ' ' + (spec.table.orient === 'cols' ? 'parameter' : 'compound') + (a.length === 2 ? '' : 's') + ', paste it into Excel, Prism or Word.'); };
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(ok).catch(function(){ toast('The browser did not allow writing to the clipboard — use CSV.', 'err'); }); else toast('The browser has no clipboard here — use CSV.', 'err');
+      } else if (kind === 'csv') {
+        var q = function(c){ c = String(c); return /[",\n\r]/.test(c) ? '"' + c.replace(/"/g, '""') + '"' : c; };
+        X.save(new Blob(['\ufeff' + a.map(function(r){ return r.map(q).join(','); }).join('\r\n')], { type: 'text/csv;charset=utf-8' }), base() + '_table.csv'); toast('Table saved as CSV.');
+      } else if (window.XLSX) {
+        var ws = XLSX.utils.aoa_to_sheet(a), wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Table');
+        X.save(new Blob([XLSX.write(wb, { bookType: 'xlsx', type: 'array' })], { type: 'application/octet-stream' }), base() + '_table.xlsx'); toast('Table saved as Excel.');
+      }
+    }
     function renderTabs(){ tabsEl.querySelectorAll('button').forEach(function(b){ b.classList.toggle('active', b.dataset.tab === tab); }); }
     function renderPanel(){
       var h = '', kind = scene ? scene.kind : 'bars';
@@ -184,7 +217,6 @@ var ChartKit = (function(){
         h = (kind === 'bars' ? '<div class="ck-grp">Bars</div><div class="ck-grid">' + fld('Width', 'bar.width', 'num', { step: 0.05, min: 0.2, max: 1.2 }) + fld('Gap between groups', 'bar.gap', 'num', { step: 0.1, min: 0, max: 4 }) + fld('Gap inside a group', 'bar.inner', 'num', { step: 0.05, min: 0, max: 1 }) + fld('Border', 'bar.border', 'num', { step: 0.25, min: 0, max: 5 }) + '</div>' + fld('Fill', 'fill', 'sel', { opts: [['solid', 'Solid'], ['tint', 'Light fill, coloured border'], ['outline', 'Outline only']] }) + fld('Shade by concentration (highest darkest)', 'bar.shade', 'bool') + fld('Show every replicate as a point', 'pts.show', 'bool')
           : '<div class="ck-grp">Curves and points</div><div class="ck-grid">' + fld('Marker', 'xy.marker', 'sel', { opts: [['circle', 'Circle'], ['square', 'Square'], ['triangle', 'Triangle'], ['diamond', 'Diamond'], ['auto', 'One per compound']] }) + fld('Marker size', 'xy.msize', 'num', { step: 0.5, min: 1, max: 14 }) + fld('Line width', 'xy.lw', 'num', { step: 0.25, min: 0.25, max: 6 }) + '</div>' + fld('Show the fit', 'xy.fit', 'bool') + fld('Extend the fit across the whole axis', 'xy.extend', 'bool') + fld('Show the points', 'xy.points', 'bool') + fld('Open markers', 'xy.open', 'bool') + fld('Dashed fit', 'xy.dash', 'bool') + fld('Show every replicate beside its mean', 'pts.show', 'bool')) +
           '<div class="ck-grp">Error bars</div>' + fld('Show', 'err.type', 'sel', { opts: [['sd', 'SD'], ['sem', 'SEM'], ['ci95', '95% CI'], ['range', 'Range'], ['none', 'None']] }) + '<div class="ck-grid">' + (kind === 'bars' ? fld('Direction', 'err.dir', 'sel', { opts: [['up', 'Up only'], ['both', 'Both ways']] }) : '') + fld('Cap', 'err.cap', 'num', { step: 0.5, min: 0, max: 16 }) + fld('Width', 'err.w', 'num', { step: 0.25, min: 0.25, max: 5 }) + '</div>' +
-          (doc.table && doc.table.cols && doc.table.cols.length ? '<div class="ck-grp">Results table</div>' + fld('Show under the figure', 'table.show', 'bool') + '<div class="ck-grid">' + fld('Text size', 'table.size', 'num', { step: 0.5, min: 4, max: 24 }) + '</div>' : '') +
           '<div class="ck-grp">Legend</div>' + fld('Show', 'legend.show', 'bool') + '<div class="ck-grid">' + fld('Size', 'legend.size', 'num', { step: 0.5, min: 4, max: 40 }) + fld('Position', 'legend.pos', 'sel', { opts: [['auto', 'Auto'], ['right', 'Right of the plot'], ['below', 'Below the plot']] }) + '</div>' + fld('Legend takes no room (the plot grows into its space)', 'legend.float', 'bool');
       }
       else if (tab === 'colors') {
@@ -192,6 +224,7 @@ var ChartKit = (function(){
           '<div class="ck-grp">Each compound</div><div class="ck-items">' + (doc.items || []).map(function(it, i){ var col = C.itemColor(spec, it, i, (doc.items || []).length); return '<div class="ck-itrow"><button type="button" class="ck-chip' + (sel === 'bar:' + it.id ? ' on' : '') + '" style="background:' + col + '" data-pick="bar:' + esc(it.id) + '" aria-label="Colour of ' + esc(it.name) + ': ' + col + '"></button><button type="button" class="ck-name" data-pick="bar:' + esc(it.id) + '">' + esc(it.name) + '</button>' + (spec.colors[it.id] ? '<button type="button" class="ck-link" data-a="resetcolor" data-id="' + esc(it.id) + '">palette</button>' : '') + '</div>'; }).join('') + '</div>' +
           '<div class="ck-note">Choosing a palette recolours every compound; a colour picked for one compound is kept until you apply a palette again.</div>';
       }
+      else if (tab === 'table') h = tableHtml();
       else if (tab === 'page') {
         h = '<div class="ck-grp">Size of the figure</div><div class="ck-pg">' + PAGES.map(function(p){ return '<button type="button" class="ck-li' + (Math.abs(spec.w - p[1]) < 0.01 && Math.abs(spec.h - p[2]) < 0.01 ? ' on' : '') + '" data-page="' + p[1] + ',' + p[2] + '">' + p[0] + '<em>' + p[1] + ' × ' + p[2] + ' in</em></button>'; }).join('') + '</div>' +
           '<div class="ck-grid">' + fld('Width (in)', 'w', 'num', { step: 0.1 }) + fld('Height (in)', 'h', 'num', { step: 0.1 }) + '</div>' +
@@ -240,6 +273,7 @@ var ChartKit = (function(){
       var t = e.target;
       if (t.dataset.a === 'dpi') { dpi = +t.value; pngNote(); }
       else if (t.dataset.a === 'toggleitem') { pushUndo('hide'); if (t.checked) delete spec.hidden[t.dataset.id]; else spec.hidden[t.dataset.id] = true; if (!t.checked && sel && itemOf(sel) === t.dataset.id) sel = null; draw(); renderSel(); renderPanel(); save(); }
+      else if (t.dataset.tcol !== undefined) { pushUndo('tcol'); spec.table.cols[t.dataset.tcol] = t.checked; draw(); renderPanel(); save(); }
       else if (t.dataset.a === 'snap') { pushUndo('snap'); spec.snap = t.checked; save(); }
       else if (t.dataset.hex) { var hx = String(t.value).trim(); if (hx.charAt(0) !== '#') hx = '#' + hx; if (/^#[0-9a-f]{6}$/i.test(hx)) { pushUndo('col:' + t.dataset.hex); spec.colors[t.dataset.hex] = hx.toLowerCase(); draw(); save(); } renderSel(); if (tab === 'data' || tab === 'colors') renderPanel(); }
       else if (t.dataset.item) { renderSel(); if (tab === 'data' || tab === 'colors') renderPanel(); }
@@ -256,6 +290,7 @@ var ChartKit = (function(){
       if (d.pal) { pushUndo('palette'); spec.palette = d.pal; spec.colors = {}; draw(); renderPanel(); renderSel(); save(); return; }
       if (d.page) { var p = d.page.split(','); pushUndo('page'); spec.w = +p[0]; spec.h = +p[1]; draw(); renderPanel(); save(); return; }
       if (d.tg) { var path = d.tg, tt = path.indexOf('title') === 0 ? spec.title[+path.charAt(5)] : spec[path.split('.')[0]], key = path.split('.')[1]; pushUndo('tg'); tt[key] = !tt[key]; draw(); renderSel(); save(); return; }
+      if (d.tset) { pushUndo('tset'); put(spec, d.tset, d.v); draw(); renderPanel(); save(); return; }
       if (d.al) { align(d.al); return; }
       var a = d.a; if (!a) return;
       if (a === 'undo') doUndo(); else if (a === 'redo') doRedo();
@@ -266,6 +301,7 @@ var ChartKit = (function(){
       else if (a === 'hideitem') { pushUndo('hide'); spec.hidden[d.id] = !spec.hidden[d.id]; if (!spec.hidden[d.id]) delete spec.hidden[d.id]; if (sel && itemOf(sel) === d.id) sel = null; draw(); renderSel(); renderPanel(); save(); }
       else if (a === 'openitem') { openItems[d.id] = !openItems[d.id]; renderPanel(); }
       else if (a === 'showall' || a === 'hideall') { pushUndo('hide'); (doc.items || []).forEach(function(it){ if (a === 'showall') delete spec.hidden[it.id]; else spec.hidden[it.id] = true; }); if (a === 'hideall') sel = null; draw(); renderSel(); renderPanel(); save(); }
+      else if (a === 'tbl-copy') tableOut('copy'); else if (a === 'tbl-csv') tableOut('csv'); else if (a === 'tbl-xlsx') tableOut('xlsx');
       else if (a === 'hideleg') { pushUndo('leg'); spec.legend.show = false; sel = null; draw(); renderSel(); renderPanel(); save(); }
       else if (a === 'resetpos') { if (sel) { pushUndo('pos'); delete spec.pos[sel.indexOf('leg:') === 0 ? 'legend' : sel]; draw(); overlay(); save(); } }
       else if (a === 'restoreomit') { pushUndo('omit'); spec.omit = {}; draw(); renderPanel(); save(); }

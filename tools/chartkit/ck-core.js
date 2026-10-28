@@ -50,7 +50,8 @@ var ChartKitCore = (function(){
       xy: { marker: 'circle', msize: 2.8, lw: 1.4, fit: true, points: true, open: false, dash: false, extend: false },
       ref: { show: true, y: null, dash: true, w: 0.9, label: true },
       legend: { show: true, size: 9, swatch: 9, pos: 'auto', float: false },
-      table: { show: false, size: 8 },                  // the results table under the figure (the app says what is in it: doc.table)
+      // the results table under the figure (the app says what can be in it: doc.table). cols: {id: bool} — an id not here follows the app's default
+      table: { show: false, size: 8, cols: {}, orient: 'rows', style: 'banded', potUnit: 'auto', sig: 3, dec: null, units: 'cell', note: true, swatch: true },
       hidden: {}, seen: {}, omit: {}, pos: {}, margin: { l: 0, r: 0, t: 0, b: 0 },
       snap: true, grid2: false
     };
@@ -59,13 +60,13 @@ var ChartKitCore = (function(){
   // What a number in the spec may be. A field the person is typing in passes through every value on the way to the one
   // they mean ("" → 0 → 8, "99" on the way to "9.9"), and a spec kept in localStorage may hold anything: none of it may
   // reach the drawing as a figure 71 892 pt wide (a 16 000 × 1 px PNG) or a font of 0. null stays null (auto).
-  var RANGE = { w: [3, 20], h: [2.6, 20], axisW: [0.25, 5], tick: [0, 12], 'x.size': [4, 40], 'y.size': [4, 40], 'xTitle.size': [4, 60], 'yTitle.size': [4, 60], 'legend.size': [4, 40], 'table.size': [4, 24],
+  var RANGE = { w: [3, 20], h: [2.6, 20], axisW: [0.25, 5], tick: [0, 12], 'x.size': [4, 40], 'y.size': [4, 40], 'xTitle.size': [4, 60], 'yTitle.size': [4, 60], 'legend.size': [4, 40], 'table.size': [4, 24], 'table.sig': [1, 8], 'table.dec': [0, 6],
     'bar.width': [0.2, 1.2], 'bar.gap': [0, 4], 'bar.inner': [0, 1], 'bar.border': [0, 5], 'err.cap': [0, 16], 'err.w': [0.25, 5], 'xy.msize': [0.8, 14], 'xy.lw': [0.25, 6], 'ref.w': [0.25, 5],
     'margin.l': [-40, 200], 'margin.r': [-40, 200], 'margin.t': [-40, 200], 'margin.b': [-40, 200], 'y.dec': [0, 6], 'y.major': [0, 1e6] };
   function getp(o, path){ return path.split('.').reduce(function(a, k){ return a == null ? a : a[k]; }, o); }
   function putp(o, path, v){ var ks = path.split('.'), t = o; for (var i = 0; i < ks.length - 1; i++) { if (t[ks[i]] == null || typeof t[ks[i]] !== 'object') t[ks[i]] = {}; t = t[ks[i]]; } t[ks[ks.length - 1]] = v; }
   function clamp(v, lo, hi){ return Math.max(lo, Math.min(hi, v)); }
-  var AUTO = { 'y.dec': 1, 'y.major': 1 };   // empty means "auto" there
+  var AUTO = { 'y.dec': 1, 'y.major': 1, 'table.dec': 1 };   // empty means "auto" there
   function sanitize(s){
     var d = defaults();
     Object.keys(RANGE).forEach(function(k){
@@ -147,23 +148,71 @@ var ChartKitCore = (function(){
   }
   // The usual four-parameter table. An app names its potency (DC50, IC50, EC50) and its effect (Dmax, Span, Emax); each fit it hands over
   // carries ec50nM, hill, bot and top, and the table follows the curve actually drawn (a refit after a replicate is left out too).
-  function potText(nM){
+  // Every column is one the person can switch on or off (on: its default); `kind` says how it is written (pot: a concentration with a unit,
+  // eff: the effect, with % when normalised, num: a number, int: a count). calc() gives the numbers, the kit writes them.
+  var POT = { pM: 1e-3, nM: 1, 'µM': 1e3, mM: 1e6 };
+  function potText(nM, sig, unit){
     if (!fin(nM) || nM <= 0) return 'n.d.';
-    var v = nM, u = 'nM'; if (v >= 1000) { v /= 1000; u = '\u00b5M'; } else if (v < 1) { v *= 1000; u = 'pM'; }
-    return String(+v.toPrecision(3)) + '\u2009' + u;
+    var v = nM, u = unit && POT[unit] ? unit : 'nM';
+    if (!unit || !POT[unit]) { if (v >= 1000) { v /= 1000; u = 'µM'; } else if (v < 1) { v *= 1000; u = 'pM'; } } else v = nM / POT[unit];
+    return { v: +v.toPrecision(sig || 3), u: u };
   }
   function fourPL(o){
-    var cols = [{ id: 'pot', label: o.potency }];
-    if (o.effect) cols.push({ id: 'eff', label: o.effect });
-    cols.push({ id: 'hill', label: 'Hill' }, { id: 'r2', label: 'R\u00b2' });
-    return { cols: cols, note: o.note || '', cells: function(it, fit, ctx){
-      var f = fit && fit.fn ? fit : null, c = {};
-      c.pot = !f ? 'n.d.' : it.nd ? 'n.d.' : potText(f.ec50nM);
-      if (o.effect) { var g = it._gain !== undefined ? !!it._gain : !!o.gain, e = !f ? null : (g ? f.top : f.top - f.bot); c.eff = !fin(e) ? 'n.d.' : o.pct && !g ? Math.round(e) + '%' : String(+e.toPrecision(o.sig || 3)); }
-      c.hill = !f || it.nd || !fin(f.hill) ? 'n.d.' : f.hill.toFixed(2);
-      c.r2 = f && fin(ctx.r2) ? ctx.r2.toFixed(3) : '\u2014';
+    var cols = [{ id: 'pot', label: o.potency, kind: 'pot', on: true }];
+    if (o.effect) cols.push({ id: 'eff', label: o.effect, kind: 'eff', on: true, pct: !!o.pct });
+    cols.push({ id: 'hill', label: 'Hill', kind: 'num', dec: 2, on: true }, { id: 'r2', label: 'R²', kind: 'num', dec: 3, on: true },
+      { id: 'ppot', label: 'p' + o.potency, kind: 'num', dec: 2, on: false }, { id: 'bot', label: 'Bottom', kind: 'num', on: false }, { id: 'top', label: 'Top', kind: 'num', on: false }, { id: 'n', label: 'n (replicates)', kind: 'int', on: false });
+    return { cols: cols, note: o.note || '', sig: o.sig, calc: function(it, fit, ctx){
+      var f = fit && fit.fn ? fit : null, c = {}, nd = !f || it.nd, g = it._gain !== undefined ? !!it._gain : !!o.gain;
+      c.pot = !f || it.nd ? 'n.d.' : (fin(f.ec50nM) && f.ec50nM > 0 ? f.ec50nM : 'n.d.');
+      c.ppot = !f || it.nd || !(f.ec50nM > 0) ? 'n.d.' : 9 - Math.log10(f.ec50nM);
+      if (o.effect) { var e = !f ? null : (g ? f.top : f.top - f.bot); c.eff = fin(e) ? e : 'n.d.'; c._pct = !!o.pct && !g; }
+      c.hill = !f || it.nd || !fin(f.hill) ? 'n.d.' : f.hill;
+      c.bot = f && fin(f.bot) ? f.bot : 'n.d.'; c.top = f && fin(f.top) ? f.top : 'n.d.';
+      c.r2 = f && fin(ctx.r2) ? ctx.r2 : null; c.n = ctx.n;
       return c;
     } };
+  }
+  // One grid for the picture and for the data: the figure writes it rounded as the person chose, the exports write the numbers themselves
+  // (potency in a fixed unit named in the header, nothing rounded but to 6 figures). Compounds down the rows, or across the columns.
+  function tableGrid(vis, T, spec, raw){
+    var t = spec.table, rows = vis.filter(function(i){ return i.vals; });
+    var cols = T.cols.filter(function(c){ return t.cols[c.id] === undefined ? c.on : !!t.cols[c.id]; });
+    if (!rows.length || !cols.length || !rows.some(function(i){ return i.fit; })) return null;
+    var unit = POT[t.potUnit] ? t.potUnit : (raw ? 'nM' : 'auto'), sig = t.sig, inHead = t.units === 'header' || raw;
+    var allPct = rows.every(function(i){ return i.vals._pct; });
+    function head(c){
+      if (c.kind === 'pot' && unit !== 'auto' && inHead) return c.label + ' (' + unit + ')';
+      if (c.kind === 'eff' && allPct && inHead) return c.label + ' (%)';
+      return c.label;
+    }
+    function cell(c, it){
+      var v = it.vals[c.id];
+      if (v === null || v === undefined) return raw ? '' : '—';
+      if (typeof v === 'string') return v;
+      if (raw) return c.kind === 'pot' ? +(v / POT[unit]).toPrecision(6) : c.kind === 'int' ? v : +(+v).toPrecision(6);
+      if (c.kind === 'pot') { var p = potText(v, sig, unit === 'auto' ? null : unit); return typeof p === 'string' ? p : String(p.v) + (unit === 'auto' || !inHead ? ' ' + p.u : ''); }
+      if (c.kind === 'eff') return it.vals._pct ? Math.round(v) + (inHead && allPct ? '' : '%') : String(+(+v).toPrecision(sig));
+      if (c.kind === 'int') return String(v);
+      var d = c.dec !== undefined ? (t.dec !== null && t.dec !== undefined ? t.dec : c.dec) : null;
+      return d !== null ? (+v).toFixed(d) : String(+(+v).toPrecision(sig));
+    }
+    var G = { cols: cols, rows: rows };
+    if (t.orient === 'cols') {
+      G.head = [{ t: 'Parameter' }].concat(rows.map(function(i){ return { t: i.name, it: i }; }));
+      G.body = cols.map(function(c){ return [{ t: head(c) }].concat(rows.map(function(i){ return { t: cell(c, i) }; })); });
+    } else {
+      G.head = [{ t: 'Compound' }].concat(cols.map(function(c){ return { t: head(c) }; }));
+      G.body = rows.map(function(i){ return [{ t: i.name, it: i }].concat(cols.map(function(c){ return { t: cell(c, i) }; })); });
+    }
+    return G;
+  }
+  // The table as text or numbers for a file: rows of plain values, the header first.
+  function tableData(doc, specIn, raw){
+    var spec = withDefaults(specIn), vis = model(doc, spec).filter(function(i){ return !i.hidden; });
+    if (!doc.table) return null;
+    var G = tableGrid(vis, doc.table, spec, !!raw); if (!G) return null;
+    return [G.head.map(function(c){ return c.t; })].concat(G.body.map(function(r){ return r.map(function(c){ return c.t; }); }));
   }
 
   // ── the data the chart shows, with omitted replicates left out ──
@@ -183,9 +232,9 @@ var ChartKitCore = (function(){
         if (anyOmit && doc.refit) { try { fit = doc.refit(it, pts.filter(function(p){ return p.st.n; }).map(function(p){ return { x: p.x, y: p.st.mean, sd: p.st.sd, n: p.st.n, reps: p.kept.map(function(r){ return r.v; }) }; })); } catch (e) { fit = null; } refitFailed = !fit && !!it.fit; }
         else fit = it.fit || null;
       }
-      var cells = null;
-      if (doc.table && doc.table.cells) { try { cells = doc.table.cells(it, fit, { pts: pts, r2: fit && fit.fn ? r2Of(fit.fn, pts) : null }); } catch (e) { cells = null; } }
-      items.push({ id: it.id, name: it.name, idx: idx, color: col, pts: pts, fit: fit, cells: cells, refitFailed: refitFailed, hidden: !!spec.hidden[it.id] });
+      var vals = null;
+      if (doc.table && doc.table.calc) { try { vals = doc.table.calc(it, fit, { pts: pts, r2: fit && fit.fn ? r2Of(fit.fn, pts) : null, n: pts.reduce(function(a, p){ return a + p.kept.length; }, 0) }); } catch (e) { vals = null; } }
+      items.push({ id: it.id, name: it.name, idx: idx, color: col, pts: pts, fit: fit, vals: vals, refitFailed: refitFailed, hidden: !!spec.hidden[it.id] });
     });
     return items;
   }
@@ -264,45 +313,52 @@ var ChartKitCore = (function(){
     sc.k = k; return sc;
   }
   // The table is laid out from its own strings: columns as wide as their widest cell, the spare width shared out between the value columns,
-  // smaller type (to 6 pt) and then cut names when the figure is too narrow. Rules, not boxes: a heavy rule above and below, a light one under the header, a faint band on every second row.
+  // smaller type (to 6 pt) and then cut text when the figure is too narrow. Three looks: rules (a heavy rule above and below, a light one under the
+  // header), banded (the same with a faint band on every second row) and grid (thin lines all round).
   function tableBlock(vis, T, spec, kind, W, H, F){
-    var rows = vis.filter(function(i){ return i.cells; });
-    if (!rows.length || !rows.some(function(i){ return i.fit; })) return null;
-    var cols = T.cols, x0 = 12, avail = W - 2 * x0, size = spec.table.size, prims = [];
+    var G = tableGrid(vis, T, spec, false); if (!G) return null;
+    var head = G.head, body = G.body, nC = head.length, size = spec.table.size, prims = [], x0 = 12, avail = W - 2 * x0, sw = spec.table.swatch, look = spec.table.style;
+    function cw(c, sz, bold){ return measure(c.t, sz, bold, false, F) + (c.it && sw ? sz * 1.9 : 0); }
     function widths(sz){
-      var pad = sz * 0.9, sw = sz * 1.9;
-      var nw = Math.max.apply(null, rows.map(function(i){ return measure(i.name, sz, false, false, F); }).concat([measure('Compound', sz, true, false, F)])) + sw + pad;
-      var cw = cols.map(function(c){ return Math.max.apply(null, rows.map(function(i){ return measure(String(i.cells[c.id] == null ? '' : i.cells[c.id]), sz, false, false, F); }).concat([measure(c.label, sz, true, false, F)])) + pad * 2; });
-      return { pad: pad, sw: sw, nw: nw, cw: cw, total: nw + cw.reduce(function(a, b){ return a + b; }, 0) };
+      var pad = sz * 0.9, w = [], tot = 0;
+      for (var j = 0; j < nC; j++) { var m = cw(head[j], sz, true); body.forEach(function(r){ m = Math.max(m, cw(r[j], sz, false)); }); w.push(m + pad * 2); tot += m + pad * 2; }
+      return { pad: pad, w: w, total: tot };
     }
     var wd = widths(size);
     while (wd.total > avail && size > 6) { size = Math.max(6, size - 0.5); wd = widths(size); }
-    var nameMax = null;
-    if (wd.total > avail) { nameMax = Math.max(measure('Compound', size, true, false, F) + wd.sw, wd.nw - (wd.total - avail)); wd.nw = nameMax + wd.pad; wd.total = wd.nw + wd.cw.reduce(function(a, b){ return a + b; }, 0); }
-    var extra = Math.max(0, avail - wd.total) / cols.length, tw = Math.min(avail, wd.total), rowH = size * 1.95, y0 = H + 8;
-    if (extra > 0) tw = avail;
-    var cx = [x0 + wd.nw], edges = [];
-    cols.forEach(function(c, j){ var w = wd.cw[j] + extra; edges.push([cx[j], w]); cx.push(cx[j] + w); });
-    var head = y0 + rowH, bodyEnd = head + rows.length * rowH;
-    // bands, then rules, then text
-    rows.forEach(function(it, r){ if (r % 2 === 1) prims.push({ t: 'rect', x: x0, y: head + r * rowH, w: tw, h: rowH, fill: '#f1f4f9' }); });
-    prims.push({ t: 'line', x1: x0, y1: y0, x2: x0 + tw, y2: y0, stroke: '#000000', sw: 1.1 });
-    prims.push({ t: 'line', x1: x0, y1: head, x2: x0 + tw, y2: head, stroke: '#000000', sw: 0.6 });
-    prims.push({ t: 'line', x1: x0, y1: bodyEnd, x2: x0 + tw, y2: bodyEnd, stroke: '#000000', sw: 1.1 });
-    var base = size * 0.35;
-    function tx(text, x, y, o){ o = o || {}; return { t: 'text', text: text, x: x, y: y, size: size, bold: !!o.bold, italic: false, anchor: o.anchor || 'start', rot: 0, fill: o.fill || '#000000', font: F, drag: false, w: measure(text, size, o.bold, false, F) }; }
-    prims.push(tx('Compound', x0 + wd.pad * 0.6 + wd.sw, y0 + rowH / 2 + base, { bold: true }));
-    cols.forEach(function(c, j){ prims.push(tx(c.label, edges[j][0] + edges[j][1] / 2, y0 + rowH / 2 + base, { bold: true, anchor: 'middle' })); });
-    rows.forEach(function(it, r){
-      var cy = head + r * rowH + rowH / 2, sx = x0 + wd.pad * 0.6, sh = size * 0.8;
-      if (kind === 'bars') prims.push({ t: 'rect', x: sx, y: cy - sh / 2, w: sh * 1.3, h: sh, fill: it.color, stroke: darken(it.color, 0.35), sw: 0.6 });
-      else { prims.push({ t: 'line', x1: sx, y1: cy, x2: sx + sh * 1.5, y2: cy, stroke: it.color, sw: spec.xy.lw }); prims.push({ t: 'marker', type: spec.xy.marker === 'auto' ? MARKERS[it.idx % MARKERS.length] : spec.xy.marker, cx: sx + sh * 0.75, cy: cy, r: Math.min(spec.xy.msize, size * 0.4), fill: spec.xy.open ? '#ffffff' : it.color, stroke: it.color, sw: 0.8 }); }
-      var nm = nameMax !== null ? fitText(it.name, size, nameMax - wd.sw, F) : it.name;
-      prims.push(tx(nm, x0 + wd.pad * 0.6 + wd.sw, cy + base));
-      cols.forEach(function(c, j){ var v = it.cells[c.id]; prims.push(tx(v == null ? '' : String(v), edges[j][0] + edges[j][1] / 2, cy + base, { anchor: 'middle' })); });
-    });
-    var h = 8 + rowH * (rows.length + 1);
-    if (T.note) {
+    var cut = null;
+    if (wd.total > avail) {   // still too wide: the widest columns give up the most
+      var k = avail / wd.total; cut = wd.w.map(function(w){ return Math.max(size * 3, w * k); });
+      wd.w = cut.slice(); wd.total = wd.w.reduce(function(a, b){ return a + b; }, 0);
+    }
+    function txt(c, j){ if (!cut) return c.t; return fitText(c.t, size, cut[j] - wd.pad * 2 - (c.it && sw ? size * 1.9 : 0), F); }
+    var extra = Math.max(0, avail - wd.total) / Math.max(1, nC - 1), tw = avail;
+    var xs = [x0], j;
+    for (j = 0; j < nC; j++) { var w = wd.w[j] + (j ? extra : 0); xs.push(xs[j] + w); }
+    var rowH = size * 1.95, y0 = H + 8, hy = y0 + rowH, bodyEnd = hy + body.length * rowH, base = size * 0.35;
+    if (look === 'banded') body.forEach(function(r, i){ if (i % 2 === 1) prims.push({ t: 'rect', x: x0, y: hy + i * rowH, w: tw, h: rowH, fill: '#f1f4f9' }); });
+    prims.push({ t: 'line', x1: x0, y1: y0, x2: x0 + tw, y2: y0, stroke: '#000000', sw: 1.1 }, { t: 'line', x1: x0, y1: hy, x2: x0 + tw, y2: hy, stroke: '#000000', sw: 0.6 }, { t: 'line', x1: x0, y1: bodyEnd, x2: x0 + tw, y2: bodyEnd, stroke: '#000000', sw: 1.1 });
+    if (look === 'grid') {
+      body.forEach(function(r, i){ if (i) prims.push({ t: 'line', x1: x0, y1: hy + i * rowH, x2: x0 + tw, y2: hy + i * rowH, stroke: '#c4cad6', sw: 0.5 }); });
+      for (j = 1; j < nC; j++) prims.push({ t: 'line', x1: xs[j], y1: y0, x2: xs[j], y2: bodyEnd, stroke: '#c4cad6', sw: 0.5 });
+    }
+    function tx(text, x, y, o){ o = o || {}; return { t: 'text', text: text, x: x, y: y, size: size, bold: !!o.bold, italic: false, anchor: o.anchor || 'start', rot: 0, fill: '#000000', font: F, drag: false, w: measure(text, size, o.bold, false, F) }; }
+    function mark(it, x, cy){
+      var sh = size * 0.8;
+      if (kind === 'bars') prims.push({ t: 'rect', x: x, y: cy - sh / 2, w: sh * 1.3, h: sh, fill: it.color, stroke: darken(it.color, 0.35), sw: 0.6 });
+      else { prims.push({ t: 'line', x1: x, y1: cy, x2: x + sh * 1.5, y2: cy, stroke: it.color, sw: spec.xy.lw }, { t: 'marker', type: spec.xy.marker === 'auto' ? MARKERS[it.idx % MARKERS.length] : spec.xy.marker, cx: x + sh * 0.75, cy: cy, r: Math.min(spec.xy.msize, size * 0.4), fill: spec.xy.open ? '#ffffff' : it.color, stroke: it.color, sw: 0.8 }); }
+    }
+    function put(c, jj, cy, bold){
+      var text = txt(c, jj), sx = c.it && sw ? size * 1.9 : 0, tw0 = measure(text, size, bold, false, F);
+      if (jj === 0) { if (sx) mark(c.it, xs[0] + wd.pad * 0.6, cy); prims.push(tx(text, xs[0] + wd.pad * 0.6 + sx, cy + base, { bold: bold })); return; }
+      var mid = (xs[jj] + xs[jj + 1]) / 2, left = mid - (tw0 + sx) / 2;
+      if (sx) mark(c.it, left, cy);
+      prims.push(tx(text, left + sx, cy + base, { bold: bold }));
+    }
+    head.forEach(function(c, jj){ put(c, jj, y0 + rowH / 2, true); });
+    body.forEach(function(r, i){ r.forEach(function(c, jj){ put(c, jj, hy + i * rowH + rowH / 2, false); }); });
+    var h = 8 + rowH * (body.length + 1);
+    if (spec.table.note && T.note) {
       var ns = Math.max(5.5, size * 0.85), nt = fitText(T.note, ns, tw, F);
       prims.push({ t: 'text', text: nt, x: x0, y: bodyEnd + ns * 1.25, size: ns, bold: false, italic: true, anchor: 'start', rot: 0, fill: '#555555', font: F, drag: false, w: measure(nt, ns, false, true, F) });
       h += ns * 1.7;
@@ -517,5 +573,5 @@ var ChartKitCore = (function(){
     return vis.every(function(i){ return (i.points || []).length < 4; }) ? 'bars' : 'xy';
   }
 
-  return { build: build, defaults: defaults, withDefaults: withDefaults, sanitize: sanitize, RANGE: RANGE, decadeLabels: decadeLabels, PALETTES: PALETTES, MARKERS: MARKERS, REF_W: REF_W, blueRamp: blueRamp, autoKind: autoKind, fourPL: fourPL, potText: potText, r2Of: r2Of, model: model, stats: stats, measure: measure, lighten: lighten, darken: darken, rgb: rgb, hex: hex, fin: fin, itemColor: itemColor, merge: merge };
+  return { build: build, defaults: defaults, withDefaults: withDefaults, sanitize: sanitize, RANGE: RANGE, decadeLabels: decadeLabels, PALETTES: PALETTES, MARKERS: MARKERS, REF_W: REF_W, blueRamp: blueRamp, autoKind: autoKind, fourPL: fourPL, potText: potText, r2Of: r2Of, tableData: tableData, tableGrid: tableGrid, model: model, stats: stats, measure: measure, lighten: lighten, darken: darken, rgb: rgb, hex: hex, fin: fin, itemColor: itemColor, merge: merge };
 })();

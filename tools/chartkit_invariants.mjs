@@ -49,6 +49,9 @@
 //   K26 results table     A switch puts a table of the fitted values (potency, effect, Hill, R²) under the figure — one row per compound drawn, in the PNG, PDF and SVG too. It follows the curve drawn (a refit after
 //                         a replicate is left out changes it), leaves out a hidden compound, stays inside the page at any width, and each app names its own columns (DC50/Dmax, IC50/Span, EC50/Emax) with the
 //                         numbers its Results table has.
+//   K27 the table is      A Table tab with a yes/no switch, a switch per parameter (potency, effect, Hill, R², p-potency, bottom, top, n), compounds in rows or in columns, three looks, a potency unit,
+//       the person's        significant figures, decimals, units in the title or beside the value; the same grid is the figure's text and the Copy / CSV / Excel data (numbers themselves, one unit named
+//                           in the title, laid out the same way); a table narrower than its text is cut, not overflowed.
 //
 //   node tools/chartkit_invariants.mjs        exit 1 on any finding
 import { chromium } from 'playwright';
@@ -384,6 +387,37 @@ check('K26 a hidden compound is not in the table, and a replicate left out chang
 check('K26 at 3 to 9 in wide, with six long names, every cell and rule lies inside the page', k26.narrow.every(n => n === 0), JSON.stringify(k26.narrow));
 check('K26 the SVG and the vector PDF carry the table (the PDF page is as tall as the figure plus the table); no table without any fitted curve', k26.svg && k26.pdf && k26.noFit, JSON.stringify({ svg: k26.svg, pdf: k26.pdf, noFit: k26.noFit, dims: k26.dims }));
 
+// K27 — the table is the person's: parameters, layout, format, data
+const k27 = await ev(() => {
+  const C = ChartKitCore, o = {};
+  const curve = (ec, h) => x => 10 + 90 / (1 + Math.pow(x / ec, h));
+  const mk = (id, name, ec, h) => { const fn = curve(ec, h); return { id, name, fit: { fn, ec50nM: ec, hill: h, bot: 10, top: 100 }, points: [1000, 300, 100, 30, 10, 3, 1].map((c, j) => ({ x: c, reps: [0, 1].map(r => ({ id: id + j + r, v: fn(c) })) })) }; };
+  const doc = { title: ['', '', ''], table: C.fourPL({ potency: 'DC50', effect: 'Dmax', pct: true, note: 'a note' }), items: [mk('a', 'Alpha', 12.5, 1.2), mk('b', 'Beta', 2400, 0.8)] };
+  const texts = sc => sc.prims.filter(p => p.t === 'text' && p.y > sc.figH).map(p => p.text);
+  const T = (t) => ({ kind: 'xy', table: Object.assign({ show: true }, t) });
+  o.default = texts(C.build(doc, T({})));
+  o.noHill = texts(C.build(doc, T({ cols: { hill: false, r2: false } })));
+  o.more = texts(C.build(doc, T({ cols: { ppot: true, bot: true, top: true, n: true } })));
+  o.cols = texts(C.build(doc, T({ orient: 'cols' })));
+  o.unitHead = texts(C.build(doc, T({ potUnit: '\u00b5M', units: 'header', sig: 4 })));
+  o.dec = texts(C.build(doc, T({ dec: 1 })));
+  o.none = (() => { const sc = C.build(doc, T({ cols: { pot: false, eff: false, hill: false, r2: false } })); return Math.abs(sc.H - sc.figH) < 0.01; })();
+  const sig = ['banded', 'rules', 'grid'].map(st => { const sc = C.build(doc, T({ style: st })); return { rects: sc.prims.filter(p => p.t === 'rect' && p.y > sc.figH).length, vlines: sc.prims.filter(p => p.t === 'line' && p.x1 === p.x2 && p.y1 >= sc.figH).length }; });
+  o.looks = sig;
+  o.noNote = texts(C.build(doc, T({ note: false }))).includes('a note');
+  o.copy = C.tableData(doc, T({}), false); o.raw = C.tableData(doc, T({ cols: { ppot: true } }), true); o.rawCols = C.tableData(doc, T({ orient: 'cols' }), true);
+  o.rawU = C.tableData(doc, T({ potUnit: '\u00b5M' }), true);
+  const long = { title: ['', '', ''], table: doc.table, items: Array.from({ length: 12 }, (_, i) => mk('n' + i, 'A-very-long-compound-identifier-number-' + i, 10 * (i + 1), 1)) };
+  o.colsNarrow = [3, 5, 9].map(w => { const sc = C.build(long, { kind: 'xy', w, h: w * 0.62, table: { show: true, orient: 'cols' } }), bad = sc.prims.filter(p => p.t === 'text' && p.y > sc.figH && ((p.anchor === 'middle' ? p.x - p.w / 2 : p.x) < -0.5 || (p.anchor === 'middle' ? p.x + p.w / 2 : p.x + p.w) > sc.W + 0.5)).length; return bad; });
+  return o;
+});
+check('K27 parameters are the person\'s: Hill and R² can be switched off, pDC50, Bottom, Top and n on', !k27.noHill.includes('Hill') && !k27.noHill.includes('R²') && k27.noHill.includes('DC50') && ['pDC50', 'Bottom', 'Top', 'n (replicates)', '7.90'].every(t => k27.more.includes(t)), JSON.stringify({ noHill: k27.noHill, more: k27.more }));
+check('K27 compounds in columns: the compounds are the title row, the parameters the first column', k27.cols[0] === 'Parameter' && k27.cols.slice(1, 3).join() === 'Alpha,Beta' && k27.cols.includes('DC50') && !k27.cols.includes('Compound'), JSON.stringify(k27.cols));
+check('K27 a fixed potency unit with units in the title: DC50 (µM), the value without its unit; decimals apply to Hill and R²', k27.unitHead.includes('DC50 (\u00b5M)') && k27.unitHead.includes('0.0125') && k27.unitHead.includes('Dmax (%)') && k27.unitHead.includes('90') && !k27.unitHead.some(t => /\u2009/.test(t)) && k27.dec.includes('1.2') && k27.dec.includes('1.0'), JSON.stringify({ u: k27.unitHead, d: k27.dec }));
+check('K27 looks: banded has bands, rules and grid do not; only grid has vertical lines; the footnote can be switched off; no parameter on means no table', k27.looks[0].rects > 0 && k27.looks[1].rects === 0 && k27.looks[2].rects === 0 && k27.looks[2].vlines > 0 && k27.looks[0].vlines === 0 && k27.looks[1].vlines === 0 && !k27.noNote && k27.none, JSON.stringify({ l: k27.looks, n: k27.noNote, none: k27.none }));
+check('K27 the data are the grid: Copy is the table as written; the files hold numbers (potency in nM named in the title, pDC50 to 6 figures), in the same orientation, in the chosen unit', k27.copy[0].join() === 'Compound,DC50,Dmax,Hill,R²' && k27.copy[1].join() === 'Alpha,12.5\u2009nM,90%,1.20,1.000' && k27.raw[0].join() === 'Compound,DC50 (nM),Dmax (%),Hill,R²,pDC50' && k27.raw[1][1] === 12.5 && k27.raw[1][2] === 90 && Math.abs(k27.raw[1][5] - (9 - Math.log10(12.5))) < 1e-5 && k27.rawCols[0].join() === 'Parameter,Alpha,Beta' && k27.rawCols[1][0] === 'DC50 (nM)' && k27.rawU[0][1] === 'DC50 (\u00b5M)' && Math.abs(k27.rawU[1][1] - 0.0125) < 1e-9, JSON.stringify({ c: k27.copy, r: k27.raw, rc: k27.rawCols, ru: k27.rawU }));
+check('K27 twelve long names as columns on a 3, 5 and 9 in page: every cell is inside the page', k27.colsNarrow.every(n => n === 0), JSON.stringify(k27.colsNarrow));
+
 for (const name of Object.keys(APPS)) {
   const { c, pg, e, a } = await openApp(name);
   const E = (f, x) => pg.evaluate(f, x);
@@ -464,13 +498,22 @@ for (const name of Object.keys(APPS)) {
     return { off: Math.abs(off) < 0.01, hdr, firstName: tx[5], cell, chk: !document.querySelector('.ck-tblchk').hidden, on: sc.H > sc.figH + 20, n: tx.length }; }, a.kit);
   check('K26 ' + name + ': the table is off by default, the switch is in the toolbar and the table names this app\'s columns', k26a.off && k26a.chk && k26a.on && k26a.hdr[0] === 'Compound' && k26a.hdr[4] === 'R\u00b2' && ({ echo: 'DC50', lumina: 'DC50', beacon: 'EC50' })[name] === k26a.hdr[1], JSON.stringify(k26a));
   if (name === 'echo') {
-    const r = await E(() => { const row = egRows().find(x => egKey(x) === _egKit.scene().items[0].id), cell = _egKit.scene().items[0].cells.pot; return { cell, dc50: row.DC50_nM, dmax: row.Dmax_pct, eff: _egKit.scene().items[0].cells.eff }; });
-    check('K26 echo: the potency and Dmax in the table are the Results table\'s (same nM, same %)', Math.abs(parseFloat(r.cell) - r.dc50) <= 0.006 * r.dc50 && r.eff === Math.round(r.dmax) + '%', JSON.stringify(r));
+    const r = await E(() => { const it = _egKit.scene().items[0], row = egRows().find(x => egKey(x) === it.id); return { cell: it.vals.pot, dc50: row.DC50_nM, dmax: row.Dmax_pct, eff: Math.round(it.vals.eff) }; });
+    check('K26 echo: the potency and Dmax in the table are the Results table\'s (same nM, same %)', Math.abs(r.cell - r.dc50) <= 0.006 * r.dc50 && r.eff === Math.round(r.dmax), JSON.stringify(r));
   }
   if (name === 'lumina') {
-    const r = await E(() => { const res = state.fitResults[0], it = _lgKit.scene().items.find(i => i.id === res.sampleId); return { cell: it.cells.pot, ec: res.ec50M * 1e9, eff: it.cells.eff, d: Math.round(res.top - res.bottom) }; });
-    check('K26 lumina: the potency and Dmax in the table are the Results table\'s', Math.abs(parseFloat(r.cell) - r.ec) <= 0.006 * r.ec && r.eff === r.d + '%', JSON.stringify(r));
+    const r = await E(() => { const res = state.fitResults[0], it = _lgKit.scene().items.find(i => i.id === res.sampleId); return { cell: it.vals.pot, ec: res.ec50M * 1e9, eff: Math.round(it.vals.eff), d: Math.round(res.top - res.bottom) }; });
+    check('K26 lumina: the potency and Dmax in the table are the Results table\'s', Math.abs(r.cell - r.ec) <= 0.006 * r.ec && r.eff === r.d, JSON.stringify(r));
   }
+  // K27 — in the app: the Table tab drives the figure and the data come out as a file
+  const k27a = await E(r => { const root = document.querySelector(r), tab = root.querySelector('.ck-tabs [data-tab=table]'); const o = { tabShown: !!tab && !tab.hidden }; if (!tab) return o; tab.click();
+    const body = root.querySelector('.ck-body'); o.switches = body.querySelectorAll('[data-tcol]').length; o.addSwitch = !!body.querySelector('[data-p="table.show"]'); o.fmt = ['table.potUnit', 'table.sig', 'table.dec', 'table.units', 'table.size'].every(p => !!body.querySelector('[data-p="' + p + '"]')); o.btns = ['tbl-copy', 'tbl-csv'].every(x => !!body.querySelector('[data-a=' + x + ']'));
+    const hill = body.querySelector('[data-tcol=hill]'); hill.checked = false; hill.dispatchEvent(new Event('change', { bubbles: true })); o.hillGone = !(Array.from(document.querySelectorAll(r + ' svg.ck-svg text')).some(t => t.textContent === 'Hill'));
+    root.querySelector('.ck-body [data-tset="table.orient"][data-v=cols]').click(); o.cols = Array.from(root.querySelectorAll('svg.ck-svg text')).some(t => t.textContent === 'Parameter'); return o; }, a.root);
+  check('K27 ' + name + ': a Table tab holds the yes/no switch, a switch per parameter, the formats and Copy / CSV; a switch changes the figure and so does Compounds in columns', k27a.tabShown && k27a.switches >= 6 && k27a.addSwitch && k27a.fmt && k27a.btns && k27a.hillGone && k27a.cols, JSON.stringify(k27a));
+  const dl = pg.waitForEvent('download', { timeout: 8000 }).catch(() => null); await E(r => document.querySelector(r + ' [data-a=tbl-csv]').click(), a.root); const dw = await dl;
+  let csv = ''; if (dw) { const fs = await import('node:fs'); csv = fs.readFileSync(await dw.path(), 'utf8'); }
+  check('K27 ' + name + ': the CSV is the table laid out as chosen (compounds in columns), numbers only, with the unit in the title', !!dw && /^\ufeffParameter,/.test(csv) && /DC50|EC50|IC50/.test(csv) && /\((nM)\)/.test(csv) && !/\u2009/.test(csv), JSON.stringify(csv.slice(0, 160)));
   } catch (err) { check('K9-K15 ' + name + ': the checks ran to the end', false, String(err && err.message || err).split('\n')[0]); }
   e.forEach(x => appErrs.push(x));
   await c.close();
