@@ -96,7 +96,7 @@
           '**Plate quality** — one row per plate: baseline, vehicle, window, S/B and Z′.',
           '**Controls** — donor and acceptor counts for each control you marked, with a plate switch when there are several.',
           '**Export** — an Excel workbook (results, every well of every plate, Prism tables, protocol), **Copy for Prism** (concentration in nM down one column, every compound’s replicates beside it), the plate mBRET alone, a CSV, a copy-paste table, or the plot as an image.',
-          '**Curve · Data** over the curve: **Data** lists every reading of the selected compound the way Prism lays it out. Click a reading (⇧ for a block, ⌘/Ctrl to add) and press **⌘E**, or right-click, to **leave it out of the fit**; the same again puts it back. The well stays on the plate and in the workbook, marked Excluded_from_fit.',
+          '**Curve · Data** over the curve: **Data** lists every reading of the selected compound the way Prism lays it out. Click a reading (⇧ for a block, ⌘/Ctrl to add) and press **X** (or Delete), or right-click, to **leave it out of the fit**; the same again puts it back. The well stays on the plate and in the workbook, marked Excluded_from_fit.',
           '**Send to Labbook** (inside dHUB) attaches the potencies and their curves to an experiment — you choose which one.',
           'Press **↑ ↓** (or **j k**, **Home**, **End**) to move between compounds and **← →** to switch the plate shown under Controls.'],
         ref: [['Pooled · Per plate', 'The same compound name on several plates is one compound: its replicates pool. **Per plate** gives one row per compound per plate.'],
@@ -136,6 +136,6 @@
       ['R² is red', 'The fit is unreliable. Check for a missing well, a plate without its baseline, or too few points around the inflection.'],
       ['A well is blank', 'Its donor or acceptor reading is missing, zero or negative, so there is no ratio — it is never shown as 0.'],
       ['Which reader files work?', 'PHERAstar `.xlsx` exports are read directly. For anything else, copy the donor grid and the acceptor grid in Excel and press ⌘V, or drop them as `.csv`.']],
-    keys: [['↑ ↓ · j k', 'Results: move between compounds'], ['← →', 'Results: switch the plate under Controls'], ['⌘E', 'Results › Data: leave the picked reading out of the fit / put it back'], ['Drag', 'Select wells'], ['Shift · ⌘/Ctrl', 'Extend · add to the selection'], ['Enter', 'Apply what the panel shows'], ['Delete', 'Clear the selected wells'], ['⌘V', 'Paste values copied from Excel'], ['⌘Z · ⇧⌘Z', 'Undo · redo']]
+    keys: [['↑ ↓ · j k', 'Results: move between compounds'], ['← →', 'Results: switch the plate under Controls'], ['X', 'Results › Data: leave the picked reading out of the fit / put it back'], ['Drag', 'Select wells'], ['Shift · ⌘/Ctrl', 'Extend · add to the selection'], ['Enter', 'Apply what the panel shows'], ['Delete', 'Clear the selected wells'], ['⌘V', 'Paste values copied from Excel'], ['⌘Z · ⇧⌘Z', 'Undo · redo']]
   });
 })();

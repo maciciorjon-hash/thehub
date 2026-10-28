@@ -116,7 +116,7 @@
           ['95 % CI', 'The confidence interval of the DC50.'],
           ['Normalisation · vs plain mean', 'How the 100 % reference of the curve’s plates was set, and whether the potency changes if the plain plate mean is used instead — **Same** or **Differs**.'],
           ['Buttons', '**Compare…** (two analyses from History), **Copy TSV**, **Export ▾** — the results workbook (with every well in its *Raw data* sheet), the Screen table Hit Finder reads, the curve PDFs — and inside dHUB **Send to ▾** — Labbook, Hit Finder, Ribbon.']],
-        watch: [{ k: 'tip', t: 'A curve flagged *No effect* barely moves — its potency is n.d. and it is left off potency plots. A midpoint beyond the doses tested is a bound, not a value.' }],
+        watch: [{ k: 'tip', t: 'A curve flagged *No effect* barely moves, or is no better than a flat line through its own readings (F test, p ≥ 0.05) — its potency is n.d. and it is left off potency plots. A midpoint beyond the doses tested is a bound, not a value.' }],
         steps: [
           { sel: '#results-panel .results-tbl-scroll', t: 'One row per curve', place: 'top', miss: MISS,
             b: 'DC50, Dmax, Hill, R², the flag and why, the confidence interval and how the curve was normalised. **Click a header to sort**; hover an n.d. for the number behind it.' },

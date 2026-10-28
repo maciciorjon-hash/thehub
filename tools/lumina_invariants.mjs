@@ -23,7 +23,7 @@
 //                                 and divided back give exactly the undistorted curves, from a GloMax double read stored with the plate and from
 //                                 fluorescence-only files named for their plates; off, the distortion shows; a plate without viability is left out
 //                                 and said; the session, the raw export and ⌘Z carry it.
-//   L25 the data table          Results › Data lists every reading of the selected compound (a row per dose, a column per replicate); picking one and pressing ⌘E (or right-click) leaves it out of the fit,
+//   L25 the data table          Results › Data lists every reading of the selected compound (a row per dose, a column per replicate); picking one and pressing X (or right-click) leaves it out of the fit,
 //                                the same exclusion as clicking its point on the curve, and the same again puts it back; ⌘Z takes it back; the session carries it.
 //   L24 a curve must be better than a line   The 4PL returns a sigmoid for any series, so a flat one of noise got a cliff at the edge of the doses, an Emax of
 //                                 hundreds of per cent and a potency nobody measured. A fit is tested against the mean of its own readings (F test, p < 0.05):
@@ -716,11 +716,12 @@ try {
     o.cells = document.querySelectorAll('#data-pane .dt-c').length; o.n0 = r0.keys.length; o.ec0 = r0.ec50M;
     document.querySelectorAll('#data-pane .dt-c')[3].dispatchEvent(new MouseEvent('click', { bubbles: true }));
     o.picked = LD_SEL.size;
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'e', metaKey: true, bubbles: true })); await wait(500);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'e', metaKey: true, bubbles: true })); await wait(300); o.cmdE = (_lmSel().exPts || []).length;
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'x', bubbles: true })); await wait(500);
     const r1 = _lmSel(); o.n1 = r1.keys.length; o.ex = (r1.exPts || []).length; o.ec1 = r1.ec50M; o.exCells = document.querySelectorAll('#data-pane .dt-c.ex').length; o.tab = state.rsTab;
     o.sess = lmSession().excluded.length;
     o.menu = _ctxDataItems(document.querySelector('#data-pane .dt-c.ex')).map(i => i.label || i.hd);
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'e', metaKey: true, bubbles: true })); await wait(500);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'x', bubbles: true })); await wait(500);
     const r2 = _lmSel(); o.back = (r2.exPts || []).length; o.ec2 = r2.ec50M;
     document.querySelectorAll('#data-pane .dt-c')[3].dispatchEvent(new MouseEvent('click', { bubbles: true })); lmToggleExcluded(); await wait(400);
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true, bubbles: true })); await wait(400);
@@ -728,9 +729,9 @@ try {
     return o;
   });
   check('L25 Data lists every reading of the compound, one cell each, and nothing left out to start with', r.cells === r.n0 && r.picked === 1, JSON.stringify([r.cells, r.n0, r.picked]));
-  check('L25 ⌘E on a picked reading leaves it out of the fit (one point fewer, the DC50 moves, the cell is struck) and the tab stays on Data', r.n1 === r.n0 - 1 && r.ex === 1 && r.exCells === 1 && Math.abs(r.ec1 - r.ec0) > 1e-18 && r.tab === 'data', JSON.stringify(r));
+  check('L25 X on a picked reading leaves it out of the fit (one point fewer, the DC50 moves, the cell is struck) and the tab stays on Data; ⌘E does nothing (Chrome owns it)', r.cmdE === 0 && r.n1 === r.n0 - 1 && r.ex === 1 && r.exCells === 1 && Math.abs(r.ec1 - r.ec0) > 1e-18 && r.tab === 'data', JSON.stringify(r));
   check('L25 the exclusion is the one the curve and the session know (a left-out well is in the saved session)', r.sess === 1, JSON.stringify(r.sess));
-  check('L25 right-click on a left-out reading offers to put it back; ⌘E again does, and the DC50 is what it was; ⌘Z takes an exclusion back', /Put this reading back/.test(r.menu[1]) && r.back === 0 && Math.abs(r.ec2 - r.ec0) < r.ec0 * 1e-9 && r.undone === 0 && r.same, JSON.stringify([r.menu, r.back, r.ec2, r.ec0, r.undone]));
+  check('L25 right-click on a left-out reading offers to put it back; X again does, and the DC50 is what it was; ⌘Z takes an exclusion back', /Put this reading back/.test(r.menu[1]) && r.back === 0 && Math.abs(r.ec2 - r.ec0) < r.ec0 * 1e-9 && r.undone === 0 && r.same, JSON.stringify([r.menu, r.back, r.ec2, r.ec0, r.undone]));
 } catch (err) { check('L25 the checks ran to the end', false, String(err && err.message || err).split('\n')[0]); }
 
 check('no page or console errors', errs.length === 0, errs.slice(0, 3).join(' | '));

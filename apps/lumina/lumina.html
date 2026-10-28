@@ -5134,7 +5134,7 @@ function lmRestoreAll(){ var r = _lmSel(); if (r) lmSetExcluded((r.exPts || []).
 })();
 // ── The data table: every reading of the selected compound, left out one by one ────────────────
 // A row is a dose, a column a replicate (Prism's XY table). Click picks a reading, Shift-click a block, ⌘/Ctrl-click adds one;
-// ⌘E or right-click leaves the picked readings out of the fit, and the same again puts them back. It is the same exclusion as clicking a
+// X (or Delete) or right-click leaves the picked readings out of the fit, and the same again puts them back. It is the same exclusion as clicking a
 // point on the curve — the wells stay on the plate and in every raw export.
 var LD_SEL = new Set(), LD_ANCHOR = null;
 function lmDataRows(r){
@@ -5164,7 +5164,7 @@ function lmDataRender(){
     }
     h += '<td class="num">' + (inn.length ? esc(_num(inn.reduce(function(a, q){ return a + val(q); }, 0) / inn.length)) : '–') + '</td><td class="num">' + inn.length + (inn.length < g.reps.length ? '<span class="ci"> / ' + g.reps.length + '</span>' : '') + '</td></tr>';
   });
-  host.innerHTML = h + '</tbody></table></div><div class="rs-keys"><kbd>click</kbd> pick a reading <span class="dot"></span><kbd>&#8679;</kbd> a block <span class="dot"></span><kbd>' + CTX_MOD + 'E</kbd> leave out / put back <span class="dot"></span>right-click for more</div>';
+  host.innerHTML = h + '</tbody></table></div><div class="rs-keys"><kbd>click</kbd> pick a reading <span class="dot"></span><kbd>&#8679;</kbd> a block <span class="dot"></span><kbd>X</kbd> leave out / put back <span class="dot"></span>right-click for more</div>';
 }
 function _lmDataPaint(){ document.querySelectorAll('#data-pane .dt-c').forEach(function(td){ td.classList.toggle('sel', LD_SEL.has(td.dataset.k)); }); }
 function lmDataPick(td, e){
@@ -5185,7 +5185,7 @@ function lmDataPick(td, e){
 // If any picked reading is still in the fit they all go out; if every one is already out, they all come back.
 function lmToggleExcluded(){
   var r = _lmSel(); if (!r) return;
-  if (!LD_SEL.size) { toast('Click a reading in the data table first, then ' + CTX_MOD + 'E leaves it out.'); return; }
+  if (!LD_SEL.size) { toast('Click a reading in the data table first, then X leaves it out.'); return; }
   var keys = Array.from(LD_SEL), out = keys.filter(function(k){ return r.keys.indexOf(k) >= 0; });
   lmSetExcluded(keys, out.length > 0);
 }
@@ -5196,7 +5196,7 @@ function _ctxDataItems(t){
   var x = null; r.keys.forEach(function(k, i){ if (k === keys[0]) x = r.xArr[i]; }); (r.exPts || []).forEach(function(e){ if (e.key === keys[0]) x = e.x; });
   var inAt = x === null ? 0 : r.xArr.filter(function(v){ return Math.abs(v - x) < 0.002; }).length, exAt = x === null ? 0 : (r.exPts || []).filter(function(e){ return Math.abs(e.x - x) < 0.002; }).length;
   var items = [{ hd: n > 1 ? n + ' readings' : _lmWellOf(r, keys[0]) },
-    { label: out ? (n > 1 ? 'Leave these ' + n + ' out of the fit' : 'Leave this reading out of the fit') : (n > 1 ? 'Put these ' + n + ' back' : 'Put this reading back'), k: CTX_MOD + 'E', act: lmToggleExcluded }];
+    { label: out ? (n > 1 ? 'Leave these ' + n + ' out of the fit' : 'Leave this reading out of the fit') : (n > 1 ? 'Put these ' + n + ' back' : 'Put this reading back'), k: 'X', act: lmToggleExcluded }];
   if (x !== null && inAt + exAt > 1 && inAt) items.push({ label: 'Leave out all ' + (inAt + exAt) + ' at this dose', act: function(){ lmExcludeDose(x, true); } });
   if (x !== null && inAt + exAt > 1 && exAt) items.push({ label: 'Put back all at this dose', act: function(){ lmExcludeDose(x, false); } });
   if ((r.exPts || []).length > (out ? 0 : n)) items.push({ label: 'Put back all ' + r.exPts.length + ' left out of ' + r.sampleId, act: lmRestoreAll });
@@ -6156,10 +6156,6 @@ document.addEventListener('keydown', function(e){
     else toast('Nothing to undo here — layout edits are undone on the plate.');
     return;
   }
-  if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && (e.key || '').toLowerCase() === 'e' && state.rsTab === 'data' && !e.defaultPrevented) {
-    var te = e.target, tn2 = te && te.tagName; if (tn2 === 'INPUT' || tn2 === 'TEXTAREA' || tn2 === 'SELECT' || (te && te.isContentEditable)) return;
-    e.preventDefault(); lmToggleExcluded(); return;
-  }
   if (e.key === 'Escape' && state.rsTab === 'data' && LD_SEL.size && !ctxIsOpen()) { LD_SEL = new Set(); _lmDataPaint(); }
   if (e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
   var t = e.target, tag = t && t.tagName;
@@ -6177,6 +6173,7 @@ document.addEventListener('keydown', function(e){
   else if (k === 'p' || k === 'P') rsSetTab('plot');
   else if (k === 'c' || k === 'C') rsSetTab('curve');
   else if (k === 'd' || k === 'D') rsSetTab('data');
+  else if (k === 'x' || k === 'X' || ((k === 'Delete' || k === 'Backspace') && LD_SEL.size)) { if (state.rsTab !== 'data' || e.shiftKey) return; lmToggleExcluded(); }
   else return;
   e.preventDefault();
 });
@@ -6829,7 +6826,7 @@ var assistRegister, assistOpen, assistClose, assistAsk, assistToggle;
         prep: results, show: [{ sel: '#rs-set-btn', say: 'Fit settings open here.', miss: FIT1 }] },
       { id: 'exclude-point', t: 'Leave out a bad point', group: 'Results', on: ['results'],
         q: ['exclude point', 'remove point', 'outlier', 'leave out', 'ignore point', 'excluir punto', 'quitar punto', 'punto raro', 'put back', 'include point', 'refit'],
-        a: 'On the curve, click a point to leave it out; the fit updates at once and a cross marks where it was. Click or right-click the cross to put it back. The **Data** tab lists every reading of the compound in a table: click one (⇧ for a block), press **⌘E** or right-click, and it is out of the fit; the same again puts it back.',
+        a: 'On the curve, click a point to leave it out; the fit updates at once and a cross marks where it was. Click or right-click the cross to put it back. The **Data** tab lists every reading of the compound in a table: click one (⇧ for a block), press **X** (or Delete) or right-click, and it is out of the fit; the same again puts it back.',
         prep: results, show: [{ sel: '#curve-canvas', say: 'Click a point on the curve.', miss: FIT1 }] },
       { id: 'units', t: 'Change the concentration units', group: 'Results', on: ['results'],
         q: ['units', 'nm', 'um', 'pm', 'molar', 'log', 'log10', 'unidades', 'cambiar unidades', 'change units', 'scale', 'escala'],
@@ -7366,7 +7363,7 @@ var tourRegister, appTour, tourEnd, tourGuideRefresh, tourOffer;
       ['Can I use a reader other than PHERAstar?', 'Yes. Copy the 96- or 384-well block from any spreadsheet and press `⌘V` with the plate in view.']],
     keys: [['Drag', 'Select a rectangle of wells'], ['Shift · ⌘ / Ctrl', 'Extend · add or remove wells'], ['Enter', 'Apply the panel (and advance the compound name)'], ['Delete', 'Clear the selected wells'],
       ['⌘C  ⌘X  ⌘V', 'Copy, cut and paste a block — or paste values from Excel'], ['⌘Z  ⌘⇧Z', 'Undo / redo (Plate); curve edits only (Results)'], ['F2', 'Rename the plate'],
-      ['↑ ↓  ← →', 'Results: compound · fit / raw'], ['P  C  D', 'Results: Plot · Curve · Data'], ['⌘E', 'Results › Data: leave the picked reading out of the fit / put it back']]
+      ['↑ ↓  ← →', 'Results: compound · fit / raw'], ['P  C  D', 'Results: Plot · Curve · Data'], ['X', 'Results › Data: leave the picked reading out of the fit / put it back']]
   });
 })();
 /* tour-js:end */

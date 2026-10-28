@@ -4376,7 +4376,7 @@ function rsPick(k, scroll){
 }
 // ── The data table: every reading of the selected compound, left out one by one ──────────────────────────────────────────
 // A row is a concentration, a column a replicate (Prism's XY table). Click picks a reading, Shift-click a block, ⌘/Ctrl-click adds one;
-// ⌘E (or right-click) leaves the picked readings out of the fit, and the same again puts them back. Nothing is deleted: the well stays
+// X (or Delete, or right-click) leaves the picked readings out of the fit, and the same again puts them back. Nothing is deleted: the well stays
 // on the plate and in every export, marked Excluded_from_fit.
 function bDataRows(f){
   var by = {};
@@ -4401,7 +4401,7 @@ function bDataHtml(f){
     }
     h += '<td class="num">' + (inn.length ? esc(bSig(meanOf(inn.map(function(r){ return r.v; })), 4)) : '–') + '</td><td class="num">' + inn.length + (inn.length < g.reps.length ? '<span class="ci"> / ' + g.reps.length + '</span>' : '') + '</td></tr>';
   });
-  return h + '</tbody></table></div><div class="rs-keys bd-keys"><kbd>click</kbd> pick a reading · <kbd>⇧</kbd> a block · <kbd>' + CTX_MOD + 'E</kbd> leave out / put back · right-click for more</div>';
+  return h + '</tbody></table></div><div class="rs-keys bd-keys"><kbd>click</kbd> pick a reading · <kbd>⇧</kbd> a block · <kbd>X</kbd> leave out / put back · right-click for more</div>';
 }
 function rsSetView(v){
   RS_VIEW = v === 'data' ? 'data' : 'curve'; try { localStorage.setItem('beacon_rsview', RS_VIEW); } catch(e){}
@@ -4441,9 +4441,9 @@ function bSetExcluded(keys, on){
   beaconToast((on ? 'Left out ' : 'Put back ') + (mine.length === 1 ? mine[0].split(':')[1] : mine.length + ' readings') + ' — ' + name + (nf ? (nf.fit ? ', ' + bPotencyName() + ' now ' + (nf.bound ? nf.bound + ' ' + bFmtConc(nf.limit) : bFmtConc(nf.ec50)) : ', no longer enough to fit') : '') + '. ' + CTX_MOD + 'Z undoes.');
   return true;
 }
-// ⌘E: if any picked reading is still in the fit they all go out; if every one is already out, they all come back.
+// X: if any picked reading is still in the fit they all go out; if every one is already out, they all come back.
 function bToggleExcluded(){
-  var f = _bDataSel(); if (!f || !BD_SEL.size) { beaconToast('Click a reading in the data table first, then ' + CTX_MOD + 'E leaves it out.'); return; }
+  var f = _bDataSel(); if (!f || !BD_SEL.size) { beaconToast('Click a reading in the data table first, then X leaves it out.'); return; }
   var cur = f.reps.filter(function(r){ return BD_SEL.has(r.pi + ':' + r.p); });
   bSetExcluded(cur.map(function(r){ return r.pi + ':' + r.p; }), cur.some(function(r){ return !r.ex; }));
 }
@@ -4460,7 +4460,7 @@ function bDataCtx(e, t){
   var cur = f.reps.filter(function(r){ return BD_SEL.has(r.pi + ':' + r.p); }), out = cur.some(function(r){ return !r.ex; }), n = cur.length;
   var c = cur[0] && cur[0].c, at = c ? f.reps.filter(function(r){ return Math.abs(r.c - c) < c * 1e-6; }) : [], nEx = f.reps.filter(function(r){ return r.ex; }).length;
   var items = [{ hd: n > 1 ? n + ' readings' : (cur[0] ? cur[0].p : 'Reading') },
-    { label: out ? (n > 1 ? 'Leave these ' + n + ' out of the fit' : 'Leave this reading out of the fit') : (n > 1 ? 'Put these ' + n + ' back' : 'Put this reading back'), k: CTX_MOD + 'E', act: bToggleExcluded }];
+    { label: out ? (n > 1 ? 'Leave these ' + n + ' out of the fit' : 'Leave this reading out of the fit') : (n > 1 ? 'Put these ' + n + ' back' : 'Put this reading back'), k: 'X', act: bToggleExcluded }];
   if (at.length > 1 && at.some(function(r){ return !r.ex; })) items.push({ label: 'Leave out all ' + at.length + ' at this concentration', act: function(){ bExcludeDose(c, true); } });
   if (at.length > 1 && at.some(function(r){ return r.ex; })) items.push({ label: 'Put back all at this concentration', act: function(){ bExcludeDose(c, false); } });
   if (nEx > (out ? 0 : n)) items.push({ label: 'Put back all ' + nEx + ' left out of ' + f.name, act: bRestoreAll });
@@ -4475,7 +4475,7 @@ document.addEventListener('keydown', function(e){
   if (activeTab !== 'results') return;
   var t = e.target, tag = t && t.tagName; if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (t && t.isContentEditable)) return;
   var mod = e.metaKey || e.ctrlKey, k = (e.key || '').toLowerCase();
-  if (mod && !e.altKey && !e.shiftKey && k === 'e' && RS_VIEW === 'data') { e.preventDefault(); bToggleExcluded(); }
+  if (!mod && !e.altKey && !e.shiftKey && RS_VIEW === 'data' && (k === 'x' || ((k === 'delete' || k === 'backspace') && BD_SEL.size))) { e.preventDefault(); bToggleExcluded(); }
   else if (mod && !e.altKey && k === 'z' && _bLastExMark >= 0 && _bUndo.length === _bLastExMark) { e.preventDefault(); if (e.shiftKey) bRedo(); else { bUndo(); _bLastExMark = -1; } }
   else if (e.key === 'Escape' && BD_SEL.size) { BD_SEL = new Set(); _bDataPaint(); }
 });
@@ -5968,7 +5968,7 @@ var tourRegister, appTour, tourEnd, tourGuideRefresh, tourOffer;
           '**Plate quality** — one row per plate: baseline, vehicle, window, S/B and Z′.',
           '**Controls** — donor and acceptor counts for each control you marked, with a plate switch when there are several.',
           '**Export** — an Excel workbook (results, every well of every plate, Prism tables, protocol), **Copy for Prism** (concentration in nM down one column, every compound’s replicates beside it), the plate mBRET alone, a CSV, a copy-paste table, or the plot as an image.',
-          '**Curve · Data** over the curve: **Data** lists every reading of the selected compound the way Prism lays it out. Click a reading (⇧ for a block, ⌘/Ctrl to add) and press **⌘E**, or right-click, to **leave it out of the fit**; the same again puts it back. The well stays on the plate and in the workbook, marked Excluded_from_fit.',
+          '**Curve · Data** over the curve: **Data** lists every reading of the selected compound the way Prism lays it out. Click a reading (⇧ for a block, ⌘/Ctrl to add) and press **X** (or Delete), or right-click, to **leave it out of the fit**; the same again puts it back. The well stays on the plate and in the workbook, marked Excluded_from_fit.',
           '**Send to Labbook** (inside dHUB) attaches the potencies and their curves to an experiment — you choose which one.',
           'Press **↑ ↓** (or **j k**, **Home**, **End**) to move between compounds and **← →** to switch the plate shown under Controls.'],
         ref: [['Pooled · Per plate', 'The same compound name on several plates is one compound: its replicates pool. **Per plate** gives one row per compound per plate.'],
@@ -6008,7 +6008,7 @@ var tourRegister, appTour, tourEnd, tourGuideRefresh, tourOffer;
       ['R² is red', 'The fit is unreliable. Check for a missing well, a plate without its baseline, or too few points around the inflection.'],
       ['A well is blank', 'Its donor or acceptor reading is missing, zero or negative, so there is no ratio — it is never shown as 0.'],
       ['Which reader files work?', 'PHERAstar `.xlsx` exports are read directly. For anything else, copy the donor grid and the acceptor grid in Excel and press ⌘V, or drop them as `.csv`.']],
-    keys: [['↑ ↓ · j k', 'Results: move between compounds'], ['← →', 'Results: switch the plate under Controls'], ['⌘E', 'Results › Data: leave the picked reading out of the fit / put it back'], ['Drag', 'Select wells'], ['Shift · ⌘/Ctrl', 'Extend · add to the selection'], ['Enter', 'Apply what the panel shows'], ['Delete', 'Clear the selected wells'], ['⌘V', 'Paste values copied from Excel'], ['⌘Z · ⇧⌘Z', 'Undo · redo']]
+    keys: [['↑ ↓ · j k', 'Results: move between compounds'], ['← →', 'Results: switch the plate under Controls'], ['X', 'Results › Data: leave the picked reading out of the fit / put it back'], ['Drag', 'Select wells'], ['Shift · ⌘/Ctrl', 'Extend · add to the selection'], ['Enter', 'Apply what the panel shows'], ['Delete', 'Clear the selected wells'], ['⌘V', 'Paste values copied from Excel'], ['⌘Z · ⇧⌘Z', 'Undo · redo']]
   });
 })();
 /* tour-js:end */
