@@ -35,6 +35,11 @@
 //   T19 Today is one size  on Today and the Journal's day, what a due step shows (its recipe, its list) and the line of the experiment above it
 //                           (project, code, title) are one size, the step title's 13px. The recipe's lead line and the experiment line were 12 beside
 //                           13px amounts and a 13px list: three sizes in one card (Jon, 2026-10-21). Captions (11px) are a tier of their own
+//   T20 one line per row    in a task row, the tick, the urgent mark, the date chip and the text sit on one line (their centres within 1px), and the
+//                           project, code and title of an experiment's header share one text centre. The date chip was a pill with its own margin and
+//                           sat 4px below the task text beside it; the code link's dashed border made it 1px taller than its neighbours (Jon, 2026-10-28)
+//   T21 one left edge       a carried-over step's tick stands where a due step's tick does — on a phone the due rows had their 10px inset and the
+//                           carried-over ones did not, so the two lists of ticks were 10px apart (Jon, 2026-10-28)
 //
 //   node tools/labbook_style_invariants.mjs [--url=URL] [--only=T1,T5]
 import { chromium } from 'playwright';
@@ -67,6 +72,7 @@ const SEED = `(function(){
   if(out.bio){ out.bio.status='done'; out.bio.outcome={verdict:'worked',text:'Fixture.'}; out.bio.aim='Does the fixture render?'; }
   var D=todayStr(); addPlannerTask(D,'Order plasmid prep kit'); addPlannerTask(D,'Book the plate reader');
   var ts=plannerTasks(); var first=Object.keys(ts)[0]; if(first) togglePlannerTask(first);
+  ts.late_fix={id:'late_fix',date:addDays(D,-1),text:'Late urgent task',done:false,urgent:true,created:Date.now()};   // a dated, late, urgent one: the row with every leading mark
   save();
   var ids={}; Object.keys(out).forEach(function(k){ if(out[k]) ids[k]=out[k].id; }); return ids; })()`;
 
@@ -91,6 +97,7 @@ const SCENES = {
   exp_done: `openExp(window.__SW.bio)`,
   journal_day: `openDayPage(todayStr())`,
   planner_today: `selectNode('journal')`,
+  planner_today_phone: `selectNode('journal')`,   // the same screen at 390px wide (the runner resizes for any scene ending in _phone)
   week: `selectNode('week')`,
   exps: `selectNode('exps')`,
   designer: `selectNode('design')`,
@@ -206,6 +213,22 @@ const CHECKS = [
       if(e.closest('.dlg-item')&&!e.closest('.dlg-item').querySelector('.ic-svg')&&/^[✓×~?–]$/.test(t)&&!/Not yet/.test(e.closest('.dlg-item').textContent)) bad.push('the outcome picker draws "'+t+'" as text');
       if(!e.closest('.dlg-item')){ if(t) bad.push(S.cls(e)+' draws "'+t+'" as text'); if(!e.querySelector('svg')) bad.push(S.cls(e)+' has no drawn mark'); } });
     if(!n) bad.push('no outcome mark on this screen to measure'); return bad.slice(0,5); })()`],
+  ['T20', ['planner_today', 'planner_today_phone'], `(function(){ var S=__st, bad=[], n=0;
+    function line(e){ var rg=document.createRange(); rg.selectNodeContents(e); var rs=rg.getClientRects(); if(!rs.length) return null; return rs[0].top+rs[0].height/2; }
+    function box(e){ var r=e.getBoundingClientRect(); return r.top+r.height/2; }
+    S.all('.nbt').forEach(function(row){ var tx=row.querySelector('.nbt-tx>span'); if(!tx) return; var want=line(tx); if(want===null) return;
+      [['.wk-cb','the tick',box],['.nbt-urg','the urgent mark',box],['.carry-from','the date chip',box]].forEach(function(x){ var e=row.querySelector(x[0]); if(!e) return; n++;
+        var d=Math.abs(x[2](e)-want); if(d>1) bad.push(x[1]+' is '+d.toFixed(1)+'px off the line of its task text ("'+tx.textContent.slice(0,18)+'")'); }); });
+    S.all('.day-exp-hd').forEach(function(h){ var ref=null;
+      ['.dfx-proj','.dfx-code','.dfx-title'].forEach(function(sel){ var e=h.querySelector(sel); if(!e) return; var c=line(e); if(c===null) return; n++;
+        if(ref===null) ref=c; else if(Math.abs(c-ref)>.3) bad.push(sel+' is '+Math.abs(c-ref).toFixed(1)+'px off the text line of its experiment header'); }); });
+    if(!n) bad.push('no task row or experiment header to measure'); return bad.slice(0,5); })()`],
+  ['T21', ['planner_today', 'planner_today_phone'], `(function(){ var S=__st, bad=[];
+    var due=S.all('.dfx-blk-hd .blk-done'), carry=S.all('.day-carry-hd .blk-done');
+    if(!due.length||!carry.length) return ['needs a due step and a carried-over one on this screen ('+due.length+' / '+carry.length+')'];
+    var want=Math.round(due[0].getBoundingClientRect().left*10)/10;
+    carry.forEach(function(e){ var l=Math.round(e.getBoundingClientRect().left*10)/10; if(Math.abs(l-want)>.6) bad.push('a carried-over tick stands at x='+l+' where a due step\\'s tick stands at x='+want); });
+    return bad.slice(0,3); })()`],
 ];
 
 const port = await freePort();
@@ -231,6 +254,7 @@ try {
   const findings = [];
   const counts = {};
   for (const [scene, list] of Object.entries(bySceneChecks)) {
+    await pg.setViewportSize(scene.endsWith('_phone') ? { width: 390, height: 844 } : { width: 1440, height: 1000 });
     await pg.evaluate(h => { document.querySelectorAll('.modal-back.open,#spot-back.open,.pop.open').forEach(x => x.classList.remove('open')); void (0, eval)('(function(){ ' + h + '\n})()'); }, SCENES[scene]);
     await pg.waitForTimeout(800);
     await pg.evaluate(LIB);
