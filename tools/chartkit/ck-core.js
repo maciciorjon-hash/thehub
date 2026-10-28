@@ -363,6 +363,9 @@ var ChartKitCore = (function(){
       prims.push({ t: 'text', text: nt, x: x0, y: bodyEnd + ns * 1.25, size: ns, bold: false, italic: true, anchor: 'start', rot: 0, fill: '#555555', font: F, drag: false, w: measure(nt, ns, false, true, F) });
       h += ns * 1.7;
     }
+    // the whole table is one thing to click: every piece carries its name, and a white sheet under them gives the click somewhere to land
+    prims.forEach(function(q){ q.el = 'table'; });
+    prims.unshift({ t: 'rect', el: 'table', x: x0, y: y0, w: tw, h: h - 2, fill: '#ffffff' });
     return { prims: prims, h: h + 6 };
   }
   function buildRef(doc, specIn){

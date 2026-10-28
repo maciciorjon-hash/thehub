@@ -4,8 +4,9 @@
  *     → { refresh(), draw() }
  *
  * Click anything on the chart to edit it; drag titles and the legend (they snap to each other, to the plot and to
- * the figure's centre — hold Alt to move freely; arrow keys nudge); the panel has Data (omit a replicate), Text,
- * Axes, Style, Colours and Page. Export is PNG at 300 / 600 / 1200 dpi, a vector PDF, or SVG.
+ * the figure's centre — hold Alt to move freely; arrow keys nudge). The panel is sections that fold, each saying what is
+ * set in it while it is folded: Compounds (which are drawn, their colours and palette, replicates to omit), Chart, Axes,
+ * Text & legend, Table and Page. Export is PNG at 300 / 600 / 1200 dpi, a vector PDF, SVG, and the table as Copy / CSV / Excel.
  */
 var ChartKit = (function(){
   var C = ChartKitCore, X = ChartKitExport;
@@ -19,7 +20,7 @@ var ChartKit = (function(){
 
   function mount(root, opts){
     opts = opts || {};
-    var KEY = 'ck2:' + (opts.key || 'chart'), spec, doc = { items: [] }, scene = null, sel = null, tab = 'data', undo = [], redo = [], lastUndoKey = '', lastUndoAt = 0, dpi = 1200, saveT = 0, drag = null, openItems = {}, cmode = null;
+    var KEY = 'ck2:' + (opts.key || 'chart'), spec, doc = { items: [] }, scene = null, sel = null, secOpen = null, undo = [], redo = [], lastUndoKey = '', lastUndoAt = 0, dpi = 1200, saveT = 0, drag = null, openItems = {}, cmode = null, palOpen = false;
     try { spec = C.withDefaults(JSON.parse(localStorage.getItem(KEY) || 'null')); } catch (e) { spec = C.withDefaults(null); }
 
     root.classList.add('ck-root'); root.setAttribute('tabindex', '-1');
@@ -30,8 +31,8 @@ var ChartKit = (function(){
           '<div class="ck-seg ck-kind" role="group" aria-label="Chart type"><button type="button" data-kind="auto">Auto</button><button type="button" data-kind="bars">Bars</button><button type="button" data-kind="xy">Curves</button></div>' +
           '<span class="ck-sep"></span>' +
           '<button type="button" class="ck-btn" data-a="undo" title="Undo (⌘Z)">Undo</button><button type="button" class="ck-btn" data-a="redo" title="Redo (⇧⌘Z)">Redo</button>' +
-          '<label class="ck-chk" title="Titles and the legend snap to each other, to the plot and to the centre of the figure. Hold Alt to move freely."><input type="checkbox" data-a="snap"> Snap &amp; align</label>' +
-          '<label class="ck-chk ck-tblchk" title="Add a table of the fitted values for the compounds drawn under the figure. It is part of the PNG, PDF and SVG; what it holds is set under Table." hidden><input type="checkbox" data-p="table.show" data-t="bool"> Add table</label>' +
+          '<label class="ck-chk" title="Titles and the legend snap to each other, to the plot and to the centre of the figure. Hold Alt to move freely."><span class="ck-tog"><input type="checkbox" data-a="snap"><i></i></span> Snap &amp; align</label>' +
+          '<label class="ck-chk ck-tblchk" title="Add a table of the fitted values for the compounds drawn under the figure. It is part of the PNG, PDF and SVG; what it holds is set under Table." hidden><span class="ck-tog"><input type="checkbox" data-p="table.show" data-t="bool"><i></i></span> Add table</label>' +
           '<span class="ck-gap"></span>' +
           '<select class="ck-dpi" aria-label="PNG resolution" data-a="dpi"><option value="300">300 dpi</option><option value="600">600 dpi</option><option value="1200">1200 dpi</option></select>' +
           '<button type="button" class="ck-btn ck-pri" data-a="png">PNG</button><button type="button" class="ck-btn ck-pri" data-a="pdf">PDF</button><button type="button" class="ck-btn" data-a="svg">SVG</button>' +
@@ -41,11 +42,13 @@ var ChartKit = (function(){
       '</div>' +
       '<div class="ck-panel">' +
         '<div class="ck-sel"></div>' +
-        '<div class="ck-seg ck-tabs" role="tablist"></div>' +
         '<div class="ck-body"></div>' +
       '</div>';
-    var svg = root.querySelector('.ck-svg'), panel = root.querySelector('.ck-body'), selBox = root.querySelector('.ck-sel'), tabsEl = root.querySelector('.ck-tabs'), status = root.querySelector('.ck-status');
-    ['data:Data', 'text:Text', 'axes:Axes', 'style:Style', 'table:Table', 'colors:Colours', 'page:Page'].forEach(function(t){ var p = t.split(':'); var b = document.createElement('button'); b.type = 'button'; b.dataset.tab = p[0]; b.textContent = p[1]; tabsEl.appendChild(b); });
+    var svg = root.querySelector('.ck-svg'), panel = root.querySelector('.ck-body'), selBox = root.querySelector('.ck-sel'), status = root.querySelector('.ck-status');
+    // which sections are open is remembered per device; the first visit opens the one the job starts with (the figure is empty until a compound is ticked)
+    try { secOpen = JSON.parse(localStorage.getItem(KEY + ':sec') || 'null'); } catch (e) { secOpen = null; }
+    if (!secOpen || typeof secOpen !== 'object') secOpen = { compounds: true };
+    function saveSec(){ try { localStorage.setItem(KEY + ':sec', JSON.stringify(secOpen)); } catch (e) {} }
 
     function toast(m, k){ if (opts.toast) opts.toast(m, k); status.textContent = m; status.classList.remove('ck-warnline'); lastFitNote = ''; }
     // Only the style is kept between visits. What was omitted, hidden, recoloured, moved or retitled belongs to the data it
@@ -65,8 +68,8 @@ var ChartKit = (function(){
     function doRedo(){ if (!redo.length) return; undo.push(JSON.stringify(spec)); restore(redo.pop()); }
     function syncBar(){
       root.querySelector('[data-a=undo]').disabled = !undo.length; root.querySelector('[data-a=redo]').disabled = !redo.length;
-      var hasT = !!(doc.table && doc.table.cols && doc.table.cols.length), tb = tabsEl.querySelector('[data-tab=table]'); if (tb) tb.hidden = !hasT; if (!hasT && tab === 'table') { tab = 'data'; renderTabs(); renderPanel(); }
-      var tc = root.querySelector('.ck-tblchk'); if (tc) { tc.hidden = !(doc.table && doc.table.cols && doc.table.cols.length); tc.querySelector('input').checked = !!spec.table.show; }
+      var hasT = hasTable(); if (!hasT && secOpen.table) { delete secOpen.table; saveSec(); renderPanel(); }
+      var tc = root.querySelector('.ck-tblchk'); if (tc) { tc.hidden = !hasTable(); tc.querySelector('input').checked = !!spec.table.show; }
       root.querySelector('[data-a=snap]').checked = !!spec.snap; root.querySelector('[data-a=dpi]').value = String(dpi);
       root.querySelectorAll('.ck-kind button').forEach(function(b){ b.classList.toggle('active', b.dataset.kind === spec.kind); });
     }
@@ -100,7 +103,7 @@ var ChartKit = (function(){
       overlay(); pngNote(); fitNote();
     }
     if (window.ResizeObserver) { var ro = new ResizeObserver(function(){ fit(); overlay(); }); ro.observe(root.querySelector('.ck-canvas')); ro.observe(root); }
-    // A curve that cannot be refitted without the replicates left out is not drawn; say so where the figure is, not only in the Data tab.
+    // A curve that cannot be refitted without the replicates left out is not drawn; say so where the figure is, not only under Compounds.
     var lastFitNote = '';
     function fitFailed(){ return scene && scene.kind === 'xy' ? scene.items.filter(function(i){ return i.refitFailed && !i.hidden; }) : []; }
     function fitNote(){
@@ -109,7 +112,7 @@ var ChartKit = (function(){
       if (scene && scene.grew) msgs.push('The labels need more room than ' + scene.grew.askedW.toFixed(1) + ' × ' + scene.grew.askedH.toFixed(1) + ' in, so the figure is made ' + scene.grew.w.toFixed(1) + ' × ' + scene.grew.h.toFixed(1) + ' in. A larger page, a smaller legend or fewer compounds keeps the size you asked for.');
       var msg = msgs.join(' ');
       if (msg) { status.textContent = msg; status.classList.add('ck-warnline'); lastFitNote = msg; }
-      else if ((doc.items || []).length > 1 && (doc.items || []).every(function(it){ return spec.hidden[it.id]; })) { lastFitNote = 'Nothing is drawn yet — tick the compounds to show under Data.'; status.textContent = lastFitNote; status.classList.remove('ck-warnline'); }
+      else if ((doc.items || []).length > 1 && (doc.items || []).every(function(it){ return spec.hidden[it.id]; })) { lastFitNote = 'Nothing is drawn yet — tick the compounds to show under Compounds.'; status.textContent = lastFitNote; status.classList.remove('ck-warnline'); }
       else if (lastFitNote && status.textContent === lastFitNote) { status.textContent = ''; status.classList.remove('ck-warnline'); lastFitNote = ''; }
     }
     function rectOf(node){ var r = node.getBoundingClientRect(), o = svg.getBoundingClientRect(), k = scale(); return { l: (r.left - o.left) / k, t: (r.top - o.top) / k, r: (r.right - o.left) / k, b: (r.bottom - o.top) / k }; }
@@ -125,62 +128,140 @@ var ChartKit = (function(){
     // a title line is spec.title[n]; xTitle and yTitle are keys of their own
     function tpath(id){ return id.indexOf('title') === 0 ? 'title.' + id.slice(5) : id; }
     function itemOf(id){ var m = /^(?:bar|fit|pt|leg):(.+)$/.exec(id || ''); return m ? m[1] : null; }
-    function select(id){ if ((id || null) !== sel) cmode = null; sel = id || null; renderSel(); overlay(); if (sel && TEXTS[sel]) tab = tab === 'data' ? 'text' : tab; if (sel && itemOf(sel) && tab === 'text') tab = 'colors'; renderTabs(); renderPanel(); }
+    // the section a thing on the chart belongs to: clicking it opens that section
+    function secOfSel(id){ if (!id) return null; if (TEXTS[id] || id === 'legend') return 'text'; if (itemOf(id)) return 'compounds'; if (id === 'table') return 'table'; if (id === 'ref' || id === 'axisX' || id === 'axisY') return 'axes'; return null; }
+    function select(id){
+      if ((id || null) !== sel) cmode = null; sel = id || null; renderSel(); overlay();
+      var sc = secOfSel(sel); if (sc && !secOpen[sc] && (sc !== 'table' || hasTable())) { secOpen[sc] = true; saveSec(); }
+      renderPanel();
+      if (sc) { var el = panel.querySelector('.ck-sec[data-s="' + sc + '"]'); if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' }); }
+    }
+    function hasTable(){ return !!(doc.table && doc.table.cols && doc.table.cols.length); }
     function renderSel(){
-      var h = '';
-      if (!sel) h = '<div class="ck-hint"><b>Click anything on the chart to edit it.</b> Drag the titles and the legend — they snap to each other and to the plot; hold <kbd>Alt</kbd> to move freely, arrow keys nudge. Click a replicate in <b>Data</b> to omit it.</div>';
-      else if (TEXTS[sel]) {
-        var tt = sel.indexOf('title') === 0 ? spec.title[+sel.slice(5)] : spec[sel], cur = tt.text === null ? defaultText(sel) : tt.text;
-        h = '<div class="ck-selh"><b>' + TEXTS[sel] + '</b><button type="button" class="ck-link" data-a="deselect">Done</button></div>' +
-          '<input class="ck-in ck-txt" type="text" data-text="' + sel + '" value="' + esc(cur) + '" aria-label="' + TEXTS[sel] + '" placeholder="Empty hides it">' +
-          '<div class="ck-row"><label class="ck-f"><span>Size</span><input class="ck-in" type="number" step="0.5" min="4" max="60" data-tp="' + tpath(sel) + '.size" value="' + tt.size + '"></label>' +
-          '<button type="button" class="ck-tg' + (tt.bold ? ' on' : '') + '" data-tg="' + sel + '.bold" title="Bold"><b>B</b></button><button type="button" class="ck-tg' + (tt.italic ? ' on' : '') + '" data-tg="' + sel + '.italic" title="Italic"><i>I</i></button></div>' + alignRow();
-      } else if (sel === 'legend') {
-        h = '<div class="ck-selh"><b>Legend</b><button type="button" class="ck-link" data-a="deselect">Done</button></div><div class="ck-row"><label class="ck-f"><span>Size</span><input class="ck-in" type="number" step="0.5" min="4" max="40" data-p="legend.size" data-t="num" value="' + spec.legend.size + '"></label><button type="button" class="ck-btn" data-a="hideleg">Hide</button></div>' + alignRow();
-      } else if (itemOf(sel)) {
+      var h = '', done = '<button type="button" class="ck-link" data-a="deselect">Done</button>';
+      if (!sel) h = '<div class="ck-hint"><b>Click anything in the figure to edit it.</b> Drag titles and the legend; they snap to the plot and to each other (<kbd>Alt</kbd> moves freely, arrow keys nudge). Click a replicate under Compounds to leave it out.</div>';
+      else if (TEXTS[sel]) h = '<div class="ck-selh"><b>' + TEXTS[sel] + '</b>' + done + '</div><div class="ck-hint">Its words and size are under <b>Text &amp; legend</b>. Double-click it in the figure to type.</div>' + alignRow();
+      else if (sel === 'legend') h = '<div class="ck-selh"><b>Legend</b>' + done + '</div><div class="ck-row"><button type="button" class="ck-btn" data-a="hideleg">Hide the legend</button></div>' + alignRow();
+      else if (sel === 'table') h = '<div class="ck-selh"><b>Table</b>' + done + '</div><div class="ck-hint">Parameters, layout and format are under <b>Table</b>.</div>';
+      else if (itemOf(sel)) {
         var id = itemOf(sel), it = (doc.items || []).filter(function(x){ return x.id === id; })[0], ci = (doc.items || []).indexOf(it);
         if (it) {
           var col = C.itemColor(spec, it, ci, (doc.items || []).length), pal = C.PALETTES.filter(function(p){ return p.id === spec.palette; })[0] || C.PALETTES[0];
           var pcs = palColors(pal), inPal = !spec.colors[id] || pcs.some(function(c){ return c.toLowerCase() === col.toLowerCase(); }), mode = cmode || (inPal ? 'palette' : 'full');
-          h = '<div class="ck-selh"><b>' + esc(it.name) + '</b><button type="button" class="ck-link" data-a="deselect">Done</button></div>' +
-            '<div class="ck-seg ck-cm" role="group" aria-label="Where the colour comes from"><button type="button" class="' + (mode === 'palette' ? 'active' : '') + '" aria-pressed="' + (mode === 'palette') + '" data-cm="palette">Within the palette</button><button type="button" class="' + (mode === 'full' ? 'active' : '') + '" aria-pressed="' + (mode === 'full') + '" data-cm="full">Full spectrum</button></div>' +
+          h = '<div class="ck-selh"><b>' + esc(it.name) + '</b>' + done + '</div>' +
+            '<div class="ck-seg ck-cm ck-segf" role="group" aria-label="Where the colour comes from"><button type="button" class="' + (mode === 'palette' ? 'active' : '') + '" aria-pressed="' + (mode === 'palette') + '" data-cm="palette">Within the palette</button><button type="button" class="' + (mode === 'full' ? 'active' : '') + '" aria-pressed="' + (mode === 'full') + '" data-cm="full">Full spectrum</button></div>' +
             (mode === 'palette'
               ? '<div class="ck-sw">' + pcs.map(function(c){ return '<button type="button" class="ck-swb' + (c.toLowerCase() === col.toLowerCase() ? ' on' : '') + '" style="background:' + c + '" data-a="setcolor" data-id="' + esc(id) + '" data-c="' + c + '" aria-label="' + c + '"></button>'; }).join('') + '</div>'
               : '<div class="ck-row"><label class="ck-f"><span>Colour</span><input class="ck-color" type="color" data-item="' + esc(id) + '" value="' + col + '"></label>' +
                 '<label class="ck-f"><span>Hex</span><input class="ck-in ck-hex" type="text" maxlength="7" data-hex="' + esc(id) + '" value="' + col + '" aria-label="Hex colour of ' + esc(it.name) + '"></label></div>') +
             '<div class="ck-row"><button type="button" class="ck-link" data-a="resetcolor" data-id="' + esc(id) + '">Back to the palette</button><button type="button" class="ck-link" data-a="hideitem" data-id="' + esc(id) + '">Hide</button></div>';
         }
-      } else if (sel === 'ref') h = '<div class="ck-selh"><b>Reference line</b><button type="button" class="ck-link" data-a="deselect">Done</button></div><div class="ck-hint">Its value and style are under <b>Axes</b>.</div>';
-      else if (sel === 'axisX' || sel === 'axisY') h = '<div class="ck-selh"><b>' + (sel === 'axisX' ? 'X' : 'Y') + ' axis</b><button type="button" class="ck-link" data-a="deselect">Done</button></div><div class="ck-hint">Range, ticks and line width are under <b>Axes</b>.</div>';
-      selBox.innerHTML = h;
+      } else if (sel === 'ref') h = '<div class="ck-selh"><b>Reference line</b>' + done + '</div><div class="ck-hint">Its value and style are under <b>Axes</b>.</div>';
+      else if (sel === 'axisX' || sel === 'axisY') h = '<div class="ck-selh"><b>' + (sel === 'axisX' ? 'X' : 'Y') + ' axis</b>' + done + '</div><div class="ck-hint">Range, ticks and line width are under <b>Axes</b>.</div>';
+      selBox.innerHTML = h; selBox.classList.toggle('ck-idle', !sel);
     }
     function palColors(pal){ return pal.ramp ? Array.apply(null, Array(12)).map(function(_, i){ return C.blueRamp(i, 12); }) : pal.c; }
     function alignRow(){ return '<div class="ck-row ck-align"><button type="button" class="ck-btn" data-al="cx">Centre on plot</button><button type="button" class="ck-btn" data-al="fx">Centre on figure</button><button type="button" class="ck-link" data-a="resetpos">Reset position</button></div>'; }
     function defaultText(id){ if (id === 'xTitle') return doc.xTitle || ''; if (id === 'yTitle') return doc.yTitle || ''; return (doc.title && doc.title[+id.slice(5)]) || ''; }
 
-    // ── the panel ──────────────────────────────────────────────
+    // ── the panel: sections that fold ──────────────────────────
+    // A setting is a row: its name at the left, the control at the right (a switch for yes/no, a segmented control for a few choices, a box
+    // for a number). A short hint under the name where the name alone is not enough.
+    function hintOf(o){ return o && o.hint ? '<small>' + o.hint + '</small>' : ''; }
+    function setRow(label, ctl, o){ o = o || {}; return '<div class="ck-set' + (o.cls ? ' ' + o.cls : '') + '"><span class="ck-sl">' + label + hintOf(o) + '</span><span class="ck-ctl">' + ctl + '</span></div>'; }
+    function segHtml(path, opts, num){
+      var cur = String(get(spec, path));
+      return '<span class="ck-seg ck-segf" role="group">' + opts.map(function(x){ var on = cur === String(x[0]); return '<button type="button" class="' + (on ? 'active' : '') + '" aria-pressed="' + on + '" data-tset="' + path + '" data-v="' + x[0] + '"' + (num ? ' data-n="1"' : '') + '>' + x[1] + '</button>'; }).join('') + '</span>';
+    }
     function fld(label, path, type, o){
       o = o || {}; var v = get(spec, path), rg = C.RANGE[path]; if (rg) { if (o.min === undefined) o.min = rg[0]; if (o.max === undefined) o.max = rg[1]; }
-      if (type === 'bool') return '<label class="ck-chk ck-f2"><input type="checkbox" data-p="' + path + '" data-t="bool"' + (v ? ' checked' : '') + '> ' + label + '</label>';
-      if (type === 'sel') return '<label class="ck-f"><span>' + label + '</span><select class="ck-in" data-p="' + path + '" data-t="' + (o.num ? 'selnum' : 'str') + '">' + o.opts.map(function(x){ return '<option value="' + x[0] + '"' + (String(v) === String(x[0]) ? ' selected' : '') + '>' + x[1] + '</option>'; }).join('') + '</select></label>';
-      return '<label class="ck-f"><span>' + label + '</span><input class="ck-in" type="number" step="' + (o.step || 'any') + '"' + (o.min !== undefined ? ' min="' + o.min + '"' : '') + (o.max !== undefined ? ' max="' + o.max + '"' : '') + ' data-p="' + path + '" data-t="' + (o.auto ? 'numauto' : 'num') + '" value="' + (v === null || v === undefined ? '' : v) + '"' + (o.auto ? ' placeholder="auto"' : '') + '></label>';
+      if (type === 'bool') return '<label class="ck-set ck-sett"><span class="ck-sl">' + label + hintOf(o) + '</span><span class="ck-tog"><input type="checkbox" data-p="' + path + '" data-t="bool"' + (v ? ' checked' : '') + '><i></i></span></label>';
+      if (type === 'sel' && o.seg) return '<div class="ck-set ck-setseg"><span class="ck-sl">' + label + hintOf(o) + '</span>' + segHtml(path, o.opts, o.num) + '</div>';
+      var ctl;
+      if (type === 'sel') ctl = '<select class="ck-in" data-p="' + path + '" data-t="' + (o.num ? 'selnum' : 'str') + '" aria-label="' + esc(label) + '">' + o.opts.map(function(x){ return '<option value="' + x[0] + '"' + (String(v) === String(x[0]) ? ' selected' : '') + '>' + x[1] + '</option>'; }).join('') + '</select>';
+      else ctl = '<input class="ck-in ck-num" type="number" step="' + (o.step || 'any') + '"' + (o.min !== undefined ? ' min="' + o.min + '"' : '') + (o.max !== undefined ? ' max="' + o.max + '"' : '') + ' data-p="' + path + '" data-t="' + (o.auto ? 'numauto' : 'num') + '" value="' + (v === null || v === undefined ? '' : v) + '"' + (o.auto ? ' placeholder="auto"' : '') + ' aria-label="' + esc(label) + '">';
+      return setRow(label, ctl, o);
     }
-    // ── the results table's panel: whether, which parameters, how it is laid out and written, and its data ──
+    function pair(a, b){ return '<div class="ck-pair">' + a + b + '</div>'; }
+    function pf(label, path, o){ o = o || {}; var v = get(spec, path), rg = C.RANGE[path]; if (rg) { if (o.min === undefined) o.min = rg[0]; if (o.max === undefined) o.max = rg[1]; } return '<label class="ck-f"><span>' + label + '</span><input class="ck-in" type="number" step="' + (o.step || 'any') + '"' + (o.min !== undefined ? ' min="' + o.min + '"' : '') + (o.max !== undefined ? ' max="' + o.max + '"' : '') + ' data-p="' + path + '" data-t="' + (o.auto ? 'numauto' : 'num') + '" value="' + (v === null || v === undefined ? '' : v) + '"' + (o.auto ? ' placeholder="auto"' : '') + '></label>'; }
+    function grp(title, inner, note){ return '<div class="ck-sg"><div class="ck-sgh">' + title + '</div>' + inner + (note ? '<div class="ck-note">' + note + '</div>' : '') + '</div>'; }
+
+    var SEC_T = { compounds: 'Compounds', chart: 'Chart', axes: 'Axes', text: 'Text & legend', table: 'Table', page: 'Page' };
+    function palName(){ var p = C.PALETTES.filter(function(x){ return x.id === spec.palette; })[0]; return p ? p.name : ''; }
+    function secSum(id){
+      var kind = scene ? scene.kind : 'bars', its = doc.items || [], nOn = its.filter(function(it){ return !spec.hidden[it.id]; }).length;
+      if (id === 'compounds') return its.length ? nOn + ' of ' + its.length + ' drawn · ' + palName() : 'none yet';
+      if (id === 'chart') return (kind === 'bars' ? 'Bars' : 'Curves') + ' · ' + ({ sd: 'SD', sem: 'SEM', ci95: '95% CI', range: 'range', none: 'no' }[spec.err.type] || 'SD') + ' error bars';
+      if (id === 'axes') { var rg = function(a){ return a.min !== null && a.min !== '' && a.max !== null && a.max !== '' ? a.min + '–' + a.max : 'auto'; }; return 'Y ' + (spec.y.log ? 'log ' : '') + rg(spec.y) + (kind === 'xy' ? ' · X ' + rg(spec.x) : ''); }
+      if (id === 'text') return spec.title.filter(function(t){ return t.text === null ? true : String(t.text).trim(); }).length ? 'titles · legend ' + (spec.legend.show ? (spec.legend.pos === 'auto' ? 'auto' : spec.legend.pos) : 'off') : 'legend ' + (spec.legend.show ? 'on' : 'off');
+      if (id === 'table') { if (!spec.table.show) return 'off'; var n = doc.table.cols.filter(function(c){ return spec.table.cols[c.id] === undefined ? c.on : !!spec.table.cols[c.id]; }).length; return 'on · ' + n + ' parameter' + (n === 1 ? '' : 's') + ' · compounds in ' + (spec.table.orient === 'cols' ? 'columns' : 'rows'); }
+      if (id === 'page') return +spec.w.toFixed(1) + ' × ' + +spec.h.toFixed(1) + ' in · ' + (spec.scale ? 'scaled' : 'real points');
+      return '';
+    }
+    function secBody(id){
+      var kind = scene ? scene.kind : 'bars';
+      if (id === 'compounds') return compoundsHtml();
+      if (id === 'chart') return chartHtml(kind);
+      if (id === 'axes') return axesHtml(kind);
+      if (id === 'text') return textHtml();
+      if (id === 'table') return tableHtml();
+      if (id === 'page') return pageHtml();
+      return '';
+    }
+    var CHEV = '<svg class="ck-shc" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
+    function renderPanel(){
+      var ids = Object.keys(SEC_T).filter(function(i){ return i !== 'table' || hasTable(); }), anyOpen = ids.some(function(i){ return secOpen[i]; });
+      var h = '<div class="ck-ph"><span>Settings</span><button type="button" class="ck-link" data-a="' + (anyOpen ? 'foldall' : 'unfoldall') + '">' + (anyOpen ? 'Fold all' : 'Unfold all') + '</button></div>';
+      ids.forEach(function(id){
+        var open = !!secOpen[id];
+        h += '<section class="ck-sec' + (open ? ' open' : '') + '" data-s="' + id + '"><button type="button" class="ck-sh" data-sec="' + id + '" aria-expanded="' + open + '">' + CHEV + '<span class="ck-st">' + SEC_T[id] + '</span><span class="ck-ss">' + esc(secSum(id)) + '</span></button>' + (open ? '<div class="ck-sb">' + secBody(id) + '</div>' : '') + '</section>';
+      });
+      panel.innerHTML = h; pngNote(); scaleNote();
+    }
+    function setSection(id, on){ if (!!secOpen[id] === !!on) return; if (on) secOpen[id] = true; else delete secOpen[id]; saveSec(); renderPanel(); }
+
+    function chartHtml(kind){
+      return (kind === 'bars'
+        ? grp('Bars', fld('Fill', 'fill', 'sel', { opts: [['solid', 'Solid'], ['tint', 'Light fill, coloured border'], ['outline', 'Outline only']] }) + fld('Width', 'bar.width', 'num', { step: 0.05, min: 0.2, max: 1.2 }) + fld('Gap between groups', 'bar.gap', 'num', { step: 0.1, min: 0, max: 4 }) + fld('Gap inside a group', 'bar.inner', 'num', { step: 0.05, min: 0, max: 1 }) + fld('Border', 'bar.border', 'num', { step: 0.25, min: 0, max: 5 }) + fld('Shade by concentration', 'bar.shade', 'bool', { hint: 'highest darkest' }) + fld('Every replicate as a point', 'pts.show', 'bool'))
+        : grp('Points', fld('Marker', 'xy.marker', 'sel', { opts: [['circle', 'Circle'], ['square', 'Square'], ['triangle', 'Triangle'], ['diamond', 'Diamond'], ['auto', 'One per compound']] }) + fld('Marker size', 'xy.msize', 'num', { step: 0.5, min: 1, max: 14 }) + fld('Show the points', 'xy.points', 'bool') + fld('Open markers', 'xy.open', 'bool') + fld('Every replicate beside its mean', 'pts.show', 'bool')) +
+          grp('Curves', fld('Show the fit', 'xy.fit', 'bool') + fld('Line width', 'xy.lw', 'num', { step: 0.25, min: 0.25, max: 6 }) + fld('Dashed', 'xy.dash', 'bool') + fld('Extend across the whole axis', 'xy.extend', 'bool', { hint: 'a curve past the data is a guess' }))) +
+        grp('Error bars', fld('Show', 'err.type', 'sel', { seg: true, opts: [['sd', 'SD'], ['sem', 'SEM'], ['ci95', '95% CI'], ['range', 'Range'], ['none', 'None']] }) + (kind === 'bars' ? fld('Direction', 'err.dir', 'sel', { seg: true, opts: [['up', 'Up only'], ['both', 'Both ways']] }) : '') + fld('Cap', 'err.cap', 'num', { step: 0.5, min: 0, max: 16 }) + fld('Width', 'err.w', 'num', { step: 0.25, min: 0.25, max: 5 }));
+    }
+    function axesHtml(kind){
+      var yBad = C.fin(+spec.y.min) && C.fin(+spec.y.max) && spec.y.min !== null && spec.y.max !== null && +spec.y.min >= +spec.y.max;
+      return grp('Y axis', pair(pf('Minimum', 'y.min', { auto: 1 }), pf('Maximum', 'y.max', { auto: 1 })) + pair(pf('Major step', 'y.major', { auto: 1 }), pf('Decimals', 'y.dec', { auto: 1, step: 1 })) + (yBad ? '<div class="ck-warn">The maximum has to be above the minimum — the axis is on auto until it is.</div>' : '') + fld('Logarithmic', 'y.log', 'bool')) +
+        grp('X axis', (kind === 'bars' ? fld('Label angle', 'x.rot', 'sel', { seg: true, num: 1, opts: [[0, 'Flat'], [45, '45°'], [90, 'Vertical']] }) + fld('Order', 'x.order', 'sel', { seg: true, opts: [['given', 'As given'], ['desc', 'High → low'], ['asc', 'Low → high']] }) + fld('Concentration labels', 'x.labels', 'bool') : pair(pf('Minimum', 'x.min', { auto: 1 }), pf('Maximum', 'x.max', { auto: 1 })))) +
+        grp('Lines', fld('Axis width', 'axisW', 'num', { step: 0.25, min: 0.25, max: 5 }) + fld('Tick length', 'tick', 'num', { step: 0.5, min: 0, max: 12 }) + fld('Box around the plot', 'box', 'bool') + fld('Horizontal grid', 'grid', 'bool')) +
+        grp('Reference line', fld('Show', 'ref.show', 'bool') + pair(pf('At', 'ref.y', { auto: 1 }), pf('Width', 'ref.w', { step: 0.25, min: 0.25, max: 5 })) + fld('Dotted', 'ref.dash', 'bool'));
+    }
+    // every line of text is edited where it is listed: its words, its size, bold and italic. Clicking it in the figure marks its row.
+    function textLine(id, label){
+      var tt = id.indexOf('title') === 0 ? spec.title[+id.slice(5)] : spec[id], cur = tt.text === null ? defaultText(id) : tt.text, sp = tpath(id);
+      return '<div class="ck-tl' + (sel === id ? ' on' : '') + '"><div class="ck-tlh">' + label + '</div><div class="ck-tlr"><input class="ck-in ck-txt" type="text" data-text="' + id + '" value="' + esc(cur) + '" aria-label="' + label + '" placeholder="Empty hides it">' +
+        '<input class="ck-in ck-sz" type="number" step="0.5" min="4" max="60" data-tp="' + sp + '.size" value="' + tt.size + '" aria-label="Size of ' + label + '" title="Size (pt)">' +
+        '<button type="button" class="ck-tg' + (tt.bold ? ' on' : '') + '" data-tg="' + id + '.bold" title="Bold" aria-pressed="' + !!tt.bold + '"><b>B</b></button><button type="button" class="ck-tg' + (tt.italic ? ' on' : '') + '" data-tg="' + id + '.italic" title="Italic" aria-pressed="' + !!tt.italic + '"><i>I</i></button></div></div>';
+    }
+    function textHtml(){
+      return grp('Title', textLine('title0', 'Line 1') + textLine('title1', 'Line 2') + textLine('title2', 'Line 3')) +
+        grp('Axis titles', textLine('xTitle', 'X axis') + textLine('yTitle', 'Y axis')) +
+        grp('Numbers on the axes', fld('Y labels', 'y.size', 'num', { step: 0.5, min: 4, max: 40 }) + fld('X labels', 'x.size', 'num', { step: 0.5, min: 4, max: 40 })) +
+        grp('Legend', fld('Show', 'legend.show', 'bool') + fld('Position', 'legend.pos', 'sel', { seg: true, opts: [['auto', 'Auto'], ['right', 'Right'], ['below', 'Below']] }) + fld('Size', 'legend.size', 'num', { step: 0.5, min: 4, max: 40 }) + fld('Takes no room', 'legend.float', 'bool', { hint: 'the plot grows into its space' }));
+    }
+    function pageHtml(){
+      return grp('Size of the figure', '<div class="ck-pg">' + PAGES.map(function(p){ var on = Math.abs(spec.w - p[1]) < 0.01 && Math.abs(spec.h - p[2]) < 0.01; return '<button type="button" class="ck-pgb' + (on ? ' on' : '') + '" data-page="' + p[1] + ',' + p[2] + '" aria-pressed="' + on + '"><b>' + p[0] + '</b><em>' + p[1] + ' × ' + p[2] + ' in</em></button>'; }).join('') + '</div>' + pair(pf('Width (in)', 'w', { step: 0.1 }), pf('Height (in)', 'h', { step: 0.1 })) + fld('Scale with the page', 'scale', 'bool', { hint: 'text, lines and points follow the width' }) + '<div class="ck-note" id="ck-scalenote"></div>') +
+        grp('Space around the plot (pt)', pair(pf('Left', 'margin.l', { step: 1 }), pf('Right', 'margin.r', { step: 1 })) + pair(pf('Top', 'margin.t', { step: 1 }), pf('Bottom', 'margin.b', { step: 1 }))) +
+        grp('Reset', '<div class="ck-row"><button type="button" class="ck-btn" data-a="resetlayout">Positions &amp; margins</button><button type="button" class="ck-btn" data-a="resetall">Everything</button></div>') +
+        '<div class="ck-note" id="ck-pngnote"></div>';
+    }
+    // ── the results table's section: whether, which parameters, how it is laid out and written, and its data ──
     function tableHtml(){
       var T = doc.table; if (!T || !T.cols) return '<div class="ck-hint">This figure has no table of fitted values.</div>';
       var t = spec.table, on = function(c){ return t.cols[c.id] === undefined ? c.on : !!t.cols[c.id]; }, none = !T.cols.some(on);
-      var segB = function(path, v, label){ return '<button type="button" class="' + (get(spec, path) === v ? 'active' : '') + '" data-tset="' + path + '" data-v="' + v + '">' + label + '</button>'; };
-      return '<label class="ck-chk ck-f2 ck-tbltop"><input type="checkbox" data-p="table.show" data-t="bool"' + (t.show ? ' checked' : '') + '> <b>Add the table under the figure</b></label>' +
-        '<div class="ck-note">One row per compound that is drawn (ticked under Data). It follows the curve drawn: leave a replicate out and the table is refitted too.</div>' +
-        '<div class="ck-grp">Parameters</div><div class="ck-tcols">' + T.cols.map(function(c){ return '<label class="ck-chk ck-f2"><input type="checkbox" data-tcol="' + esc(c.id) + '"' + (on(c) ? ' checked' : '') + '> ' + esc(c.label) + '</label>'; }).join('') + '</div>' +
-        (none ? '<div class="ck-note ck-warnline">Switch on at least one parameter.</div>' : '') +
-        '<div class="ck-grp">Layout</div><div class="ck-row"><span class="ck-seg" role="group" aria-label="Orientation">' + segB('table.orient', 'rows', 'Compounds in rows') + segB('table.orient', 'cols', 'Compounds in columns') + '</span></div>' +
-        '<div class="ck-row"><span class="ck-seg" role="group" aria-label="Look">' + segB('table.style', 'banded', 'Banded') + segB('table.style', 'rules', 'Rules') + segB('table.style', 'grid', 'Grid') + '</span></div>' +
-        '<div class="ck-grid">' + fld('Text size', 'table.size', 'num', { step: 0.5, min: 4, max: 24 }) + '</div>' +
-        fld('Colour mark beside each compound', 'table.swatch', 'bool') + fld('Footnote (how it was fitted)', 'table.note', 'bool') +
-        '<div class="ck-grp">Format</div><div class="ck-grid">' + fld('Potency unit', 'table.potUnit', 'sel', { opts: [['auto', 'Automatic (pM, nM, µM)'], ['pM', 'pM'], ['nM', 'nM'], ['\u00b5M', 'µM'], ['mM', 'mM']] }) + fld('Significant figures', 'table.sig', 'num', { step: 1, min: 1, max: 8 }) + fld('Decimals (Hill, R², p-values)', 'table.dec', 'num', { step: 1, min: 0, max: 6, auto: true }) + fld('Units written', 'table.units', 'sel', { opts: [['cell', 'Beside each value'], ['header', 'In the column title']] }) + '</div>' +
-        '<div class="ck-grp">The data</div><div class="ck-row"><button type="button" class="ck-btn" data-a="tbl-copy">Copy</button><button type="button" class="ck-btn" data-a="tbl-csv">CSV</button>' + (window.XLSX ? '<button type="button" class="ck-btn" data-a="tbl-xlsx">Excel</button>' : '') + '</div>' +
-        '<div class="ck-note">Copy is for pasting into Excel, Prism or Word. The files hold the numbers themselves (potency in one unit named in its column title, 6 figures), laid out as the table is.</div>';
+      return fld('Add the table under the figure', 'table.show', 'bool', { hint: 'one row per compound that is drawn; it follows the curve drawn, so a replicate left out refits it too', cls: 'ck-big' }) +
+        grp('Parameters', '<div class="ck-tcols">' + T.cols.map(function(c){ return '<label class="ck-chip2"><input type="checkbox" data-tcol="' + esc(c.id) + '"' + (on(c) ? ' checked' : '') + '><span>' + esc(c.label) + '</span></label>'; }).join('') + '</div>' + (none ? '<div class="ck-warn">Switch on at least one parameter.</div>' : '')) +
+        grp('Layout', fld('Compounds in', 'table.orient', 'sel', { seg: true, opts: [['rows', 'Rows'], ['cols', 'Columns']] }) + fld('Look', 'table.style', 'sel', { seg: true, opts: [['banded', 'Banded'], ['rules', 'Rules'], ['grid', 'Grid']] }) + fld('Text size', 'table.size', 'num', { step: 0.5, min: 4, max: 24 }) + fld('Colour mark beside each compound', 'table.swatch', 'bool') + fld('Footnote', 'table.note', 'bool', { hint: 'how it was fitted' })) +
+        grp('Format', fld('Potency unit', 'table.potUnit', 'sel', { opts: [['auto', 'Automatic'], ['pM', 'pM'], ['nM', 'nM'], ['µM', 'µM'], ['mM', 'mM']] }) + fld('Units written', 'table.units', 'sel', { seg: true, opts: [['cell', 'Beside the value'], ['header', 'In the title']] }) + fld('Significant figures', 'table.sig', 'num', { step: 1, min: 1, max: 8 }) + fld('Decimals', 'table.dec', 'num', { step: 1, min: 0, max: 6, auto: true, hint: 'Hill, R², p-values' })) +
+        grp('The data', '<div class="ck-row"><button type="button" class="ck-btn" data-a="tbl-copy">Copy</button><button type="button" class="ck-btn" data-a="tbl-csv">CSV</button>' + (window.XLSX ? '<button type="button" class="ck-btn" data-a="tbl-xlsx">Excel</button>' : '') + '</div>', 'Copy pastes into Excel, Prism or Word as written. The files hold the numbers themselves (potency in one unit named in its column title, 6 figures), laid out as the table is.');
     }
     function tableAoa(raw){ try { return C.tableData(doc, spec, raw); } catch (e) { return null; } }
     function tableOut(kind){
@@ -197,44 +278,7 @@ var ChartKit = (function(){
         X.save(new Blob([XLSX.write(wb, { bookType: 'xlsx', type: 'array' })], { type: 'application/octet-stream' }), base() + '_table.xlsx'); toast('Table saved as Excel.');
       }
     }
-    function renderTabs(){ tabsEl.querySelectorAll('button').forEach(function(b){ b.classList.toggle('active', b.dataset.tab === tab); }); }
-    function renderPanel(){
-      var h = '', kind = scene ? scene.kind : 'bars';
-      if (tab === 'data') h = dataHtml();
-      else if (tab === 'text') {
-        h = '<div class="ck-grp">Click a line of text to edit it, or pick one:</div><div class="ck-list">' + Object.keys(TEXTS).map(function(k){ return '<button type="button" class="ck-li' + (sel === k ? ' on' : '') + '" data-pick="' + k + '">' + TEXTS[k] + '</button>'; }).join('') + '<button type="button" class="ck-li' + (sel === 'legend' ? ' on' : '') + '" data-pick="legend">Legend</button></div>' +
-          '<div class="ck-grp">Size of the title lines</div><div class="ck-grid">' + fld('Line 1', 'title.0.size', 'num', { step: 0.5, min: 4, max: 60 }) + fld('Line 2', 'title.1.size', 'num', { step: 0.5, min: 4, max: 60 }) + fld('Line 3', 'title.2.size', 'num', { step: 0.5, min: 4, max: 60 }) + '</div>' +
-          '<div class="ck-grp">Numbers on the axes</div><div class="ck-grid">' + fld('Y labels', 'y.size', 'num', { step: 0.5, min: 4, max: 40 }) + fld('X labels', 'x.size', 'num', { step: 0.5, min: 4, max: 40 }) + '</div>';
-      }
-      else if (tab === 'axes') {
-        var yBad = C.fin(+spec.y.min) && C.fin(+spec.y.max) && spec.y.min !== null && spec.y.max !== null && +spec.y.min >= +spec.y.max;
-        h = '<div class="ck-grp">Y axis</div><div class="ck-grid">' + fld('Minimum', 'y.min', 'num', { auto: 1 }) + fld('Maximum', 'y.max', 'num', { auto: 1 }) + fld('Major step', 'y.major', 'num', { auto: 1 }) + fld('Decimals', 'y.dec', 'num', { auto: 1, step: 1 }) + '</div>' + (yBad ? '<div class="ck-warn">The maximum has to be above the minimum — the axis is on auto until it is.</div>' : '') + fld('Logarithmic', 'y.log', 'bool') +
-          '<div class="ck-grp">X axis</div><div class="ck-grid">' + (kind === 'bars' ? fld('Label angle', 'x.rot', 'sel', { num: 1, opts: [[0, 'Flat'], [45, '45°'], [90, 'Vertical']] }) + fld('Order', 'x.order', 'sel', { opts: [['given', 'As given'], ['desc', 'High → low'], ['asc', 'Low → high']] }) : fld('Minimum', 'x.min', 'num', { auto: 1 }) + fld('Maximum', 'x.max', 'num', { auto: 1 })) + '</div>' + (kind === 'bars' ? fld('Show concentration labels', 'x.labels', 'bool') : '') +
-          '<div class="ck-grp">Lines</div><div class="ck-grid">' + fld('Axis width', 'axisW', 'num', { step: 0.25, min: 0.25, max: 5 }) + fld('Tick length', 'tick', 'num', { step: 0.5, min: 0, max: 12 }) + '</div>' + fld('Box around the plot', 'box', 'bool') + fld('Horizontal grid', 'grid', 'bool') +
-          '<div class="ck-grp">Reference line</div>' + fld('Show', 'ref.show', 'bool') + '<div class="ck-grid">' + fld('At', 'ref.y', 'num', { auto: 1 }) + fld('Width', 'ref.w', 'num', { step: 0.25, min: 0.25, max: 5 }) + '</div>' + fld('Dotted', 'ref.dash', 'bool');
-      }
-      else if (tab === 'style') {
-        h = (kind === 'bars' ? '<div class="ck-grp">Bars</div><div class="ck-grid">' + fld('Width', 'bar.width', 'num', { step: 0.05, min: 0.2, max: 1.2 }) + fld('Gap between groups', 'bar.gap', 'num', { step: 0.1, min: 0, max: 4 }) + fld('Gap inside a group', 'bar.inner', 'num', { step: 0.05, min: 0, max: 1 }) + fld('Border', 'bar.border', 'num', { step: 0.25, min: 0, max: 5 }) + '</div>' + fld('Fill', 'fill', 'sel', { opts: [['solid', 'Solid'], ['tint', 'Light fill, coloured border'], ['outline', 'Outline only']] }) + fld('Shade by concentration (highest darkest)', 'bar.shade', 'bool') + fld('Show every replicate as a point', 'pts.show', 'bool')
-          : '<div class="ck-grp">Curves and points</div><div class="ck-grid">' + fld('Marker', 'xy.marker', 'sel', { opts: [['circle', 'Circle'], ['square', 'Square'], ['triangle', 'Triangle'], ['diamond', 'Diamond'], ['auto', 'One per compound']] }) + fld('Marker size', 'xy.msize', 'num', { step: 0.5, min: 1, max: 14 }) + fld('Line width', 'xy.lw', 'num', { step: 0.25, min: 0.25, max: 6 }) + '</div>' + fld('Show the fit', 'xy.fit', 'bool') + fld('Extend the fit across the whole axis', 'xy.extend', 'bool') + fld('Show the points', 'xy.points', 'bool') + fld('Open markers', 'xy.open', 'bool') + fld('Dashed fit', 'xy.dash', 'bool') + fld('Show every replicate beside its mean', 'pts.show', 'bool')) +
-          '<div class="ck-grp">Error bars</div>' + fld('Show', 'err.type', 'sel', { opts: [['sd', 'SD'], ['sem', 'SEM'], ['ci95', '95% CI'], ['range', 'Range'], ['none', 'None']] }) + '<div class="ck-grid">' + (kind === 'bars' ? fld('Direction', 'err.dir', 'sel', { opts: [['up', 'Up only'], ['both', 'Both ways']] }) : '') + fld('Cap', 'err.cap', 'num', { step: 0.5, min: 0, max: 16 }) + fld('Width', 'err.w', 'num', { step: 0.25, min: 0.25, max: 5 }) + '</div>' +
-          '<div class="ck-grp">Legend</div>' + fld('Show', 'legend.show', 'bool') + '<div class="ck-grid">' + fld('Size', 'legend.size', 'num', { step: 0.5, min: 4, max: 40 }) + fld('Position', 'legend.pos', 'sel', { opts: [['auto', 'Auto'], ['right', 'Right of the plot'], ['below', 'Below the plot']] }) + '</div>' + fld('Legend takes no room (the plot grows into its space)', 'legend.float', 'bool');
-      }
-      else if (tab === 'colors') {
-        h = '<div class="ck-grp">Palette</div><div class="ck-pals">' + C.PALETTES.map(function(p){ return '<button type="button" class="ck-pal' + (spec.palette === p.id ? ' on' : '') + '" data-pal="' + p.id + '" title="' + p.name + '"><span class="ck-pn">' + p.name + '</span><span class="ck-ps">' + p.c.slice(0, 8).map(function(c){ return '<i style="background:' + c + '"></i>'; }).join('') + '</span></button>'; }).join('') + '</div>' +
-          '<div class="ck-grp">Each compound</div><div class="ck-items">' + (doc.items || []).map(function(it, i){ var col = C.itemColor(spec, it, i, (doc.items || []).length); return '<div class="ck-itrow"><button type="button" class="ck-chip' + (sel === 'bar:' + it.id ? ' on' : '') + '" style="background:' + col + '" data-pick="bar:' + esc(it.id) + '" aria-label="Colour of ' + esc(it.name) + ': ' + col + '"></button><button type="button" class="ck-name" data-pick="bar:' + esc(it.id) + '">' + esc(it.name) + '</button>' + (spec.colors[it.id] ? '<button type="button" class="ck-link" data-a="resetcolor" data-id="' + esc(it.id) + '">palette</button>' : '') + '</div>'; }).join('') + '</div>' +
-          '<div class="ck-note">Choosing a palette recolours every compound; a colour picked for one compound is kept until you apply a palette again.</div>';
-      }
-      else if (tab === 'table') h = tableHtml();
-      else if (tab === 'page') {
-        h = '<div class="ck-grp">Size of the figure</div><div class="ck-pg">' + PAGES.map(function(p){ return '<button type="button" class="ck-li' + (Math.abs(spec.w - p[1]) < 0.01 && Math.abs(spec.h - p[2]) < 0.01 ? ' on' : '') + '" data-page="' + p[1] + ',' + p[2] + '">' + p[0] + '<em>' + p[1] + ' × ' + p[2] + ' in</em></button>'; }).join('') + '</div>' +
-          '<div class="ck-grid">' + fld('Width (in)', 'w', 'num', { step: 0.1 }) + fld('Height (in)', 'h', 'num', { step: 0.1 }) + '</div>' +
-          fld('Scale text, lines and points with the page', 'scale', 'bool') + '<div class="ck-note" id="ck-scalenote"></div>' +
-          '<div class="ck-grp">Space around the plot (pt)</div><div class="ck-grid">' + fld('Left', 'margin.l', 'num', { step: 1 }) + fld('Right', 'margin.r', 'num', { step: 1 }) + fld('Top', 'margin.t', 'num', { step: 1 }) + fld('Bottom', 'margin.b', 'num', { step: 1 }) + '</div>' +
-          '<div class="ck-row"><button type="button" class="ck-btn" data-a="resetlayout">Reset positions &amp; margins</button><button type="button" class="ck-btn" data-a="resetall">Reset everything</button></div>' +
-          '<div class="ck-note" id="ck-pngnote"></div>';
-      }
-      panel.innerHTML = h; pngNote(); scaleNote();
-    }
+
     // What the type comes to on paper: with Scale on the sizes follow the page width, so a narrow page is a small figure — and said so.
     function scaleNote(){
       var el = panel.querySelector('#ck-scalenote'); if (!el || !scene) return;
@@ -242,21 +286,26 @@ var ChartKit = (function(){
       el.innerHTML = spec.scale ? 'Everything in the figure is drawn in proportion to its width, so the page can be resized without changing how it looks. Axis numbers are ' + (+lo.toFixed(1)) + ' pt at ' + (+spec.w.toFixed(1)) + ' in.' + (lo < 6 ? ' <span class="ck-warn">Most journals want 6 pt or more — raise the sizes, or use a wider page.</span>' : '') : 'Sizes are real points: a smaller page holds the same type and lines, so they take more of it.';
     }
     function pngNote(){ var el = panel.querySelector('#ck-pngnote'); if (!el || !scene) return; var s = X.pngSize(scene, dpi); el.textContent = 'PNG at ' + dpi + ' dpi: ' + s.w + ' × ' + s.h + ' px' + (s.scaled ? ' — larger than a browser can draw, so it is made at ' + s.effective + ' dpi' : '') + '.'; }
-    function dataHtml(){
+    function compoundsHtml(){
       var its = doc.items || [];
       if (!its.length) return '<div class="ck-hint">Nothing to plot yet.</div>';
       var anyOmit = Object.keys(spec.omit).some(function(k){ return spec.omit[k]; });
       var nOn = its.filter(function(it){ return !spec.hidden[it.id]; }).length;
-      var head = '<div class="ck-note">' + (nOn ? 'Tick a compound to draw it.' : '<b>Nothing is drawn yet.</b> Tick the compounds to show.') + ' Click a replicate to leave it out of the chart — means, error bars and fits are recalculated without it.' + (anyOmit ? ' <button type="button" class="ck-link" data-a="restoreomit">Put them all back</button>' : '') + '</div>' +
+      var cur = C.PALETTES.filter(function(x){ return x.id === spec.palette; })[0] || C.PALETTES[0];
+      var strip = function(p){ return '<span class="ck-ps">' + palColors(p).slice(0, 8).map(function(c){ return '<i style="background:' + c + '"></i>'; }).join('') + '</span>'; };
+      var pal = '<div class="ck-palcur"><span class="ck-palname">' + esc(cur.name) + '</span>' + strip(cur) + '<button type="button" class="ck-link" data-a="togpal" aria-expanded="' + palOpen + '">' + (palOpen ? 'Done' : 'Change') + '</button></div>' +
+        (palOpen ? '<div class="ck-pals">' + C.PALETTES.map(function(p){ return '<button type="button" class="ck-pal' + (spec.palette === p.id ? ' on' : '') + '" data-pal="' + p.id + '" title="' + p.name + '" aria-pressed="' + (spec.palette === p.id) + '"><span class="ck-pn">' + p.name + '</span>' + strip(p) + '</button>'; }).join('') + '</div>' : '');
+      var head = '<div class="ck-note ck-first">' + (nOn ? 'Tick a compound to draw it.' : '<b>Nothing is drawn yet.</b> Tick the compounds to show.') + ' The square sets its colour; the arrow lists its replicates, and one you click is left out of the means, error bars and fits.' + (anyOmit ? ' <button type="button" class="ck-link" data-a="restoreomit">Put them all back</button>' : '') + '</div>' +
         (its.length > 1 ? '<div class="ck-dall"><span>' + nOn + ' of ' + its.length + ' drawn</span><span class="ck-dallb"><button type="button" class="ck-link" data-a="showall">Show all</button><button type="button" class="ck-link" data-a="hideall">Hide all</button></span></div>' : '');
-      return head + its.map(function(it, ii){
+      var list = its.map(function(it, ii){
         var hid = spec.hidden[it.id], col = C.itemColor(spec, it, ii, its.length);
         var failed = !hid && fitFailed().some(function(f){ return f.id === it.id; });
         var open = !!openItems[it.id];
-        return '<div class="ck-dg' + (hid ? ' off' : '') + '"><div class="ck-dh"><span class="ck-dl"><input type="checkbox" class="ck-tick" data-a="toggleitem" data-id="' + esc(it.id) + '"' + (hid ? '' : ' checked') + ' aria-label="Draw ' + esc(it.name) + '"><i style="background:' + col + '"></i><button type="button" class="ck-name" data-a="openitem" data-id="' + esc(it.id) + '" aria-expanded="' + open + '">' + esc(it.name) + '</button></span><button type="button" class="ck-chev' + (open ? ' open' : '') + '" data-a="openitem" data-id="' + esc(it.id) + '" aria-expanded="' + open + '" aria-label="' + (open ? 'Hide' : 'Show') + ' the replicates of ' + esc(it.name) + '"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button></div>' +
+        return '<div class="ck-dg' + (hid ? ' off' : '') + '"><div class="ck-dh"><span class="ck-dl"><input type="checkbox" class="ck-tick" data-a="toggleitem" data-id="' + esc(it.id) + '"' + (hid ? '' : ' checked') + ' aria-label="Draw ' + esc(it.name) + '"><button type="button" class="ck-chip' + (sel === 'bar:' + it.id ? ' on' : '') + '" style="background:' + col + '" data-pick="bar:' + esc(it.id) + '" title="Colour" aria-label="Colour of ' + esc(it.name) + ': ' + col + '"></button><button type="button" class="ck-name" data-a="openitem" data-id="' + esc(it.id) + '" aria-expanded="' + open + '">' + esc(it.name) + '</button>' + (spec.colors[it.id] ? '<button type="button" class="ck-link ck-pl" data-a="resetcolor" data-id="' + esc(it.id) + '" title="Back to the palette colour">palette</button>' : '') + '</span><button type="button" class="ck-chev' + (open ? ' open' : '') + '" data-a="openitem" data-id="' + esc(it.id) + '" aria-expanded="' + open + '" aria-label="' + (open ? 'Hide' : 'Show') + ' the replicates of ' + esc(it.name) + '"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button></div>' +
           (failed ? '<div class="ck-fitnote">Too few points left to refit — its curve is not drawn.</div>' : '') +
           (!open ? '' : (it.points || []).map(function(p){ return '<div class="ck-dp"><span class="ck-dx">' + esc(p.label != null ? p.label : p.x) + '</span><span class="ck-reps">' + (p.reps || []).map(function(r){ var off = spec.omit[r.id]; return '<button type="button" class="ck-rep' + (off ? ' off' : '') + '" data-omit="' + esc(r.id) + '" title="' + (off ? 'Omitted — click to put it back' : 'Click to omit') + '">' + esc(C.fin(r.v) ? String(+(+r.v).toPrecision(4)) : '–') + '</button>'; }).join('') + '</span></div>'; }).join('')) + '</div>';
       }).join('');
+      return grp('Which are drawn', head + (its.length > 9 ? '<div class="ck-dlist">' + list + '</div>' : list)) + grp('Palette', pal, 'Choosing a palette recolours every compound; a colour picked for one compound is kept until you apply a palette again.');
     }
 
     // ── changes ────────────────────────────────────────────────
@@ -275,28 +324,30 @@ var ChartKit = (function(){
       else if (t.dataset.a === 'toggleitem') { pushUndo('hide'); if (t.checked) delete spec.hidden[t.dataset.id]; else spec.hidden[t.dataset.id] = true; if (!t.checked && sel && itemOf(sel) === t.dataset.id) sel = null; draw(); renderSel(); renderPanel(); save(); }
       else if (t.dataset.tcol !== undefined) { pushUndo('tcol'); spec.table.cols[t.dataset.tcol] = t.checked; draw(); renderPanel(); save(); }
       else if (t.dataset.a === 'snap') { pushUndo('snap'); spec.snap = t.checked; save(); }
-      else if (t.dataset.hex) { var hx = String(t.value).trim(); if (hx.charAt(0) !== '#') hx = '#' + hx; if (/^#[0-9a-f]{6}$/i.test(hx)) { pushUndo('col:' + t.dataset.hex); spec.colors[t.dataset.hex] = hx.toLowerCase(); draw(); save(); } renderSel(); if (tab === 'data' || tab === 'colors') renderPanel(); }
-      else if (t.dataset.item) { renderSel(); if (tab === 'data' || tab === 'colors') renderPanel(); }
+      else if (t.dataset.hex) { var hx = String(t.value).trim(); if (hx.charAt(0) !== '#') hx = '#' + hx; if (/^#[0-9a-f]{6}$/i.test(hx)) { pushUndo('col:' + t.dataset.hex); spec.colors[t.dataset.hex] = hx.toLowerCase(); draw(); save(); } renderSel(); renderPanel(); }
+      else if (t.dataset.item) { renderSel(); renderPanel(); }
       else if (t.dataset.p) renderPanel();
     });
     root.addEventListener('click', function(e){
       var t = e.target.closest('button, .ck-swb'); if (!t || !root.contains(t)) return;
       var d = t.dataset;
       if (d.kind) { pushUndo('kind'); spec.kind = d.kind; syncBar(); draw(); renderPanel(); save(); return; }
-      if (d.tab) { tab = d.tab; renderTabs(); renderPanel(); return; }
+      if (d.sec) { var was = !!secOpen[d.sec]; if (was) delete secOpen[d.sec]; else secOpen[d.sec] = true; saveSec(); renderPanel(); if (!was) { var se = panel.querySelector('.ck-sec[data-s="' + d.sec + '"]'); if (se && se.scrollIntoView) se.scrollIntoView({ block: 'nearest' }); } return; }
       if (d.cm) { cmode = d.cm; renderSel(); return; }
       if (d.pick) { select(d.pick); return; }
       if (d.omit) { pushUndo('omit'); spec.omit[d.omit] = !spec.omit[d.omit]; if (!spec.omit[d.omit]) delete spec.omit[d.omit]; draw(); renderPanel(); save(); return; }
-      if (d.pal) { pushUndo('palette'); spec.palette = d.pal; spec.colors = {}; draw(); renderPanel(); renderSel(); save(); return; }
+      if (d.pal) { pushUndo('palette'); spec.palette = d.pal; spec.colors = {}; palOpen = false; draw(); renderPanel(); renderSel(); save(); return; }
       if (d.page) { var p = d.page.split(','); pushUndo('page'); spec.w = +p[0]; spec.h = +p[1]; draw(); renderPanel(); save(); return; }
-      if (d.tg) { var path = d.tg, tt = path.indexOf('title') === 0 ? spec.title[+path.charAt(5)] : spec[path.split('.')[0]], key = path.split('.')[1]; pushUndo('tg'); tt[key] = !tt[key]; draw(); renderSel(); save(); return; }
-      if (d.tset) { pushUndo('tset'); put(spec, d.tset, d.v); draw(); renderPanel(); save(); return; }
+      if (d.tg) { var path = d.tg, tt = path.indexOf('title') === 0 ? spec.title[+path.charAt(5)] : spec[path.split('.')[0]], key = path.split('.')[1]; pushUndo('tg'); tt[key] = !tt[key]; draw(); renderSel(); renderPanel(); save(); return; }
+      if (d.tset) { pushUndo('tset'); put(spec, d.tset, d.n ? +d.v : d.v); C.sanitize(spec); draw(); renderPanel(); syncBar(); save(); return; }
       if (d.al) { align(d.al); return; }
       var a = d.a; if (!a) return;
       if (a === 'undo') doUndo(); else if (a === 'redo') doRedo();
       else if (a === 'png') exportPNG(); else if (a === 'pdf') exportPDF(); else if (a === 'svg') exportSVG();
       else if (a === 'deselect') select(null);
-      else if (a === 'setcolor') { pushUndo('col'); spec.colors[d.id] = d.c; draw(); renderSel(); if (tab === 'colors' || tab === 'data') renderPanel(); save(); }
+      else if (a === 'togpal') { palOpen = !palOpen; renderPanel(); }
+      else if (a === 'foldall') { secOpen = {}; saveSec(); renderPanel(); } else if (a === 'unfoldall') { Object.keys(SEC_T).forEach(function(i){ if (i !== 'table' || hasTable()) secOpen[i] = true; }); saveSec(); renderPanel(); }
+      else if (a === 'setcolor') { pushUndo('col'); spec.colors[d.id] = d.c; draw(); renderSel(); renderPanel(); save(); }
       else if (a === 'resetcolor') { pushUndo('col'); delete spec.colors[d.id]; draw(); renderSel(); renderPanel(); save(); }
       else if (a === 'hideitem') { pushUndo('hide'); spec.hidden[d.id] = !spec.hidden[d.id]; if (!spec.hidden[d.id]) delete spec.hidden[d.id]; if (sel && itemOf(sel) === d.id) sel = null; draw(); renderSel(); renderPanel(); save(); }
       else if (a === 'openitem') { openItems[d.id] = !openItems[d.id]; renderPanel(); }
@@ -354,7 +405,7 @@ var ChartKit = (function(){
     });
     function endDrag(){ if (!drag) return; var m = drag.moved; drag = null; if (m) { draw(); save(); } else overlay(); }
     svg.addEventListener('pointerup', endDrag); svg.addEventListener('pointercancel', endDrag);
-    svg.addEventListener('dblclick', function(e){ var el = e.target.closest('[data-el]'); if (el && TEXTS[el.dataset.el]) { select(el.dataset.el); var inp = selBox.querySelector('.ck-txt'); if (inp) { inp.focus(); inp.select(); } } });
+    svg.addEventListener('dblclick', function(e){ var el = e.target.closest('[data-el]'); if (el && TEXTS[el.dataset.el]) { select(el.dataset.el); var inp = panel.querySelector('[data-text="' + el.dataset.el + '"]'); if (inp) { inp.focus(); inp.select(); } } });
     root.addEventListener('keydown', function(e){
       var t = e.target, typing = t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT';
       var mod = e.metaKey || e.ctrlKey, k = (e.key || '').toLowerCase();
@@ -395,11 +446,11 @@ var ChartKit = (function(){
       if (doc.sig !== undefined) lastSig = doc.sig;
       adoptItems();
       var slot = root.querySelector('.ck-slot'); if (slot && opts.slot) { try { opts.slot(slot); } catch (e) {} }
-      draw(); renderSel(); renderTabs(); renderPanel(); syncBar();
+      draw(); renderSel(); renderPanel(); syncBar();
       setTimeout(fit, 0);
     }
     refresh();
-    return { refresh: refresh, draw: draw, spec: function(){ return spec; }, scene: function(){ return scene; }, select: select, exportPNG: exportPNG, exportPDF: exportPDF };
+    return { refresh: refresh, draw: draw, spec: function(){ return spec; }, scene: function(){ return scene; }, select: select, open: function(id){ setSection(id, true); }, close: function(id){ setSection(id, false); }, sections: function(){ return Object.keys(secOpen); }, exportPNG: exportPNG, exportPDF: exportPDF };
   }
   return { mount: mount };
 })();
