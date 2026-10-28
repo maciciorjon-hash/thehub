@@ -41,7 +41,7 @@ var ChartKitCore = (function(){
       font: 'Arial',
       title: [{ text: null, size: 13, bold: true, italic: false }, { text: null, size: 13, bold: true, italic: false }, { text: null, size: 11, bold: false, italic: true }],
       xTitle: { text: null, size: 11, bold: false, italic: false }, yTitle: { text: null, size: 11, bold: false, italic: false },
-      x: { size: 9, rot: 45, labels: true, order: 'given', min: null, max: null }, y: { size: 9, min: null, max: null, major: null, log: false, dec: null },
+      x: { size: 9, rot: 45, labels: true, order: 'given', min: null, max: null, unit: 'auto', fmt: 'auto' }, y: { size: 9, min: null, max: null, major: null, log: false, dec: null },
       axisW: 1.1, tick: 3.5, box: false, grid: false,
       palette: 'blue', colors: {}, fill: 'solid',
       bar: { width: 1, gap: 1.1, inner: 0.12, border: 1, shade: false },
@@ -77,6 +77,8 @@ var ChartKitCore = (function(){
     });
     (s.title || []).forEach(function(t, i){ var v = +t.size; t.size = isFinite(v) ? clamp(v, 4, 60) : (d.title[i] || d.title[2]).size; });
     if (s.y.dec !== null) s.y.dec = Math.round(s.y.dec);
+    if (!XU[s.x.unit]) s.x.unit = 'auto';
+    if (['auto', 'plain', 'pow', 'log'].indexOf(s.x.fmt) < 0) s.x.fmt = 'auto';
     return s;
   }
   function withDefaults(s){ var d = defaults(); if (s && typeof s === 'object') { merge(d, JSON.parse(JSON.stringify(s))); delete d.title0; delete d.title1; delete d.title2; if (Array.isArray(s.title)) d.title = s.title.map(function(t, i){ return merge(JSON.parse(JSON.stringify(defaults().title[i] || defaults().title[2])), t); }); } return sanitize(d); }
@@ -109,9 +111,23 @@ var ChartKitCore = (function(){
     return String(+(+v).toPrecision(6));
   }
   // The labels of a run of decades: all plain numbers (0.001 … 10000) or all powers of ten, never "10^-3, 0.01, 0.1".
-  function decadeLabels(exps){
-    var plain = exps.every(function(e){ return e >= -3 && e <= 4; });
-    return exps.map(function(e){ return plain ? String(+Math.pow(10, e).toPrecision(6)) : '10^' + e; });
+  function decadeLabels(exps, fmtId, off){
+    var f = fmtId || 'auto'; off = off || 0;
+    if (f === 'log') return exps.map(function(e){ return String(e + off).replace('-', '\u2212'); });
+    var plain = f === 'plain' || (f === 'auto' && exps.every(function(e){ return e >= -3 && e <= 4; }));
+    return exps.map(function(e){ return plain ? plainPow(e) : '10^' + e; });
+  }
+  // The unit the concentration axis is written in. An app hands its x values over in the unit it chose (doc.xUnit, named in its x title);
+  // spec.x.unit 'auto' keeps that, any other unit rescales every x, the curves and the tick labels, and rewrites "(nM)" in the title.
+  var XU = { 'M': 1, 'mM': 1e-3, '\u00b5M': 1e-6, 'nM': 1e-9, 'pM': 1e-12 };
+  function xUnitOf(doc, spec){ var from = XU[doc && doc.xUnit] ? doc.xUnit : null; if (!from) return { from: null, to: null, k: 1 }; var to = XU[spec.x.unit] ? spec.x.unit : from; return { from: from, to: to, k: XU[from] / XU[to] }; }
+  // 10^e written out: 0.00001 and 100000, never 1e-5
+  function plainPow(e){ return e >= 0 ? '1' + new Array(e + 1).join('0') : '0.' + new Array(-e).join('0') + '1'; }
+  // the app's x title with the unit the figure is written in; as log values the unit is molar: "log [compound] (M)"
+  function xTitleOf(doc, spec){
+    var t = doc.xTitle || '', uo = xUnitOf(doc, spec); if (!uo.from || !t) return t;
+    if (spec.x.fmt === 'log') return 'log ' + t.replace('(' + uo.from + ')', '(M)');
+    return uo.to !== uo.from ? t.replace('(' + uo.from + ')', '(' + uo.to + ')') : t;
   }
   function fmtX(v){ if (!fin(v)) return ''; var a = Math.abs(v); if (a >= 1e5 || (a > 0 && a < 1e-2)) return '10^' + Math.round(Math.log10(a)); return String(+(+v).toPrecision(3)); }
 
@@ -217,20 +233,24 @@ var ChartKitCore = (function(){
 
   // ── the data the chart shows, with omitted replicates left out ──
   function model(doc, spec){
-    var items = [];
+    var items = [], uo = xUnitOf(doc, spec), kx = uo.k;
+    // a fit is made in the app's unit; the figure may be in another, so its function is asked in the figure's x and answers in the app's
+    function inUnit(f){ if (!f || kx === 1 || !f.fn) return f; var o = {}; Object.keys(f).forEach(function(k){ o[k] = f[k]; }); o.fn = function(x){ return f.fn(x / kx); }; return o; }
     (doc.items || []).forEach(function(it, idx){
       var col = itemColor(spec, it, idx, (doc.items || []).length), pts = (it.points || []).map(function(p){
         var kept = [], dropped = [];
         (p.reps || []).forEach(function(r){ if (!fin(r.v)) return; (spec.omit[r.id] ? dropped : kept).push(r); });
         var st = stats(kept.map(function(r){ return r.v; }));
-        return { x: p.x, label: p.label != null ? p.label : fmtX(p.x), kept: kept, dropped: dropped, st: st };
+        var lab = p.label != null ? p.label : fmtX(p.x);
+        if (kx !== 1 && (p.label == null || String(p.label) === String(+(+p.x).toPrecision(3)))) lab = fmtX(p.x * kx);   // a number written under a bar follows the unit; a name stays
+        return { x: p.x * kx, label: lab, kept: kept, dropped: dropped, st: st };
       });
       if (spec.x.order === 'asc') pts.sort(function(a, b){ return a.x - b.x; }); else if (spec.x.order === 'desc') pts.sort(function(a, b){ return b.x - a.x; });
       var fit = null, refitFailed = false;
       if (it.fit || it.refit !== false) {
         var anyOmit = (it.points || []).some(function(p){ return (p.reps || []).some(function(r){ return spec.omit[r.id]; }); });
-        if (anyOmit && doc.refit) { try { fit = doc.refit(it, pts.filter(function(p){ return p.st.n; }).map(function(p){ return { x: p.x, y: p.st.mean, sd: p.st.sd, n: p.st.n, reps: p.kept.map(function(r){ return r.v; }) }; })); } catch (e) { fit = null; } refitFailed = !fit && !!it.fit; }
-        else fit = it.fit || null;
+        if (anyOmit && doc.refit) { try { fit = inUnit(doc.refit(it, pts.filter(function(p){ return p.st.n; }).map(function(p){ return { x: p.x / kx, y: p.st.mean, sd: p.st.sd, n: p.st.n, reps: p.kept.map(function(r){ return r.v; }) }; }))); } catch (e) { fit = null; } refitFailed = !fit && !!it.fit; }
+        else fit = inUnit(it.fit) || null;
       }
       var vals = null;
       if (doc.table && doc.table.calc) { try { vals = doc.table.calc(it, fit, { pts: pts, r2: fit && fit.fn ? r2Of(fit.fn, pts) : null, n: pts.reduce(function(a, p){ return a + p.kept.length; }, 0) }); } catch (e) { vals = null; } }
@@ -380,7 +400,7 @@ var ChartKitCore = (function(){
     spec.title.forEach(function(t, i){ var text = t.text === null ? (doc.title && doc.title[i]) || '' : t.text; if (String(text).trim()) titles.push({ i: i, text: String(text), t: t }); });
     var titleH = titles.reduce(function(a, x){ return a + x.t.size * 1.25; }, 0);
     // axis titles
-    var xt = spec.xTitle.text === null ? (doc.xTitle || '') : spec.xTitle.text, yt = spec.yTitle.text === null ? (doc.yTitle || '') : spec.yTitle.text;
+    var xt = spec.xTitle.text === null ? xTitleOf(doc, spec) : spec.xTitle.text, yt = spec.yTitle.text === null ? (doc.yTitle || '') : spec.yTitle.text;
     var yTitleW = yt ? spec.yTitle.size * 1.5 : 0, xTitleH = xt ? spec.xTitle.size * 1.6 : 0;
 
     // y scale
@@ -493,7 +513,7 @@ var ChartKitCore = (function(){
       if (d1 <= d0) d1 = d0 + 1;
       xPx = function(x){ return plot.x + (Math.log10(Math.max(x, 1e-30)) - d0) / (d1 - d0) * plot.w; };
       var exps = []; for (var e0 = Math.ceil(d0 - 1e-9); e0 <= d1 + 1e-9; e0++) exps.push(e0);
-      var dl = decadeLabels(exps); exps.forEach(function(e, i){ xTickList.push({ x: xPx(Math.pow(10, e)), label: dl[i], major: true }); });
+      var uoX = xUnitOf(doc, spec), dl = decadeLabels(exps, spec.x.fmt, uoX.to ? Math.round(Math.log10(XU[uoX.to])) : 0); exps.forEach(function(e, i){ xTickList.push({ x: xPx(Math.pow(10, e)), label: dl[i], major: true }); });
       for (var e1 = Math.floor(d0); e1 < d1; e1++) for (var m2 = 2; m2 < 10; m2++) { var vv = m2 * Math.pow(10, e1); if (Math.log10(vv) > d0 && Math.log10(vv) < d1) xTickList.push({ x: xPx(vv), label: '', minor: true }); }
       vis.forEach(function(it){
         var ink = it.color, pts = it.pts.filter(function(p){ return p.x > 0 && p.st.n; });
@@ -576,5 +596,5 @@ var ChartKitCore = (function(){
     return vis.every(function(i){ return (i.points || []).length < 4; }) ? 'bars' : 'xy';
   }
 
-  return { build: build, defaults: defaults, withDefaults: withDefaults, sanitize: sanitize, RANGE: RANGE, decadeLabels: decadeLabels, PALETTES: PALETTES, MARKERS: MARKERS, REF_W: REF_W, blueRamp: blueRamp, autoKind: autoKind, fourPL: fourPL, potText: potText, r2Of: r2Of, tableData: tableData, tableGrid: tableGrid, model: model, stats: stats, measure: measure, lighten: lighten, darken: darken, rgb: rgb, hex: hex, fin: fin, itemColor: itemColor, merge: merge };
+  return { build: build, XU: XU, xUnitOf: xUnitOf, xTitleOf: xTitleOf, defaults: defaults, withDefaults: withDefaults, sanitize: sanitize, RANGE: RANGE, decadeLabels: decadeLabels, PALETTES: PALETTES, MARKERS: MARKERS, REF_W: REF_W, blueRamp: blueRamp, autoKind: autoKind, fourPL: fourPL, potText: potText, r2Of: r2Of, tableData: tableData, tableGrid: tableGrid, model: model, stats: stats, measure: measure, lighten: lighten, darken: darken, rgb: rgb, hex: hex, fin: fin, itemColor: itemColor, merge: merge };
 })();

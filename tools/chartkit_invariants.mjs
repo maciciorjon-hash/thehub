@@ -261,6 +261,7 @@ check('K20 "Extend the fit across the whole axis" draws it from edge to edge of 
 await page.goto(URL_ + '?kind=xy&hide=1');
 const k21 = await ev(() => {
   const o = {}, sc = () => kit.scene(), root = document.getElementById('root'), ticks = () => [...root.querySelectorAll('.ck-tick')];
+  kit.open('compounds');
   o.start = { hidden: sc().items.map(i => i.hidden), fits: sc().prims.filter(p => /^fit:/.test(p.el || '')).length, ticks: ticks().map(t => t.checked), status: root.querySelector('.ck-status').textContent };
   ticks()[1].click(); o.one = { hidden: sc().items.map(i => i.hidden), fits: sc().prims.filter(p => /^fit:/.test(p.el || '')).map(p => p.el) };
   root.querySelector('[data-a=showall]').click(); o.all = sc().items.every(i => !i.hidden);
@@ -283,6 +284,7 @@ check('K21 a lone compound is drawn at once, and so is every compound of a host 
 await page.goto(URL_ + '?kind=xy&hide=1');
 const k22 = await ev(() => {
   const root = document.getElementById('root'), o = {}, dp = () => root.querySelectorAll('.ck-dp').length, tick = i => root.querySelectorAll('.ck-tick')[i];
+  kit.open('compounds');
   tick(0).click(); tick(1).click(); o.afterTick = dp();
   root.querySelectorAll('.ck-name')[0].click(); o.afterName = dp(); o.open0 = root.querySelectorAll('.ck-dg')[0].querySelectorAll('.ck-dp').length; o.open1 = root.querySelectorAll('.ck-dg')[1].querySelectorAll('.ck-dp').length;
   root.querySelectorAll('.ck-chev')[1].click(); o.afterArrow = [root.querySelectorAll('.ck-dg')[0].querySelectorAll('.ck-dp').length, root.querySelectorAll('.ck-dg')[1].querySelectorAll('.ck-dp').length];
@@ -349,6 +351,26 @@ check('K18 default markers (r ≤ 3.2 pt), lines (≤ 1.6 pt), error caps (≤ 3
 await open('xy');
 const k14 = await ev(() => { const C = ChartKitCore, out = {}; [[-4, 2], [-6, 1], [-2, 2], [0, 3], [-8, -4]].forEach(r => { const e = []; for (let x = r[0]; x <= r[1]; x++) e.push(x); out[r.join('..')] = C.decadeLabels(e); }); return out; });
 check('K14 a run of decades is all powers of ten or all plain numbers', Object.values(k14).every(l => l.every(x => /^10\^/.test(x)) || l.every(x => !/^10\^/.test(x))), JSON.stringify(k14));
+
+// K29 — the unit of the concentration axis: M, mM, µM, nM or pM. Everything on the figure is the same physical figure in another unit
+await open('xy');
+const k29 = await ev(() => {
+  const C = ChartKitCore, o = {}, fn = x => 1 / (1 + x / 10);
+  const doc = { xTitle: '[compound] (nM)', xUnit: 'nM', yTitle: 'y', title: ['t'], items: [{ id: 'a', name: 'A', points: [1, 10, 100, 1000].map((x, i) => ({ x, reps: [{ id: 'r' + i, v: fn(x) }, { id: 'q' + i, v: fn(x) }] })), fit: { fn, ec50nM: 10 } }] };
+  const sp = u => { const s = C.withDefaults(null); s.kind = 'xy'; s.x.unit = u; s.x.fmt = 'plain'; return s; };   // plain: a run of decades is otherwise all powers once it leaves 0.001 … 10000
+  const at = u => { const sc = C.build(doc, sp(u)), mk = sc.prims.filter(p => p.el === 'pt:a' && (p.t === 'marker' || p.t === 'circle')).map(p => p.cx !== undefined ? p.cx : p.x), f = sc.prims.find(p => p.el === 'fit:a'); return { mk, fit: f && f.pts.map(q => q[1]), title: sc.prims.filter(p => p.el === 'xTitle').map(p => p.text || p.str || ''), txt: sc.prims.filter(p => p.t === 'text').map(p => String(p.text || p.str || '')) }; };
+  const a = at('auto'), b = at('µM'), c = at('pM');
+  o.samePlace = a.mk.length === 4 && a.mk.every((x, i) => Math.abs(x - b.mk[i]) < 0.01 && Math.abs(x - c.mk[i]) < 0.01);
+  o.sameCurve = a.fit && b.fit && a.fit.every((y, i) => Math.abs(y - b.fit[i]) < 1e-9);
+  o.titles = [a.title.join(), b.title.join(), c.title.join()];
+  o.labels = { nM: a.txt.includes('10'), uM: b.txt.includes('0.01') && b.txt.includes('0.001'), pM: c.txt.includes('10000') };
+  const sl = C.build(doc, (() => { const s = sp('nM'); s.x.fmt = 'log'; return s; })()); o.log = sl.prims.filter(p => p.t === 'text').map(p => String(p.text || p.str || '')).filter(t => /^\u2212\d+$/.test(t)).join();
+  o.bad = C.withDefaults({ x: { unit: 'furlongs', fmt: 'x' } }).x.unit + '/' + C.withDefaults({ x: { unit: 'furlongs', fmt: 'x' } }).x.fmt;
+  o.bars = (() => { const d2 = JSON.parse(JSON.stringify(doc)); d2.items[0].points = [10, 100].map((x, i) => ({ x, reps: [{ id: 'z' + i, v: 1 }] })); d2.items[0].fit = null; const s = sp('µM'); s.kind = 'bars'; return C.build(d2, s).prims.filter(p => p.t === 'text').map(p => String(p.text || p.str || '')); })();
+  return o;
+});
+check('K29 a unit for the concentration axis: the points and the curve stay where they are in nM, µM or pM, the title and the numbers follow', k29.samePlace && k29.sameCurve && /\(nM\)/.test(k29.titles[0]) && /\(\u00b5M\)/.test(k29.titles[1]) && /\(pM\)/.test(k29.titles[2]) && k29.labels.uM && k29.labels.pM, JSON.stringify(k29));
+check('K29 log numbers are the log of the molar concentration (10 nM is −8) whatever unit is chosen; an unknown unit or format falls back to auto; bars follow the unit too', /\u22128/.test(k29.log) && k29.bad === 'auto/auto' && k29.bars.includes('0.01') && k29.bars.includes('0.1'), JSON.stringify({ log: k29.log, bad: k29.bad, bars: k29.bars }));
 
 // K10 — room for labels, in the core (every page preset, 1–63 compounds, long names, bars and curves)
 await open('xy');
@@ -469,7 +491,7 @@ for (const name of Object.keys(APPS)) {
     check('K17 ' + name + ' ' + w + '×' + h + ': the whole figure and panel are inside the window, and the figure is as large as the room allows (4 page shapes)', bad.length === 0, bad.slice(0, 2).join(' | '));
   }
   // K19 — a dose label wider than its column wraps; it never sticks out of its box (CI's font draws 0.0000693 wider than 54px)
-  { const r = await E(() => { const tb = document.querySelector('.ck-sh[data-sec=compounds]'); if (tb && tb.getAttribute('aria-expanded') !== 'true') tb.click(); document.querySelectorAll('.ck-chev:not(.open)').forEach(b => b.click()); const xs = [...document.querySelectorAll('.ck-dx')].filter(e => e.getBoundingClientRect().width > 0); xs.forEach(e => { e.textContent = '0.000000069300'; }); return { n: xs.length, wide: xs.filter(e => e.scrollWidth > e.clientWidth + 0.5).length }; });
+  { const r = await E(k => { window[k].open('compounds'); document.querySelectorAll('.ck-chev:not(.open)').forEach(b => b.click()); const xs = [...document.querySelectorAll('.ck-dx')].filter(e => e.getBoundingClientRect().width > 0); xs.forEach(e => { e.textContent = '0.000000069300'; }); return { n: xs.length, wide: xs.filter(e => e.scrollWidth > e.clientWidth + 0.5).length }; }, a.kit);
     check('K19 ' + name + ': a long dose label stays inside its box (' + r.n + ' labels)', r.n > 0 && r.wide === 0, JSON.stringify(r)); }
   await pg.setViewportSize({ width: 1280, height: 800 });
   // K15 — narrow windows
@@ -509,39 +531,43 @@ for (const name of Object.keys(APPS)) {
     check('K26 lumina: the potency and Dmax in the table are the Results table\'s', Math.abs(r.cell - r.ec) <= 0.006 * r.ec && r.eff === r.d, JSON.stringify(r));
   }
   // K27 — in the app: the Table tab drives the figure and the data come out as a file
-  const k27a = await E(([r, k]) => { const root = document.querySelector(r), kit = window[k]; const sh = root.querySelector('.ck-sh[data-sec=table]'); const o = { tabShown: !!sh }; if (!sh) return o; kit.open('table');
-    const body = root.querySelector('.ck-body'); o.sum = sh.querySelector('.ck-ss').textContent; o.switches = body.querySelectorAll('[data-tcol]').length; o.addSwitch = !!body.querySelector('[data-p="table.show"]'); o.fmt = ['table.potUnit', 'table.sig', 'table.dec', 'table.units', 'table.size'].every(p => !!body.querySelector('[data-p="' + p + '"], [data-tset="' + p + '"]')); o.btns = ['tbl-copy', 'tbl-csv'].every(x => !!body.querySelector('[data-a=' + x + ']'));
+  const k27a = await E(([r, k]) => { const root = document.querySelector(r), kit = window[k]; const sh = root.querySelector('.ck-mt[data-menu=table]'); const o = { tabShown: !!sh }; if (!sh) return o; kit.open('table');
+    const body = root.querySelector('.ck-body'); o.sum = sh.querySelector('.ck-ms').textContent; o.switches = body.querySelectorAll('[data-tcol]').length; o.addSwitch = !!body.querySelector('[data-p="table.show"]'); o.fmt = ['table.potUnit', 'table.sig', 'table.dec', 'table.units', 'table.size'].every(p => !!body.querySelector('[data-p="' + p + '"], [data-tset="' + p + '"]')); o.btns = ['tbl-copy', 'tbl-csv'].every(x => !!body.querySelector('[data-a=' + x + ']'));
     const hill = body.querySelector('[data-tcol=hill]'); hill.checked = false; hill.dispatchEvent(new Event('change', { bubbles: true })); o.hillGone = !(Array.from(document.querySelectorAll(r + ' svg.ck-svg text')).some(t => t.textContent === 'Hill'));
     root.querySelector('.ck-body [data-tset="table.orient"][data-v=cols]').click(); o.cols = Array.from(root.querySelectorAll('svg.ck-svg text')).some(t => t.textContent === 'Parameter'); return o; }, [a.root, a.kit]);
-  check('K27 ' + name + ': a Table section holds the yes/no switch, a switch per parameter, the formats and Copy / CSV; a switch changes the figure and so does Compounds in columns', k27a.tabShown && k27a.switches >= 6 && k27a.addSwitch && k27a.fmt && k27a.btns && k27a.hillGone && k27a.cols, JSON.stringify(k27a));
+  check('K27 ' + name + ': a Table entry holds the yes/no switch, a switch per parameter, the formats and Copy / CSV; a switch changes the figure and so does Compounds in columns', k27a.tabShown && k27a.switches >= 6 && k27a.addSwitch && k27a.fmt && k27a.btns && k27a.hillGone && k27a.cols, JSON.stringify(k27a));
   const dl = pg.waitForEvent('download', { timeout: 8000 }).catch(() => null); await E(r => document.querySelector(r + ' [data-a=tbl-csv]').click(), a.root); const dw = await dl;
   let csv = ''; if (dw) { const fs = await import('node:fs'); csv = fs.readFileSync(await dw.path(), 'utf8'); }
   check('K27 ' + name + ': the CSV is the table laid out as chosen (compounds in columns), numbers only, with the unit in the title', !!dw && /^\ufeffParameter,/.test(csv) && /DC50|EC50|IC50/.test(csv) && /\((nM)\)/.test(csv) && !/\u2009/.test(csv), JSON.stringify(csv.slice(0, 160)));
-  // K28 — the panel
+  // K28 — the settings menu and its card
   { const k = a.kit, root = a.root;
-    const st = await E(([k, r]) => { const kit = window[k], R = document.querySelector(r); kit.sections().forEach(x => kit.close(x)); const o = {};
-      o.ids = [...R.querySelectorAll('.ck-sh')].map(b => b.dataset.sec); o.folded = [...R.querySelectorAll('.ck-sec:not(.open)')].every(sc => { const ss = sc.querySelector('.ck-ss'); return ss && ss.textContent.trim().length > 0 && getComputedStyle(ss).display !== 'none'; });
-      kit.open('axes'); const ax = R.querySelector('.ck-sec[data-s=axes]'); o.openHides = getComputedStyle(ax.querySelector('.ck-ss')).display === 'none' && ax.querySelector('.ck-sb') !== null && R.querySelector('.ck-sec[data-s=chart] .ck-sb') === null;
-      R.querySelector('[data-a=unfoldall]') || 0; const all = R.querySelector('[data-a=foldall]'); o.foldLabel = all && all.textContent; all.click(); o.afterFold = R.querySelectorAll('.ck-sec.open').length; const un = R.querySelector('[data-a=unfoldall]'); o.unLabel = un && un.textContent; un.click(); o.afterUnfold = R.querySelectorAll('.ck-sec.open').length;
-      o.remembered = JSON.parse(localStorage.getItem('ck2:' + (kit === window._lgKit ? 'lumina' : kit === window._egKit ? 'echo' : 'beacon') + ':sec') || 'null');
-      kit.select('title0'); o.titleOpens = !!R.querySelector('.ck-sec[data-s=text].open'); kit.select(null); kit.close('text'); kit.select('legend'); o.legendOpens = !!R.querySelector('.ck-sec[data-s=text].open');
-      kit.close('table'); kit.spec().table.show = true; kit.refresh(); kit.close('table'); const tb = R.querySelector('svg.ck-svg [data-el=table]'); o.tableClickable = !!tb; kit.select('table'); o.tableOpens = !!R.querySelector('.ck-sec[data-s=table].open'); kit.select(null);
-      const inp = R.querySelector('.ck-body [data-text=title0]'); inp.value = 'Typed here'; inp.dispatchEvent(new Event('input', { bubbles: true })); o.typed = kit.spec().title[0].text === 'Typed here' && [...R.querySelectorAll('svg.ck-svg text')].some(t => t.textContent === 'Typed here');
-      kit.spec().title[0].text = null; kit.refresh(); return o; }, [k, root]);
-    check('K28 ' + name + ': six sections (Compounds, Chart, Axes, Text & legend, Table, Page); a folded one says what is set in it, an open one shows its controls and hides that line', st.ids.join() === 'compounds,chart,axes,text,table,page' && st.folded && st.openHides, JSON.stringify(st));
-    check('K28 ' + name + ': Fold all / Unfold all (the label follows), and what is open is remembered per device', st.foldLabel === 'Fold all' && st.afterFold === 0 && st.unLabel === 'Unfold all' && st.afterUnfold === 6 && st.remembered && Object.keys(st.remembered).length === 6, JSON.stringify({ a: st.foldLabel, b: st.afterFold, c: st.unLabel, d: st.afterUnfold, r: st.remembered }));
-    check('K28 ' + name + ': clicking a title or the legend opens Text & legend, clicking the table opens Table, and a title is typed where it is listed', st.titleOpens && st.legendOpens && st.tableClickable && st.tableOpens && st.typed, JSON.stringify(st));
+    const st = await E(([k, r]) => { const kit = window[k], R = document.querySelector(r); kit.sections().forEach(x => kit.close(x)); const o = {}, key = 'ck2:' + (kit === window._lgKit ? 'lumina' : kit === window._egKit ? 'echo' : 'beacon') + ':menu';
+      const tabs = () => [...R.querySelectorAll('.ck-mt')]; kit.spec().table.show = true; kit.refresh(); kit.close('table'); kit.close('page');
+      o.ids = tabs().map(b => b.dataset.menu); o.sums = tabs().every(b => b.querySelector('.ck-ms').textContent.trim().length > 0); o.shut = kit.sections().length === 0;
+      kit.open('axes'); kit.open('chart'); o.exclusive = kit.sections().join() === 'chart' && tabs().filter(b => b.getAttribute('aria-expanded') === 'true').map(b => b.dataset.menu).join() === 'chart' && R.querySelector('.ck-pt').textContent === 'Chart';
+      const cv = () => R.querySelector('.ck-canvas').getBoundingClientRect(), P = () => R.querySelector('.ck-panel').getBoundingClientRect(); const w0 = cv().width; o.docked = R.classList.contains('ck-dock') && P().left >= cv().right - 1 && cv().width < w0 + 1;
+      o.noOverlap = P().left >= cv().right - 1; kit.close('chart'); o.wide = cv().width > w0 + 50 && !R.classList.contains('ck-dock'); kit.open('chart');
+      R.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); o.escCloses = kit.sections().length === 0;
+      kit.select('title0'); o.titleOpens = kit.sections().join() === 'text'; kit.select(null); kit.close('text'); kit.select('legend'); o.legendOpens = kit.sections().join() === 'text';
+      kit.close('table'); const tb = R.querySelector('svg.ck-svg [data-el=table]'); o.tableClickable = !!tb; kit.select('table'); o.tableOpens = kit.sections().join() === 'table'; kit.select(null);
+      kit.select('title0'); const inp = R.querySelector('.ck-body [data-text=title0]'); inp.value = 'Typed here'; inp.dispatchEvent(new Event('input', { bubbles: true })); o.typed = kit.spec().title[0].text === 'Typed here' && [...R.querySelectorAll('svg.ck-svg text')].some(t => t.textContent === 'Typed here');
+      kit.spec().title[0].text = null; kit.refresh(); kit.close('text'); return o; }, [k, root]);
+    check('K28 ' + name + ': a menu along the top with Compounds, Chart, Axes, Text, Table and Page, each saying what is set in it, and no card open until one is chosen', st.ids.join() === 'compounds,chart,axes,text,table,page' && st.sums && st.shut, JSON.stringify(st));
+    check('K28 ' + name + ': one entry is open at a time, in a column at the right of the figure that never covers it (the figure takes the whole width again when it is closed); Esc puts it away', st.exclusive && st.docked && st.noOverlap && st.wide && st.escCloses, JSON.stringify(st));
+    check('K28 ' + name + ': clicking a title or the legend opens Text, clicking the table opens Table, and a title is typed where it is listed', st.titleOpens && st.legendOpens && st.tableClickable && st.tableOpens && st.typed, JSON.stringify(st));
     for (const [w, h, theme] of [[1440, 900, 'light'], [1280, 800, 'dark'], [900, 800, 'light'], [390, 844, 'light']]) {
       await pg.setViewportSize({ width: w, height: h }); await E(t => document.documentElement.setAttribute('data-theme', t), theme); await pg.waitForTimeout(350);
-      const bad = await E(([k, r]) => { const kit = window[k], R = document.querySelector(r); R.scrollIntoView(); Object.keys({ compounds: 1, chart: 1, axes: 1, text: 1, table: 1, page: 1 }).forEach(i => kit.open(i)); kit.spec().table.show = true; kit.refresh();
-        const P = R.querySelector('.ck-panel').getBoundingClientRect(), out = [];
-        R.querySelectorAll('.ck-panel *').forEach(el => { const cs = getComputedStyle(el), rc = el.getBoundingClientRect(); if (!rc.width || !rc.height || cs.visibility === 'hidden' || cs.display === 'none' || el.closest('svg')) return;
-          const own = [...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim()); const fs = parseFloat(cs.fontSize);
-          if (own && fs < 11.5 && el.tagName !== 'KBD') out.push('small:' + el.className + ':' + fs);
-          if (rc.right > P.right + 1.5 || rc.left < P.left - 1.5) { if (!el.closest('.ck-dlist')) out.push('out:' + el.tagName + '.' + el.className); }
-          if (own && el.scrollWidth > el.clientWidth + 1 && cs.textOverflow !== 'ellipsis' && cs.display !== 'inline') out.push('cut:' + el.tagName + '.' + el.className + ':' + el.scrollWidth + '>' + el.clientWidth); });
-        return [...new Set(out)].slice(0, 6); }, [k, root]);
-      check('K28 ' + name + ' ' + w + ' px ' + theme + ': with every section open nothing is under 12 px, outside the panel or cut', bad.length === 0, bad.join(' | '));
+      const bad = await E(([k, r, w]) => { const kit = window[k], R = document.querySelector(r); R.scrollIntoView(); kit.spec().table.show = true; kit.refresh(); const out = [], RR = R.getBoundingClientRect();
+        ['compounds', 'chart', 'axes', 'text', 'table', 'page'].forEach(id => { kit.open(id); R.querySelector('.ck-panel').getAnimations().forEach(x => x.finish()); const P = R.querySelector('.ck-panel').getBoundingClientRect();
+          const CV = R.querySelector('.ck-canvas').getBoundingClientRect();
+          if (w > 900 && (P.left < CV.right - 1 || P.right > RR.right + 1.5 || P.bottom > RR.bottom + 1.5)) out.push(id + ':column covers the figure or leaves the editor');
+          R.querySelectorAll('.ck-panel *').forEach(el => { const cs = getComputedStyle(el), rc = el.getBoundingClientRect(); if (!rc.width || !rc.height || cs.visibility === 'hidden' || cs.display === 'none' || el.closest('svg')) return;
+            const own = [...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim()); const fs = parseFloat(cs.fontSize);
+            if (own && fs < 11.5 && el.tagName !== 'KBD') out.push(id + ':small:' + el.className + ':' + fs);
+            if (rc.right > P.right + 1.5 || rc.left < P.left - 1.5) { if (!el.closest('.ck-dlist')) out.push(id + ':out:' + el.tagName + '.' + el.className); }
+            if (own && el.scrollWidth > el.clientWidth + 1 && cs.textOverflow !== 'ellipsis' && cs.display !== 'inline') out.push(id + ':cut:' + el.tagName + '.' + el.className + ':' + el.scrollWidth + '>' + el.clientWidth); }); });
+        kit.close('page'); return [...new Set(out)].slice(0, 6); }, [k, root, w]);
+      check('K28 ' + name + ' ' + w + ' px ' + theme + ': each entry\'s column is beside the figure, inside the editor, and has nothing under 12 px, outside it or cut', bad.length === 0, bad.join(' | '));
     }
     await E(() => document.documentElement.removeAttribute('data-theme')); await pg.setViewportSize({ width: 1280, height: 800 }); }
   } catch (err) { check('K9-K15 ' + name + ': the checks ran to the end', false, String(err && err.message || err).split('\n')[0]); }

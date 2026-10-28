@@ -4,9 +4,10 @@
  *     → { refresh(), draw() }
  *
  * Click anything on the chart to edit it; drag titles and the legend (they snap to each other, to the plot and to
- * the figure's centre — hold Alt to move freely; arrow keys nudge). The panel is sections that fold, each saying what is
- * set in it while it is folded: Compounds (which are drawn, their colours and palette, replicates to omit), Chart, Axes,
- * Text & legend, Table and Page. Export is PNG at 300 / 600 / 1200 dpi, a vector PDF, SVG, and the table as Copy / CSV / Excel.
+ * the figure's centre — hold Alt to move freely; arrow keys nudge). The settings are a menu along the top of the figure, each
+ * entry saying what is set in it: Compounds (which are drawn, their colours and palette, replicates to omit), Chart, Axes,
+ * Text & legend, Table and Page. An entry opens in a column at the right of the figure, so every change is seen as it is made;
+ * clicking a thing on the figure opens its entry. Export is PNG at 300 / 600 / 1200 dpi, a vector PDF, SVG, and the table as Copy / CSV / Excel.
  */
 var ChartKit = (function(){
   var C = ChartKitCore, X = ChartKitExport;
@@ -20,7 +21,7 @@ var ChartKit = (function(){
 
   function mount(root, opts){
     opts = opts || {};
-    var KEY = 'ck2:' + (opts.key || 'chart'), spec, doc = { items: [] }, scene = null, sel = null, secOpen = null, undo = [], redo = [], lastUndoKey = '', lastUndoAt = 0, dpi = 1200, saveT = 0, drag = null, openItems = {}, cmode = null, palOpen = false;
+    var KEY = 'ck2:' + (opts.key || 'chart'), spec, doc = { items: [] }, scene = null, sel = null, cur = null, undo = [], redo = [], lastUndoKey = '', lastUndoAt = 0, dpi = 1200, saveT = 0, drag = null, openItems = {}, cmode = null, palOpen = false;
     try { spec = C.withDefaults(JSON.parse(localStorage.getItem(KEY) || 'null')); } catch (e) { spec = C.withDefaults(null); }
 
     root.classList.add('ck-root'); root.setAttribute('tabindex', '-1');
@@ -31,24 +32,26 @@ var ChartKit = (function(){
           '<div class="ck-seg ck-kind" role="group" aria-label="Chart type"><button type="button" data-kind="auto">Auto</button><button type="button" data-kind="bars">Bars</button><button type="button" data-kind="xy">Curves</button></div>' +
           '<span class="ck-sep"></span>' +
           '<button type="button" class="ck-btn" data-a="undo" title="Undo (⌘Z)">Undo</button><button type="button" class="ck-btn" data-a="redo" title="Redo (⇧⌘Z)">Redo</button>' +
-          '<label class="ck-chk" title="Titles and the legend snap to each other, to the plot and to the centre of the figure. Hold Alt to move freely."><span class="ck-tog"><input type="checkbox" data-a="snap"><i></i></span> Snap &amp; align</label>' +
-          '<label class="ck-chk ck-tblchk" title="Add a table of the fitted values for the compounds drawn under the figure. It is part of the PNG, PDF and SVG; what it holds is set under Table." hidden><span class="ck-tog"><input type="checkbox" data-p="table.show" data-t="bool"><i></i></span> Add table</label>' +
           '<span class="ck-gap"></span>' +
           '<select class="ck-dpi" aria-label="PNG resolution" data-a="dpi"><option value="300">300 dpi</option><option value="600">600 dpi</option><option value="1200">1200 dpi</option></select>' +
           '<button type="button" class="ck-btn ck-pri" data-a="png">PNG</button><button type="button" class="ck-btn ck-pri" data-a="pdf">PDF</button><button type="button" class="ck-btn" data-a="svg">SVG</button>' +
         '</div>' +
+        '<div class="ck-menurow"><div class="ck-menu" role="toolbar" aria-label="Settings"></div><span class="ck-gap"></span>' +
+          '<label class="ck-chk ck-tblchk" title="Add a table of the fitted values for the compounds drawn under the figure. It is part of the PNG, PDF and SVG; what it holds is set under Table." hidden><span class="ck-tog"><input type="checkbox" data-p="table.show" data-t="bool"><i></i></span> Add table</label>' +
+          '<label class="ck-chk" title="Titles and the legend snap to each other, to the plot and to the centre of the figure. Hold Alt to move freely."><span class="ck-tog"><input type="checkbox" data-a="snap"><i></i></span> Snap &amp; align</label>' +
+        '</div>' +
         '<div class="ck-canvas"><svg class="ck-svg" role="img" aria-label="Chart preview"></svg></div>' +
-        '<div class="ck-status" aria-live="polite"></div>' +
+        '<div class="ck-status" aria-live="polite" data-hint="Click anything in the figure to edit it. Drag titles and the legend; they snap to the plot and to each other (Alt moves freely, arrow keys nudge)."></div>' +
       '</div>' +
-      '<div class="ck-panel">' +
-        '<div class="ck-sel"></div>' +
-        '<div class="ck-body"></div>' +
+      '<div class="ck-panel" role="region" aria-label="Settings" hidden>' +
+        '<div class="ck-ph"><span class="ck-pt"></span><span class="ck-pbtns">' +
+          '<button type="button" class="ck-ib" data-a="closepop" aria-label="Close" title="Close (Esc)"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>' +
+        '</span></div>' +
+        '<div class="ck-scroll"><div class="ck-sel" hidden></div><div class="ck-body"></div></div>' +
       '</div>';
-    var svg = root.querySelector('.ck-svg'), panel = root.querySelector('.ck-body'), selBox = root.querySelector('.ck-sel'), status = root.querySelector('.ck-status');
-    // which sections are open is remembered per device; the first visit opens the one the job starts with (the figure is empty until a compound is ticked)
-    try { secOpen = JSON.parse(localStorage.getItem(KEY + ':sec') || 'null'); } catch (e) { secOpen = null; }
-    if (!secOpen || typeof secOpen !== 'object') secOpen = { compounds: true };
-    function saveSec(){ try { localStorage.setItem(KEY + ':sec', JSON.stringify(secOpen)); } catch (e) {} }
+    var svg = root.querySelector('.ck-svg'), panel = root.querySelector('.ck-body'), selBox = root.querySelector('.ck-sel'), status = root.querySelector('.ck-status'), menu = root.querySelector('.ck-menu'), pop = root.querySelector('.ck-panel'), scroller = root.querySelector('.ck-scroll');
+    // the column is closed when the editor opens, so the figure has the whole width until an entry is chosen
+    function motion(){ return !!pop.animate && !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) && !document.hidden; }
 
     function toast(m, k){ if (opts.toast) opts.toast(m, k); status.textContent = m; status.classList.remove('ck-warnline'); lastFitNote = ''; }
     // Only the style is kept between visits. What was omitted, hidden, recoloured, moved or retitled belongs to the data it
@@ -68,10 +71,11 @@ var ChartKit = (function(){
     function doRedo(){ if (!redo.length) return; undo.push(JSON.stringify(spec)); restore(redo.pop()); }
     function syncBar(){
       root.querySelector('[data-a=undo]').disabled = !undo.length; root.querySelector('[data-a=redo]').disabled = !redo.length;
-      var hasT = hasTable(); if (!hasT && secOpen.table) { delete secOpen.table; saveSec(); renderPanel(); }
+      if (!hasTable() && cur === 'table') closeMenu();
       var tc = root.querySelector('.ck-tblchk'); if (tc) { tc.hidden = !hasTable(); tc.querySelector('input').checked = !!spec.table.show; }
       root.querySelector('[data-a=snap]').checked = !!spec.snap; root.querySelector('[data-a=dpi]').value = String(dpi);
       root.querySelectorAll('.ck-kind button').forEach(function(b){ b.classList.toggle('active', b.dataset.kind === spec.kind); });
+      renderMenu();
     }
 
     // ── drawing ────────────────────────────────────────────────
@@ -100,7 +104,7 @@ var ChartKit = (function(){
       fit();
       svg.innerHTML = inner + '<g class="ck-ov"></g>';
       var bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect'); bg.setAttribute('width', scene.W); bg.setAttribute('height', scene.H); bg.setAttribute('fill', '#ffffff'); bg.setAttribute('class', 'ck-paper'); svg.insertBefore(bg, svg.firstChild.nextSibling || null);
-      overlay(); pngNote(); fitNote();
+      overlay(); pngNote(); fitNote(); renderMenu();
     }
     if (window.ResizeObserver) { var ro = new ResizeObserver(function(){ fit(); overlay(); }); ro.observe(root.querySelector('.ck-canvas')); ro.observe(root); }
     // A curve that cannot be refitted without the replicates left out is not drawn; say so where the figure is, not only under Compounds.
@@ -128,21 +132,21 @@ var ChartKit = (function(){
     // a title line is spec.title[n]; xTitle and yTitle are keys of their own
     function tpath(id){ return id.indexOf('title') === 0 ? 'title.' + id.slice(5) : id; }
     function itemOf(id){ var m = /^(?:bar|fit|pt|leg):(.+)$/.exec(id || ''); return m ? m[1] : null; }
-    // the section a thing on the chart belongs to: clicking it opens that section
+    // the entry a thing on the chart belongs to: clicking it opens that entry. A title or the legend can be dragged, so it opens on release (defer).
     function secOfSel(id){ if (!id) return null; if (TEXTS[id] || id === 'legend') return 'text'; if (itemOf(id)) return 'compounds'; if (id === 'table') return 'table'; if (id === 'ref' || id === 'axisX' || id === 'axisY') return 'axes'; return null; }
-    function select(id){
-      if ((id || null) !== sel) cmode = null; sel = id || null; renderSel(); overlay();
-      var sc = secOfSel(sel); if (sc && !secOpen[sc] && (sc !== 'table' || hasTable())) { secOpen[sc] = true; saveSec(); }
-      renderPanel();
-      if (sc) { var el = panel.querySelector('.ck-sec[data-s="' + sc + '"]'); if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' }); }
+    function select(id, defer){
+      if ((id || null) !== sel) cmode = null; sel = id || null; overlay();
+      var sc = secOfSel(sel);
+      if (sc && !defer && (sc !== 'table' || hasTable())) openMenu(sc); else { renderSel(); if (cur) renderPanel(); }
+      if (sc && !defer && TEXTS[sel]) { var ti = panel.querySelector('[data-text="' + sel + '"]'); if (ti && ti.scrollIntoView) ti.scrollIntoView({ block: 'nearest' }); }
     }
     function hasTable(){ return !!(doc.table && doc.table.cols && doc.table.cols.length); }
     function renderSel(){
       var h = '', done = '<button type="button" class="ck-link" data-a="deselect">Done</button>';
-      if (!sel) h = '<div class="ck-hint"><b>Click anything in the figure to edit it.</b> Drag titles and the legend; they snap to the plot and to each other (<kbd>Alt</kbd> moves freely, arrow keys nudge). Click a replicate under Compounds to leave it out.</div>';
-      else if (TEXTS[sel]) h = '<div class="ck-selh"><b>' + TEXTS[sel] + '</b>' + done + '</div><div class="ck-hint">Its words and size are under <b>Text &amp; legend</b>. Double-click it in the figure to type.</div>' + alignRow();
+      if (!sel || secOfSel(sel) !== cur) { selBox.innerHTML = ''; selBox.hidden = true; return; }
+      if (TEXTS[sel]) h = '<div class="ck-selh"><b>' + TEXTS[sel] + '</b>' + done + '</div><div class="ck-hint">Its words, size and style are in the list below. Drag it in the figure to move it.</div>' + alignRow();
       else if (sel === 'legend') h = '<div class="ck-selh"><b>Legend</b>' + done + '</div><div class="ck-row"><button type="button" class="ck-btn" data-a="hideleg">Hide the legend</button></div>' + alignRow();
-      else if (sel === 'table') h = '<div class="ck-selh"><b>Table</b>' + done + '</div><div class="ck-hint">Parameters, layout and format are under <b>Table</b>.</div>';
+      else if (sel === 'table') h = '<div class="ck-selh"><b>Table</b>' + done + '</div><div class="ck-hint">What it holds, its layout and its format are below.</div>';
       else if (itemOf(sel)) {
         var id = itemOf(sel), it = (doc.items || []).filter(function(x){ return x.id === id; })[0], ci = (doc.items || []).indexOf(it);
         if (it) {
@@ -156,9 +160,9 @@ var ChartKit = (function(){
                 '<label class="ck-f"><span>Hex</span><input class="ck-in ck-hex" type="text" maxlength="7" data-hex="' + esc(id) + '" value="' + col + '" aria-label="Hex colour of ' + esc(it.name) + '"></label></div>') +
             '<div class="ck-row"><button type="button" class="ck-link" data-a="resetcolor" data-id="' + esc(id) + '">Back to the palette</button><button type="button" class="ck-link" data-a="hideitem" data-id="' + esc(id) + '">Hide</button></div>';
         }
-      } else if (sel === 'ref') h = '<div class="ck-selh"><b>Reference line</b>' + done + '</div><div class="ck-hint">Its value and style are under <b>Axes</b>.</div>';
-      else if (sel === 'axisX' || sel === 'axisY') h = '<div class="ck-selh"><b>' + (sel === 'axisX' ? 'X' : 'Y') + ' axis</b>' + done + '</div><div class="ck-hint">Range, ticks and line width are under <b>Axes</b>.</div>';
-      selBox.innerHTML = h; selBox.classList.toggle('ck-idle', !sel);
+      } else if (sel === 'ref') h = '<div class="ck-selh"><b>Reference line</b>' + done + '</div><div class="ck-hint">Its value and style are in Reference line, below.</div>';
+      else if (sel === 'axisX' || sel === 'axisY') h = '<div class="ck-selh"><b>' + (sel === 'axisX' ? 'X' : 'Y') + ' axis</b>' + done + '</div><div class="ck-hint">Range, ticks and line width are below.</div>';
+      selBox.innerHTML = h; selBox.hidden = false;
     }
     function palColors(pal){ return pal.ramp ? Array.apply(null, Array(12)).map(function(_, i){ return C.blueRamp(i, 12); }) : pal.c; }
     function alignRow(){ return '<div class="ck-row ck-align"><button type="button" class="ck-btn" data-al="cx">Centre on plot</button><button type="button" class="ck-btn" data-al="fx">Centre on figure</button><button type="button" class="ck-link" data-a="resetpos">Reset position</button></div>'; }
@@ -187,15 +191,17 @@ var ChartKit = (function(){
     function grp(title, inner, note){ return '<div class="ck-sg"><div class="ck-sgh">' + title + '</div>' + inner + (note ? '<div class="ck-note">' + note + '</div>' : '') + '</div>'; }
 
     var SEC_T = { compounds: 'Compounds', chart: 'Chart', axes: 'Axes', text: 'Text & legend', table: 'Table', page: 'Page' };
+    var SEC_L = { compounds: 'Compounds', chart: 'Chart', axes: 'Axes', text: 'Text', table: 'Table', page: 'Page' };
     function palName(){ var p = C.PALETTES.filter(function(x){ return x.id === spec.palette; })[0]; return p ? p.name : ''; }
-    function secSum(id){
+    // what an entry of the menu says is set in it (kept short: it sits under the entry's name)
+    function secShort(id){
       var kind = scene ? scene.kind : 'bars', its = doc.items || [], nOn = its.filter(function(it){ return !spec.hidden[it.id]; }).length;
-      if (id === 'compounds') return its.length ? nOn + ' of ' + its.length + ' drawn · ' + palName() : 'none yet';
-      if (id === 'chart') return (kind === 'bars' ? 'Bars' : 'Curves') + ' · ' + ({ sd: 'SD', sem: 'SEM', ci95: '95% CI', range: 'range', none: 'no' }[spec.err.type] || 'SD') + ' error bars';
-      if (id === 'axes') { var rg = function(a){ return a.min !== null && a.min !== '' && a.max !== null && a.max !== '' ? a.min + '–' + a.max : 'auto'; }; return 'Y ' + (spec.y.log ? 'log ' : '') + rg(spec.y) + (kind === 'xy' ? ' · X ' + rg(spec.x) : ''); }
-      if (id === 'text') return spec.title.filter(function(t){ return t.text === null ? true : String(t.text).trim(); }).length ? 'titles · legend ' + (spec.legend.show ? (spec.legend.pos === 'auto' ? 'auto' : spec.legend.pos) : 'off') : 'legend ' + (spec.legend.show ? 'on' : 'off');
-      if (id === 'table') { if (!spec.table.show) return 'off'; var n = doc.table.cols.filter(function(c){ return spec.table.cols[c.id] === undefined ? c.on : !!spec.table.cols[c.id]; }).length; return 'on · ' + n + ' parameter' + (n === 1 ? '' : 's') + ' · compounds in ' + (spec.table.orient === 'cols' ? 'columns' : 'rows'); }
-      if (id === 'page') return +spec.w.toFixed(1) + ' × ' + +spec.h.toFixed(1) + ' in · ' + (spec.scale ? 'scaled' : 'real points');
+      if (id === 'compounds') return its.length ? nOn + ' of ' + its.length + ' drawn' : 'none yet';
+      if (id === 'chart') return (kind === 'bars' ? 'Bars' : 'Curves') + ' · ' + ({ sd: 'SD', sem: 'SEM', ci95: '95% CI', range: 'range', none: 'no bars' }[spec.err.type] || 'SD');
+      if (id === 'axes') { var rg = function(a){ return a.min !== null && a.min !== '' && a.max !== null && a.max !== '' ? a.min + '–' + a.max : 'auto'; }; var uo = C.xUnitOf(doc, spec); return kind === 'xy' && uo.to ? uo.to + ' · ' + (spec.y.log ? 'log ' : '') + 'Y ' + rg(spec.y) : 'Y ' + (spec.y.log ? 'log ' : '') + rg(spec.y); }
+      if (id === 'text') return 'legend ' + (spec.legend.show ? (spec.legend.pos === 'auto' ? 'auto' : spec.legend.pos) : 'off');
+      if (id === 'table') { if (!spec.table.show) return 'off'; var n = doc.table.cols.filter(function(c){ return spec.table.cols[c.id] === undefined ? c.on : !!spec.table.cols[c.id]; }).length; return 'on · ' + n + ' value' + (n === 1 ? '' : 's'); }
+      if (id === 'page') return +spec.w.toFixed(1) + ' × ' + +spec.h.toFixed(1) + ' in';
       return '';
     }
     function secBody(id){
@@ -208,17 +214,48 @@ var ChartKit = (function(){
       if (id === 'page') return pageHtml();
       return '';
     }
-    var CHEV = '<svg class="ck-shc" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
-    function renderPanel(){
-      var ids = Object.keys(SEC_T).filter(function(i){ return i !== 'table' || hasTable(); }), anyOpen = ids.some(function(i){ return secOpen[i]; });
-      var h = '<div class="ck-ph"><span>Settings</span><button type="button" class="ck-link" data-a="' + (anyOpen ? 'foldall' : 'unfoldall') + '">' + (anyOpen ? 'Fold all' : 'Unfold all') + '</button></div>';
+    function secIds(){ return Object.keys(SEC_T).filter(function(i){ return i !== 'table' || hasTable(); }); }
+    // the menu along the top of the figure: the buttons are kept (focus stays on the one you pressed), only their state and summary change
+    function renderMenu(){
+      var ids = secIds(), key = ids.join(',');
+      if (menu.dataset.ids !== key) { menu.innerHTML = ids.map(function(id){ return '<button type="button" class="ck-mt" data-menu="' + id + '" aria-expanded="false" aria-haspopup="true"><span class="ck-mn">' + SEC_L[id] + '</span><span class="ck-ms"></span></button>'; }).join(''); menu.dataset.ids = key; }
       ids.forEach(function(id){
-        var open = !!secOpen[id];
-        h += '<section class="ck-sec' + (open ? ' open' : '') + '" data-s="' + id + '"><button type="button" class="ck-sh" data-sec="' + id + '" aria-expanded="' + open + '">' + CHEV + '<span class="ck-st">' + SEC_T[id] + '</span><span class="ck-ss">' + esc(secSum(id)) + '</span></button>' + (open ? '<div class="ck-sb">' + secBody(id) + '</div>' : '') + '</section>';
+        var b = menu.querySelector('[data-menu="' + id + '"]'), on = cur === id, t = secShort(id), m = b.querySelector('.ck-ms');
+        b.classList.toggle('on', on); b.setAttribute('aria-expanded', on ? 'true' : 'false'); if (m.textContent !== t) m.textContent = t;
       });
-      panel.innerHTML = h; pngNote(); scaleNote();
     }
-    function setSection(id, on){ if (!!secOpen[id] === !!on) return; if (on) secOpen[id] = true; else delete secOpen[id]; saveSec(); renderPanel(); }
+    // the column at the right of the figure (under the figure on a narrow window)
+    function docked(){ return !narrow(); }
+    function renderPanel(){
+      if (cur === 'table' && !hasTable()) cur = null;
+      renderMenu();
+      if (!cur) { if (!pop.hidden && !pop.getAnimations().length) pop.hidden = true; root.classList.remove('ck-dock'); return; }
+      pop.hidden = false; root.classList.toggle('ck-dock', docked());
+      root.querySelector('.ck-pt').textContent = SEC_T[cur];
+      var top = scroller.scrollTop; panel.innerHTML = secBody(cur); renderSel(); scroller.scrollTop = top;
+      pngNote(); scaleNote();
+    }
+    // open an entry: the card fades in under it, or, when another entry was open, glides across to the new one while its content fades in
+    function openMenu(id){
+      if (!SEC_T[id] || (id === 'table' && !hasTable())) return;
+      var was = cur, wasHidden = pop.hidden;
+      cur = id; renderPanel();
+      if (was === id && !wasHidden) return;
+      if (!motion()) return;
+      pop.getAnimations().forEach(function(a){ a.cancel(); });
+      if (wasHidden || !was) pop.animate([{ opacity: 0, transform: 'translateX(14px)' }, { opacity: 1, transform: 'none' }], { duration: 170, easing: 'cubic-bezier(.2,.8,.3,1)' });
+      else {
+        scroller.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160, easing: 'ease-out' });
+      }
+    }
+    function closeMenu(){
+      if (!cur) return;
+      cur = null; renderMenu(); root.classList.remove('ck-dock');
+      if (!motion() || pop.hidden) { pop.hidden = true; return; }
+      var a = pop.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateX(10px)' }], { duration: 120, easing: 'ease-out' });
+      a.onfinish = a.oncancel = function(){ if (!cur) pop.hidden = true; };
+    }
+    function setSection(id, on){ if (on) openMenu(id); else if (cur === id) closeMenu(); }
 
     function chartHtml(kind){
       return (kind === 'bars'
@@ -230,7 +267,7 @@ var ChartKit = (function(){
     function axesHtml(kind){
       var yBad = C.fin(+spec.y.min) && C.fin(+spec.y.max) && spec.y.min !== null && spec.y.max !== null && +spec.y.min >= +spec.y.max;
       return grp('Y axis', pair(pf('Minimum', 'y.min', { auto: 1 }), pf('Maximum', 'y.max', { auto: 1 })) + pair(pf('Major step', 'y.major', { auto: 1 }), pf('Decimals', 'y.dec', { auto: 1, step: 1 })) + (yBad ? '<div class="ck-warn">The maximum has to be above the minimum — the axis is on auto until it is.</div>' : '') + fld('Logarithmic', 'y.log', 'bool')) +
-        grp('X axis', (kind === 'bars' ? fld('Label angle', 'x.rot', 'sel', { seg: true, num: 1, opts: [[0, 'Flat'], [45, '45°'], [90, 'Vertical']] }) + fld('Order', 'x.order', 'sel', { seg: true, opts: [['given', 'As given'], ['desc', 'High → low'], ['asc', 'Low → high']] }) + fld('Concentration labels', 'x.labels', 'bool') : pair(pf('Minimum', 'x.min', { auto: 1 }), pf('Maximum', 'x.max', { auto: 1 })))) +
+        grp('X axis', (doc.xUnit ? fld('Concentration unit', 'x.unit', 'sel', { seg: true, opts: [['auto', 'Auto'], ['M', 'M'], ['mM', 'mM'], ['\u00b5M', '\u00b5M'], ['nM', 'nM'], ['pM', 'pM']], hint: spec.x.unit === 'auto' ? 'Auto keeps ' + doc.xUnit + ', chosen from your data' : 'the numbers on the axis, the curves and the title follow' }) : '') + (kind === 'xy' ? fld('Numbers on the axis', 'x.fmt', 'sel', { seg: true, opts: [['auto', 'Auto'], ['plain', 'Numbers'], ['pow', 'Powers'], ['log', 'log']], hint: spec.x.fmt === 'log' ? 'log of the molar concentration, as Prism writes it' : 'Numbers 0.1, 1, 10 · Powers 10\u207b\u2079' }) : '') + (kind === 'bars' ? fld('Label angle', 'x.rot', 'sel', { seg: true, num: 1, opts: [[0, 'Flat'], [45, '45°'], [90, 'Vertical']] }) + fld('Order', 'x.order', 'sel', { seg: true, opts: [['given', 'As given'], ['desc', 'High → low'], ['asc', 'Low → high']] }) + fld('Concentration labels', 'x.labels', 'bool') : pair(pf('Minimum', 'x.min', { auto: 1 }), pf('Maximum', 'x.max', { auto: 1 })))) +
         grp('Lines', fld('Axis width', 'axisW', 'num', { step: 0.25, min: 0.25, max: 5 }) + fld('Tick length', 'tick', 'num', { step: 0.5, min: 0, max: 12 }) + fld('Box around the plot', 'box', 'bool') + fld('Horizontal grid', 'grid', 'bool')) +
         grp('Reference line', fld('Show', 'ref.show', 'bool') + pair(pf('At', 'ref.y', { auto: 1 }), pf('Width', 'ref.w', { step: 0.25, min: 0.25, max: 5 })) + fld('Dotted', 'ref.dash', 'bool'));
     }
@@ -332,21 +369,24 @@ var ChartKit = (function(){
       var t = e.target.closest('button, .ck-swb'); if (!t || !root.contains(t)) return;
       var d = t.dataset;
       if (d.kind) { pushUndo('kind'); spec.kind = d.kind; syncBar(); draw(); renderPanel(); save(); return; }
-      if (d.sec) { var was = !!secOpen[d.sec]; if (was) delete secOpen[d.sec]; else secOpen[d.sec] = true; saveSec(); renderPanel(); if (!was) { var se = panel.querySelector('.ck-sec[data-s="' + d.sec + '"]'); if (se && se.scrollIntoView) se.scrollIntoView({ block: 'nearest' }); } return; }
+      if (d.menu) { if (cur === d.menu) closeMenu(); else openMenu(d.menu); return; }
       if (d.cm) { cmode = d.cm; renderSel(); return; }
       if (d.pick) { select(d.pick); return; }
       if (d.omit) { pushUndo('omit'); spec.omit[d.omit] = !spec.omit[d.omit]; if (!spec.omit[d.omit]) delete spec.omit[d.omit]; draw(); renderPanel(); save(); return; }
       if (d.pal) { pushUndo('palette'); spec.palette = d.pal; spec.colors = {}; palOpen = false; draw(); renderPanel(); renderSel(); save(); return; }
       if (d.page) { var p = d.page.split(','); pushUndo('page'); spec.w = +p[0]; spec.h = +p[1]; draw(); renderPanel(); save(); return; }
       if (d.tg) { var path = d.tg, tt = path.indexOf('title') === 0 ? spec.title[+path.charAt(5)] : spec[path.split('.')[0]], key = path.split('.')[1]; pushUndo('tg'); tt[key] = !tt[key]; draw(); renderSel(); renderPanel(); save(); return; }
-      if (d.tset) { pushUndo('tset'); put(spec, d.tset, d.n ? +d.v : d.v); C.sanitize(spec); draw(); renderPanel(); syncBar(); save(); return; }
+      if (d.tset) {
+        pushUndo('tset');
+        if (d.tset === 'x.unit') { var u0 = C.xUnitOf(doc, spec); put(spec, d.tset, d.v); var u1 = C.xUnitOf(doc, spec), rt = u0.to && u1.to ? C.XU[u0.to] / C.XU[u1.to] : 1; ['min', 'max'].forEach(function(k){ if (rt !== 1 && spec.x[k] !== null && spec.x[k] !== '' && isFinite(+spec.x[k])) spec.x[k] = +(+spec.x[k] * rt).toPrecision(6); }); }   // an axis range typed in nM is the same range in µM
+        else put(spec, d.tset, d.n ? +d.v : d.v); C.sanitize(spec); draw(); renderPanel(); syncBar(); save(); return; }
       if (d.al) { align(d.al); return; }
       var a = d.a; if (!a) return;
       if (a === 'undo') doUndo(); else if (a === 'redo') doRedo();
       else if (a === 'png') exportPNG(); else if (a === 'pdf') exportPDF(); else if (a === 'svg') exportSVG();
       else if (a === 'deselect') select(null);
       else if (a === 'togpal') { palOpen = !palOpen; renderPanel(); }
-      else if (a === 'foldall') { secOpen = {}; saveSec(); renderPanel(); } else if (a === 'unfoldall') { Object.keys(SEC_T).forEach(function(i){ if (i !== 'table' || hasTable()) secOpen[i] = true; }); saveSec(); renderPanel(); }
+      else if (a === 'closepop') closeMenu();
       else if (a === 'setcolor') { pushUndo('col'); spec.colors[d.id] = d.c; draw(); renderSel(); renderPanel(); save(); }
       else if (a === 'resetcolor') { pushUndo('col'); delete spec.colors[d.id]; draw(); renderSel(); renderPanel(); save(); }
       else if (a === 'hideitem') { pushUndo('hide'); spec.hidden[d.id] = !spec.hidden[d.id]; if (!spec.hidden[d.id]) delete spec.hidden[d.id]; if (sel && itemOf(sel) === d.id) sel = null; draw(); renderSel(); renderPanel(); save(); }
@@ -372,8 +412,8 @@ var ChartKit = (function(){
       if (e.button !== 0) return;
       var el = e.target.closest('[data-el]'); root.focus({ preventScroll: true });
       if (!el) { select(null); return; }
-      var id = el.dataset.el; select(id);
-      var did = id.indexOf('leg:') === 0 ? 'legend' : id; if (!DRAG.test(did)) return;
+      var id = el.dataset.el, did = id.indexOf('leg:') === 0 ? 'legend' : id; select(id, DRAG.test(did));
+      if (!DRAG.test(did)) return;
       var nd = nodeOf(did); if (!nd) return;
       e.preventDefault();
       var start = spec.pos[did] || { dx: 0, dy: 0 }, r0 = rectOf(nd), cand = candidates(did);
@@ -403,15 +443,15 @@ var ChartKit = (function(){
       spec.pos[drag.id] = { dx: +(drag.start.dx + ddx / kk()).toFixed(2), dy: +(drag.start.dy + ddy / kk()).toFixed(2) };
       var keep = guides; draw(); overlay(keep);
     });
-    function endDrag(){ if (!drag) return; var m = drag.moved; drag = null; if (m) { draw(); save(); } else overlay(); }
+    function endDrag(){ if (!drag) return; var m = drag.moved; drag = null; if (m) { draw(); save(); } else { overlay(); if (sel) select(sel); } }   // released without moving it: that was a click, so its entry opens
     svg.addEventListener('pointerup', endDrag); svg.addEventListener('pointercancel', endDrag);
     svg.addEventListener('dblclick', function(e){ var el = e.target.closest('[data-el]'); if (el && TEXTS[el.dataset.el]) { select(el.dataset.el); var inp = panel.querySelector('[data-text="' + el.dataset.el + '"]'); if (inp) { inp.focus(); inp.select(); } } });
     root.addEventListener('keydown', function(e){
       var t = e.target, typing = t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT';
       var mod = e.metaKey || e.ctrlKey, k = (e.key || '').toLowerCase();
       if (mod && k === 'z' && !typing) { e.preventDefault(); if (e.shiftKey) doRedo(); else doUndo(); return; }
+      if (e.key === 'Escape') { if (typing) t.blur(); select(null); closeMenu(); return; }
       if (typing) { if (e.key === 'Enter' && t.classList.contains('ck-txt')) { e.preventDefault(); t.blur(); } return; }
-      if (e.key === 'Escape') { select(null); return; }
       var id = sel && sel.indexOf('leg:') === 0 ? 'legend' : sel;
       if (id && DRAG.test(id) && /^Arrow/.test(e.key)) {
         e.preventDefault(); var st = (e.shiftKey ? 10 : 1) / kk(), cur = spec.pos[id] || { dx: 0, dy: 0 };
@@ -450,7 +490,7 @@ var ChartKit = (function(){
       setTimeout(fit, 0);
     }
     refresh();
-    return { refresh: refresh, draw: draw, spec: function(){ return spec; }, scene: function(){ return scene; }, select: select, open: function(id){ setSection(id, true); }, close: function(id){ setSection(id, false); }, sections: function(){ return Object.keys(secOpen); }, exportPNG: exportPNG, exportPDF: exportPDF };
+    return { refresh: refresh, draw: draw, spec: function(){ return spec; }, scene: function(){ return scene; }, select: select, open: function(id){ setSection(id, true); }, close: function(id){ setSection(id, false); }, sections: function(){ return cur ? [cur] : []; }, exportPNG: exportPNG, exportPDF: exportPDF };
   }
   return { mount: mount };
 })();
