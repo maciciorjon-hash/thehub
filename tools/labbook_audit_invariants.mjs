@@ -27,6 +27,8 @@
 //   L13 a setup can be changed  Every question of an experiment's setup can be removed (a copy of a run that used OA need not ask for OA), a removed
 //                           type question can be restored, one of your own can be added and edited, and the experiment keeps the change; the Designer's
 //                           parameters step does the same. (Edit setup could only answer the fixed questions; the Designer could not remove a design's own)
+//   L14 the day sheet keeps the circles  Today on paper lists every culture with the five answers the screen offers (OK, Change media, Need to split,
+//                           Seed, Issue) as words to circle with a pen, not a bare box. (the sheet printed a box and the alert text only)
 //   L7 an import is one undo step  Importing one experiment from a file is undone by one ⌘Z (the bundle had it; the single import did not)
 //
 //   node tools/labbook_audit_invariants.mjs [--url=URL] [--only=L1,L3]
@@ -317,6 +319,20 @@ try {
     await ctx.close();
   }
   // ── L10 ──
+  if (run('L14')) {
+    counts.L14 = 1;
+    const ctx = await newCtx(); const { page } = await open(ctx);
+    await page.evaluate(`${SEED}`);
+    const r = await page.evaluate(() => {
+      window.lbCultures = () => [{ id: 'c1', c: { line: 'HEK293T', passage: 12, vessel: 'T75' }, alerts: [], worst: 'ok' }, { id: 'c2', c: { line: 'HeLa', passage: 8 }, alerts: [], worst: 'ok' }];
+      const d = document.createElement('div'); d.innerHTML = buildDaySheet(todayStr());
+      return [...d.querySelectorAll('.ds-cul')].map(row => [...row.querySelectorAll('.ds-o')].map(o => o.textContent));
+    });
+    const want = ['OK', 'Change media', 'Need to split', 'Seed', 'Issue'];
+    if (r.length !== 2) bad('L14', 'the day sheet printed ' + r.length + ' culture rows for 2 cultures');
+    r.forEach(o => { if (o.join('|') !== want.join('|')) bad('L14', 'a culture row offers [' + o.join(', ') + '] instead of the five answers'); });
+    await ctx.close();
+  }
   if (run('L10')) {
     counts.L10 = 1;
     const ctx = await newCtx(); const { page } = await open(ctx);
@@ -402,7 +418,7 @@ try {
     errs.forEach(m => bad('L13', 'page error: ' + m)); await ctx.close();
   }
 } finally { await browser.close(); if (srv) srv.kill(); }
-for (const id of ['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8', 'L9', 'L10', 'L11', 'L12', 'L13']) { if (ONLY && !ONLY.includes(id)) continue; const fs_ = findings.filter(f => f.id === id); process.stdout.write(`  ${fs_.length ? '✗' : '✓'} ${id}${fs_.length ? '  — ' + fs_.length + ' finding(s)' : ''}\n`); }
+for (const id of ['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8', 'L9', 'L10', 'L11', 'L12', 'L13', 'L14']) { if (ONLY && !ONLY.includes(id)) continue; const fs_ = findings.filter(f => f.id === id); process.stdout.write(`  ${fs_.length ? '✗' : '✓'} ${id}${fs_.length ? '  — ' + fs_.length + ' finding(s)' : ''}\n`); }
 const seen = new Set(); findings.forEach(f => { const k = f.id + f.m; if (seen.has(k)) return; seen.add(k); process.stdout.write(`     [${f.id}] ${f.m}\n`); });
 if (!findings.length) process.stdout.write('\nLabbook audit invariants hold.\n');
 process.exit(findings.length ? 1 : 0);
