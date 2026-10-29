@@ -29,6 +29,9 @@
 //                           parameters step does the same. (Edit setup could only answer the fixed questions; the Designer could not remove a design's own)
 //   L14 the day sheet keeps the circles  Today on paper lists every culture with the five answers the screen offers (OK, Change media, Need to split,
 //                           Seed, Issue) as words to circle with a pen, not a bare box. (the sheet printed a box and the alert text only)
+//   L15 a step is not cut in two  On paper a step that would cross a page edge and fits on the next page starts on it (`pk-keep`); one that is longer
+//                           than a page, or whose move would leave a big hole, flows on; the print root is left as it was. (steps and their tables were
+//                           cut mid-way, e.g. a recipe table with its header on one page and its rows on the next)
 //   L7 an import is one undo step  Importing one experiment from a file is undone by one ⌘Z (the bundle had it; the single import did not)
 //
 //   node tools/labbook_audit_invariants.mjs [--url=URL] [--only=L1,L3]
@@ -333,6 +336,23 @@ try {
     r.forEach(o => { if (o.join('|') !== want.join('|')) bad('L14', 'a culture row offers [' + o.join(', ') + '] instead of the five answers'); });
     await ctx.close();
   }
+  if (run('L15')) {
+    counts.L15 = 1;
+    const ctx = await newCtx(); const { page } = await open(ctx);
+    await page.evaluate(`${SEED}`);
+    const r = await page.evaluate(() => {
+      const out = {}, pr = el('print-root');
+      const mk = (fill, h) => { pr.innerHTML = LAB_CSS + '<div style="height:' + fill + 'px"></div><div class="lb-step" style="display:block;height:' + h + 'px"></div>'; _printKeep(pr); return pr.querySelector('.lb-step').classList.contains('pk-keep'); };
+      out.cross = mk(850, 300); out.fits = mk(400, 300); out.hole = mk(200, 900); out.long = mk(100, 1200);
+      out.style = pr.getAttribute('style'); return out;
+    });
+    if (!r.cross) bad('L15', 'a step that crosses a page edge and fits on the next page was not kept together');
+    if (r.fits) bad('L15', 'a step that fits on its page was marked');
+    if (r.hole) bad('L15', 'a step whose move would leave most of a page empty was moved');
+    if (r.long) bad('L15', 'a step longer than a page was marked');
+    if (r.style) bad('L15', 'the print root was left with an inline style: ' + r.style);
+    await ctx.close();
+  }
   if (run('L10')) {
     counts.L10 = 1;
     const ctx = await newCtx(); const { page } = await open(ctx);
@@ -418,7 +438,7 @@ try {
     errs.forEach(m => bad('L13', 'page error: ' + m)); await ctx.close();
   }
 } finally { await browser.close(); if (srv) srv.kill(); }
-for (const id of ['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8', 'L9', 'L10', 'L11', 'L12', 'L13', 'L14']) { if (ONLY && !ONLY.includes(id)) continue; const fs_ = findings.filter(f => f.id === id); process.stdout.write(`  ${fs_.length ? '✗' : '✓'} ${id}${fs_.length ? '  — ' + fs_.length + ' finding(s)' : ''}\n`); }
+for (const id of ['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8', 'L9', 'L10', 'L11', 'L12', 'L13', 'L14', 'L15']) { if (ONLY && !ONLY.includes(id)) continue; const fs_ = findings.filter(f => f.id === id); process.stdout.write(`  ${fs_.length ? '✗' : '✓'} ${id}${fs_.length ? '  — ' + fs_.length + ' finding(s)' : ''}\n`); }
 const seen = new Set(); findings.forEach(f => { const k = f.id + f.m; if (seen.has(k)) return; seen.add(k); process.stdout.write(`     [${f.id}] ${f.m}\n`); });
 if (!findings.length) process.stdout.write('\nLabbook audit invariants hold.\n');
 process.exit(findings.length ? 1 : 0);

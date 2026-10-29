@@ -1113,6 +1113,8 @@ html.lb-loading body > *{visibility:hidden;}
   #print-root{display:block!important;position:static;overflow:visible!important;height:auto!important;}
 }
 #print-root{display:none;color:#111;background:#fff;font-family:'IBM Plex Sans',sans-serif;}
+#print-root .pk-keep{break-inside:avoid!important;page-break-inside:avoid!important;}
+#print-root .lb-needs{break-after:avoid;}
 
 /* ── Mobile ─────────────────────────────────────────────────────────────── */
 /* ── Week planner ── */
@@ -23553,12 +23555,12 @@ var LAB_CSS='<style>@page{size:A4;margin:14mm 14mm 16mm}'
  +'#print-root .lb-aim{margin-top:3px;font:italic 400 9pt/1.4 sans-serif;color:#444}'
  // A day: its name on a rule, the number of steps and the waits on the right. Days flow —
  // a page per day left a page holding four lines of a table and nothing else.
- +'#print-root .lb-day{break-inside:auto}#print-root .lb-day+.lb-day{margin-top:16px}'
- +'#print-root .lb-daybar{display:flex;align-items:baseline;justify-content:space-between;gap:12px;border-bottom:1.2pt solid #111;padding:0 0 3px;margin:4px 0 8px;break-after:avoid}'
+ +'#print-root .lb-day{break-inside:auto}#print-root .lb-day+.lb-day{margin-top:12px}'
+ +'#print-root .lb-daybar{display:flex;align-items:baseline;justify-content:space-between;gap:12px;border-bottom:1.2pt solid #111;padding:0 0 3px;margin:3px 0 6px;break-after:avoid}'
  +'#print-root .lb-dayl{font:700 11pt/1.2 sans-serif;color:#000}#print-root .lb-dayl .lb-wkend{font:600 7pt/1 sans-serif;letter-spacing:.6px;text-transform:uppercase;color:#777;margin-left:8px}'
  +'#print-root .lb-dayr{font:400 8.5pt/1.3 sans-serif;color:#666;text-align:right}'
  // What the day needs: two columns between two hairlines, the amount bold, where it lives in grey.
- +'#print-root .lb-needs{border-top:.5pt solid #999;border-bottom:.5pt solid #999;padding:5px 0 6px;margin:0 0 10px;break-inside:avoid;font:400 8.5pt/1.35 sans-serif}'
+ +'#print-root .lb-needs{border-top:.5pt solid #999;border-bottom:.5pt solid #999;padding:5px 0 6px;margin:0 0 7px;break-inside:avoid;font:400 8.5pt/1.35 sans-serif}'
  +'#print-root .lb-needs-t{font:600 7pt/1.2 sans-serif;letter-spacing:1px;text-transform:uppercase;color:#666;margin-bottom:3px}'
  +'#print-root .lb-needs-g{display:grid;grid-template-columns:1fr 1fr;gap:1px 20px}'
  +'#print-root .lb-ni{display:flex;gap:6px;align-items:baseline;padding:1px 0}'
@@ -23566,7 +23568,7 @@ var LAB_CSS='<style>@page{size:A4;margin:14mm 14mm 16mm}'
  +'#print-root .lb-ni .lb-nn{flex:1 1 auto;color:#111}#print-root .lb-ni .lb-nq{flex:none;font-weight:600;white-space:nowrap;color:#000}'
  +'#print-root .lb-ni .lb-nw{display:block;font-size:7.5pt;color:#777}#print-root .lb-ni .lb-nnote{font-size:7.5pt;color:#777}'
  // A step: its number in the margin, the title on a hairline, the actions under it.
- +'#print-root .lb-step{display:grid;grid-template-columns:22px 1fr;gap:0 6px;margin-top:9px;break-inside:auto}'
+ +'#print-root .lb-step{display:grid;grid-template-columns:22px 1fr;gap:0 6px;margin-top:7px;break-inside:auto}'
  +'#print-root .lb-sn{padding-top:1px;text-align:right}'
  +'#print-root .lb-no{font:700 10pt/1.3 ui-monospace,Menlo,monospace;color:#000}'
  +'#print-root .lb-stt{display:flex;align-items:baseline;gap:10px;border-bottom:.5pt solid #bbb;padding-bottom:2px;margin-bottom:4px;break-after:avoid}'
@@ -23582,7 +23584,7 @@ var LAB_CSS='<style>@page{size:A4;margin:14mm 14mm 16mm}'
  +'#print-root .lb-dim{display:block;font-size:7.5pt;color:#777;font-weight:400}#print-root .lb-tbl .cc-no{color:#777}'
  // The actions are the sheet: one box each, the amounts bold, and a line never splits over a page.
  +'#print-root .lb-ck{list-style:none;margin:3px 0 2px;padding:0}#print-root .cv{font-weight:700;padding:0;background:none!important;border-radius:0}'
- +'#print-root .lb-ck li{position:relative;padding-left:40px;margin:3px 0;font:400 9.5pt/1.4 sans-serif;break-inside:avoid}'
+ +'#print-root .lb-ck li{position:relative;padding-left:40px;margin:2px 0;font:400 9.5pt/1.4 sans-serif;break-inside:avoid}'
  +'#print-root .lb-ck li::before{content:"";position:absolute;left:0;top:2px;width:10px;height:10px;border:1pt solid #333;border-radius:1px}'
  +'#print-root .lb-ckn{position:absolute;left:15px;top:0;font:500 7.5pt/1.75 ui-monospace,Menlo,monospace;color:#888}'
  // The wait after a step, on its own line between it and the next.
@@ -24334,7 +24336,36 @@ function exportMethods(id){
 // The browser names the PDF after the title of the document it is printing — and inside dHUB
 // that is the shell's, which is why every export came out as "dHUB.pdf" whatever it contained.
 // Both titles are set, and both are put back afterwards.
+// A step is not cut across two pages when it fits on the next one. CSS alone cannot say "unless that
+// leaves half a page empty", so the sheet is laid out once off-screen at the paper's own width, walked
+// in order the way the printer will, and a block gets `pk-keep` (break-inside:avoid) only when it
+// would cross a page edge, is shorter than a page, and moving it wastes less than WASTE of one. A longer
+// step, or one that would leave a big hole, flows on as before. Every export goes through _printTitled.
+var PRINT_KEEP_SEL='.ds-step,.lb-step,.pd-block,.pd-res', PRINT_KEEP_WASTE=.4;
+function _printKeep(pr){
+  if(!pr) return;
+  var wasStyle=pr.getAttribute('style');
+  try{
+    var css=''; [].forEach.call(pr.querySelectorAll('style'),function(x){ css+=x.textContent; });
+    var m=css.match(/@page\s*\{\s*size:\s*([^;]+);\s*margin:\s*([^;}]+)/); if(!m) return;
+    var land=/landscape/i.test(m[1]), mg=m[2].trim().split(/\s+/).map(parseFloat);
+    var mt=mg[0], mr=mg.length>1?mg[1]:mg[0], mb=mg.length>2?mg[2]:mg[0], ml=mg.length>3?mg[3]:mr;
+    var K=96/25.4, pageH=((land?210:297)-mt-mb)*K, pageW=((land?297:210)-mr-ml);
+    pr.style.cssText='display:block;position:absolute;left:-99999px;top:0;width:'+pageW+'mm;visibility:hidden';
+    [].forEach.call(pr.querySelectorAll('.pk-keep'),function(b){ b.classList.remove('pk-keep'); });
+    var base=pr.getBoundingClientRect().top;
+    var blocks=[].filter.call(pr.querySelectorAll(PRINT_KEEP_SEL),function(b){ return !b.parentElement.closest(PRINT_KEEP_SEL); })
+      .map(function(b){ var r=b.getBoundingClientRect(); return {b:b,t:r.top-base,h:r.height}; });
+    var shift=0;
+    blocks.forEach(function(x){
+      var t=x.t+shift, used=t%pageH, rest=pageH-used;
+      if(x.h>rest+.5 && x.h<=pageH && rest<=pageH*PRINT_KEEP_WASTE){ x.b.classList.add('pk-keep'); shift+=rest; }
+    });
+  }catch(e){}
+  finally{ if(wasStyle==null) pr.removeAttribute('style'); else pr.setAttribute('style',wasStyle); }
+}
 function _printTitled(name,then){
+  _printKeep(el('print-root'));
   name=String(name||'Labbook').replace(/[\\/:*?"<>|]/g,'-').replace(/\s+/g,' ').trim()||'Labbook';
   var was=document.title, top=null, topWas=null;
   try{ if(window.parent && window.parent!==window && window.parent.document){ top=window.parent.document; topWas=top.title; } }catch(e){ top=null; }
