@@ -477,12 +477,15 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
 .sx-hand td input{width:64px !important;height:26px !important;padding:0 6px !important;border-radius:0 !important;border:0 !important;border-right:1px solid var(--border) !important;border-bottom:1px solid var(--border) !important;font-family:var(--mono) !important;font-size:var(--fs-2) !important;text-align:right;box-shadow:none !important;background:var(--surface) !important;}
 .sx-hand td input:focus{outline:2px solid var(--accent) !important;outline-offset:-2px;}
 /* one control: a swatch, what it is, the wells it covers (A1:D1), how many */
-.sx-ctl{display:grid;grid-template-columns:14px minmax(0,1fr) 150px 40px;align-items:center;gap:10px;padding:9px 0;}
+.sx-ctl{display:grid;grid-template-columns:14px minmax(0,1fr) 150px minmax(40px,auto);align-items:center;gap:10px;padding:9px 0;}
 .sx-ctl+.sx-ctl{border-top:1px solid var(--border);}
 .sx-ctl i{width:14px;height:14px;border-radius:var(--r-1);border:1px solid var(--border2);}
 .sx-ctl .t b{display:block;font-size:var(--fs-3);font-weight:600;color:var(--text);}
 .sx-ctl .t span{display:block;font-size:var(--fs-2);color:var(--text3);line-height:1.35;}
 .sx-ctl input{font-family:var(--mono) !important;font-size:var(--fs-3) !important;}
+.sx-ctl.nox{grid-template-columns:minmax(0,1fr) 150px minmax(40px,auto);}
+.sx-ctl.pick{cursor:pointer;margin:0 -10px;padding-left:10px;padding-right:10px;border-radius:var(--r-2);}
+.sx-ctl.pick.on{background:color-mix(in srgb,var(--accent) 9%,transparent);box-shadow:inset 3px 0 0 var(--accent);}
 .sx-ctl .n{font-size:var(--fs-2);color:var(--text3);text-align:right;font-variant-numeric:tabular-nums;}
 .sx-ctl.bad input{border-color:var(--poor) !important;}
 /* the plate, small: what the layout is, as it is typed */
@@ -492,6 +495,13 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
 .sx-mini{display:grid;gap:2px;}
 .sx-mini .l{font-size:var(--fs-1);color:var(--text3);display:flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums;line-height:1;}
 .sx-mini .w{aspect-ratio:1;border-radius:2px;background:var(--surface3);border:1px solid var(--border);box-sizing:border-box;}
+.sx-mini.paint{touch-action:none;user-select:none;-webkit-user-select:none;}
+.sx-mini.paint .w{cursor:crosshair;}
+.sx-mini.paint .l[data-row],.sx-mini.paint .l[data-col]{cursor:pointer;}
+.sx-mini.paint .l[data-row]:hover,.sx-mini.paint .l[data-col]:hover{color:var(--accent);}
+.sx-mini .w.out{background-image:linear-gradient(135deg,transparent 42%,var(--danger) 42% 58%,transparent 58%);}
+.sx-mini .w.pv{outline:2px solid var(--accent);outline-offset:-1px;}
+.sx-mini .w.pv.rm{outline-color:var(--danger);outline-style:dashed;}
 .sx-mini .w.rd{background:color-mix(in srgb,var(--accent) 22%,var(--surface3));}
 .sx-legend{display:flex;flex-direction:column;gap:5px;margin-top:10px;}
 .sx-legend div{display:flex;align-items:center;gap:8px;font-size:var(--fs-2);color:var(--text2);}
@@ -523,6 +533,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
   .sx-grid{grid-template-columns:minmax(0,1fr);}
   .sx-n{display:none;}
   .sx-ctl{grid-template-columns:14px minmax(0,1fr) 110px;}
+  .sx-ctl.nox{grid-template-columns:minmax(0,1fr) 110px;}
   .sx-ctl .n{display:none;}
 }
 /* setup-kit:end */
@@ -570,19 +581,68 @@ var SetupKit = (function(){
       chips.map(function(c){ return '<span class="sx-chip' + (c[1] ? ' ok' : '') + '">' + esc(c[0]) + (c[1] ? ' · ' + c[1] : '') + '</span>'; }).join('') + '</div>' +
       '<button class="sx-ghost" data-delplate="' + i + '" title="Remove this plate" aria-label="Remove ' + esc(name) + '">' + esc(del) + '</button></div>';
   }
-  // The plate, small. cell(r, c) → { bg: css colour or '', rd: has readings, t: tooltip }. wells are the same on every app: rows A…, columns 1….
+  // The plate, small. paint: true when the plate is dragged on (see paint()). cell(r, c) → { bg: css colour or '', rd: has readings, cls: extra class, t: tooltip }. wells are the same on every app: rows A…, columns 1….
   function mini(o){
-    var rows = o.rows, cols = o.cols, h = '<div class="sx-mini" style="grid-template-columns:14px repeat(' + cols + ',1fr)"><span></span>', r, c;
-    for (c = 0; c < cols; c++) h += '<span class="l">' + (cols > 12 && c % 2 ? '' : c + 1) + '</span>';
+    var rows = o.rows, cols = o.cols, h = '<div class="sx-mini' + (o.paint ? ' paint' : '') + '" style="grid-template-columns:14px repeat(' + cols + ',1fr)"><span></span>', r, c;
+    for (c = 0; c < cols; c++) h += '<span class="l" data-col="' + (c + 1) + '">' + (cols > 12 && c % 2 ? '' : c + 1) + '</span>';
     for (r = 0; r < rows; r++) {
-      h += '<span class="l">' + String.fromCharCode(65 + r) + '</span>';
+      h += '<span class="l" data-row="' + String.fromCharCode(65 + r) + '">' + String.fromCharCode(65 + r) + '</span>';
       for (c = 0; c < cols; c++) {
         var x = o.cell(r, c) || {};
-        h += '<span class="w' + (x.rd ? ' rd' : '') + '"' + (x.bg ? ' style="background:' + x.bg + ';"' : '') + (x.t ? ' title="' + esc(x.t) + '"' : '') + '></span>';
+        h += '<span class="w' + (x.rd ? ' rd' : '') + (x.cls ? ' ' + x.cls : '') + '" data-p="' + pos(r, c) + '"' + (x.bg ? ' style="background:' + x.bg + ';"' : '') + (x.t ? ' title="' + esc(x.t) + '"' : '') + '></span>';
       }
     }
     return '<div class="sx-mini-t">' + esc(o.title || '') + '<span>' + esc(o.sub || '') + '</span></div>' + h + '</div>' + legend(o.legend || [], o.empty);
   }
+  // Drag a box over the plate drawn by mini(): o.has(id) → the well already holds what is being painted (a drag that starts on one erases),
+  // o.apply(ids, add) takes the wells of the box when the button is let go. A row letter or a column number takes the whole row or column; Esc cancels.
+  // root is the element that holds the plate and stays when the plate is drawn again; calling paint twice on one root binds it once.
+  function paint(root, o){
+    if (!root || root._sxPaint) { if (root) root._sxPaint = o; return; }
+    root._sxPaint = o;
+    var drag = null;
+    root._sxStop = function(){ if (!drag) return false; drag = null; show([], true); return true; };
+    function cur(){ return root._sxPaint; }
+    function box(a, b){
+      var A = rc(a), B = rc(b), out = [], r, c;
+      for (r = Math.min(A.r, B.r); r <= Math.max(A.r, B.r); r++) for (c = Math.min(A.c, B.c); c <= Math.max(A.c, B.c); c++) out.push(pos(r, c));
+      return out;
+    }
+    function show(ids, add){
+      var set = {}; (ids || []).forEach(function(x){ set[x] = 1; });
+      Array.prototype.forEach.call(root.querySelectorAll('.sx-mini .w'), function(w){ var on = !!set[w.dataset.p]; w.classList.toggle('pv', on); w.classList.toggle('rm', on && !add); });
+    }
+    function wellAt(e){ var el = document.elementFromPoint(e.clientX, e.clientY); return el && el.closest ? el.closest('.sx-mini .w') : null; }
+    function line(h){
+      var o2 = cur(), ids = [], i, n = h.dataset.row ? o2.cols : o2.rows;
+      for (i = 0; i < n; i++) ids.push(h.dataset.row ? h.dataset.row + (i + 1) : String.fromCharCode(65 + i) + h.dataset.col);
+      return ids;
+    }
+    root.addEventListener('pointerdown', function(e){
+      if (e.button) return;
+      var o2 = cur(), w = e.target.closest && e.target.closest('.sx-mini .w'), h = e.target.closest && e.target.closest('.sx-mini .l[data-row], .sx-mini .l[data-col]');
+      if (h) { var ids = line(h).filter(function(x){ return !o2.exists || o2.exists(x); }); if (!ids.length) return; var add = !ids.every(function(x){ return o2.has(x); }); e.preventDefault(); o2.apply(ids, add); return; }
+      if (!w || (o2.exists && !o2.exists(w.dataset.p))) return;
+      e.preventDefault();
+      drag = { a: w.dataset.p, add: !o2.has(w.dataset.p), ids: [w.dataset.p] };
+      try { root.setPointerCapture(e.pointerId); } catch (_) {}
+      show(drag.ids, drag.add);
+    });
+    root.addEventListener('pointermove', function(e){
+      if (!drag) return; var w = wellAt(e); if (!w || w.dataset.p === drag.last) return;
+      drag.last = w.dataset.p; var o2 = cur(); drag.ids = box(drag.a, w.dataset.p).filter(function(x){ return !o2.exists || o2.exists(x); }); show(drag.ids, drag.add);
+    });
+    function end(e, cancel){
+      if (!drag) return; var d = drag; drag = null; show([], true);
+      try { root.releasePointerCapture(e.pointerId); } catch (_) {}
+      if (!cancel && d.ids.length) cur().apply(d.ids, d.add);
+    }
+    root.addEventListener('pointerup', function(e){ end(e, false); });
+    root.addEventListener('pointercancel', function(e){ end(e, true); });
+    // Esc while the button is down only drops the box; the dialog's own Esc (which closes it) must not hear it, so this listens first, on the window
+    if (!paintEsc) { paintEsc = true; window.addEventListener('keydown', function(e){ if (e.key !== 'Escape') return; var m = document.querySelector('.sx-mini.paint'), r = m && m.parentNode; if (r && r._sxStop && r._sxStop()) { e.stopPropagation(); e.preventDefault(); } }, true); }
+  }
+  var paintEsc = false;
   // items [[colour, text, count]]
   function legend(items, empty){
     return items.length ? '<div class="sx-legend">' + items.map(function(x){ return '<div><i style="background:' + x[0] + '"></i>' + esc(x[1]) + '<em>' + x[2] + '</em></div>'; }).join('') + '</div>'
@@ -749,7 +809,7 @@ var SetupKit = (function(){
     };
     return K;
   }
-  return { create: create, esc: esc, group: group, field: field, seg: seg, drop: drop, plateRow: plateRow, mini: mini, legend: legend, ctlRow: ctlRow, issues: issues, rangeStr: rangeStr, pos: pos, rc: rc,
+  return { create: create, esc: esc, group: group, field: field, seg: seg, drop: drop, plateRow: plateRow, mini: mini, paint: paint, legend: legend, ctlRow: ctlRow, issues: issues, rangeStr: rangeStr, pos: pos, rc: rc,
            dropFiles: dropFiles, handGrid: handGrid, handKeys: handKeys, handPaste: handPaste, OK: OK, WARN: WARN, X: X, CHL: CHL, CHR: CHR };
 })();
 /* setup-kit-js:end */
@@ -3304,11 +3364,23 @@ function tpsControls() {
       '<div id="tps-ctls">' + ['veh', 'bkg', 'blank', 'out'].map(k => SetupKit.ctlRow(k, TPS_CTL[k][0], TPS_CTL[k][1], TPS_CTL[k][2])).join('') + '</div>' +
       '<div class="sx-hint" style="margin-top:14px"><b>A condition with a vehicle of its own?</b> Wells normalised against other wells instead of the plate-wide vehicle (for example the same compound with and without a second drug, each with its own DMSO wells):</div>' +
       '<div id="tps-rules"></div>' +
-      '<div class="sx-ctl"><div class="t"><b>Normalise</b><span>wells…</span></div><input type="text" id="tps-rx" placeholder="e.g. A2:D6" aria-label="Wells to normalise"></div>' +
-      '<div class="sx-ctl"><div class="t"><b>against</b><span>wells…</span></div><input type="text" id="tps-ry" placeholder="e.g. A1:D1" aria-label="Wells they are normalised against"><button class="btn sm" id="tps-radd">Add</button></div>' +
-      '<div class="sx-hint">Type wells or ranges — <b>A1:H2</b>, <b>E1:F1, H2</b>, a row letter <b>B</b>, a column number <b>11</b> — and press Enter or leave the box. Empty clears that control. Anything that is not a control or a compound is counted as vehicle until you say what it is. For a layout that is not a block, paste it (Paste a layout, below) or select the wells on the Plate tab.</div>') +
-    '</div><div class="sx-side"><div class="sx-mini-wrap" id="tps-mini-c"></div></div></div>';
-  tpsCtlFill(); tpsRulesFill(); tpsMini('tps-mini-c');
+      '<div class="sx-ctl nox"><div class="t"><b>Normalise</b><span>these wells…</span></div><input type="text" id="tps-rx" placeholder="e.g. A2:D6" aria-label="Wells to normalise"><span class="n"></span></div>' +
+      '<div class="sx-ctl nox"><div class="t"><b>against</b><span>these control wells…</span></div><input type="text" id="tps-ry" placeholder="e.g. A1:D1" aria-label="Wells they are normalised against"><button class="btn sm" id="tps-radd">Add</button></div>' +
+      '<div class="sx-hint"><b>Drag on the plate</b> to mark wells: pick a control on the left, then drag a box over its wells (a row letter or a column number takes the whole line; a drag that starts on a well already marked clears them). Or type wells or ranges — <b>A1:H2</b>, <b>E1:F1, H2</b>, <b>B</b>, <b>11</b> — and press Enter. Empty clears that control. Anything that is not a control or a compound is counted as vehicle until you say what it is. For a layout that is not a block, paste it (Paste a layout, below).</div>') +
+    '</div><div class="sx-side"><div class="sx-hint" id="tps-brush" style="margin:0 0 8px"></div><div class="sx-mini-wrap" id="tps-mini-c"></div></div></div>';
+  tpsCtlFill(); tpsRulesFill(); tpsMini('tps-mini-c'); tpsBrush(TPS.brush || 'veh');
+  SetupKit.paint(tpsEl('tps-mini-c'), { rows: p.fmt.rows, cols: p.fmt.cols, exists: id => !!p.wells[id], has: id => (tpsSummary(p).ids[TPS.brush || 'veh'] || []).indexOf(id) >= 0, apply: (ids, add) => tpsPaint(ids, add) });
+}
+// The control a drag on the plate paints: one of the four rows, highlighted; clicking a row or its box picks it.
+function tpsBrush(k) {
+  TPS.brush = k; const root = tpsEl('tps-ctls'); if (!root) return;
+  root.querySelectorAll('.sx-ctl[data-k]').forEach(r => { r.classList.add('pick'); r.classList.toggle('on', r.dataset.k === k); });
+  const h = tpsEl('tps-brush'); if (h) h.innerHTML = 'Drag over the wells that are <b>' + esc(TPS_CTL[k][1]) + '</b>';
+}
+function tpsPaint(ids, add) {
+  const p = tpPlate(), k = TPS.brush || 'veh'; if (!p) return;
+  const set = new Set(tpsSummary(p).ids[k] || []); ids.forEach(id => { if (!p.wells[id]) return; if (add) set.add(id); else set.delete(id); });
+  tpsAssign(k, tpsIds(p).filter(id => set.has(id)));
 }
 function tpsRulesFill() {
   const el = tpsEl('tps-rules'), p = tpPlate(); if (!el || !p) return;
@@ -3343,28 +3415,34 @@ function tpsSetRole(key, text, inp) {
   const ids = got.filter(id => p.wells[id]);
   if (txt && !ids.length) { row.classList.add('bad'); tpToast('None of those wells has reads.', 'warn'); return; }
   row.classList.remove('bad');
+  inp.value = SetupKit.rangeStr(ids, tpsPos); tpsAssign(key, ids);
+}
+// Put exactly these wells in that control (what is typed in its box, or painted on the plate); the wells it had before and are not in the list go back to no role.
+function tpsAssign(key, ids) {
+  const p = tpPlate(); if (!p) return;
   const cur = tpsSummary(p).ids[key] || [];
-  if (SetupKit.rangeStr(ids, tpsPos) === SetupKit.rangeStr(cur, tpsPos)) { inp.value = SetupKit.rangeStr(ids, tpsPos); return; }
+  if (SetupKit.rangeStr(ids, tpsPos) === SetupKit.rangeStr(cur, tpsPos)) return;
   tpUndoMark('wells assigned');
   if (key === 'out') tpEx(p).wells = ids.slice();
   else { const set = new Set(ids); Object.keys(p.wells).forEach(id => { const w = p.wells[id], r = tpsRoleOf(w); if (r === key && !set.has(id)) tpsToNone(w); else if (set.has(id) && r !== key) tpsToRole(w, key, r, id); }); }
-  p._mx = null; TPS.dirty = true; tpAutosaveSoon(); inp.value = SetupKit.rangeStr(ids, tpsPos); tpsK.refresh();
+  p._mx = null; TPS.dirty = true; tpAutosaveSoon(); tpsK.refresh();
 }
 // The plate, small: what the layout is, as it is typed. Compounds in their colours, controls in theirs, a tint where there are reads and no role yet.
 function tpsMini(id) {
   const el = tpsEl(id), p = tpPlate(); if (!el) return; if (!p) { el.innerHTML = ''; return; }
-  const pal = tpPal(), s = tpsSummary(p), lg = [];
+  const pal = tpPal(), s = tpsSummary(p), lg = [], ex = new Set(tpEx(p).wells);
   ['veh', 'bkg', 'blank'].forEach(k => { if (s[k]) lg.push([TPS_CTL[k][0], TPS_CTL[k][1], s[k]]); });
   const names = s.cpds.map(c => c.name).filter((v, i, a) => a.indexOf(v) === i);
   if (names.length && names.length <= 6) names.forEach(n => lg.push([tpCompColor(p, n, pal), n, s.cpds.filter(c => c.name === n).reduce((a, c) => a + c.wells, 0)]));
   else if (names.length) lg.push([tpCompColor(p, names[0], pal), names.length + ' compounds', s.dose]);
   if (s.none) lg.push(['var(--surface3)', 'No role yet', s.none]);
-  el.innerHTML = SetupKit.mini({ rows: p.fmt.rows, cols: p.fmt.cols, title: p.name, sub: p.fmt.n + '-well · reads in a tint', legend: lg, empty: 'Nothing is marked on this plate yet.', cell: (r, c) => {
+  if (s.out) lg.push(['var(--danger)', 'Left out (slashed)', s.out]);
+  el.innerHTML = SetupKit.mini({ paint: id === 'tps-mini-c', rows: p.fmt.rows, cols: p.fmt.cols, title: p.name, sub: p.fmt.n + '-well · reads in a tint', legend: lg, empty: 'Nothing is marked on this plate yet.', cell: (r, c) => {
     const id = tpsPos(r, c), w = p.wells[id]; if (!w) return { t: id + ' · no reads' };
-    const role = tpsRoleOf(w);
-    if (role === 'veh' || role === 'bkg' || role === 'blank') return { bg: TPS_CTL[role][0], rd: true, t: id + ' · ' + TPS_CTL[role][1] };
-    if (role === 'dose') return { bg: tpCompColor(p, w.compound, pal), rd: true, t: id + ' · ' + (w.compound || '(no name)') + (w.conc != null ? ' · ' + tpAxConc(w.conc) : '') };
-    return { rd: true, t: id + ' · no role yet' };
+    const role = tpsRoleOf(w), x = ex.has(id) ? ' · left out' : '', cls = ex.has(id) ? 'out' : '';
+    if (role === 'veh' || role === 'bkg' || role === 'blank') return { bg: TPS_CTL[role][0], rd: true, cls: cls, t: id + ' · ' + TPS_CTL[role][1] + x };
+    if (role === 'dose') return { bg: tpCompColor(p, w.compound, pal), rd: true, t: id + ' · ' + (w.compound || '(no name)') + (w.conc != null ? ' · ' + tpAxConc(w.conc) : '') + x, cls: cls };
+    return { rd: true, cls: cls, t: id + ' · no role yet' + x };
   } });
 }
 /* — 4 · Compounds — */
@@ -3489,7 +3567,9 @@ function tpsWire(d) {
     if ((t.id === 'tps-rx' || t.id === 'tps-ry') && e.key === 'Enter') { e.preventDefault(); tpsRuleAdd(); return; }
     if (t.id === 'tps-drop' && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); tpPickFiles(); }
   });
+  d.addEventListener('focusin', e => { const r = e.target.closest && e.target.closest('#tps-ctls .sx-ctl[data-k]'); if (r) tpsBrush(r.dataset.k); });
   d.addEventListener('click', e => {
+    const row = e.target.closest('#tps-ctls .sx-ctl[data-k]'); if (row) tpsBrush(row.dataset.k);
     const t = e.target.closest('button, .sx-drop, [data-plate]'); if (!t) return;
     if (t.id === 'tps-drop') { tpPickFiles(); return; }
     if (t.id === 'tps-demo') { tpLoadExample().then(() => tpsK.render()); return; }

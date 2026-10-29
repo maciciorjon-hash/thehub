@@ -19,6 +19,7 @@
 //     no two runs of text land on each other, nothing is cut with no way to scroll to it, no dead handler, no misaligned row (the empty-state icon that was 44px inside a button)
 // K19 a GloMax time-course file is read as it comes: the reader's own clock, A:1 labels, several readouts as several plates, missing never 0; a range of wells is parsed or refused
 // K20 Setup (Reads · Time · Controls · Compounds · Review): a layout-less file opens it at Controls, the controls and the series land on the plate, the fit runs once at the end, ⌘Z undoes, nothing leaves the card
+// K25 the plate on Setup › Controls is dragged on: pick a control, drag a box (a row letter / column number takes the line, a drag that starts on a marked well clears), Esc cancels, no well without reads is taken; the Normalise / against rows keep their captions
 // K21 normalise X against Y: wells read against control wells of their own (one vehicle per condition on a plate); the rest keep the plate's vehicle; a rule with no usable control leaves its wells without a curve, never on another vehicle; Plate tab and Setup both make, show and remove rules, ⌘Z covers them
 // K22 raw kinetics: Curves › Raw (RLU) draws the reads as written (any plate, a rising protein level too): background, fold over T0, vehicle, single wells; the plate with a number in every well and a slider over the reads
 // K23 axis ranges: every Tempo chart takes a minimum and a maximum for each axis (typed in the unit it is read in; a range that is not one stays on automatic and says so), also in the saved figure
@@ -654,6 +655,43 @@ try {
     await c6.close();
   }
 
+  /* ───── K25 Setup › Controls: drag a box over the plate to mark the controls ───── */
+  {
+    const c7 = await browser.newContext({ viewport: { width: 1200, height: 900 } }), pg = await c7.newPage(), e7 = [];
+    pg.on('pageerror', e => e7.push(e.message));
+    await pg.route(/^https?:/, r => r.abort()); await pg.addInitScript(() => { try { localStorage.clear(); } catch (e) {} });
+    await pg.goto('file://' + FILE); await pg.waitForFunction(() => typeof tpsOpen === 'function');
+    await pg.evaluate(() => { const p = tpSynthPlate({ seed: 3, compounds: tpSynthDemoSpecs().slice(0, 2), reads: 30 }); Object.values(p.wells).forEach(w => { w.kind = 'sample'; delete w.role; w.compound = ''; w.target = ''; w.conc = null; }); p.name = 'Drag'; TP.plates = [p]; TP.pi = 0; tpsOpen(2); });
+    await pg.waitForTimeout(250);
+    const cell = id => pg.locator('#tps-mini-c .w[data-p="' + id + '"]');
+    const mid = async id => { const b = await cell(id).boundingBox(); return [b.x + b.width / 2, b.y + b.height / 2]; };
+    const drag = async (a, z, esc) => { const [ax, ay] = await mid(a), [zx, zy] = await mid(z); await pg.mouse.move(ax, ay); await pg.mouse.down(); await pg.mouse.move(zx, zy, { steps: 5 }); if (esc) await pg.keyboard.press('Escape'); await pg.mouse.up(); };
+    const ids = () => pg.evaluate(() => { const s = tpsSummary(tpPlate()); return { veh: s.ids.veh.join(), bkg: s.ids.bkg.join(), out: s.ids.out.join(), none: s.none }; });
+    const r = {};
+    await drag('A1', 'B2'); r.veh = (await ids()).veh;
+    await pg.click('#tps-ctls .sx-ctl[data-k="bkg"] .t'); await drag('H11', 'H12'); r.bkg = (await ids()).bkg;
+    r.field = await pg.inputValue('#tps-ctls input[data-role="bkg"]');
+    await drag('A1', 'A2'); r.take = await ids();                                  // painting a well that holds another control moves it
+    await pg.click('#tps-ctls .sx-ctl[data-k="veh"] .t'); await drag('B1', 'B2'); r.erase = (await ids()).veh;   // a drag that starts on a marked well clears
+    await drag('D3', 'D4', true); r.esc = (await ids()).veh;                        // Esc leaves it as it was
+    await pg.click('#tps-mini-c .l[data-col="12"]'); r.col = (await ids()).veh.split(',').filter(x => /12$/.test(x)).length;
+    await pg.click('#tps-mini-c .l[data-row="C"]'); r.row = (await ids()).veh.split(',').filter(x => /^C/.test(x)).length;
+    await pg.click('#tps-ctls .sx-ctl[data-k="out"] .t'); await drag('E1', 'E2'); r.out = (await ids()).out;
+    r.none = await pg.evaluate(() => { const b = tpsSummary(tpPlate()).none; const n = Object.keys(tpPlate().wells).length; const noReads = document.querySelectorAll('#tps-mini-c .w:not(.rd)').length; return { b, n, noReads }; });
+    await drag('F5', 'F6'); r.noReads = (await ids()).veh.indexOf('F5') < 0;   // a well with no reads is not taken
+    await pg.keyboard.press('Control+z'); await pg.waitForTimeout(120); r.undo = (await ids()).out;
+    // the two rules rows keep their captions: label fully inside the card, input in the same column as the controls above
+    r.rows = await pg.evaluate(() => { const col = document.querySelector('#tps-ctls input').getBoundingClientRect().left, o = []; ['tps-rx', 'tps-ry'].forEach(id => { const i = document.getElementById(id), row = i.closest('.sx-ctl'), b = row.querySelector('.t b'), br = b.getBoundingClientRect(); o.push({ id, sameCol: Math.abs(i.getBoundingClientRect().left - col) < 6 || i.getBoundingClientRect().left > col - 6, cut: b.scrollWidth > b.clientWidth + 1 || br.width < 40 }); }); return o; });
+    check('K25 a drag over the plate marks the wells of the picked control (Vehicle A1:B2, Background H11:H12, typed box follows)', r.veh === 'A1,A2,B1,B2' && r.bkg === 'H11,H12' && r.field === 'H11:H12', JSON.stringify(r));
+    check('K25 a well painted for another control moves to it', r.take.bkg === 'A1,A2,H11,H12' && r.take.veh === 'B1,B2', JSON.stringify(r.take));
+    check('K25 a drag that starts on a marked well clears the box; Esc cancels a drag', r.erase === '' && r.esc === '', JSON.stringify([r.erase, r.esc]));
+    check('K25 a column number or a row letter takes the whole line (12 / C)', r.col === 8 && r.row >= 1, JSON.stringify([r.col, r.row]));
+    check('K25 Left out is painted too, and a well with no reads is never taken', r.out === 'E1,E2' && r.noReads, JSON.stringify([r.out, r.noReads]));
+    check('K25 ⌘Z undoes a painted box', r.undo === '', JSON.stringify(r.undo));
+    check('K25 the Normalise / against rows keep their captions, in the controls’ column', r.rows.every(x => !x.cut && x.sameCol), JSON.stringify(r.rows));
+    check('K25 no page error while painting', e7.length === 0, e7.join(' | '));
+    await c7.close();
+  }
   /* ───── K21 normalise X against Y: a vehicle of its own for some wells of the plate ───── */
   {
     const K21 = await ev(() => {

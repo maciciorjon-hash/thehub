@@ -39,19 +39,68 @@ var SetupKit = (function(){
       chips.map(function(c){ return '<span class="sx-chip' + (c[1] ? ' ok' : '') + '">' + esc(c[0]) + (c[1] ? ' · ' + c[1] : '') + '</span>'; }).join('') + '</div>' +
       '<button class="sx-ghost" data-delplate="' + i + '" title="Remove this plate" aria-label="Remove ' + esc(name) + '">' + esc(del) + '</button></div>';
   }
-  // The plate, small. cell(r, c) → { bg: css colour or '', rd: has readings, t: tooltip }. wells are the same on every app: rows A…, columns 1….
+  // The plate, small. paint: true when the plate is dragged on (see paint()). cell(r, c) → { bg: css colour or '', rd: has readings, cls: extra class, t: tooltip }. wells are the same on every app: rows A…, columns 1….
   function mini(o){
-    var rows = o.rows, cols = o.cols, h = '<div class="sx-mini" style="grid-template-columns:14px repeat(' + cols + ',1fr)"><span></span>', r, c;
-    for (c = 0; c < cols; c++) h += '<span class="l">' + (cols > 12 && c % 2 ? '' : c + 1) + '</span>';
+    var rows = o.rows, cols = o.cols, h = '<div class="sx-mini' + (o.paint ? ' paint' : '') + '" style="grid-template-columns:14px repeat(' + cols + ',1fr)"><span></span>', r, c;
+    for (c = 0; c < cols; c++) h += '<span class="l" data-col="' + (c + 1) + '">' + (cols > 12 && c % 2 ? '' : c + 1) + '</span>';
     for (r = 0; r < rows; r++) {
-      h += '<span class="l">' + String.fromCharCode(65 + r) + '</span>';
+      h += '<span class="l" data-row="' + String.fromCharCode(65 + r) + '">' + String.fromCharCode(65 + r) + '</span>';
       for (c = 0; c < cols; c++) {
         var x = o.cell(r, c) || {};
-        h += '<span class="w' + (x.rd ? ' rd' : '') + '"' + (x.bg ? ' style="background:' + x.bg + ';"' : '') + (x.t ? ' title="' + esc(x.t) + '"' : '') + '></span>';
+        h += '<span class="w' + (x.rd ? ' rd' : '') + (x.cls ? ' ' + x.cls : '') + '" data-p="' + pos(r, c) + '"' + (x.bg ? ' style="background:' + x.bg + ';"' : '') + (x.t ? ' title="' + esc(x.t) + '"' : '') + '></span>';
       }
     }
     return '<div class="sx-mini-t">' + esc(o.title || '') + '<span>' + esc(o.sub || '') + '</span></div>' + h + '</div>' + legend(o.legend || [], o.empty);
   }
+  // Drag a box over the plate drawn by mini(): o.has(id) → the well already holds what is being painted (a drag that starts on one erases),
+  // o.apply(ids, add) takes the wells of the box when the button is let go. A row letter or a column number takes the whole row or column; Esc cancels.
+  // root is the element that holds the plate and stays when the plate is drawn again; calling paint twice on one root binds it once.
+  function paint(root, o){
+    if (!root || root._sxPaint) { if (root) root._sxPaint = o; return; }
+    root._sxPaint = o;
+    var drag = null;
+    root._sxStop = function(){ if (!drag) return false; drag = null; show([], true); return true; };
+    function cur(){ return root._sxPaint; }
+    function box(a, b){
+      var A = rc(a), B = rc(b), out = [], r, c;
+      for (r = Math.min(A.r, B.r); r <= Math.max(A.r, B.r); r++) for (c = Math.min(A.c, B.c); c <= Math.max(A.c, B.c); c++) out.push(pos(r, c));
+      return out;
+    }
+    function show(ids, add){
+      var set = {}; (ids || []).forEach(function(x){ set[x] = 1; });
+      Array.prototype.forEach.call(root.querySelectorAll('.sx-mini .w'), function(w){ var on = !!set[w.dataset.p]; w.classList.toggle('pv', on); w.classList.toggle('rm', on && !add); });
+    }
+    function wellAt(e){ var el = document.elementFromPoint(e.clientX, e.clientY); return el && el.closest ? el.closest('.sx-mini .w') : null; }
+    function line(h){
+      var o2 = cur(), ids = [], i, n = h.dataset.row ? o2.cols : o2.rows;
+      for (i = 0; i < n; i++) ids.push(h.dataset.row ? h.dataset.row + (i + 1) : String.fromCharCode(65 + i) + h.dataset.col);
+      return ids;
+    }
+    root.addEventListener('pointerdown', function(e){
+      if (e.button) return;
+      var o2 = cur(), w = e.target.closest && e.target.closest('.sx-mini .w'), h = e.target.closest && e.target.closest('.sx-mini .l[data-row], .sx-mini .l[data-col]');
+      if (h) { var ids = line(h).filter(function(x){ return !o2.exists || o2.exists(x); }); if (!ids.length) return; var add = !ids.every(function(x){ return o2.has(x); }); e.preventDefault(); o2.apply(ids, add); return; }
+      if (!w || (o2.exists && !o2.exists(w.dataset.p))) return;
+      e.preventDefault();
+      drag = { a: w.dataset.p, add: !o2.has(w.dataset.p), ids: [w.dataset.p] };
+      try { root.setPointerCapture(e.pointerId); } catch (_) {}
+      show(drag.ids, drag.add);
+    });
+    root.addEventListener('pointermove', function(e){
+      if (!drag) return; var w = wellAt(e); if (!w || w.dataset.p === drag.last) return;
+      drag.last = w.dataset.p; var o2 = cur(); drag.ids = box(drag.a, w.dataset.p).filter(function(x){ return !o2.exists || o2.exists(x); }); show(drag.ids, drag.add);
+    });
+    function end(e, cancel){
+      if (!drag) return; var d = drag; drag = null; show([], true);
+      try { root.releasePointerCapture(e.pointerId); } catch (_) {}
+      if (!cancel && d.ids.length) cur().apply(d.ids, d.add);
+    }
+    root.addEventListener('pointerup', function(e){ end(e, false); });
+    root.addEventListener('pointercancel', function(e){ end(e, true); });
+    // Esc while the button is down only drops the box; the dialog's own Esc (which closes it) must not hear it, so this listens first, on the window
+    if (!paintEsc) { paintEsc = true; window.addEventListener('keydown', function(e){ if (e.key !== 'Escape') return; var m = document.querySelector('.sx-mini.paint'), r = m && m.parentNode; if (r && r._sxStop && r._sxStop()) { e.stopPropagation(); e.preventDefault(); } }, true); }
+  }
+  var paintEsc = false;
   // items [[colour, text, count]]
   function legend(items, empty){
     return items.length ? '<div class="sx-legend">' + items.map(function(x){ return '<div><i style="background:' + x[0] + '"></i>' + esc(x[1]) + '<em>' + x[2] + '</em></div>'; }).join('') + '</div>'
@@ -218,6 +267,6 @@ var SetupKit = (function(){
     };
     return K;
   }
-  return { create: create, esc: esc, group: group, field: field, seg: seg, drop: drop, plateRow: plateRow, mini: mini, legend: legend, ctlRow: ctlRow, issues: issues, rangeStr: rangeStr, pos: pos, rc: rc,
+  return { create: create, esc: esc, group: group, field: field, seg: seg, drop: drop, plateRow: plateRow, mini: mini, paint: paint, legend: legend, ctlRow: ctlRow, issues: issues, rangeStr: rangeStr, pos: pos, rc: rc,
            dropFiles: dropFiles, handGrid: handGrid, handKeys: handKeys, handPaste: handPaste, OK: OK, WARN: WARN, X: X, CHL: CHL, CHR: CHR };
 })();
