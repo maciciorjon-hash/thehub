@@ -25,6 +25,12 @@
 // K23 axis ranges: every Tempo chart takes a minimum and a maximum for each axis (typed in the unit it is read in; a range that is not one stays on automatic and says so), also in the saved figure
 // K24 the method travels with the numbers: Results has a “How this was calculated” card, and the workbook, the Prism tables, the printed report, the JSON, the Method text and a saved figure all print the same record —
 //     normalisation step by step, the equations, what was left out — and it follows the settings (change one and the sentence changes), never a fixed text
+// K30 a time course (the second experiment: a protein level over time, nothing fitted): planted traces are read back — the plateau, t½ of the change, the onset, the class (rises, falls, peaks and returns, dips and recovers, changes direction, no change), a bound when it is still moving — the unit of the signal does not matter, noise is not a change, the control step takes a drifting reader out
+// K31 the start screen offers both experiments; the same plate read the other way keeps its layout and every kinetic number comes back exactly; each experiment has its own Results columns and views
+// K32 doses by mass (pg/mL … mg/mL, g/L) next to molar: read, written, edited, pasted, undone, saved in ProNect's own files; a degradation analysis leaves them out and says so
+// K33 Setup for a time course: conditions, optional doses (a mass series in its own unit, or no dose at all), the control step, Review, and where finishing lands
+// K34 outputs of a time course: Results columns, the Method (follows the settings, never names a fit), workbook, tidy CSV, Prism, ProNect-compatible files, figure, print, menu, Compare; Labbook and Hit Finder say why they do not apply
+// K35 Analysis settings of a time course: Normalise · Time course · Report, one column each, Apply reads them, Back to the defaults keeps the experiment
 // K15 Analysis settings is four tabs of aligned rows: every control has a caption, sits in one column on its tab, Apply stays in view whichever tab is open, and Apply reads the tabs that are hidden
 import { chromium } from 'playwright';
 import fs from 'fs';
@@ -379,11 +385,15 @@ try {
       };
       if (w === 1440 && theme === 'light') {
         const ic = await pg.evaluate(() => [...document.querySelectorAll('.empty-state .btn svg')].map(s => Math.round(s.getBoundingClientRect().width)));
-        check('K14 the icons inside the empty state’s buttons are button-sized, not the 44px illustration', ic.length === 3 || ic.length === 1 ? ic.every(v => v <= 16) && ic.length >= 1 : false, JSON.stringify(ic));
+        check('K14 the icons inside the empty state’s buttons are button-sized, not the 44px illustration', ic.length >= 1 && ic.every(v => v <= 16), JSON.stringify(ic));
       }
       for (const t of ['plate', 'curves', 'results', 'compare']) { await pg.evaluate(t => tpTab(t), t); await run('empty/' + t); }
       await pg.evaluate(() => tpTab('plate')); await pg.evaluate(() => tpLoadExample()); await pg.waitForTimeout(1500);
       for (const t of ['plate', 'curves', 'results', 'compare']) { await pg.evaluate(t => tpTab(t), t); await run('example/' + t); }
+      // the second experiment: the degradation plates read as a time course, and a time-course example beside them
+      await pg.evaluate(async () => { await tpSetKind('timecourse'); await tpLoadExample(); }); await pg.waitForTimeout(1200);
+      for (const t of ['plate', 'curves', 'results', 'compare']) { await pg.evaluate(t => tpTab(t), t); await run('timecourse/' + t); }
+      for (const sub of ['dose', 'heat', 'raw']) { await pg.evaluate(s => { tpTab('curves'); tpSub(s); }, sub); await run('timecourse/curves-' + sub); }
       await c2.close();
     }
     check('K14 nothing leaves its box, lands on its neighbour, is cut with no scroll, or sits off the line — empty and example, every tab, 1440 to 320 px, both themes', bad.length === 0, bad.slice(0, 6).join(' | ') + (bad.length > 6 ? ' … +' + (bad.length - 6) : ''));
@@ -945,6 +955,197 @@ try {
 
   }
 } catch (e) { findings.push('✗ the run stopped: ' + (e && e.stack || e)); console.log('✗ the run stopped: ' + (e && e.stack || e)); }
+
+// ── K30–K35 the second experiment: a time course (a protein level over time, nothing fitted) ─────────────────────────────────
+try {
+  const mkPage = async (w = 1440) => { const c = await browser.newContext({ viewport: { width: w, height: 1000 }, acceptDownloads: true }), pg = await c.newPage(), errs = []; pg.on('pageerror', e => errs.push(e.message)); await pg.route(/^https?:/, r => r.abort()); await pg.addInitScript(() => { try { localStorage.clear(); } catch (e) {} }); await pg.goto('file://' + FILE); await pg.waitForFunction(() => typeof tpTab === 'function'); return { c, pg, errs }; };
+
+  /* K30 the numbers: planted traces are read back */
+  {
+    const { c, pg, errs } = await mkPage();
+    const r = await pg.evaluate(() => {
+      const o = {}, G = x => x > 0 ? x * Math.exp(1 - x) : 0, kind = () => { TP.S.kind = 'timecourse'; };
+      kind();
+      const run = (specs, o2) => { const p = tpSynthTCPlate(Object.assign({ specs: specs, seed: 5, wellCV: 0, readCV: 0, wiggle: 0, name: 'K30' }, o2 || {})); return tpAnalyse(p, TP.S, { wells: new Set(), pts: {}, masks: [], mm: {} }); };
+      const one = (f, o2) => run([{ name: 'X', doses: [null], f: f }], o2).compounds.find(c => c.compound === 'X').concs[0].m;
+      const rise = one(t => 1 + 2 * (1 - Math.exp(-0.5 * Math.max(0, t - 1)))); o.rise = { ext: rise.ext, t12: rise.t12, onset: rise.onset, q: rise.extQ, cls: rise.cls, fin: rise.fin };
+      const pk = one(t => 1 + 1.5 * G(t / 4)); o.peak = { ext: pk.ext, tExt: pk.tExt, cls: pk.cls };
+      const dip = one(t => 1 - 0.5 * G(t / 6)); o.dip = { ext: dip.ext, cls: dip.cls };
+      const dn = one(t => 1 - 0.6 * (1 - Math.exp(-0.2 * t))); o.down = { ext: dn.ext, t12: dn.t12, cls: dn.cls };
+      o.flat = one(() => 1).cls; const ramp = one(t => 1 + t / 12); o.ramp = { q: ramp.extQ, cls: ramp.cls };
+      o.cross = one(t => 1 + G(t / 3) - 0.6 * (1 - Math.exp(-0.1 * t))).cls;
+      // the unit of the signal does not matter: five times the light, the same numbers
+      const a = one(t => 1 + G(t / 5), { base: 80000, roundSig: 12 }), b = one(t => 1 + G(t / 5), { base: 400000, roundSig: 12 }); o.scale = ['ext', 'fin'].every(k => Math.abs(a[k] - b[k]) / a[k] < 2e-3) && Math.abs(a.tExt - b.tExt) < 0.2 && Math.abs(a.auc.h - b.auc.h) < 0.05;
+      // the control step takes a drifting reader out: with it a flat condition is flat, without it the drift is read as a fall
+      TP.S.norm.veh = 'ratioOfMeans'; const w1 = one(() => 1, { vehDecay: 0.05 }).cls; TP.S.norm.veh = 'none'; const w0 = one(() => 1, { vehDecay: 0.05 }).cls; TP.S.norm.veh = 'ratioOfMeans'; o.drift = [w1, w0];
+      // noise is not a change; a real 15 % is found
+      let fp = 0, hit = 0; for (let s = 1; s <= 30; s++) { if (one(() => 1, { seed: s, wellCV: 0.1, readCV: 0.025, wiggle: 0.008 }).cls !== 'tc-flat') fp++; if (one(t => 1 + 0.15 * (1 - Math.exp(-0.3 * t)), { seed: 100 + s, wellCV: 0.1, readCV: 0.025, wiggle: 0.008 }).cls === 'tc-up') hit++; } o.fp = fp; o.hit = hit;
+      // a dose series: one trace per dose, the dose kept as typed, mass kept apart from molar
+      const ex = tpAnalyse(tpSynthDemoTC()[0], TP.S, { wells: new Set(), pts: {}, masks: [], mm: {} }), dx = ex.compounds.find(c => c.compound === 'Doxycycline'); o.dox = { n: dx.concs.length, cu: dx.cu, doses: dx.concs.map(x => x.c).join(), mono: dx.concs.every((x, i) => i === 0 || Math.abs(x.m.ext - 1) >= Math.abs(dx.concs[i - 1].m.ext - 1) - 0.15) };
+      const cx = ex.compounds.find(c => c.compound === 'Compound X'); o.molar = { cu: cx.cu, doses: cx.concs.map(x => x.c).join() };
+      o.noFit = ex.compounds.every(c => !('A' in c) && !('B' in c)) && ex.kind === 'timecourse';
+      TP.S.kind = 'degradation'; return o;
+    });
+    check('K30 a planted rise is read back: the plateau within 2 %, t½ of the change within 0.2 h, onset just after the delay, a level that has levelled off is a value, not a bound', Math.abs(r.rise.ext - 3) < 0.06 && Math.abs(r.rise.t12 - (1 + Math.log(2) / 0.5)) < 0.2 && r.rise.onset > 1 && r.rise.onset < 1.7 && r.rise.q === '=' && r.rise.cls === 'tc-up', JSON.stringify(r.rise));
+    check('K30 a peak that returns, a dip that recovers, a fall that stays, a flat line, a change of direction: each in its class', r.peak.cls === 'tc-peak' && Math.abs(r.peak.ext - 2.5) < 0.1 && Math.abs(r.peak.tExt - 4) < 0.5 && r.dip.cls === 'tc-dip' && Math.abs(r.dip.ext - 0.5) < 0.05 && r.down.cls === 'tc-down' && Math.abs(r.down.t12 - Math.log(2) / 0.2) < 0.4 && r.flat === 'tc-flat' && r.cross === 'tc-cross', JSON.stringify([r.peak, r.dip, r.down, r.flat, r.cross]));
+    check('K30 a rise still going at the last read is a bound (≥), not a number', r.ramp.q === '≥' && r.ramp.cls === 'tc-up', JSON.stringify(r.ramp));
+    check('K30 five times the light gives the same numbers within 0.2 % (the unit of the signal is nobody’s business)', r.scale === true, '');
+    check('K30 the control step removes a drifting reader (flat with it, a fall without it); noise alone is not a change (at most 2 of 30 runs) and a real 15 % is found (at least 27 of 30)', r.drift[0] === 'tc-flat' && r.drift[1] !== 'tc-flat' && r.fp <= 2 && r.hit >= 27, JSON.stringify([r.drift, r.fp, r.hit]));
+    check('K30 doxycycline in µg/mL is one condition with four doses kept as typed, a molar one is in nM, and nothing is fitted: no DC50, Dmax or KDeg on any condition', r.dox.n === 4 && r.dox.cu === 'mass' && r.dox.doses === '0.001,0.01,0.1,1' && r.molar.cu === null && r.molar.doses === '10,100,1000,10000' && r.noFit, JSON.stringify([r.dox, r.molar, r.noFit]));
+    check('K30 no page error', errs.length === 0, errs.slice(0, 2).join(' | '));
+    await c.close();
+  }
+
+  /* K31 the start screen, the switch, and a kinetic number that survives a round trip */
+  {
+    const { c, pg, errs } = await mkPage();
+    const s0 = await pg.evaluate(() => ({ cards: [...document.querySelectorAll('.kinds .kind')].map(k => k.dataset.kind + ':' + k.querySelector('h3').textContent), btn: [...document.querySelectorAll('.kinds .kind')].map(k => k.querySelectorAll('.btn').length), sub: document.getElementById('tp-sub').textContent }));
+    check('K31 the start screen offers both experiments, each with Set up / Choose files / Example', s0.cards.join() === 'degradation:Kinetic degradation,timecourse:Time course' && s0.btn.join() === '3,3', JSON.stringify(s0));
+    await pg.click('.kind[data-kind="timecourse"] .btn.primary'); await pg.waitForTimeout(500);
+    const s1 = await pg.evaluate(() => ({ kind: TP.S.kind, open: tpsK && tpsK.isOpen(), sub: document.getElementById('tps-sub').textContent, tab: document.getElementById('tps-t-compounds').textContent.replace(/^\d+/, ''), hdr: document.getElementById('tp-sub').textContent }));
+    check('K31 “Set up a plate” on the time-course card sets the experiment and opens Setup for it (title, fourth tab, header)', s1.kind === 'timecourse' && s1.open && /time course/i.test(s1.sub) && s1.tab === 'Conditions' && /Time course/.test(s1.hdr), JSON.stringify(s1));
+    await pg.evaluate(() => tpsK.close()); await pg.waitForTimeout(200);
+    const r = await pg.evaluate(async () => {
+      const o = {}, wait = ms => new Promise(r => setTimeout(r, ms)); await tpSetKind('degradation'); await tpLoadExample(); await wait(300);
+      const dc = () => JSON.stringify(tpAllRows().map(r => [r.comp.compound, r.comp.A && r.comp.A.DC50_nM, r.comp.B && r.comp.B.ok ? r.comp.B.LogEff : null]));
+      o.before = dc(); const lay = JSON.stringify(Object.keys(tpPlate().wells).map(i => [i, tpPlate().wells[i].compound, tpPlate().wells[i].conc]));
+      await tpSetKind('timecourse'); await wait(300); o.tcRows = tpAllRows().length; o.tcKind = tpRes().kind; o.layTc = JSON.stringify(Object.keys(tpPlate().wells).map(i => [i, tpPlate().wells[i].compound, tpPlate().wells[i].conc])) === lay;
+      tpTab('results'); await wait(200); o.tcHead = [...document.querySelectorAll('#tp-restbl th')].map(t => t.textContent.replace(/[▲▼]/g, '')).join('|');
+      tpTab('curves'); await wait(200); o.tcSubs = [...document.querySelectorAll('.segw[aria-label="View"] button')].map(b => b.textContent).join();
+      await tpSetKind('degradation'); await wait(300); o.after = dc(); o.back = tpRes().kind || 'degradation'; tpTab('results'); await wait(200); o.degHead = [...document.querySelectorAll('#tp-restbl th')].map(t => t.textContent.replace(/[▲▼]/g, '')).join('|');
+      return o;
+    });
+    check('K31 the same plate read the other way keeps its layout, and switching there and back leaves every DC50 and log efficiency exactly as it was', r.layTc && r.before === r.after && r.tcRows > 0 && r.tcKind === 'timecourse', JSON.stringify([r.layTc, r.tcRows, r.tcKind, r.before.slice(0, 80), r.after.slice(0, 80)]));
+    check('K31 a time course has its own Results columns (no DC50, Dmax or KDeg) and its own views; the degradation ones come back unchanged', !/DC50|Dmax|KDeg|K at/.test(r.tcHead) && /Largest change/.test(r.tcHead) && /t½/.test(r.tcHead) && r.tcSubs === 'Time course,Raw (RLU),By dose,Heat map' && /DC50 \(Dmax50\)/.test(r.degHead) && /KDegMax/.test(r.degHead), JSON.stringify([r.tcHead, r.tcSubs, r.degHead.slice(0, 120)]));
+    check('K31 no page error', errs.length === 0, errs.slice(0, 2).join(' | '));
+    await c.close();
+  }
+
+  /* K32 doses by mass: ng/mL, µg/mL, mg/mL */
+  {
+    const { c, pg, errs } = await mkPage();
+    const r = await pg.evaluate(async () => {
+      const o = {}, wait = ms => new Promise(r => setTimeout(r, ms)); await tpSetKind('timecourse'); await tpLoadExample(); await wait(300);
+      o.units = ['pg/mL', 'ng/mL', 'µg/mL', 'ug/ml', 'μg/mL', 'mg/mL', 'g/L', 'nM', 'µM', 'mM', 'furlong'].map(u => { const x = tpUnitConc(u); return x ? (x.cu || 'molar') + ':' + x.f : 'null'; }).join();
+      o.text = [tpDoseText(0.1, 'mass'), tpDoseText(1, 'mass'), tpDoseText(2500, 'mass'), tpDoseText(0.0005, 'mass'), tpDoseText(1000), tpDoseText(0.5)].join(' | ');
+      const p = tpPlate(), pick = ['A7', 'A8', 'B7', 'B8', 'C7', 'C8']; Object.keys(p.wells).forEach(id => { if (pick.indexOf(id) >= 0) { const w = p.wells[id]; w.kind = 'sample'; delete w.role; w.compound = ''; w.conc = null; delete w.cu; } });
+      // typed in the well editor: 100 ng/mL
+      TP.wsel = new Set(['A7', 'A8']); tpRenderPlate(); document.getElementById('tp-sr').value = 'dose'; document.getElementById('tp-sc').value = 'Dox2'; document.getElementById('tp-sn').value = '100'; document.getElementById('tp-su').value = 'ng/mL'; tpApplySel(); await wait(400);
+      o.e1 = [p.wells.A7.conc, p.wells.A7.cu]; o.opts = [...document.querySelectorAll('#tp-su option')].map(x => x.value).join();
+      // and back as it was typed
+      TP.wsel = new Set(['A7']); tpRenderPlate(); o.shown = [document.getElementById('tp-sn').value, document.getElementById('tp-su').value];
+      // undo gives the dose and its unit back
+      tpUndo(); await wait(200); o.undo = [p.wells.A7.conc, p.wells.A7.cu || null];
+      // a dilution series in µg/mL over a block
+      TP.wsel = new Set(['B7', 'B8', 'C7', 'C8']); tpRenderPlate(); tpSeriesDlg(); document.getElementById('tp-d-top').value = '1'; document.getElementById('tp-d-un').value = 'ug/mL'; document.getElementById('tp-d-df').value = '10'; document.getElementById('tp-d-dir').value = 'down-r'; document.getElementById('tp-d-name').value = 'Dox3'; document.getElementById('tp-d-ok').click(); await wait(400);
+      o.series = ['B7', 'C7'].map(i => p.wells[i].conc + ':' + p.wells[i].cu).join();
+      // pasted with a unit column
+      const r2 = tpPasteLayout('Well\tCondition\tDose\tUnit\nA7\tDox4\t2\tmg/mL\nA8\tDox4\t5\tng/mL'); o.paste = [r2.n, p.wells.A7.conc, p.wells.A7.cu, p.wells.A8.conc].join();
+      // ProNect's own formats carry it
+      const js = tpToProNectJSON(p), back = tpParseProNectJSON(js); o.json = [back.wells.A7.conc, back.wells.A7.cu, back.wells.A8.conc, back.wells.A8.cu, back.wells.A1.cu || null].join();
+      // a degradation analysis cannot take a mass dose: those wells are left out and it says so; and its editor offers molar only
+      await tpSetKind('degradation'); await wait(300); o.degNote = tpRes().nm.notes.filter(n => /mass concentration/.test(n)).length; o.degCpds = tpRes().compounds.map(c => c.compound).join(); TP.wsel = new Set(['A7']); tpRenderPlate(); o.degOpts = [...document.querySelectorAll('#tp-su option')].map(x => x.value).join();
+      o.degPlace = (() => { tpsOpen(3); TPS.form.unit = 'µg/mL'; TPS.form.top = 5; TPS.form.names = 'X'; tpsPlace(); const m = document.querySelector('#tp-toast'); return /time course/.test(m ? m.textContent : ''); })();
+      return o;
+    });
+    check('K32 every unit is read: pg/mL … mg/mL and g/L as mass (in µg/mL), pM … mM as molar (in nM), an unknown unit as nothing; a dose is written in the unit that reads best', r.units === 'mass:0.000001,mass:0.001,mass:1,mass:1,mass:1,mass:1000,mass:1000,molar:1,molar:1000,molar:1000000,null' && r.text === '100 ng/mL | 1 µg/mL | 2.5 mg/mL | 500 pg/mL | 1 µM | 500 pM', JSON.stringify([r.units, r.text]));
+    check('K32 the well editor takes 100 ng/mL as 0.1 µg/mL marked as mass, shows it back as typed, offers mass units in a time course only, and ⌘Z gives the dose and its unit back', r.e1.join() === '0.1,mass' && r.shown.join() === '100,ng/mL' && /ng\/mL/.test(r.opts) && !/ng\/mL/.test(r.degOpts) && r.undo[0] == null && r.undo[1] == null, JSON.stringify([r.e1, r.shown, r.opts, r.degOpts, r.undo]));
+    check('K32 a dilution series in µg/mL, a pasted layout with a unit column and ProNect’s JSON all keep the dose and its unit', r.series === '1:mass,0.1:mass' && r.paste === '2,2000,mass,0.005' && r.json === '2000,mass,0.005,mass,mass', JSON.stringify([r.series, r.paste, r.json]));
+    check('K32 a degradation analysis leaves mass-dose wells out and says so, and Setup refuses a mass series there', r.degNote === 1 && !/Doxycycline/.test(r.degCpds) && r.degPlace === true, JSON.stringify([r.degNote, r.degCpds, r.degPlace]));
+    check('K32 no page error', errs.length === 0, errs.slice(0, 2).join(' | '));
+    await c.close();
+  }
+
+  /* K33 Setup for a time course: conditions, optional doses, the control step */
+  {
+    const { c, pg, errs } = await mkPage();
+    const r = await pg.evaluate(async () => {
+      const o = {}, wait = ms => new Promise(r => setTimeout(r, ms)); await tpSetKind('timecourse');
+      // a reader file: reads and nothing else
+      const src = tpSynthTCPlate({ name: 'Reader file', seed: 3 }); Object.keys(src.wells).forEach(id => { const w = src.wells[id]; w.kind = 'sample'; delete w.role; w.compound = ''; w.target = ''; w.conc = null; delete w.cu; });
+      TP.plates.push(src); TP.pi = 0; await tpRunPlate(src); tpAfterLoad(); tpsOpen(); await wait(300);
+      o.start = tpsK.step;
+      tpsAssign('bkg', Array.from({ length: 8 }, (_, i) => 'ABCDEFGH'[i] + 12)); tpsAssign('veh', ['H1', 'H2', 'H3', 'H4']);
+      // the Time step shows the control choice only in a time course
+      tpsK.go(1); await wait(200); o.ctl = !!document.getElementById('tps-veh');
+      tpsK.go(3); await wait(200);
+      const set = (id, v) => { const e = document.getElementById(id); e.value = v; e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); };
+      set('tps-names', 'Doxycycline'); set('tps-top', '1'); set('tps-unit', 'µg/mL'); set('tps-fac', '10'); set('tps-pts', '3'); document.querySelector('#tps-reps [data-n="2"]').click(); document.getElementById('tps-place').click(); await wait(300);
+      const p = tpPlate(), dox = Object.keys(p.wells).filter(i => p.wells[i].compound === 'Doxycycline'); o.dox = dox.length + ':' + [...new Set(dox.map(i => p.wells[i].conc))].sort((a, b) => b - a).join() + ':' + [...new Set(dox.map(i => p.wells[i].cu))].join();
+      // no top dose: one block per condition, no dose at all
+      set('tps-names', 'Heat shock\nStarvation'); set('tps-top', ''); set('tps-pts', ''); document.getElementById('tps-place').click(); await wait(300);
+      const hs = Object.keys(p.wells).filter(i => p.wells[i].compound === 'Heat shock'); o.hs = hs.length + ':' + [...new Set(hs.map(i => p.wells[i].conc))].join('|') + ':' + [...new Set(hs.map(i => p.wells[i].cu || '-'))].join(); o.plan = document.getElementById('tps-plan').textContent.slice(0, 90);
+      { const left = Object.keys(p.wells).filter(i => tpsRoleOf(p.wells[i]) === 'none'); tpsAssign('blank', left); }
+      tpsK.go(4); await wait(200); o.review = tpsK.pane('review').textContent; o.next = document.getElementById('tps-next').textContent.trim();
+      // the control step: none → the control wells become a condition of their own and Setup no longer asks for them
+      tpsK.go(1); await wait(100); document.querySelector('#tps-veh [data-v="none"]').click(); await wait(100); o.veh = TP.S.norm.veh; tpsK.go(4); await wait(100);
+      document.getElementById('tps-next').click(); await wait(1500);
+      o.after = { tab: TP.ui.tab, sub: TP.sel.sub, comps: tpRes().compounds.map(c => c.compound).join(), kind: tpRes().kind, open: tpsK.isOpen() };
+      return o;
+    });
+    check('K33 Setup opens at Controls for a file with no layout, and a time course asks for the control step on Time', r.start === 2 && r.ctl === true, JSON.stringify([r.start, r.ctl]));
+    check('K33 a mass dose series lands on the plate in its own unit (1, 0.1, 0.01 µg/mL, marked mass)', /^[4-9]:1,0\.1,0\.01:mass$/.test(r.dox), r.dox);
+    check('K33 a condition with no top dose is one block with no dose (never 0, never nM), and the plan says “no dose”', /^\d+:\|?:-$/.test(r.hs) && /no dose/.test(r.plan), JSON.stringify([r.hs, r.plan]));
+    check('K33 Review says “conditions” and does not ask for four concentrations; the last button says “Show the curves”', !/needs 4/.test(r.review) && /condition/i.test(r.review) && /Show the curves/.test(r.next), JSON.stringify([r.review.slice(0, 200), r.next]));
+    check('K33 with no control step the plate is read against its own start, the control wells are a condition of their own, and finishing Setup lands on the time-course view', r.veh === 'none' && /Control/.test(r.after.comps) && r.after.kind === 'timecourse' && r.after.tab === 'curves' && r.after.sub === 'tc' && !r.after.open, JSON.stringify(r.after));
+    check('K33 no page error', errs.length === 0, errs.slice(0, 2).join(' | '));
+    await c.close();
+  }
+
+  /* K34 outputs: the same table, the workbook, the files, the method */
+  {
+    const { c, pg, errs } = await mkPage();
+    const r = await pg.evaluate(async () => {
+      const o = {}, wait = ms => new Promise(r => setTimeout(r, ms)), got = {}; window.tpDownload = (n, b) => { got[n] = b; }; window.print = () => {};
+      await tpSetKind('timecourse'); await tpLoadExample(); await wait(300); tpTab('results'); await wait(300);
+      const tb = tpResultsTableTC(tpAllRows()); o.head = tb[0].join('|'); o.rows = tb.length - 1; o.row0 = tb[1].join('|'); o.noBtn = !document.querySelector('#tp-lb-btn') && !/Hit Finder/.test(document.querySelector('.res-card .res-tools').textContent);
+      const txt = () => tpMethodText().join('\n'); o.method = txt(); const T = TP.S.tc; T.smooth = 7; T.minChange = 0.25; T.finalN = 5; o.method2 = txt(); T.smooth = 3; T.minChange = 0.10; T.finalN = 3;
+      TP.S.norm.veh = 'none'; o.methodNone = txt(); o.shortNone = tpMethodShort().join(' '); TP.S.norm.veh = 'ratioOfMeans';
+      const wb = { sheets: [] }; window.XLSX = { utils: { book_new: () => wb, aoa_to_sheet: a => a, book_append_sheet: (b, ws, n) => b.sheets.push([n, ws]) }, writeFile: () => {} }; tpExportXLSX();
+      o.sheets = wb.sheets.map(s => s[0]).join(); const res = wb.sheets.find(s => s[0] === 'Results')[1]; o.xHead = res[0].join('|'); const mean = wb.sheets.find(s => s[0] === 'Mean level')[1]; o.meanCols = mean[0].length; o.meanRows = mean.length;
+      tpExportCSV(); tpExportPrism(); tpExportProNect(); await wait(1200);
+      const csv = (await got[Object.keys(got).find(n => /_tidy\.csv$/.test(n))].text()).replace(/^﻿/, '').split('\r\n'); o.csvHead = csv[0]; o.csvDox = csv.find(l => /Doxycycline/.test(l) && /ug\/mL/.test(l)) ? 'mass' : 'none'; o.csvHeat = csv.find(l => /Heat shock/.test(l)).split(',').slice(2, 6).join(',');
+      const pr = (await got[Object.keys(got).find(n => /prism/.test(n))].text()).replace(/^﻿/, ''); o.prism = [/^Method/.test(pr), /Condition,Doxycycline/.test(pr), /Largest change against dose/.test(pr)].join();
+      const js = JSON.parse(await got[Object.keys(got).find(n => /normalized_data\.json$/.test(n))].text()); o.json = [js.Results.experiment, js.Results.conditions.length, js.Results.conditions[0].doses[0].largestChange != null].join();
+      const raw = (await got[Object.keys(got).find(n => /raw_kinetic\.csv$/.test(n))].text()).replace(/^﻿/, '').split('\r\n'); o.rawUnit = raw.find(l => /^Unit/.test(l)).split(',').filter(x => x).join('|').slice(0, 60);
+      tpTab('curves'); tpSub('tc'); tpSaveSVG(); await wait(100); const svg = await got[Object.keys(got).find(n => /_chart\.svg$/.test(n))].text(); o.svg = /Time course, nothing fitted/.test(svg) && /Largest change/.test(svg);
+      tpPrint(); await wait(150); const pr2 = document.querySelector('#tp-print').innerHTML; o.print = /Time course/.test(pr2) && /Largest change/.test(pr2) && /How this was calculated/.test(pr2);
+      tpExportMenu(document.body); const menu = document.querySelector('#tp-exp-menu').textContent; o.menu = [/Screen table/.test(menu), /Prism tables/.test(menu)].join(); document.querySelector('#tp-exp-menu').remove();
+      let toast = ''; window.tpToast = m => { toast = m; }; await tpSendToLabbook(); o.lb = /no DC50/.test(toast); tpSendToHitFinder(); o.hf = /Hit Finder/.test(toast);
+      tpTab('compare'); await wait(300); o.cmp = [...document.querySelectorAll('#pane-compare h3')].map(h => h.firstChild.textContent).join('|'); o.cmpSvg = !!tpChartSVGLight();
+      return o;
+    });
+    check('K34 Results: Condition · Dose · n · Largest change · at · End · t½ · Onset · Fastest · Mean change · a column per reporting time · Class — no DC50, Dmax or KDeg; no Labbook or Hit Finder button', /^Condition\|Target \/ cell line\|Dose\|n\|Largest change \(×\)\|at\|End \(×\)\|t½\|Onset\|Fastest/.test(r.head) && /Level at 2 h/.test(r.head) && /Class\|Flags$/.test(r.head) && !/DC50|Dmax|KDeg/.test(r.head) && r.rows === 11 && r.noBtn, JSON.stringify([r.head, r.rows, r.noBtn]));
+    check('K34 the Method says nothing is fitted, defines every measure, never mentions a Michaelis–Menten or a 4PL, and follows the settings (smoothing 7, smallest change 0.25, end = last 5 reads, no control step)', /Nothing is fitted/.test(r.method) && /Largest change/.test(r.method) && /t½ of the change/.test(r.method) && !/Michaelis|4PL|KDeg|Dmax/.test(r.method.replace(/no DC50, Dmax or KDeg/, '')) && /running median of 7 reads/.test(r.method2) && /max\(0\.25, 3σ\)/.test(r.method2) && /last 5 reads/.test(r.method2) && /no control step|NOT corrected/.test(r.methodNone) && /no control step/.test(r.shortNone), JSON.stringify([r.method.slice(0, 160), r.shortNone.slice(0, 120)]));
+    check('K34 the workbook: Results (with the bound written out), Method, the mean and the SD of every dose, every well, Raw, Layout, Settings; one column per condition and dose', r.sheets === 'Results,Method,Mean level,SD,Level per well,Raw,Layout,Settings' && /Largest change \(x over start\)\|Largest change is\|at \(h\)/.test(r.xHead) && r.meanCols === 13 && r.meanRows === 145, JSON.stringify([r.sheets, r.xHead.slice(0, 120), r.meanCols, r.meanRows]));
+    check('K34 tidy CSV (Dose and Dose_unit, ug/mL for doxycycline, nothing for an untreated condition), Prism tables (Method first, a table per condition), ProNect-compatible JSON (the time-course results, ProNect’s unit for a mass dose)', /^Plate,Well,Condition,Target,Dose,Dose_unit,Time_h,RLU_raw,Level,Left_out/.test(r.csvHead) && r.csvDox === 'mass' && r.prism === 'true,true,true' && r.json === 'timecourse,5,true' && /µg\/mL/.test(r.rawUnit), JSON.stringify([r.csvHead, r.csvDox, r.prism, r.json, r.rawUnit]));
+    check('K34 the saved figure and the printed summary carry the method; the export menu drops the Screen table and keeps Prism; Send to Labbook and Hit Finder say why they do not apply; Compare draws and saves', r.svg && r.print && r.menu === 'false,true' && r.lb && r.hf && /Ranking\|Two measures against each other\|Traces/.test(r.cmp) && r.cmpSvg, JSON.stringify([r.svg, r.print, r.menu, r.lb, r.hf, r.cmp, r.cmpSvg]));
+    check('K34 no page error', errs.length === 0, errs.slice(0, 2).join(' | '));
+    await c.close();
+  }
+
+  /* K35 Analysis settings for a time course */
+  {
+    const { c, pg, errs } = await mkPage();
+    await pg.evaluate(async () => { await tpSetKind('timecourse'); await tpLoadExample(); });
+    await pg.waitForTimeout(500); await pg.evaluate(() => tpOpenSettings()); await pg.waitForTimeout(300);
+    const r = await pg.evaluate(async () => {
+      const o = {}, wait = ms => new Promise(r => setTimeout(r, ms)); o.tabs = [...document.querySelectorAll('#tp-drawer .dr-tab')].map(b => b.dataset.tab).join(); o.bad = [];
+      for (const t of ['norm', 'tc', 'report']) { tpSetTab(t); await wait(80); const dr = document.querySelector('#tp-drawer'), pane = [...dr.querySelectorAll('.dr-pane')].find(p => !p.hidden), ctl = [...pane.querySelectorAll('.dr-row > .inp')]; if (!ctl.length) o.bad.push(t + ': no controls'); if (new Set(ctl.map(x => Math.round(x.getBoundingClientRect().left))).size > 1) o.bad.push(t + ': several columns'); ctl.forEach(x => { const l = dr.querySelector('label[for="' + x.id + '"]'); if (!l || !l.textContent.trim()) o.bad.push(x.id + ' has no caption'); }); }
+      o.ids = ['st-veh', 'st-sm', 'st-bk', 'st-vo', 'st-tmc', 'st-tsm', 'st-tfn', 'st-rt', 'st-tu', 'st-cu'].filter(i => !document.getElementById(i)).join();
+      o.degOnly = ['st-skip', 'st-y0', 'st-fp', 'st-do'].filter(i => document.getElementById(i)).join();
+      const before = JSON.stringify(tpAllRows().map(r => r.m.cls)); document.getElementById('st-tmc').value = '0.6'; document.getElementById('st-tsm').value = '5'; document.getElementById('st-tfn').value = '4'; document.getElementById('st-veh').value = 'none'; document.getElementById('st-rt').value = '3, 6';
+      tpApplySettings(); await wait(1500);
+      o.S = [TP.S.tc.minChange, TP.S.tc.smooth, TP.S.tc.finalN, TP.S.norm.veh, TP.S.report.times.join()].join(); o.flat = tpAllRows().filter(r => r.m.cls === 'tc-flat').length; o.hadCtl = tpRes().compounds.some(c => c.control); o.cols = tpResultsColsTC(false).filter(c => /^at:/.test(c.k)).length;
+      tpResetSettings(); await wait(1500); o.kind = TP.S.kind; o.tcReset = TP.S.tc.minChange;
+      return o;
+    });
+    check('K35 a time course’s Analysis settings are Normalise · Time course · Report: every control captioned and in one column, none of the fit or Michaelis–Menten controls', r.tabs === 'norm,tc,report' && r.bad.length === 0 && r.ids === '' && r.degOnly === '', JSON.stringify([r.tabs, r.bad, r.ids, r.degOnly]));
+    check('K35 Apply reads them (smallest change 0.6 turns many traces flat, no control step adds the control as a condition, two reporting times give two columns) and Back to the defaults keeps the experiment', r.S === '0.6,5,4,none,3,6' && r.flat >= 5 && r.hadCtl && r.cols === 2 && r.kind === 'timecourse' && r.tcReset === 0.1, JSON.stringify(r));
+    check('K35 no page error', errs.length === 0, errs.slice(0, 2).join(' | '));
+    await c.close();
+  }
+} catch (e) { findings.push('✗ K30–K35 the run stopped: ' + (e && e.stack || e).toString().split('\n').slice(0, 3).join(' ')); console.log('✗ K30–K35 stopped: ' + (e && e.stack || e)); }
 
 // ── DR1 a dose-response must be better than a flat line (Echo's E81; the engine is _curveVsFlat) ─────────────────────────────
 try {
