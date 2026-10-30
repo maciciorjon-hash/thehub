@@ -146,7 +146,7 @@ window.__hub.detect = function(opts){
 
   // A dialog, sheet or popover is a layer the person opened on purpose: whatever it covers is
   // covered by design. Only a covering element that is NOT one of these is a finding.
-  var MODAL = '.menu.open,[role=menu],.es-resume,.toast,#toast,#pt-toast,[id$=-toast],[id*=Toast],.modal-back,.set-back,.overlay,#spot-back,[role=dialog],[aria-modal=true],.pop,.pop-sheet,#hub-dlg,#mobile-backdrop,.tour,#lb-tour,[data-hub-backdrop]';
+  var MODAL = '.menu.open,[role=menu],.tabmenu,.es-resume,.toast,#toast,#pt-toast,[id$=-toast],[id*=Toast],.modal-back,.set-back,.overlay,#spot-back,[role=dialog],[aria-modal=true],.pop,.pop-sheet,#hub-dlg,#mobile-backdrop,.tour,#lb-tour,[data-hub-backdrop]';
   function isModal(n){
     if(n && n.closest && n.closest(MODAL)) return true;
     // Any fixed layer that fills most of the screen is a dialog, a sheet or a scrim, whatever the app calls it.
