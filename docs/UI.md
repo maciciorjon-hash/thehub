@@ -654,3 +654,16 @@ Tabs and named groups, the way PowerPoint does it, carrying what Illustrator off
 - **The active tab folds the ribbon.** A phone starts folded; picking a tool folds it again; an open tab is capped at 42dvh. A bar wraps, it does not scroll.
 - **The tool you picked is a solid accent button** (`.btn.on`, ink `var(--on-accent)`), and the tool returns to Select after one shape, as in PowerPoint.
 - **Selection handles**: 8px square handles and a round rotate handle above, 16px and 10px under `(pointer:coarse)`. A locked shape shows its frame and no handles.
+
+---
+
+## Data apps (Echo, Lumina, Beacon, Tempo, Hit Finder, Dora, BCA)
+
+One frame for the seven apps that read numbers and fit them (`docs/DATA_APPS_STUDY_2026-10-30.md`). `tools/data_apps_frame_invariants.mjs` measures it in a browser (F1–F4).
+
+- **Page gutter.** `--page-x:clamp(16px,2vw,28px)` (28 px on a laptop), declared first in each app's stylesheet. Content sits on it; the tab bar is padded `calc(var(--page-x) - 14px)` so **the first tab's label sits on the content edge**. Echo is the exception: its workspace runs edge to edge (20 px) because its tables are the widest in the Hub.
+- **Tab bar.** 40 px tall (`height:40px`, no vertical padding), tabs `padding:0 14px`, 13 px, weight 500, 600 when active, a 15 px icon from the shared set, the count as a pill, **Setup at the right end**, Export a menu.
+- **Card.** `--surface`, 1 px `--border`, `--r-3`, `--shadow-xs`; never `--r-2` with a bigger shadow (Lumina and Beacon had both). A card header is `--fs-2`/700 `--text3`, sentence case — a table header too: **no `text-transform:uppercase`** (µ turns into "MU").
+- **Type.** Text on a page is one of the nine steps (10 11 12 13 15 17 20 26 38 px); a fraction (10.5, 11.44, 12.5) is a fault. Drawn SVG text and `<sup>` / `<sub>` are exempt. The guide's `kbd` is `--fs-2`.
+- **Accent.** `#4b76b5` (`--accent`). The retired `#5e87c5` is gone from every data app but Echo, which keeps it as the colour of the *Displacement* assay (a category, not the accent).
+
