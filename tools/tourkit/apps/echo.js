@@ -69,7 +69,7 @@
         ref: [['Control wells', 'The vehicle-only wells: each plate is normalised to the mean of these. They cannot be blank — name them, or tick **No normalisation**.'],
           ['Smart DMSO control', 'Instead of the plain mean, learns the reference from each plate’s own controls: a plainly wrong control is left out and row, odd/even-row and left-to-right effects are corrected only where the data show they are real. Off, the numbers are exactly the plain plate mean.'],
           ['Hook threshold (Δ%)', 'A hook is signal that rises again at the highest doses. If the mean at the top dose exceeds the mean two steps lower by more than this, that point is flagged (orange ×) and left out of the fit. Default 10. Right-click the curve in Curves to put it back.'],
-          ['Min R² for fit', 'A curve below this is still reported, but flagged. Default 0.8.'],
+          ['Min R² for fit', 'A curve below this is still reported, but flagged. Default 0.9 (the same in Lumina and Beacon).'],
           ['Max replicate SD', 'Largest SD (% of control) tolerated at any concentration before the curve is flagged as noisy. Default 25.'],
           ['Top constrain · Fix bottom · Fix Hill', 'Constrain the 4-parameter fit. A top ≤ 0, a Hill slope ≤ 0 or a fixed bottom above the top stops the run with the reason, instead of flagging every curve.'],
           ['An emptied number', 'Falls back to its default, and the Console says so.']],

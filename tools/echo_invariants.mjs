@@ -962,7 +962,7 @@ if (run('E23')) await guard('E23', async () => {
 
 // ── E24–E29: the input and bookkeeping beat of 2026-10-03 ──────────────────────────────────────────────
 const BACK_TO_ANALYSIS = () => E(() => { switchPanel('analysis', document.querySelectorAll('.outer-tab')[0]); document.querySelector('.tab[data-tab="results"]').click(); });
-const SETUP_DEFAULTS = { 'p-ctrl': 'B12-O12', 'p-skip': '8', 'p-hook': '10', 'p-r2': '0.8', 'p-sd': '25', 'p-top': '100', 'p-bot-val': '0', 'p-hill-val': '1', 'p-min-bot-val': '0', 'p-zero-pct': '' };
+const SETUP_DEFAULTS = { 'p-ctrl': 'B12-O12', 'p-skip': '8', 'p-hook': '10', 'p-r2': '0.9', 'p-sd': '25', 'p-top': '100', 'p-bot-val': '0', 'p-hill-val': '1', 'p-min-bot-val': '0', 'p-zero-pct': '' };
 const runWith = set => E(async ({ set, defs }) => {
   for (const [k, v] of Object.entries(defs)) { const el = document.getElementById(k); if (el) el.value = v; }
   for (const id of ['p-row-norm', 'p-skip-norm', 'p-fix-bot', 'p-fix-hill']) { const el = document.getElementById(id); if (el) el.checked = false; }
@@ -1071,9 +1071,9 @@ if (run('E27')) await guard('E27', async () => {
   await runWith({ 'p-ctrl': 'B12:O12' }); await settle();
   const c = await E(() => ({ runs: Object.keys(_hx.runs).length }));
   check('E27', 'B12:O12 and B12-O12 are the same wells: no new version', c.runs === 1, c);
-  await runWith({ 'p-r2': '0.9' }); await settle();
+  await runWith({ 'p-r2': '0.8' }); await settle();
   const d = await E(() => { const rs = Object.values(_hx.runs).sort((x, y) => x.ver - y.ver); return { runs: rs.length, sets: Object.keys(_hx.sets).length, vers: rs.map(r => r.ver), diff: rs[1] && rs[1].paramsDiff.map(x => x.label + ':' + x.from + '>' + x.to), flags: rs.map(r => r.nFlag) }; });
-  check('E27', 'the same files with another setting are version 2 of the same dataset, and say what changed', d.runs === 2 && d.sets === 1 && d.vers.join() === '1,2' && d.diff && d.diff.join() === 'Min R²:0.8>0.9', d);
+  check('E27', 'the same files with another setting are version 2 of the same dataset, and say what changed', d.runs === 2 && d.sets === 1 && d.vers.join() === '1,2' && d.diff && d.diff.join() === 'Min R²:0.9>0.8', d);
   const e = await E(async () => {
     const run = Object.values(_hx.runs).sort((x, y) => y.ver - x.ver)[0];
     _lastResultsData[0].DC50_nM = 123.4; renderResults(_lastResultsData);
@@ -1087,7 +1087,7 @@ if (run('E27')) await guard('E27', async () => {
     await loadHistoryEntry(v1.id); await new Promise(r => setTimeout(r, 600));
     return { id: window._analysisId === v1.id, r2: window._lastAnalysisParams && window._lastAnalysisParams.minR2, n: _lastResultsData.length, setKey: window._setKey === v1.fk };
   });
-  check('E27', 'Load brings back version 1 with its own settings', f.id && f.r2 === 0.8 && f.n === 63 && f.setKey, f);
+  check('E27', 'Load brings back version 1 with its own settings', f.id && f.r2 === 0.9 && f.n === 63 && f.setKey, f);
   const g = await E(() => { const s = Object.values(_hx.sets)[0]; return { files: s.filesStored, meta: (s.fileMeta || []).length }; });
   check('E27', 'the input files are kept once for the dataset', g.files === true && g.meta >= 8, g);
   const h = await E(async () => {
@@ -1124,7 +1124,7 @@ if (run('E37')) await guard('E37', async () => {
   await wipe();
   // 1. a real run, named: the name is the identity, so another run under it is a version of the same entry
   await runWith({ 'p-assay': 'NAMETEST' }); await pg.waitForTimeout(1300);
-  await runWith({ 'p-assay': 'NAMETEST', 'p-r2': '0.9' }); await pg.waitForTimeout(1300);
+  await runWith({ 'p-assay': 'NAMETEST', 'p-r2': '0.8' }); await pg.waitForTimeout(1300);
   const a = await E(() => ({ sets: Object.keys(_hx.sets), vers: Object.values(_hx.runs).map(r => r.ver).sort().join(), fk: Object.values(_hx.runs).every(r => !!r.fk) }));
   check('E37', 'two runs called the same are one History entry with two versions', a.sets.length === 1 && a.sets[0] === 'n:nametest' && a.vers === '1,2' && a.fk, a);
   const b = await E(async () => {
@@ -1218,7 +1218,7 @@ if (run('E40')) await guard('E40', async () => {
   const st = await E(async () => { document.querySelector('.tab[data-tab="history"]').click(); await renderHistoryTab(); return document.getElementById('hx-cloud').innerText; });
   check('E40', 'the History says it is backed up', /Backed up in the cloud/.test(st), st);
   // a second run under the same name is another version in the same analysis, in the cloud too
-  await runWith({ 'p-assay': 'CLOUD1', 'p-r2': '0.9' }); await pg.waitForTimeout(4000);
+  await runWith({ 'p-assay': 'CLOUD1', 'p-r2': '0.8' }); await pg.waitForTimeout(4000);
   const b = await E(() => { const s = window.__fbHas(); return { runs: Object.keys(s.runs || {}).length, sets: Object.keys(s.sets || {}).length, vers: Object.values(s.runs || {}).map(r => JSON.parse(r.j).ver).sort().join() }; });
   check('E40', 'the same name again is version 2 of one analysis in the cloud, not a second analysis', b.runs === 2 && b.sets === 1 && b.vers === '1,2', b);
   // History: the analysis is one line; its versions open on click
@@ -1250,8 +1250,8 @@ if (run('E40')) await guard('E40', async () => {
 if (run('E32')) await guard('E32', async () => {
   await BACK_TO_ANALYSIS();
   await E(async () => { await _hxLoad(); await _hxDeleteRuns(Object.keys(_hx.runs).map(Number), true); });
-  await runWith({}); await pg.waitForTimeout(1300);
-  await runWith({ 'p-r2': '0.9' }); await pg.waitForTimeout(1300);
+  await runWith({ 'p-r2': '0.8' }); await pg.waitForTimeout(1300);
+  await runWith({}); await pg.waitForTimeout(1300);   // the default (0.9) is the second version
   const r = await E(async () => {
     const rs = Object.values(_hx.runs).sort((x, y) => x.ver - y.ver);
     // doctor version 2: one compound twice as potent, one flat, one missing

@@ -331,7 +331,21 @@ Orden canónico de los slots, **donde la app los tenga**: `Datos · Resultados �
 
 ---
 
-## 8. Decisiones que necesito de ti
+## 8. Decisiones (respondidas por Jon el 30 oct 2026)
+
+**D1–D7: se acepta la recomendación de cada una**, con una ampliación en D2 y una precisión:
+- **Graph donde no haya**: Tempo, Hit Finder, Dora y BCA ganan una pestaña **Graph** con **el mismo motor y el más nuevo: ChartKit** (Fase 5; hay que añadirle `scatter` y `time`).
+- **Echo Dose Response es especial** (muchas más funciones): se homogeneiza *hacia* él y no se le quita nada; sus 11 → 9 pestañas solo reagrupan.
+- Orden de trabajo (D7): Fase 0 → 1 → 3 → 2 → 4 → 5, **una fase por sesión**, cada una con su invariante.
+
+**Hecho el 30 oct (Fase 0 y arranque de la Fase 1):**
+- `tools/data_apps_ledger.mjs` + `tools/fixtures/data_apps_ledger.json` (1 614 entradas): falla si desaparece una pestaña, cabecera de tabla, botón, título o gráfico de cualquiera de las siete apps. Probado renombrando la pestaña Compare de Tempo.
+- **D1: R² mínimo = 0,90 en Echo, Lumina y Beacon.** Medido antes en `Backup/` (solo lectura): de 609 curvas únicas del historial de Echo, 21 caen entre 0,80 y 0,90, **14 de ellas solo se marcarían por eso** (≈ 7 pocillos distintos de un cribado, repetidos en varias versiones); en Labbook, 1 de 23. Ningún número guardado cambia (los avisos de los análisis ya hechos se quedan como estaban).
+- **Beacon da el IC95 del punto medio** (`bMidCI`, la regla de Echo y Lumina: log10 ± t·SE): columna *95% CI* en Results, dos columnas en CSV / copiar / Excel, y el `ci` de la fila que viaja a Labbook. Un valor acotado (`> 10 µM`) no tiene intervalo. El motor `_tQ95` pasa a sincronizarse también a Beacon.
+- `tools/stats_invariants.mjs` (S1–S3): el R² por defecto es un solo número en las tres apps; el intervalo de Beacon cubre el valor plantado en ≥ 52 de 60 ejecuciones ruidosas (cubre 57 esperado) y crece con el ruido; llega a pantalla, ficheros y Labbook. Cada una probada poniendo el fallo otra vez.
+- **Pendiente de la Fase 1:** estadística descriptiva única, `potencyCell` (gramática de cotas), `plateQC()` para Lumina y Tempo, IC y R² opcionales en Tempo, y que Beacon avise por SD y por hook.
+
+## 8b. Las siete preguntas, tal como estaban
 
 Cada una cambia lo que construiría:
 

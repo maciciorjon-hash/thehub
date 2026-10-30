@@ -330,7 +330,7 @@ button:focus-visible,summary:focus-visible,[role=button]:focus-visible,[role=tab
 .rs-tbl tbody tr.on td{background:var(--accent-dim);}
 .rs-tbl tbody tr.on td:first-child{box-shadow:inset 3px 0 0 var(--accent);}
 .rs-tbl td.num,.rs-tbl th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;}
-.rs-tbl td.pl{color:var(--text2);font-size:var(--fs-2);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.rs-tbl td.pl{color:var(--text2);font-size:var(--fs-2);max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .rs-tbl .ci{color:var(--text2);}
 .rs-note{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;margin-bottom:10px;padding:10px 14px;border:1px solid var(--border2);border-left:3px solid var(--accent);border-radius:var(--r-2);background:var(--accent-dim);font-size:var(--fs-3);line-height:1.5;color:var(--text);}
 .rs-note[hidden]{display:none;}
@@ -460,7 +460,7 @@ button:focus-visible,summary:focus-visible,[role=button]:focus-visible,[role=tab
 .ctrl-table td:first-child{font-family:var(--sans);}
 .ctrl-table .sd{color:var(--text3);font-size:var(--fs-2);}
 .rs-tbl table,.rs-card table{width:100%;border-collapse:collapse;font-size:var(--fs-3);}
-.rs-tbl th,.rs-tbl td{padding:7px 10px;text-align:left;border-bottom:1px solid var(--border);}
+.rs-tbl th,.rs-tbl td{padding:7px 7px;text-align:left;border-bottom:1px solid var(--border);}
 .rs-tbl th{font-weight:600;color:var(--text2);font-size:var(--fs-2);}
 @media (max-width:720px){
   header{padding:0 16px;}
@@ -2266,6 +2266,26 @@ function _curveVsFlat(fit) {
   const d1 = fit.np - 1, d2 = fit.n - fit.np;
   const F = Math.max(0, fit.ssTot - fit.ssRes) / d1 / (Math.max(fit.ssRes, 1e-12 * fit.ssTot) / d2);
   return { F, p: _pF(F, d1, d2), df1: d1, df2: d2 };
+}
+function _tQ95(df){
+  df = Math.max(1, +df || 1);
+  if (df > 1e7) return 1.959963985;
+  const lnG = z => { const c = [676.5203681218851,-1259.1392167224028,771.32342877765313,-176.61502916214059,12.507343278686905,-0.13857109526572012,9.9843695780195716e-6,1.5056327351493116e-7];
+    if (z < 0.5) return Math.log(Math.PI / Math.sin(Math.PI * z)) - lnG(1 - z);
+    z -= 1; let x = 0.99999999999980993; for (let i = 0; i < 8; i++) x += c[i] / (z + i + 1);
+    const t = z + 7.5; return 0.5 * Math.log(2 * Math.PI) + (z + 0.5) * Math.log(t) - t + Math.log(x); };
+  const cf = (x, a, b) => { let c = 1, d = 1 - (a + b) * x / (a + 1); if (Math.abs(d) < 1e-300) d = 1e-300; d = 1 / d; let h = d;
+    for (let m = 1; m <= 300; m++) { const m2 = 2 * m;
+      let aa = m * (b - m) * x / ((a + m2 - 1) * (a + m2)); d = 1 + aa * d; if (Math.abs(d) < 1e-300) d = 1e-300; c = 1 + aa / c; if (Math.abs(c) < 1e-300) c = 1e-300; d = 1 / d; h *= d * c;
+      aa = -(a + m) * (a + b + m) * x / ((a + m2) * (a + m2 + 1)); d = 1 + aa * d; if (Math.abs(d) < 1e-300) d = 1e-300; c = 1 + aa / c; if (Math.abs(c) < 1e-300) c = 1e-300; d = 1 / d;
+      const del = d * c; h *= del; if (Math.abs(del - 1) < 1e-15) break; }
+    return h; };
+  const betaI = (x, a, b) => { if (x <= 0) return 0; if (x >= 1) return 1;
+    const bt = Math.exp(lnG(a + b) - lnG(a) - lnG(b) + a * Math.log(x) + b * Math.log(1 - x));
+    return x < (a + 1) / (a + b + 2) ? bt * cf(x, a, b) / a : 1 - bt * cf(1 - x, b, a) / b; };
+  let lo = 0, hi = 64;
+  for (let i = 0; i < 100 && hi - lo > 1e-10; i++) { const m = (lo + hi) / 2; if (betaI(df / (df + m * m), df / 2, 0.5) > 0.05) lo = m; else hi = m; }
+  return (lo + hi) / 2;
 }
 function _lmFit(xArr, yArr, pInit, loBound, hiBound, valFn, jacFn, maxIter) {
   const n = xArr.length, np = pInit.length;
@@ -4153,6 +4173,8 @@ var RS_VIEW = (function(){ try { return localStorage.getItem('beacon_rsview') ==
 var BD_SEL = new Set(), BD_ANCHOR = null, _bLastExMark = -1;   // cells picked in the data table ('plate:well'), the cell a Shift-click extends from
 var _bFitC = null;
 
+// A curve with R² below this is flagged: the same default as Echo and Lumina (their Setup boxes), so one curve is not clean in one app and flagged in another.
+var B_MIN_R2 = 0.9;
 function bPotencyName(){ return state.assayMode === 'displacement' ? 'IC50' : 'EC50'; }
 function bValFn(){ return state.assayMode === 'gain' ? _4plVal4_gain : _4plVal4; }
 function bJacFn(){ return state.assayMode === 'gain' ? _4plJac4_gain : _4plJac4; }
@@ -4196,6 +4218,12 @@ function bTracerFit(){
 function bTracerNow(){ var t = bTracerFit(); if (!t || !t.fit) return null; var T = state.tracerConc > 0 ? state.tracerConc : t.working; return { kd: t.fit.params[1], T: T }; }
 
 // Every compound's fit, pooled across plates (or per plate); cached for the revision it was made at.
+// The 95 % interval of a fit's midpoint, in nM: the log10 midpoint ± t·SE from the fit's covariance (Echo's and Lumina's rule), or null when the fit has no error estimate.
+function bMidCI(f){
+  if (!(f && f.se && f.df > 0 && isFinite(f.se[1]))) return null;
+  var t = _tQ95(f.df), lg = f.params[1];
+  return { lo: Math.pow(10, lg - t * f.se[1]), hi: Math.pow(10, lg + t * f.se[1]) };
+}
 function bFits(){
   var key = state.rev + '|' + RS_PER + '|' + state.assayMode + '|' + state.tracerConc;
   if (_bFitC && _bFitC.key === key) return _bFitC.v;
@@ -4222,6 +4250,8 @@ function bFits(){
         // A midpoint outside the doses tested is a bound, not a measurement: it fits its own half at a high R² and reaches the paper looking measured.
         o.bound = lg > xMax + 1e-9 ? '>' : lg < xMin - 1e-9 ? '<' : (f.capBound || '');
         o.limit = o.bound === '>' ? Math.pow(10, xMax) : o.bound === '<' ? Math.pow(10, xMin) : null;
+        // The 95 % interval of the midpoint, from the fit's own covariance (the same t-based rule as Echo and Lumina). A bound has none: nobody measured the number.
+        if (!o.bound) { var ci = bMidCI(f); if (ci) { o.ciLo = ci.lo; o.ciHi = ci.hi; } }
         if (tr && tr.kd > 0 && tr.T > 0 && !o.bound) o.ki = o.ec50 / (1 + tr.T / tr.kd);   // a bound on the IC50 is a bound on nothing else: no Ki is made from a number nobody measured
       }
       out.push(o);
@@ -4241,11 +4271,11 @@ function bResultRows(){
     var note = f.bound ? pn + f.bound + 'range' : (!f.fit ? (f.failed ? 'No fit: did not converge' : f.flat ? 'No dose-response: the series is flat' : 'No fit: needs 4 concentrations') : '');
     var nEx = (f.reps || []).filter(function(r){ return r.ex; }).length, inn = (f.reps || []).filter(function(r){ return !r.ex; });
     var o = { compound: f.name, target: '', potency: f.fit ? R(f.ec50, 3) : null, nd: !f.fit, bound: !!f.bound, effect: f.fit ? R(f.top - f.bottom, 1) : null, hill: f.fit ? R(f.hill, 2) : null, r2: f.fit ? R(f.r2, 3) : null,
-      flag: !!(f.bound || !f.fit || (f.fit && f.r2 < 0.9)), note: note, flagReason: note || (f.fit && f.r2 < 0.9 ? 'R2=' + f.r2.toFixed(2) : ''), assay: disp ? 'displacement' : 'gain', potencyLabel: pn + ' (nM)', effectLabel: 'Window (mBU)',
+      flag: !!(f.bound || !f.fit || (f.fit && f.r2 < B_MIN_R2)), note: note, flagReason: note || (f.fit && f.r2 < B_MIN_R2 ? 'R2=' + f.r2.toFixed(2) : ''), assay: disp ? 'displacement' : 'gain', potencyLabel: pn + ' (nM)', effectLabel: 'Window (mBU)',
       plate: f.plates.map(bPlateName).join(' + ') };
     if (f.ki) o.ki = R(f.ki, 3);
     if (inn.length) o.curve = { x: inn.map(function(r){ return R(Math.log10(r.c) - 9, 4); }), y: inn.map(function(r){ return R(r.v, 2); }), ex: (f.reps || []).filter(function(r){ return r.ex; }).map(function(r){ return [R(Math.log10(r.c) - 9, 4), R(r.v, 2)]; }),
-      p: f.fit ? [f.bottom, Math.log10(f.ec50) - 9, f.hill, f.top].map(function(v){ return R(v, 4); }) : [], gain: state.assayMode === 'gain', n: inn.length, ci: null, yl: 'Corrected mBRET (mBU)' };
+      p: f.fit ? [f.bottom, Math.log10(f.ec50) - 9, f.hill, f.top].map(function(v){ return R(v, 4); }) : [], gain: state.assayMode === 'gain', n: inn.length, ci: f.ciLo === undefined ? null : [R(f.ciLo, 3), R(f.ciHi, 3)], yl: 'Corrected mBRET (mBU)' };
     return o;
   });
 }
@@ -4285,6 +4315,12 @@ function bControlStats(pl){
 }
 
 // ── Draw ─────────────────────────────────────────────────────
+// The interval as one phrase, the unit written once when both ends share it (44.7–52.5 nM), like Lumina's.
+function bCIText(f){
+  if (!(f.ciLo > 0 && f.ciHi > 0 && isFinite(f.ciHi))) return '–';
+  var a = bFmtConc(f.ciLo), b = bFmtConc(f.ciHi);
+  return a.split(/\s/)[1] === b.split(/\s/)[1] ? a.split(/\s/)[0] + '–' + b : a + ' – ' + b;   // bFmtConc writes a no-break space
+}
 function bUnitText(row){ return row.bound ? '<span class="qc-chip" title="The midpoint lies outside the doses tested, so the potency is a bound, not a measurement">' + row.bound + ' ' + bFmtConc(row.limit) + '</span>' : bFmtConc(row.ec50); }
 // In a table cell a long file name is noise: the number says which plate, the tooltip says what it is called.
 function bShortPlate(i){ var n = bPlateName(i); return n.length > 14 ? 'Plate ' + (i + 1) : n; }
@@ -4441,14 +4477,14 @@ function renderResults(){
     var sel = fits.filter(function(f){ return f.key === RS_SEL; })[0], pn = bPotencyName(), unc = _bUniq(fits.reduce(function(a, f){ return a.concat(f.unc); }, [])), hasKi = disp && fits.some(function(f){ return f.ki; });
     cD += '<div class="card rs-card"><div class="card-hdr">Dose–response<span class="sub">' + bPlural(fits.length, 'compound') + '</span></div>';
     if (unc.length) cD += '<div class="rs-note"><span><b>' + unc.map(function(i){ return rsPlateName(i); }).join(', ') + '</b> ' + (unc.length === 1 ? 'has' : 'have') + ' no ' + (disp ? 'no-tracer' : 'no-ligand') + ' wells marked, so ' + (unc.length === 1 ? 'its' : 'their') + ' values are raw mBRET, not corrected.</span></div>';
-    cD += '<div class="rs-tbl"><table><thead><tr><th>Compound</th><th class="num">' + pn + '</th>' + (hasKi ? '<th class="num">Ki</th>' : '') + '<th class="num">Hill</th><th class="num">Bottom → top<span class="hu"> mBU</span></th><th class="num">R²</th><th class="num">Points</th><th>Plates</th></tr></thead><tbody>';
+    cD += '<div class="rs-tbl"><table><thead><tr><th>Compound</th><th class="num">' + pn + '</th><th class="num">95% CI</th>' + (hasKi ? '<th class="num">Ki</th>' : '') + '<th class="num">Hill</th><th class="num">Bottom → top<span class="hu"> mBU</span></th><th class="num">R²</th><th class="num">Points</th><th>Plates</th></tr></thead><tbody>';
     fits.forEach(function(f){
-      var r2c = !f.fit ? '' : f.r2 >= 0.9 ? 'badge-good' : f.r2 >= 0.7 ? 'badge-mid' : 'badge-poor';
+      var r2c = !f.fit ? '' : f.r2 >= B_MIN_R2 ? 'badge-good' : f.r2 >= 0.7 ? 'badge-mid' : 'badge-poor';
       cD += '<tr class="' + (f.key === RS_SEL ? 'on' : '') + '" data-k="' + esc(f.key) + '" aria-selected="' + (f.key === RS_SEL) + '" tabindex="' + (f.key === RS_SEL ? 0 : -1) + '" onclick="rsPick(this.dataset.k)" onkeydown="if((event.key===\'Enter\'||event.key===\' \')&&event.target===this){event.preventDefault();rsPick(this.dataset.k)}"><td><b>' + esc(f.name) + '</b></td>';
       if (f.fit) {
-        cD += '<td class="num"><b>' + bUnitText(f) + '</b></td>' + (hasKi ? '<td class="num">' + (f.ki ? bFmtConc(f.ki) : '–') + '</td>' : '') +
+        cD += '<td class="num"><b>' + bUnitText(f) + '</b></td><td class="num ci">' + bCIText(f) + '</td>' + (hasKi ? '<td class="num">' + (f.ki ? bFmtConc(f.ki) : '–') + '</td>' : '') +
           '<td class="num">' + f.hill.toFixed(2) + '</td><td class="num">' + bFmtNum(f.bottom, 0) + ' → ' + bFmtNum(f.top, 0) + '</td><td class="num"><span class="badge ' + r2c + '">' + f.r2.toFixed(3) + '</span></td>';
-      } else cD += '<td class="num" colspan="' + (4 + (hasKi ? 1 : 0)) + '"><span class="ci">n.d. — ' + (f.failed ? 'the fit did not converge' : f.flat ? 'the series is flat' : 'needs at least 4 concentrations, has ' + f.pts.length) + '</span></td>';
+      } else cD += '<td class="num" colspan="' + (5 + (hasKi ? 1 : 0)) + '"><span class="ci">n.d. — ' + (f.failed ? 'the fit did not converge' : f.flat ? 'the series is flat' : 'needs at least 4 concentrations, has ' + f.pts.length) + '</span></td>';
       cD += '<td class="num">' + f.pts.length + ' × ' + (f.pts.length ? Math.round(f.nW / f.pts.length * 10) / 10 : 0) + '</td><td class="pl" title="' + esc(f.plates.map(bPlateName).join(', ')) + '">' + f.plates.map(function(i){ return esc(bShortPlate(i)); }).join(' + ') + '</td></tr>';
     });
     cD += '</tbody></table></div><div class="rs-keys"><kbd>↑</kbd> <kbd>↓</kbd> move between compounds · <kbd>Home</kbd> <kbd>End</kbd> first and last' + (P > 1 ? ' · <kbd>←</kbd> <kbd>→</kbd> switch the plate under Controls' : '') + '</div>' +
@@ -4766,11 +4802,11 @@ function _bFormula(v){ return /^[=@]/.test(v) || (/^[+\-](?=[A-Za-z(@=])/.test(v
 function _sanitizeAoa(aoa) { return aoa.map(function(row) { return row.map(_xlsxSafeCell); }); }
 function bResultsTable(){
   var disp = state.assayMode === 'displacement', pn = bPotencyName(), hasKi = disp && bFits().some(function(f){ return f.ki; });
-  var head = ['Compound', 'Plates', pn + ' (nM)', 'Bound', 'Hill', 'Bottom (mBU)', 'Top (mBU)', 'R2', 'Concentrations', 'Wells'].concat(hasKi ? ['Ki (nM)'] : []);
+  var head = ['Compound', 'Plates', pn + ' (nM)', 'Bound', pn + ' CI lower (nM)', pn + ' CI upper (nM)', 'Hill', 'Bottom (mBU)', 'Top (mBU)', 'R2', 'Concentrations', 'Wells'].concat(hasKi ? ['Ki (nM)'] : []);
   var rows = bFits().map(function(f){
     var base = [f.name, f.plates.map(bPlateName).join(' + ')];
-    if (!f.fit) return base.concat(['', '', '', '', '', '', f.pts.length, f.nW]).concat(hasKi ? [''] : []);
-    return base.concat([f.bound ? f.limit : f.ec50, f.bound, f.hill, f.bottom, f.top, f.r2, f.pts.length, f.nW]).concat(hasKi ? [f.ki === undefined ? '' : f.ki] : []);
+    if (!f.fit) return base.concat(['', '', '', '', '', '', '', '', f.pts.length, f.nW]).concat(hasKi ? [''] : []);
+    return base.concat([f.bound ? f.limit : f.ec50, f.bound, f.ciLo === undefined ? '' : f.ciLo, f.ciHi === undefined ? '' : f.ciHi, f.hill, f.bottom, f.top, f.r2, f.pts.length, f.nW]).concat(hasKi ? [f.ki === undefined ? '' : f.ki] : []);
   });
   return { head: head, rows: rows };
 }

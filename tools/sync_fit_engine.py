@@ -30,7 +30,7 @@ FUNCS = ['_4plVal4', '_4plVal4_gain', '_4plJac4', '_4plJac4_gain',
          '_lnGammaFn', '_betaIncReg', '_pF', '_curveVsFlat']
 # The "is this curve better than a flat line" test (added 2026-10-27). Unlike the rest it is INSERTED
 # (just before _lmFit) into a target that does not have it yet, because every app that fits a 4PL needs it.
-ADD_FUNCS = ['_lnGammaFn', '_betaIncReg', '_pF', '_curveVsFlat']
+ADD_FUNCS = ['_tQ95', '_lnGammaFn', '_betaIncReg', '_pF', '_curveVsFlat']   # _tQ95 joined 2026-10-30: Beacon now reports the interval of its midpoint
 
 
 def span(src, name):
