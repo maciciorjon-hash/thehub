@@ -11,7 +11,7 @@
     intro: [{ t: 'Welcome to Dora',
       b: 'Load a summary of a degradation screen and see **DC50 against Dmax** for every compound and target — as a table you can filter and export, and as a plot that shows who is potent and deep. About a minute; **Esc** leaves it at any point.',
       nodata: 'The other tabs need a screen to show anything. The button loads a small made-up one (six compounds, two targets) — only if you press it.' }],
-    outro: [{ t: 'Come back any time', sel: tabEl(4), place: 'bottom', go: to('guide'),
+    outro: [{ t: 'Come back any time', sel: tabEl(5), place: 'bottom', go: to('guide'),
       b: 'The **Guide** tab has each tab in writing, with a tour of each, and what to do when a number looks odd.' }],
     quick: [
       'On **Data**, drop the screen’s summary workbook, open an analysis from **Echo Dose Response**, or press **Load test data**.',
@@ -68,7 +68,16 @@
           { deep: true, sel: '#panel-scatter .scatter-controls', t: 'Targets, zones, error bars', place: 'bottom', miss: MISS,
             b: 'Switch targets on and off, filter with the sliders, and **Zones** shades the quadrants, **Error bars** adds the SD and **Labels** names the points.' }] },
 
-      { id: 'props', label: 'Properties', sel: tabEl(3), go: to('props'), tag: 'needs a SMILES file',
+      { id: 'graph', label: 'Graph', sel: tabEl(3), go: to('graph'), needs: 'data',
+        lead: 'The figure for a paper or a slide: DC50 against Dmax with every compound named, drawn by the same chart editor as the other apps.',
+        do: ['One series per target; click a point, a title, the legend or an axis to edit it, drag a title to move it.',
+          'Choose a palette, markers, axis ranges and the unit of the potency axis (nM, µM, pM); name or unname the points.',
+          'Export **PNG** at 300, 600 or 1200 dpi, a vector **PDF**, or **SVG**.'],
+        ref: [['Left out', 'A potency written as a bound (`> 10000`) is not a place on the axis, so it is not drawn here; the table and the plot in Compare still show it.']],
+        steps: [{ sel: '#dg-root', t: 'The figure', place: 'top', miss: MISS,
+          b: 'Click anything in the figure to edit it. **PNG** and **PDF** export what you see.' }] },
+
+      { id: 'props', label: 'Properties', sel: tabEl(4), go: to('props'), tag: 'needs a SMILES file',
         lead: 'Molecular properties beside the assay values. Upload a SMILES file and Dora draws each structure and computes its properties.',
         do: ['Drop a CSV or Excel file with **Compound** and **SMILES** columns.',
           'Read the table: 2D structure, MW, logP, HBA, HBD, TPSA and rotatable bonds, next to each compound’s DC50 and Dmax from the loaded screen.',

@@ -260,14 +260,14 @@ var ChartKit = (function(){
     function chartHtml(kind){
       return (kind === 'bars'
         ? grp('Bars', fld('Fill', 'fill', 'sel', { opts: [['solid', 'Solid'], ['tint', 'Light fill, coloured border'], ['outline', 'Outline only']] }) + fld('Width', 'bar.width', 'num', { step: 0.05, min: 0.2, max: 1.2 }) + fld('Gap between groups', 'bar.gap', 'num', { step: 0.1, min: 0, max: 4 }) + fld('Gap inside a group', 'bar.inner', 'num', { step: 0.05, min: 0, max: 1 }) + fld('Border', 'bar.border', 'num', { step: 0.25, min: 0, max: 5 }) + fld('Shade by concentration', 'bar.shade', 'bool', { hint: 'highest darkest' }) + fld('Every replicate as a point', 'pts.show', 'bool'))
-        : grp('Points', fld('Marker', 'xy.marker', 'sel', { opts: [['circle', 'Circle'], ['square', 'Square'], ['triangle', 'Triangle'], ['diamond', 'Diamond'], ['auto', 'One per compound']] }) + fld('Marker size', 'xy.msize', 'num', { step: 0.5, min: 1, max: 14 }) + fld('Show the points', 'xy.points', 'bool') + fld('Open markers', 'xy.open', 'bool') + fld('Every replicate beside its mean', 'pts.show', 'bool')) +
-          grp('Curves', fld('Show the fit', 'xy.fit', 'bool') + fld('Line width', 'xy.lw', 'num', { step: 0.25, min: 0.25, max: 6 }) + fld('Dashed', 'xy.dash', 'bool') + fld('Extend across the whole axis', 'xy.extend', 'bool', { hint: 'a curve past the data is a guess' }))) +
+        : grp('Points', fld('Marker', 'xy.marker', 'sel', { opts: [['circle', 'Circle'], ['square', 'Square'], ['triangle', 'Triangle'], ['diamond', 'Diamond'], ['auto', 'One per compound']] }) + fld('Marker size', 'xy.msize', 'num', { step: 0.5, min: 1, max: 14 }) + fld('Show the points', 'xy.points', 'bool') + fld('Name each point', 'xy.labels', 'bool', { hint: 'the compound beside its point; names that would overlap are left out' }) + fld('Open markers', 'xy.open', 'bool') + fld('Every replicate beside its mean', 'pts.show', 'bool')) +
+          grp('Curves', fld('Show the fit', 'xy.fit', 'bool') + fld('Join the points with a line', 'xy.join', 'bool') + fld('Line width', 'xy.lw', 'num', { step: 0.25, min: 0.25, max: 6 }) + fld('Dashed', 'xy.dash', 'bool') + fld('Extend across the whole axis', 'xy.extend', 'bool', { hint: 'a curve past the data is a guess' }))) +
         grp('Error bars', fld('Show', 'err.type', 'sel', { seg: true, opts: [['sd', 'SD'], ['sem', 'SEM'], ['ci95', '95% CI'], ['range', 'Range'], ['none', 'None']] }) + (kind === 'bars' ? fld('Direction', 'err.dir', 'sel', { seg: true, opts: [['up', 'Up only'], ['both', 'Both ways']] }) : '') + fld('Cap', 'err.cap', 'num', { step: 0.5, min: 0, max: 16 }) + fld('Width', 'err.w', 'num', { step: 0.25, min: 0.25, max: 5 }));
     }
     function axesHtml(kind){
       var yBad = C.fin(+spec.y.min) && C.fin(+spec.y.max) && spec.y.min !== null && spec.y.max !== null && +spec.y.min >= +spec.y.max;
       return grp('Y axis', pair(pf('Minimum', 'y.min', { auto: 1 }), pf('Maximum', 'y.max', { auto: 1 })) + pair(pf('Major step', 'y.major', { auto: 1 }), pf('Decimals', 'y.dec', { auto: 1, step: 1 })) + (yBad ? '<div class="ck-warn">The maximum has to be above the minimum — the axis is on auto until it is.</div>' : '') + fld('Logarithmic', 'y.log', 'bool')) +
-        grp('X axis', (doc.xUnit ? fld('Concentration unit', 'x.unit', 'sel', { seg: true, opts: [['auto', 'Auto'], ['M', 'M'], ['mM', 'mM'], ['\u00b5M', '\u00b5M'], ['nM', 'nM'], ['pM', 'pM']], hint: spec.x.unit === 'auto' ? 'Auto keeps ' + doc.xUnit + ', chosen from your data' : 'the numbers on the axis, the curves and the title follow' }) : '') + (kind === 'xy' ? fld('Numbers on the axis', 'x.fmt', 'sel', { seg: true, opts: [['auto', 'Auto'], ['plain', 'Numbers'], ['pow', 'Powers'], ['log', 'log']], hint: spec.x.fmt === 'log' ? 'log of the molar concentration, as Prism writes it' : 'Numbers 0.1, 1, 10 · Powers 10\u207b\u2079' }) : '') + (kind === 'bars' ? fld('Label angle', 'x.rot', 'sel', { seg: true, num: 1, opts: [[0, 'Flat'], [45, '45°'], [90, 'Vertical']] }) + fld('Order', 'x.order', 'sel', { seg: true, opts: [['given', 'As given'], ['desc', 'High → low'], ['asc', 'Low → high']] }) + fld('Concentration labels', 'x.labels', 'bool') : pair(pf('Minimum', 'x.min', { auto: 1 }), pf('Maximum', 'x.max', { auto: 1 })))) +
+        grp('X axis', (doc.xUnit ? fld('Concentration unit', 'x.unit', 'sel', { seg: true, opts: [['auto', 'Auto'], ['M', 'M'], ['mM', 'mM'], ['\u00b5M', '\u00b5M'], ['nM', 'nM'], ['pM', 'pM']], hint: spec.x.unit === 'auto' ? 'Auto keeps ' + doc.xUnit + ', chosen from your data' : 'the numbers on the axis, the curves and the title follow' }) : '') + (kind === 'xy' && doc.xScale !== 'lin' ? fld('Numbers on the axis', 'x.fmt', 'sel', { seg: true, opts: [['auto', 'Auto'], ['plain', 'Numbers'], ['pow', 'Powers'], ['log', 'log']], hint: spec.x.fmt === 'log' ? 'log of the molar concentration, as Prism writes it' : 'Numbers 0.1, 1, 10 · Powers 10\u207b\u2079' }) : '') + (kind === 'bars' ? fld('Label angle', 'x.rot', 'sel', { seg: true, num: 1, opts: [[0, 'Flat'], [45, '45°'], [90, 'Vertical']] }) + fld('Order', 'x.order', 'sel', { seg: true, opts: [['given', 'As given'], ['desc', 'High → low'], ['asc', 'Low → high']] }) + fld('Concentration labels', 'x.labels', 'bool') : pair(pf('Minimum', 'x.min', { auto: 1 }), pf('Maximum', 'x.max', { auto: 1 })))) +
         grp('Lines', fld('Axis width', 'axisW', 'num', { step: 0.25, min: 0.25, max: 5 }) + fld('Tick length', 'tick', 'num', { step: 0.5, min: 0, max: 12 }) + fld('Box around the plot', 'box', 'bool') + fld('Horizontal grid', 'grid', 'bool')) +
         grp('Reference line', fld('Show', 'ref.show', 'bool') + pair(pf('At', 'ref.y', { auto: 1 }), pf('Width', 'ref.w', { step: 0.25, min: 0.25, max: 5 })) + fld('Dotted', 'ref.dash', 'bool'));
     }
@@ -476,6 +476,11 @@ var ChartKit = (function(){
     function adoptItems(){
       var its = doc.items || []; spec.seen = spec.seen || {};
       its.forEach(function(it){ if (!spec.seen[it.id]) { spec.seen[it.id] = 1; if (its.length > 1 && !opts.drawAll) spec.hidden[it.id] = true; } });
+      // what the app says its figure is made of (names beside the points, points joined) is the starting choice, and the person's after that
+      // an app may start a figure from its own look (traces: no markers, no error bars) once; after that the person's choices stand
+      if (doc.defaults && !spec.xy.init) { Object.keys(doc.defaults).forEach(function(k){ if (spec[k] && typeof spec[k] === 'object') Object.keys(doc.defaults[k]).forEach(function(kk){ spec[k][kk] = doc.defaults[k][kk]; }); }); spec.xy.init = true; }
+      if (spec.xy.labels === null && doc.pointLabels) spec.xy.labels = true;
+      if (spec.xy.join === null && doc.join) spec.xy.join = true;
     }
     function refresh(){
       try { doc = opts.doc ? opts.doc() || { items: [] } : { items: [] }; } catch (e) { doc = { items: [] }; }
@@ -485,6 +490,9 @@ var ChartKit = (function(){
       }
       if (doc.sig !== undefined) lastSig = doc.sig;
       adoptItems();
+      // a figure that is never a bar chart (a scatter, a standard curve) has no bars to ask for, and names what it is made of (doc.noun: 'Targets', 'Tiers')
+      var kindSeg = root.querySelector('.ck-kind'); if (kindSeg) kindSeg.style.display = doc.kind ? 'none' : '';
+      SEC_T.compounds = SEC_L.compounds = doc.noun || 'Compounds';
       var slot = root.querySelector('.ck-slot'); if (slot && opts.slot) { try { opts.slot(slot); } catch (e) {} }
       draw(); renderSel(); renderPanel(); syncBar();
       setTimeout(fit, 0);

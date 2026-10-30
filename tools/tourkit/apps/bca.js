@@ -8,7 +8,7 @@
   tourRegister({
     id: 'bca', name: 'BCA',
     blurb: 'BCA turns the plate-reader absorbance of a **BCA protein assay** into concentrations: paste the plate, mark the BSA standards to fit a curve, mark your samples, and it tells you **how much sample and water** to bring every sample to the same concentration.',
-    where: function(){ var t = document.querySelector('.tab.active'); return t && t.getAttribute('data-tab') === 'guide' ? 'guide' : 'workflow'; },
+    where: function(){ var t = document.querySelector('.tab.active'); var d = t && t.getAttribute('data-tab'); return d === 'guide' ? 'guide' : d === 'graph' ? 'graph' : 'workflow'; },
     data: { label: 'Load the test data', has: function(){ var r = document.getElementById('import-results'); return !!(r && r.offsetParent !== null); }, load: function(){ switchTab('standards'); loadTestData(); } },
     intro: [{ t: 'Welcome to BCA',
       b: 'Paste the plate, paint the standards and the samples, and read off **how much sample and water** each one needs. It is one page, top to bottom: each section opens when the one above it is done. About a minute; **Esc** leaves it at any point.',
@@ -90,6 +90,13 @@
             b: 'Concentration, then the **sample** and **water** volumes. A sample that is already more dilute than the target is flagged “too dilute” rather than given a negative volume.' },
           { deep: true, sel: function(){ return [].slice.call(document.querySelectorAll('#prep-panel-results .btn')).filter(function(b){ return /workbook/i.test(b.textContent); })[0]; }, t: 'Take it with you', place: 'top', miss: MISS_SAMPLES,
             b: '**Export workbook** for Excel, **Export CSV** for the table, and inside dHUB **Send to Labbook** puts concentrations and loading volumes on an experiment.' }] }
+      ,
+      { id: 'graph', label: 'Graph', sel: '.tab[data-tab="graph"]', go: function(){ switchTab('graph'); }, full: false,
+        lead: 'The standard curve as a figure for a paper or a slide, drawn by the same chart editor as the other apps.',
+        do: ['Every well of each standard is a point; click a value in **Compounds** (Series) to leave it out of the figure and the line is fitted again without it.',
+          'The equation and R² are in the third title line; edit or remove them like any title. Choose axis ranges, markers and palette.',
+          'Export **PNG** at 300, 600 or 1200 dpi, a vector **PDF**, or **SVG**.'],
+        steps: [{ sel: '#bg-root', t: 'The standard curve', place: 'top', miss: MISS_CURVE, b: 'Click anything in the figure to edit it. **PNG** and **PDF** export what you see.' }] }
     ],
     words: [
       ['BSA standard', 'Bovine serum albumin at a known concentration — the points the curve is built from.'],

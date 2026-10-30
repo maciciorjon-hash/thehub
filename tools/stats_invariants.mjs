@@ -1,7 +1,7 @@
 // Statistics across the data-analysis apps (docs/DATA_APPS_STUDY_2026-10-30.md, Phase 1): one question gets one answer in every app.
 //   node tools/stats_invariants.mjs
 //
-// S1  the minimum R² a curve may have before it is flagged is the same default in Echo (Setup and the multi-assay panels), Lumina and Beacon
+// S1  the minimum R² a curve may have before it is flagged is the same default in Echo (Setup and the multi-assay panels), Lumina, Beacon and Tempo
 // S2  Beacon gives the midpoint a 95 % interval and it is honest: planted midpoints are inside it in ≥ 52 of 60 noisy runs (expected 57), and it is wider with more noise
 // S4  descriptive statistics are written once (StatsKit): every app's own helper gives what an independent calculation gives — empty, one value, ties, unsorted, nulls, NaN
 // S5  a midpoint past the doses is written as a bound in Echo (`> 1080`), with no interval, and the fitted number stays in the tooltip
@@ -30,9 +30,10 @@ const read = f => fs.readFileSync(path.join(ROOT, f), 'utf8');
     'Lumina QC box': num(lum, /id="qc-r2" type="number"[^>]*value="([\d.]+)"/),
     'Lumina when the box is empty': num(lum, /_numFieldOr\('qc-r2', ([\d.]+)\)/),
     'Beacon': num(bea, /var B_MIN_R2 = ([\d.]+);/),
+    'Tempo (Dmax fit)': num(read('apps/tempo/tempo.html'), /dr: \{ hookThr: 15, hookOn: true, minR2: ([\d.]+),/),
   };
   const vals = new Set(Object.values(d));
-  check('S1 the minimum R² default is one number in Echo, Lumina and Beacon', vals.size === 1 && !vals.has(null), d);
+  check('S1 the minimum R² default is one number in Echo, Lumina, Beacon and Tempo', vals.size === 1 && !vals.has(null), d);
   check('S1 Beacon has no other R² threshold written into its rules', !/f\.r2 < 0\.\d/.test(bea), 'a literal R² threshold is back in beacon.html');
 }
 

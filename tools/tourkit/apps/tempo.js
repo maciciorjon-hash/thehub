@@ -67,6 +67,17 @@
           'Show the strongest dose of each compound as traces, or all of them.'],
         steps: [{ sel: '#pane-compare', t: 'Side by side', place: 'top', miss: MISS, b: 'Pick the measures; hover a point for the compound. Axis ranges can be typed here too.' }] },
 
+      { id: 'graph', label: 'Graph', sel: tabEl('graph'), go: to('graph'), needs: 'data', full: false,
+        lead: 'The figure for a paper or a slide, drawn by the same chart editor as the other apps: the dose–response of the plateau, or the kinetics of one compound.',
+        do: ['Choose **Dose–response** (a degradation) or **Kinetics** (any plate) above the figure; for kinetics, pick the compound.',
+          'Tick the compounds to draw (Compounds), choose a palette, markers, error bars, the unit of the dose axis, an axis range; add a table of DC50 and Dmax under the figure.',
+          'Click a value in **Compounds** to leave a well out of the figure: the curve is made again without it. This changes the figure only, never Results.',
+          'Export **PNG** at 300, 600 or 1200 dpi, a vector **PDF**, or **SVG**.'],
+        ref: [['Plateau', 'The level each concentration settles at, as % of the vehicle; the curve is the four-parameter fit of Analysis A.'],
+          ['Kinetics', 'One line per concentration, the mean of its wells at each read; markers and error bars are off until you ask for them.']],
+        watch: [{ k: 'tip', t: 'A time course has no dose–response, so only Kinetics is offered there.' }],
+        steps: [{ sel: '#pane-graph .tg-card', t: 'The figure', place: 'top', miss: MISS, b: 'Click anything in the figure to edit it. **PNG** and **PDF** export what you see.' }] },
+
       { id: 'history', label: 'History', sel: tabEl('history'), go: to('history'), full: false,
         lead: 'Every analysis you have made, kept in this browser under its name and opened as you left it.',
         do: ['Search, pin and rename; open one to carry on from where you stopped.'],

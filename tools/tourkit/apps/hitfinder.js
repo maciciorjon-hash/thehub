@@ -127,6 +127,14 @@
           { sel: '#pl-dmax .btn', deep: true, t: 'Take it with you', place: 'bottom',
             b: '**Table**, **SVG**, **PNG** and **CSV** on every plot’s header. The picture is made by the same code as the screen, so it is the one you were looking at.' }] },
 
+      { id: 'graph', label: 'Graph', sel: tab('graph'), go: go('graph'), needs: 'data', full: false,
+        lead: 'Potency against effect as a figure for a paper or a slide — one series per tier, drawn by the same chart editor as the other apps.',
+        do: ['Click a point, a title, the legend or an axis to edit it; drag a title to move it.',
+          'Name each compound beside its point (Chart), choose a palette, axis ranges and the potency unit.',
+          'Export **PNG** at 300, 600 or 1200 dpi, a vector **PDF**, or **SVG**.'],
+        ref: [['Left out', 'A potency that is a bound (an arrow in Plots) or has no midpoint is not a place on the axis, so it is not drawn here.']],
+        steps: [{ sel: '#hg-root', t: 'The figure', place: 'top', b: 'Click anything in the figure to edit it. **PNG** and **PDF** export what you see.' }] },
+
       { id: 'health', label: 'Health', sel: tab('health'), go: go('health'), needs: 'data',
         lead: 'Is the assay itself holding still? A compound measured in every run is the screen’s own control: its potency should wander by the assay’s noise and no more. One point per run, and the lines say how far is too far.',
         do: ['Pick the **Screen** (usually Primary) and what to **Measure**: potency or Dmax. Reference compounds are the ones measured in at least three runs of that screen; the three measured most often are drawn, and you can switch any on or off.',

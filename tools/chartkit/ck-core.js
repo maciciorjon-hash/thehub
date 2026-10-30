@@ -47,7 +47,7 @@ var ChartKitCore = (function(){
       bar: { width: 1, gap: 1.1, inner: 0.12, border: 1, shade: false },
       err: { type: 'sd', cap: 3, w: 1, dir: 'up' },
       pts: { show: false, size: 1.8 },
-      xy: { marker: 'circle', msize: 2.8, lw: 1.4, fit: true, points: true, open: false, dash: false, extend: false },
+      xy: { marker: 'circle', msize: 2.8, lw: 1.4, fit: true, points: true, open: false, dash: false, extend: false, labels: null, join: null },   // labels / join: null follows the app's doc.pointLabels / doc.join
       ref: { show: true, y: null, dash: true, w: 0.9, label: true },
       legend: { show: true, size: 9, swatch: 9, pos: 'auto', float: false },
       // the results table under the figure (the app says what can be in it: doc.table). cols: {id: bool} — an id not here follows the app's default
@@ -151,7 +151,7 @@ var ChartKitCore = (function(){
 
   function itemColor(spec, it, idx, n){
     var pal = PALETTES.filter(function(p){ return p.id === spec.palette; })[0] || PALETTES[0];
-    return spec.colors[it.id] || (pal.ramp ? blueRamp(idx, n || 6) : pal.c[idx % pal.c.length]);
+    return spec.colors[it.id] || (it.color && spec.palette === 'blue' ? it.color : (pal.ramp ? blueRamp(idx, n || 6) : pal.c[idx % pal.c.length]));   // an app's own colour for a series (a tier, a target) is its default; another palette replaces it
   }
 
   // R² of a curve against the replicates that are in the figure (the ones left out are not): 1 - SSres / SStot, over every replicate
@@ -409,7 +409,7 @@ var ChartKitCore = (function(){
     vis.forEach(function(it){ it.pts.forEach(function(p){
       if (!p.st.n) return; take(p.st.mean); var e = errOf(p.st, spec.err.type); if (e) { take(e[0]); take(e[1]); }
       if (spec.pts.show || (kind === 'xy' && spec.xy.points)) p.kept.forEach(function(r){ take(r.v); });
-    }); if (kind === 'xy' && spec.xy.fit && it.fit && it.fit.fn) { var xs = it.pts.map(function(p){ return p.x; }).filter(function(x){ return x > 0; }); if (xs.length) { var a = Math.min.apply(null, xs), b = Math.max.apply(null, xs); for (var k = 0; k <= 30; k++) take(it.fit.fn(a * Math.pow(b / a, k / 30))); } } });
+    }); if (kind === 'xy' && spec.xy.fit && it.fit && it.fit.fn) { var xs = it.pts.map(function(p){ return p.x; }).filter(function(x){ return doc.xScale === 'lin' ? fin(x) : x > 0; }); if (xs.length) { var a = Math.min.apply(null, xs), b = Math.max.apply(null, xs); for (var k = 0; k <= 30; k++) take(it.fit.fn(doc.xScale === 'lin' ? a + (b - a) * k / 30 : a * Math.pow(b / a, k / 30))); } } });
     var refY = spec.ref.show ? (spec.ref.y !== null && spec.ref.y !== undefined && spec.ref.y !== '' ? +spec.ref.y : (doc.refLine ? doc.refLine.y : null)) : null;
     if (fin(refY)) take(refY);
     if (!fin(lo)) { lo = 0; hi = 1; }
@@ -507,29 +507,43 @@ var ChartKitCore = (function(){
         if (kx > 1) xTickList.forEach(function(t, ti){ if (ti % kx) t.label = ''; });
       }
     } else {
-      var xv = []; vis.forEach(function(it){ it.pts.forEach(function(p){ if (p.x > 0) xv.push(p.x); }); });
+      var lin = doc.xScale === 'lin', la = 0, lb = 1, d0 = 0, d1 = 1;
+      var xv = []; vis.forEach(function(it){ it.pts.forEach(function(p){ if (lin ? fin(p.x) : p.x > 0) xv.push(p.x); }); });
       var xlo = xv.length ? Math.min.apply(null, xv) : 1, xhi = xv.length ? Math.max.apply(null, xv) : 10;
+      if (lin) {
+        // a linear axis: from a round number at or below the lowest x to one at or above the highest, or the minimum and maximum the person typed
+        var lt = linTicks(xlo === xhi ? xlo - 1 : xlo, xlo === xhi ? xhi + 1 : xhi, 0, 6), st = lt.step, typed = function(v){ return v !== null && v !== undefined && v !== '' && fin(+v); };
+        la = typed(spec.x.min) ? +spec.x.min : Math.floor(xlo / st + 1e-9) * st; lb = typed(spec.x.max) ? +spec.x.max : Math.ceil(xhi / st - 1e-9) * st; if (lb <= la) lb = la + st;
+        xPx = function(x){ return plot.x + (x - la) / (lb - la) * plot.w; };
+        linTicks(la, lb, 0, 6).ticks.forEach(function(v){ xTickList.push({ x: xPx(v), label: fmt(v), major: true }); });
+      } else {
       var d0 = fin(spec.x.min) && +spec.x.min > 0 ? Math.log10(+spec.x.min) : Math.floor(Math.log10(xlo) - 0.35), d1 = fin(spec.x.max) && +spec.x.max > 0 ? Math.log10(+spec.x.max) : Math.ceil(Math.log10(xhi) + 0.35);
       if (d1 <= d0) d1 = d0 + 1;
       xPx = function(x){ return plot.x + (Math.log10(Math.max(x, 1e-30)) - d0) / (d1 - d0) * plot.w; };
       var exps = []; for (var e0 = Math.ceil(d0 - 1e-9); e0 <= d1 + 1e-9; e0++) exps.push(e0);
       var uoX = xUnitOf(doc, spec), dl = decadeLabels(exps, spec.x.fmt, uoX.to ? Math.round(Math.log10(XU[uoX.to])) : 0); exps.forEach(function(e, i){ xTickList.push({ x: xPx(Math.pow(10, e)), label: dl[i], major: true }); });
       for (var e1 = Math.floor(d0); e1 < d1; e1++) for (var m2 = 2; m2 < 10; m2++) { var vv = m2 * Math.pow(10, e1); if (Math.log10(vv) > d0 && Math.log10(vv) < d1) xTickList.push({ x: xPx(vv), label: '', minor: true }); }
+      }
+      var labelsOn = spec.xy.labels === null ? !!doc.pointLabels : !!spec.xy.labels, lsz = Math.max(6, spec.x.size - 1), placed = [];
       vis.forEach(function(it){
-        var ink = it.color, pts = it.pts.filter(function(p){ return p.x > 0 && p.st.n; });
+        var ink = it.color, pts = it.pts.filter(function(p){ return (lin ? fin(p.x) : p.x > 0) && p.st.n; });
         if (spec.xy.fit && it.fit && it.fit.fn && pts.length > 1) {
           // A fit is drawn over the doses that were measured and stops at the first and last point; past them it is a guess, not a result. (Style › "Extend the fit across the whole axis" draws it over the axis.)
-          var px0 = pts.map(function(p){ return p.x; }), a = spec.xy.extend ? Math.pow(10, d0) : Math.min.apply(null, px0), b = spec.xy.extend ? Math.pow(10, d1) : Math.max.apply(null, px0), poly = [];
-          for (var k = 0; k <= 160; k++) { var xx = a * Math.pow(b / a, k / 160), yy = it.fit.fn(xx); if (fin(yy)) poly.push([xPx(xx), yPx(yy)]); }
+          var px0 = pts.map(function(p){ return p.x; }), a = spec.xy.extend ? (lin ? la : Math.pow(10, d0)) : Math.min.apply(null, px0), b = spec.xy.extend ? (lin ? lb : Math.pow(10, d1)) : Math.max.apply(null, px0), poly = [];
+          for (var k = 0; k <= 160; k++) { var xx = lin ? a + (b - a) * k / 160 : a * Math.pow(b / a, k / 160), yy = it.fit.fn(xx); if (fin(yy)) poly.push([xPx(xx), yPx(yy)]); }
           data.push({ t: 'path', pts: poly, stroke: ink, sw: spec.xy.lw, dash: spec.xy.dash ? '5 3' : '', el: 'fit:' + it.id, clip: true });
         }
-        if (spec.xy.points) pts.forEach(function(p){
+        if ((spec.xy.join === null ? doc.join : spec.xy.join) && pts.length > 1) data.push({ t: 'path', pts: pts.slice().sort(function(a, b){ return a.x - b.x; }).map(function(p){ return [xPx(p.x), yPx(p.st.mean)]; }), stroke: ink, sw: spec.xy.lw, el: 'join:' + it.id, clip: true });
+        if (spec.xy.points) pts.forEach(function(p, pi){
           var cx = xPx(p.x), e = errOf(p.st, spec.err.type);
           if (e) { var c = spec.err.cap / 2; data.push({ t: 'path', pts: [[cx, yPx(e[0])], [cx, yPx(e[1])]], stroke: ink, sw: spec.err.w, el: 'pt:' + it.id }, { t: 'path', pts: [[cx - c, yPx(e[0])], [cx + c, yPx(e[0])]], stroke: ink, sw: spec.err.w, el: 'pt:' + it.id }, { t: 'path', pts: [[cx - c, yPx(e[1])], [cx + c, yPx(e[1])]], stroke: ink, sw: spec.err.w, el: 'pt:' + it.id }); }
           p.dropped.forEach(function(r){ data.push({ t: 'circle', cx: cx, cy: yPx(r.v), r: spec.xy.msize * 0.6, fill: 'none', stroke: '#9a9a9a', sw: 0.8, dash: '2 1.5', el: 'pt:' + it.id }); });
           if (spec.pts.show) p.kept.forEach(function(r){ data.push({ t: 'circle', cx: cx + 4, cy: yPx(r.v), r: spec.pts.size * 0.8, fill: lighten(ink, 0.4), stroke: ink, sw: 0.6, el: 'pt:' + it.id }); });
           var mk = MARKERS[(it.idx % MARKERS.length)], mkType = spec.xy.marker === 'auto' ? mk : spec.xy.marker;
           data.push({ t: 'marker', type: mkType, cx: cx, cy: yPx(p.st.mean), r: spec.xy.msize, fill: spec.xy.open ? '#ffffff' : ink, stroke: ink, sw: 1.2, el: 'pt:' + it.id });
+          // a name beside the point, unless it would sit on one already written (a scatter of compounds: the labels are the point)
+          if (labelsOn && p.label) { var lw0 = measure(p.label, lsz, false, false, F), lx = cx + spec.xy.msize + 2, ly = yPx(p.st.mean) - spec.xy.msize * 0.4;
+            if (!placed.some(function(r){ return lx < r.x + r.w && lx + lw0 > r.x && ly - lsz < r.y + r.h && ly > r.y; })) { placed.push({ x: lx, y: ly - lsz, w: lw0, h: lsz }); data.push(T('plab:' + it.id + ':' + pi, p.label, lx, ly, lsz, { drag: false, fill: '#333333' })); } }
         });
       });
     }
@@ -592,6 +606,7 @@ var ChartKitCore = (function(){
   }
   function autoKind(doc, spec){
     var vis = (doc.items || []).filter(function(i){ return !spec.hidden[i.id]; });
+    if (doc.kind === 'xy' || doc.kind === 'bars') return doc.kind;   // an app whose data is never a bar chart (a scatter, a standard curve) says so
     if (!vis.length) return 'xy';
     return vis.every(function(i){ return (i.points || []).length < 4; }) ? 'bars' : 'xy';
   }

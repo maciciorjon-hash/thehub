@@ -12,7 +12,7 @@ Edit the kit in tools/chartkit/ only — the copies say so in their first commen
 """
 import sys, re, pathlib
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-TARGETS = ['apps/beacon/beacon.html', 'apps/lumina/lumina.html', 'apps/echo/echo.html']
+TARGETS = ['apps/beacon/beacon.html', 'apps/lumina/lumina.html', 'apps/echo/echo.html', 'apps/tempo/tempo.html', 'apps/hitfinder/hitfinder.html', 'apps/dora/dora.html', 'apps/bca/bca.html']
 KIT = ROOT / 'tools/chartkit'
 CSS = (KIT / 'chartkit.css').read_text(encoding='utf-8').rstrip('\n')
 JS = '\n'.join((KIT / f).read_text(encoding='utf-8').rstrip('\n') for f in ('ck-core.js', 'ck-export.js', 'ck-ui.js'))
