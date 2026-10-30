@@ -35,6 +35,7 @@ run "Multi-plate reader kit"          "$PY" tools/sync_reader_plates.py --check
 run "Setup dialog kit"                 "$PY" tools/sync_setupkit.py --check
 run "History kit"                      "$PY" tools/sync_historykit.py --check
 run "Statistics kit"                   "$PY" tools/sync_statskit.py --check
+run "Results table kit"                "$PY" tools/sync_resultskit.py --check
 run "Bench calculator kit"             "$PY" tools/sync_calckit.py --check
 run "Help assistant"                   "$PY" tools/sync_assist.py --check
 run "Shared Echo blocks"               "$PY" tools/sync_screen_engine.py --check

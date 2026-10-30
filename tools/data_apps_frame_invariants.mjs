@@ -5,6 +5,8 @@
 // F1  every tab bar is 40 px tall, 13 px type, 500 → 600 when active; the first tab's label sits on the page gutter (28 px at this width)
 // F2  a card is one thing: --r-3 corners, --shadow-xs, the page gutter at its left
 // F3  no text on the page is off the type scale (10 11 12 13 15 17 20 26 38 px); superscripts and drawn SVG text are the two exemptions
+// F5  the main results table of each app is a ResultsKit table: 11 px headers in sentence case (never uppercase), cells at its density's size in the sans face, numbers aligned on the right,
+//     and — where an app reports an interval — the order potency · 95% CI · … · Hill · R² (Echo, Lumina, Beacon)
 // F4  the retired accent #5e87c5 draws nothing of these apps' own (Echo keeps it as the colour of the Displacement assay, a category, not the accent)
 import { chromium } from 'playwright';
 import fs from 'fs';
@@ -61,6 +63,35 @@ for (const id of ['lumina', 'beacon', 'tempo', 'hitfinder', 'dora', 'bca']) {
   const bad = src.split('\n').map((l, i) => [i + 1, l]).filter(([, l]) => /#5e87c5/i.test(l) && !/displacement|_assayColors|CV_PALETTE|'#e36c69','#5e87c5'/i.test(l));
   check('F4 echo: #5e87c5 only as the Displacement assay\'s colour or in the curve palette', bad.length === 0, bad.map(([n]) => n));
 }
+
+/* ───── F5: the results table ───── */
+const RES = {
+  echo: { boot: `[...document.querySelectorAll('.outer-tab')].find(b=>/Analysis/.test(b.textContent))?.click(); document.getElementById('setup-modal')?.classList.add('hidden'); loadTestData(); await new Promise(r=>setTimeout(r,300)); runPipeline(); await new Promise(r=>setTimeout(r,3000));`, density: 'compact', fs: '11px', order: true },
+  lumina: { boot: `loadLuminaTestData(); switchTab('results')`, density: 'standard', fs: '12px', order: true },
+  beacon: { boot: `loadTestData(); switchTab('results')`, density: 'standard', fs: '12px', order: true },
+  tempo: { boot: `await tpLoadExample('degradation'); tpTab('results')`, density: 'roomy', fs: '13px' },
+  dora: { boot: `loadTestData(); switchTab('table')`, density: 'standard', fs: '12px' },
+};
+for (const [id, R] of Object.entries(RES)) {
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } }), pg = await ctx.newPage(); await pg.route(/^https?:/, r => r.abort());
+  await pg.goto('file://' + path.join(ROOT, `apps/${id}/${id}.html`)); await pg.waitForTimeout(900);
+  await pg.evaluate(`(async()=>{ document.getElementById('dep-stack')?.remove(); ${R.boot} })()`); await pg.waitForTimeout(1200);
+  const t = await pg.evaluate(() => {
+    const tb = document.querySelector('table.rk'); if (!tb) return null; const cs = e => getComputedStyle(e);
+    const heads = [...tb.querySelectorAll('thead tr:last-child th')].map(h => h.textContent.replace(/\s+/g, ' ').trim());
+    const nums = [...tb.querySelectorAll('tbody td.num')].slice(0, 40), inner = [...tb.querySelectorAll('tbody td.num, tbody td.num *')].slice(0, 80);
+    return { density: tb.dataset.density, th: [...new Set([...tb.querySelectorAll('th')].map(h => cs(h).fontSize + '/' + cs(h).fontWeight + '/' + cs(h).textTransform))], tdFs: [...new Set([...tb.querySelectorAll('tbody td')].map(d => cs(d).fontSize))], align: [...new Set(nums.map(n => cs(n).textAlign))], mono: inner.some(n => /Mono/.test(cs(n).fontFamily)), heads };
+  });
+  check(`F5 ${id}: the results table is a ResultsKit table at ${R.density} density`, !!t && t.density === R.density, t && t.density);
+  if (!t) { await ctx.close(); continue; }
+  check(`F5 ${id}: headers are 11 px / 600 in sentence case`, t.th.length === 1 && t.th[0] === '11px/600/none', t.th);
+  check(`F5 ${id}: cells are ${R.fs} (the one size of the ${R.density} density) except marks the app sets smaller`, t.tdFs.includes(R.fs), t.tdFs);
+  check(`F5 ${id}: numbers are right-aligned and in the sans face`, (t.align.length === 0 || (t.align.length === 1 && t.align[0] === 'right')) && !t.mono, { align: t.align, mono: t.mono });
+  if (R.order) { const at = re => t.heads.findIndex(h => re.test(h)), a = at(/^(DC50|IC50|EC50)/), c = at(/95% CI/), h = at(/^Hill/), r2 = at(/^R²/);
+    check(`F5 ${id}: potency · 95% CI · … · Hill · R²`, a >= 0 && c === a + 1 && h > c && r2 > h, t.heads); }
+  await ctx.close();
+}
+
 await browser.close();
 console.log(findings.length ? `\n${findings.length} frame invariants failed (${passed} held)` : `\nAll ${passed} frame invariants hold.`);
 process.exit(findings.length ? 1 : 0);
