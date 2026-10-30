@@ -1824,7 +1824,7 @@ var TP_DEFAULTS = {
   headline: 'both',
   // the other experiment: a time course (a protein level over time, no fit): the smallest change counted, the smoothing window (reads), the reads that make "final"
   kind: 'degradation',
-  tc: { minChange: 0.10, smooth: 3, finalN: 3 }
+  tc: { minChange: 0.10, smooth: 3, finalN: 3, fit: true, lag: true }
 };
 function tpSet(S) { var o = JSON.parse(JSON.stringify(TP_DEFAULTS)); if (S) for (var g in o) if (S[g] != null) { if (typeof o[g] === 'object' && !Array.isArray(o[g])) { for (var k in S[g]) o[g][k] = S[g][k]; } else o[g] = S[g]; } return o; }
 
@@ -2448,6 +2448,77 @@ function tpTCMetrics(t, y, cfg, base, sd) {
   return { ok: true, base: b, sigma: sigma, theta: theta, ext: ext, tExt: t[ie], dir: dir, atEnd: atEnd && !flat, extQ: atEnd && !flat ? (dir > 0 ? '≥' : '≤') : '=', sdExt: sd && sd[ie] != null ? sd[ie] / b : null,
     fin: fin, retained: retained, cls: cls, t12: t12, onset: onset, rate: rate, auc: { h: auc, mean: T > 0 ? auc / T : null }, at: at, S: S, n: nI };
 }
+/* ───── the induction fit: one phase towards a plateau, for a rise or a fall that settles ─────
+   L(t) = y0·(1 + A·(1 − e^(−k·τ))),  τ = max(0, t − lag).  y0 is the start level (fitted: every well was divided by one noisy first read), A is signed (a rise > 0,
+   a fall < 0): the plateau is the fold 1 + A over that start and k the rate of getting there (h⁻¹), so t½ of the fit = lag + ln 2 / k and the initial rate is A·k. For a fixed k and lag the model is linear in A, so k is scanned on a log grid, A is solved in
+   closed form and the best cell is refined (variable projection, as for the degradation); the interval of k is the exact profile likelihood, widened for the
+   autocorrelation of the residuals. Only a rise or a fall is fitted: a peak that returns, a dip that recovers or a change of direction is not one phase, and a
+   flat trace has nothing to fit. When the plateau is not reached (k·T under 2.3) it is fixed to the end level and said so: k is then biased high. */
+function tpInduceFit(t, y, cfg, base) {
+  cfg = cfg || {}; var b = base != null && base > 0 ? base : 1, tt = [], L = [], i;
+  for (i = 0; i < t.length; i++) if (t[i] >= -1e-9 && y[i] != null && isFinite(y[i])) { tt.push(t[i]); L.push(y[i] / b); }
+  var n = tt.length; if (n < 8) return { ok: false, why: 'few-points' };
+  var T = tt[n - 1] - tt[0], dts = []; for (i = 1; i < n; i++) dts.push(tt[i] - tt[i - 1]); var dt = tpMedian(dts) || 0.1;
+  if (!(T > 0)) return { ok: false, why: 'few-points' };
+  var kmin = 0.3 / T, kmax = 3 / dt, Sz = 0; L.forEach(function (v) { Sz += v; });
+  // L(t) = y0 + A·g(t), g = 1 − e^(−k·τ): the start level y0 is fitted too (the normalisation divides every well by ONE noisy first read, so "1" is only the start to within that read),
+  // and the plateau is reported as a fold over the fitted start, (y0 + A) / y0. With Efix the plateau level is held (not reached) and y0 is the one free parameter.
+  var mk = function (lag, Efix) {
+    var tau = tt.map(function (x) { return Math.max(0, x - lag); });
+    var ev = function (k) {
+      var Sg = 0, Sgg = 0, Sgz = 0, j, g, y0, A, det;
+      for (j = 0; j < n; j++) { g = 1 - Math.exp(-k * tau[j]); Sg += g; Sgg += g * g; Sgz += g * L[j]; }
+      if (Efix != null) { var Shh = 0, Sh = 0; for (j = 0; j < n; j++) { g = 1 - Math.exp(-k * tau[j]); Shh += (1 - g) * (1 - g); Sh += (1 - g) * (L[j] - Efix * g); } y0 = Shh > 1e-12 ? Sh / Shh : 1; A = Efix - y0; det = Shh; }
+      else { det = n * Sgg - Sg * Sg; if (Math.abs(det) < 1e-12) { y0 = Sz / n; A = 0; } else { y0 = (Sgg * Sz - Sg * Sgz) / det; A = (n * Sgz - Sg * Sz) / det; } }
+      if (y0 < 0.2) { y0 = 0.2; A = Efix != null ? Efix - y0 : (Sgg > 1e-12 ? (Sgz - y0 * Sg) / Sgg : 0); }
+      if (y0 + A < 0.001) A = 0.001 - y0;
+      var sse = 0; for (j = 0; j < n; j++) { var r = L[j] - y0 - A * (1 - Math.exp(-k * tau[j])); sse += r * r; }
+      return { k: k, y0: y0, A: A, sse: sse, Sgg: Sgg, Sg: Sg, det: det };
+    };
+    var ng = 72, grid = [], best = 0, j; for (j = 0; j < ng; j++) { var e = ev(Math.exp(Math.log(kmin) + (Math.log(kmax) - Math.log(kmin)) * j / (ng - 1))); grid.push(e); if (e.sse < grid[best].sse) best = j; }
+    var lo = Math.log(grid[Math.max(0, best - 1)].k), hi = Math.log(grid[Math.min(ng - 1, best + 1)].k), gr = 0.6180339887, c = hi - gr * (hi - lo), d = lo + gr * (hi - lo), fc = ev(Math.exp(c)), fd = ev(Math.exp(d));
+    for (j = 0; j < 36; j++) { if (fc.sse < fd.sse) { hi = d; d = c; fd = fc; c = hi - gr * (hi - lo); fc = ev(Math.exp(c)); } else { lo = c; c = d; fc = fd; d = lo + gr * (hi - lo); fd = ev(Math.exp(d)); } }
+    var fin = fc.sse < fd.sse ? fc : fd; if (grid[best].sse < fin.sse) fin = grid[best]; fin.ev = ev; fin.lag = lag; fin.fixE = Efix; return fin;
+  };
+  var rhoOf = function (f) { var r = tt.map(function (x, j) { return L[j] - f.y0 - f.A * (1 - Math.exp(-f.k * Math.max(0, x - f.lag))); }), num = 0, den = 0; for (var j = 0; j < n - 1; j++) num += r[j] * r[j + 1]; r.forEach(function (v) { den += v * v; }); return den > 0 ? Math.max(0, Math.min(0.97, num / den)) : 0; };
+  var f0 = mk(0, null), rho = rhoOf(f0), neff = Math.max(8, n * (1 - rho) / (1 + rho)), infl = Math.max(1, Math.min(25, (1 + rho) / (1 - rho))), fit = f0;
+  // a delay is kept only when it lowers AICc by at least 6
+  if (cfg.lag !== false) {
+    var a0 = tpAICc(f0.sse, n, neff, 3), bestL = null;
+    for (var q = 1; q <= 24; q++) { var lg = T / 3 * q / 24, fl = mk(lg, null), al = tpAICc(fl.sse, n, neff, 4); if (a0 - al >= 6 && (!bestL || al < bestL.a)) bestL = { f: fl, a: al }; }
+    if (bestL) {   // settle the delay between its neighbours on the grid
+      var st = T / 3 / 24, lc = bestL.f.lag; for (var q2 = -8; q2 <= 8; q2++) { var lg2 = lc + st * q2 / 8; if (lg2 <= 0 || lg2 > T / 3) continue; var f2 = mk(lg2, null); if (f2.sse < bestL.f.sse) bestL.f = f2; }
+      fit = bestL.f; rho = rhoOf(fit); neff = Math.max(8, n * (1 - rho) / (1 + rho)); infl = Math.max(1, Math.min(25, (1 + rho) / (1 - rho)));
+    }
+  }
+  var lag = fit.lag, nF = Math.max(3, Math.round(cfg.finalN || 3)), reached = fit.k * Math.max(1e-9, T - lag) >= 2.3, fixed = false, par = 3 + (lag > 0 ? 1 : 0);
+  // the plateau as a fold over the start, and its standard error from the covariance of (y0, A)
+  var fold = function (e, sig2) {
+    var r = 1 + e.A / e.y0, se = 0;
+    if (e.fixE != null) { se = e.det > 1e-12 ? e.fixE / (e.y0 * e.y0) * Math.sqrt(sig2 * infl / e.det) : 0; }
+    else if (Math.abs(e.det) > 1e-12) { var vy = sig2 * infl * e.Sgg / e.det, vA = sig2 * infl * n / e.det, cv = -sig2 * infl * e.Sg / e.det; se = Math.sqrt(Math.max(0, vA / (e.y0 * e.y0) + e.A * e.A * vy / Math.pow(e.y0, 4) - 2 * e.A * cv / Math.pow(e.y0, 3))); }
+    return { r: r, se: se };
+  };
+  var prof = function (f, par2) {
+    var df = Math.max(1, n - par2), tq = _tQ95(df), thr = f.sse * (1 + infl * tq * tq / df), ev = function (k) { var e = f.ev(k); e.fixE = f.fixE; return e; }, lim0 = kmin, lim1 = kmax;
+    var bis = function (a, c) { var la = Math.log(a), lb = Math.log(c); for (var j = 0; j < 40; j++) { var lm = (la + lb) / 2; if (ev(Math.exp(lm)).sse > thr) la = lm; else lb = lm; if (Math.abs(la - lb) < 1e-7) break; } return Math.exp((la + lb) / 2); };
+    var walk = function (dir) { var step = dir > 0 ? 1.1 : 1 / 1.1, x = f.k; for (var j = 0; j < 400; j++) { var nx = x * step; if ((dir > 0 && nx > lim1) || (dir < 0 && nx < lim0)) return null; if (ev(nx).sse > thr) return bis(nx, x); x = nx; } return null; };
+    var lo = walk(-1), hi = walk(1), sig2 = f.sse / df, plo = Infinity, phi = -Infinity, l0 = Math.log(lo == null ? lim0 : lo), l1 = Math.log(hi == null ? lim1 : hi);
+    for (var j = 0; j <= 24; j++) { var e = ev(Math.exp(l0 + (l1 - l0) * j / 24)); if (e.sse > thr) continue; var fo = fold(e, sig2); plo = Math.min(plo, fo.r - tq * fo.se); phi = Math.max(phi, fo.r + tq * fo.se); }
+    return { kLo: lo, kHi: hi, rLo: isFinite(plo) ? Math.max(0.001, plo) : null, rHi: isFinite(phi) ? phi : null };
+  };
+  fit.fixE = null; var pr = prof(fit, par);
+  // the plateau is not reached: it cannot be told apart from a slower k with a higher plateau, so it is held at where the trace ends and k is refitted
+  if (!reached || pr.kLo == null) {
+    var Eend = tpMean(L.slice(-nF)), ff = mk(lag, Eend); fixed = true; pr = prof(ff, par - 1); fit = ff;
+  }
+  var y0 = fit.y0, r = 1 + fit.A / y0, k = fit.k, ybar = Sz / n, sst = 0; L.forEach(function (v) { sst += (v - ybar) * (v - ybar); });
+  var r2 = sst > 0 ? 1 - fit.sse / sst : null, dir = r >= 1 ? 1 : -1, kq = fixed ? '≤' : (k >= kmax * 0.97 ? '>' : '=');
+  if (fixed) { var f1 = fold(fit, fit.sse / Math.max(1, n - par + 1)); pr.rLo = Math.max(0.001, r - 1.96 * f1.se); pr.rHi = r + 1.96 * f1.se; }
+  return { ok: true, k: k, kLo: pr.kLo, kHi: pr.kHi, kq: kq, A: r - 1, y0: y0, plat: r, platLo: pr.rLo, platHi: pr.rHi, platq: fixed ? (dir > 0 ? '≥' : '≤') : '=', lag: lag > 0 ? lag : null, t12: lag + Math.LN2 / k, t90: lag + Math.LN10 / k,
+    v0: (r - 1) * k, r2: r2, n: n, neff: neff, rho: rho, fixed: fixed, base: b, grade: r2 == null ? null : r2 > 0.98 ? 'excellent' : r2 > 0.95 ? 'acceptable' : r2 > 0.8 ? 'poor' : 'bad' };
+}
+function tpInduceAt(fit, t) { return fit.base * fit.y0 * (1 + fit.A * (1 - Math.exp(-fit.k * Math.max(0, t - (fit.lag || 0))))); }
 function tpCompoundTC(cx, key) {
   var S = cx.S, g = cx.gmap[key], t = cx.t, nT = t.length, plate = cx.plate;
   var wellY = function (id) { var y = cx.nm.frac[id].slice(); (cx.exP[id] || []).forEach(function (k) { if (k >= 0 && k < y.length) y[k] = null; }); if (cx.maskFn) for (var k = 0; k < y.length; k++) if (cx.maskFn(k)) y[k] = null; return y; };
@@ -2456,7 +2527,10 @@ function tpCompoundTC(cx, key) {
     var live = cg.wells.filter(function (id) { return !cx.exW.has(id); }), ys = live.map(wellY), mean = [], sd = [], nAt = [];
     for (var k = 0; k < nT; k++) { var col = ys.map(function (y) { return y[k]; }); mean.push(tpMean(col)); sd.push(tpSD(col)); nAt.push(col.filter(function (v) { return v != null; }).length); }
     var base = cx.nm.mode === 'perTime' ? tpMean(mean.slice(0, Math.max(1, Math.round(S.norm.t0n) || 1)).filter(function (v) { return v != null; })) : 1;
-    return { c: cg.c, cu: g.cu || null, wells: cg.wells, live: live, mean: mean, sd: sd, nAt: nAt, m: tpTCMetrics(t, mean, cfg, base, sd) };
+    var m = tpTCMetrics(t, mean, cfg, base, sd);
+    // a rise or a fall that settles gets a one-phase fit; the others say why not
+    m.fit = !m.ok ? { ok: false, why: 'few-points' } : !S.tc.fit ? { ok: false, why: 'off' } : m.cls === 'tc-flat' ? { ok: false, why: 'no-change' } : (m.cls === 'tc-up' || m.cls === 'tc-down') ? tpInduceFit(t, mean, cfg, base) : { ok: false, why: 'not-one-phase' };
+    return { c: cg.c, cu: g.cu || null, wells: cg.wells, live: live, mean: mean, sd: sd, nAt: nAt, m: m };
   });
   var comp = { key: key, kind: 'tc', compound: g.compound, target: g.target, plate: plate.id, cu: g.cu || null, control: !!g.control, concs: concs, flags: [] };
   var best = null; concs.forEach(function (cc) { if (cc.m.ok && (!best || Math.abs(cc.m.ext - 1) > Math.abs(best.m.ext - 1))) best = cc; });
@@ -3171,7 +3245,7 @@ const ICO_TC = '<svg viewBox="0 0 24 24"><path d="M4 4v16h16"/><path d="M6.5 17c
 function tpKindCard(k) {
   const on = TP.S.kind === k, tc = k === 'timecourse';
   return '<div class="kind' + (on ? ' on' : '') + '" data-kind="' + k + '"' + (on ? ' aria-current="true"' : '') + '>' + (tc ? ICO_TC : ICO.curve) + '<h3>' + TP_KINDS[k].name + '</h3>' +
-    (tc ? '<p>The level of a HiBiT-tagged protein over time — the endogenous protein, or after doxycycline, a stress or any treatment. Nothing is fitted, because nothing is being degraded.</p><p class="gets">You get: <b>fold over the start</b> (and over the control), <b>the largest change and when</b>, <b>time to half of it</b>, <b>onset</b>, <b>fastest change</b>, <b>level at the end</b>, <b>area</b>, the level at set times. Doses may be in nM, µM… or in ng/mL, µg/mL, mg/mL.</p>'
+    (tc ? '<p>The level of a HiBiT-tagged protein over time — the endogenous protein, or after doxycycline, a stress or any treatment. No degradation is fitted — nothing is being degraded — but a rise or a fall that settles gets a one-phase fit (rate k, plateau, delay).</p><p class="gets">You get: <b>fold over the start</b> (and over the control), <b>the largest change and when</b>, <b>time to half of it</b>, <b>onset</b>, <b>fastest change</b>, <b>level at the end</b>, <b>area</b>, the level at set times. Doses may be in nM, µM… or in ng/mL, µg/mL, mg/mL.</p>'
       : '<p>A HiBiT-tagged protein and a degrader: how the level falls after the compound goes on, one decay per concentration.</p><p class="gets">You get: <b>DC50 and Dmax</b> (Promega), <b>KDegMax, KDeg50 and their efficiency</b> (Michaelis–Menten on K), t½, onset, recovery.</p>') +
     '<div class="es-a"><button class="btn primary" onclick="tpStartKind(\'' + k + '\')">Set up a plate</button><button class="btn" onclick="tpPickFiles(\'' + k + '\')">' + ICO.up + 'Choose files</button><button class="btn" onclick="tpLoadExample(\'' + k + '\')">Load an example plate</button></div></div>';
 }
@@ -3199,7 +3273,7 @@ function tpSetKind(k) {
   TP.S.kind = k; TPS.form.top = k === 'timecourse' ? '' : 1000; TPS.form.unit = k === 'timecourse' ? 'µg/mL' : 'nM'; TPS.form.pts = null; TPS.seeded = null; TP.sel.sub = k === 'timecourse' ? 'tc' : 'kin'; TP.sel.comp = null; TP.sel.conc = null; TP.nx = null; TP.ui.setTab = 'norm'; tpSaveSettings(); tpHeader();
   const d = $('#tp-drawer'); if (d && d.classList.contains('open')) { d.innerHTML = tpSettingsHTML(); }
   if (!TP.plates.length) { tpRender(); return Promise.resolve(); }
-  return tpRunAll().then(() => tpToast(TP_KINDS[k].name + ': the same plate, read as ' + (k === 'timecourse' ? 'a level over time (nothing is fitted)' : 'a degradation (a decay is fitted to every concentration)')));
+  return tpRunAll().then(() => tpToast(TP_KINDS[k].name + ': the same plate, read as ' + (k === 'timecourse' ? 'a level over time (described, and a rise or a fall fitted to a plateau)' : 'a degradation (a decay is fitted to every concentration)')));
 }
 function tpKindSwitch() {
   return '<span class="kind-sw" role="group" aria-label="Experiment"><span class="lbl">Experiment</span><span class="segw">' + ['degradation', 'timecourse'].map(k => '<button aria-pressed="' + (TP.S.kind === k) + '" onclick="tpSetKind(\'' + k + '\')">' + TP_KINDS[k].name + '</button>').join('') + '</span></span>';
@@ -3520,7 +3594,7 @@ function tpsSeed() {
 function tpsReads() {
   const p = tpPlate();
   tpsK.pane('reads').innerHTML =
-    SetupKit.group('Experiment', 'what the numbers mean', SetupKit.field('', '', SetupKit.seg('tps-kind', [['degradation', 'Kinetic degradation'], ['timecourse', 'Time course']], TP.S.kind, 'k', 'Experiment'), TP.S.kind === 'timecourse' ? 'The level of a protein over time — endogenous, or after doxycycline, a stress, any treatment. Nothing is fitted: you get the fold, the largest change and when, the time to half of it, the onset, the rate, the level at the end and the area. No DC50, Dmax or KDeg.' : 'A degrader added to a HiBiT-tagged protein: a decay is fitted to every concentration, giving DC50 and Dmax (Promega) and KDegMax, KDeg50 and the efficiency (Michaelis–Menten on K).')) +
+    SetupKit.group('Experiment', 'what the numbers mean', SetupKit.field('', '', SetupKit.seg('tps-kind', [['degradation', 'Kinetic degradation'], ['timecourse', 'Time course']], TP.S.kind, 'k', 'Experiment'), TP.S.kind === 'timecourse' ? 'The level of a protein over time — endogenous, or after doxycycline, a stress, any treatment. No DC50, Dmax or KDeg: you get the fold, the largest change and when, the time to half of it, the onset, the rate, the level at the end and the area — and, for a rise or a fall that settles, a one-phase fit with its rate constant k, plateau and delay.' : 'A degrader added to a HiBiT-tagged protein: a decay is fitted to every concentration, giving DC50 and Dmax (Promega) and KDegMax, KDeg50 and the efficiency (Michaelis–Menten on K).')) +
     SetupKit.group('Reader files', '<button class="sx-link" id="tps-demo">Load an example plate</button>',
       SetupKit.drop('tps-drop', 'Drop the reader files or click to choose them', 'A GloMax time-course export (.csv or .xlsx) or a ProNect export (normalized_data.json, raw_kinetic.csv). Any table with a row of well labels and a time column works too. A file with several readouts, or a workbook with several sheets, is read as several plates.') +
       '<div class="sx-plates" id="tps-plates"></div>') +
@@ -3933,6 +4007,7 @@ function tpChartTC(res, comp, o) {
     if ((on || n === 1) && o.band) { const up = [], dn = []; t.forEach((tt, k) => { const m = c.mean[k], sd = c.sd[k]; if (m != null && sd != null) { up.push([tpTT(tt), m + sd]); dn.push([tpTT(tt), m - sd]); } }); if (up.length > 2) s += '<path d="' + tpPath(up.concat(dn.reverse()), F.X, F.Y).replace(/M/g, 'L').replace(/^L/, 'M') + 'Z" fill="' + col + '" opacity=".16" stroke="none"/>'; }
     if ((on || n === 1) && o.wells) c.live.forEach(id => { const y = res.nm.frac[id]; if (y) s += '<path d="' + tpPath(t.map((tt, k) => [tpTT(tt), y[k]]), F.X, F.Y) + '" fill="none" stroke="' + col + '" stroke-width=".8" opacity=".5"/>'; });
     s += '<path class="tr" data-i="' + i + '" d="' + tpPath(t.map((tt, k) => [tpTT(tt), c.mean[k]]), F.X, F.Y) + '" fill="none" stroke="' + col + '" stroke-width="' + (on || n === 1 ? 2.4 : 1.7) + '" opacity="' + (dim ? 0.35 : 1) + '" style="cursor:pointer"/>';
+    const f = c.m && c.m.fit; if (f && f.ok && !dim) { const xs = []; for (let x = 0; x <= tMax + 1e-9; x += tMax / 160) xs.push(x); s += '<path d="' + tpPath(xs.map(x => [tpTT(x), tpInduceAt(f, x)]), F.X, F.Y) + '" fill="none" stroke="' + pal.ink + '" stroke-width="' + (on || n === 1 ? 1.5 : 1) + '" stroke-dasharray="3 3" opacity="' + (on || n === 1 ? 0.8 : 0.4) + '"/>'; }
   });
   if (foc && foc.m && foc.m.ok) {
     const m = foc.m, X = v => F.X(tpTT(v)).toFixed(1);
@@ -3978,28 +4053,42 @@ function tpChartTCHeat(res, comp, o) {
   s += '<text x="' + (m.l + iw / 2) + '" y="' + (H - 20) + '" text-anchor="middle" font-size="11.5" fill="' + pal.text2 + '" font-family="IBM Plex Sans,Arial,sans-serif">' + esc(tpTimeLabel()) + '</text><text x="' + (m.l + iw / 2) + '" y="' + (H - 5) + '" text-anchor="middle" font-size="10.5" fill="' + pal.text2 + '" font-family="IBM Plex Sans,Arial,sans-serif">' + esc(W < 520 ? 'blue = lower · orange = higher than 1' : 'blue = lower, orange = higher than 1 (colours on a log2 scale, full at ' + tpF(Math.pow(2, mx), 2) + '×)') + '</text>';
   return tpSvg(W, H, s, pal, 'data-chart="heat"');
 }
+const TP_TC_WHY = { 'few-points': 'too few reads', 'off': 'the fit is switched off in Analysis settings › Time course', 'no-change': 'the trace does not move, so there is nothing to fit', 'not-one-phase': 'this trace does not settle into a plateau (it peaks and returns, dips and recovers, or changes direction): one phase does not describe it' };
+function tpTCFitStats(cc) {
+  const f = cc.m && cc.m.fit, ku = tpTU() === 'min' ? 'min⁻¹' : 'h⁻¹'; if (!f) return '';
+  if (!f.ok) return '<div class="fam">One-phase fit <span class="muted" style="font-weight:400">· ' + esc(TP_TC_WHY[f.why] || f.why) + '</span></div>';
+  const ci = (lo, hi, fmt) => lo != null && hi != null && isFinite(hi) ? '95 % CI ' + fmt(lo) + ' – ' + fmt(hi) : (lo != null ? '95 % CI from ' + fmt(lo) : '');
+  const kf = v => tpF(tpKV(v), 3), pf = v => tpF(v, 3), dirw = f.A >= 0 ? 'higher' : 'lower';
+  return '<div class="fam">One-phase fit <span class="muted" style="font-weight:400">· level = start·(1 + A·(1 − e<sup>−k·(t − delay)</sup>)) · R² ' + tpF(f.r2, 3) + (f.grade === 'excellent' ? ' excellent' : f.grade === 'acceptable' ? ' acceptable' : ' — ' + f.grade) + '</span></div><div class="statrow">' +
+    tpStatV('Rate constant k', tpQ(f.kq === '=' ? '' : f.kq, kf(f.k)) + '<small>' + ku + '</small>', ci(f.kLo, f.kHi, kf) + (f.kq === '>' ? 'faster than the read interval' : f.fixed ? 'plateau fixed: k is biased high' : ''), 'How fast the level goes to its plateau. The 95 % interval is the profile likelihood, widened for the autocorrelation of the residuals.') +
+    tpStatV('Plateau', tpQ(f.platq === '=' ? '' : f.platq, pf(f.plat)) + '×', f.fixed ? 'not reached: set to the end level' : ci(f.platLo, f.platHi, pf), 'The level the trace settles at (1 = the start). “≥” / “≤”: the trace had not reached it, so it is at least this ' + dirw + '.') +
+    tpStatV('Delay', f.lag != null ? tpFmtT(f.lag, 2) : 'none', f.lag != null ? 'before the change starts' : 'a delay did not improve the fit', 'A delay is kept only when it lowers AICc by at least 6.') +
+    tpStatV('t½ of the fit', tpFmtT(f.t12, 3), 'to half of the plateau (t90 ' + tpFmtT(f.t90, 3) + ')', 'delay + ln 2 / k: unlike the t½ read off the trace, it comes from the fit.') +
+    tpStatV('Initial rate', (f.v0 >= 0 ? '+' : '−') + tpF(Math.abs(tpKV(f.v0)), 3) + '<small>× ' + ku + '</small>', 'A · k', 'The slope at the start of the change (A · k). Like k, it is biased when the plateau is fixed.') + '</div>' + (f.fixed ? '<p class="hint" style="margin:8px 0 0">The trace has not reached a plateau, so a plateau and a slower k cannot be told apart: the plateau is fixed to where the trace ends and k is the fastest that fits. Read the fastest change above: it is taken from the trace and does not depend on the fit.</p>' : '');
+}
 function tpTCStats(comp, cc) {
   const m = cc && cc.m; if (!m || !m.ok) return '<p class="hint" style="margin:0">' + (cc && cc.live && !cc.live.length ? 'Every well of this dose is left out.' : 'Too few reads to describe this trace.') + '</p>';
   const lab = cc.c == null ? '' : ' at ' + esc(tpAxConc(cc.c, cc.cu));
-  let h = '<div class="fam">What the trace does' + lab + ' <span class="muted" style="font-weight:400">· read off the smoothed mean, nothing fitted</span></div><div class="statrow">' +
+  let h = '<div class="fam">What the trace does' + lab + ' <span class="muted" style="font-weight:400">· read off the smoothed mean, no model</span></div><div class="statrow">' +
     tpStatV(m.dir > 0 ? 'Highest level' : 'Lowest level', m.cls === 'tc-flat' ? 'no change' : tpQ(m.extQ === '=' ? '' : m.extQ, tpFold(m.ext)), m.cls === 'tc-flat' ? 'moves less than ' + Math.round(m.theta * 100) + ' %' : 'at ' + tpFmtT(m.tExt, 3) + (m.sdExt != null ? ' · SD ' + tpF(m.sdExt, 2) : '') + (m.atEnd ? ' · still changing' : ''), 'The largest departure from 1 of the smoothed mean trace (1 = the level at the start, over the control), and when it happens. A “≥” or “≤” means it was still changing at the last read.') +
     tpStatV('Level at the end', tpFold(m.fin), m.cls === 'tc-peak' || m.cls === 'tc-dip' ? Math.round((1 - Math.max(0, Math.min(1, m.retained))) * 100) + ' % of the change undone' : '', 'The mean of the last ' + TP.S.tc.finalN + ' reads.') +
     tpStatV('t½ of the change', m.t12 != null ? tpFmtT(m.t12, 3) : '—', m.t12 != null ? 'to half of the largest change' : 'not defined', 'When the trace first reaches the level halfway between 1 and its largest departure from 1.') +
     tpStatV('Onset', m.onset != null ? tpFmtT(m.onset, 2) : '—', m.onset != null ? 'first read beyond ± ' + Math.round(m.theta * 100) + ' %' : 'no sustained change', 'The first read from which the trace stays out of the band of the smallest change counted (Settings → Time course) for three reads.') +
     tpStatV('Fastest change', m.rate ? (m.rate.v >= 0 ? '+' : '−') + tpF(Math.abs(tpKV(m.rate.v)), 3) + '<small>× ' + (TP.ui.units.time === 'min' ? 'min⁻¹' : 'h⁻¹') + '</small>' : '—', m.rate ? 'around ' + tpFmtT(m.rate.t, 3) : '', 'The steepest slope of the smoothed trace, in fold per hour (or minute).') +
     tpStatV('Mean change', m.auc && m.auc.mean != null ? (m.auc.mean >= 0 ? '+' : '−') + tpF(Math.abs(m.auc.mean) * 100, 3) + '<small>%</small>' : '—', m.auc ? 'area ' + tpF(m.auc.h, 3) + ' × h' : '', 'The time-averaged level above (or below) 1: the area between the trace and 1, divided by the length of the read.') + '</div>';
+  h += tpTCFitStats(cc);
   if (m.at && m.at.length) h += '<div class="fam">Level at set times <span class="muted" style="font-weight:400">· Settings → Report</span></div><div class="statrow">' + m.at.map(a => tpStatV(tpFmtT(a.t, 3), tpFold(a.v), '')).join('') + '</div>';
   return h;
 }
 function tpTCConcTable(res, comp, sel) {
-  let h = '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>' + (comp.cu === 'mass' ? 'Dose' : comp.concs.some(c => c.c != null) ? 'Dose' : 'Condition') + '</th><th class="num">n</th><th class="num">Largest change</th><th class="num">at</th><th class="num">t½</th><th class="num">Onset</th><th class="num">End</th><th class="num">Fastest</th><th>Class</th></tr></thead><tbody>';
+  let h = '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>' + (comp.cu === 'mass' ? 'Dose' : comp.concs.some(c => c.c != null) ? 'Dose' : 'Condition') + '</th><th class="num">n</th><th class="num">Largest change</th><th class="num">at</th><th class="num">t½</th><th class="num">Onset</th><th class="num">End</th><th class="num">Fastest</th>' + (TP.S.tc.fit ? '<th class="num">k</th><th class="num">Plateau</th>' : '') + '<th>Class</th></tr></thead><tbody>';
   comp.concs.forEach((cc, i) => {
     const m = cc.m, ok = m && m.ok, on = i === sel;
     const wells = cc.wells.map(id => '<span class="wchip' + (cc.live.indexOf(id) < 0 ? ' off' : '') + '" role="button" tabindex="0" aria-pressed="' + (cc.live.indexOf(id) < 0) + '" aria-label="Well ' + id + (cc.live.indexOf(id) < 0 ? ', left out' : ', in the analysis') + '" onclick="event.stopPropagation();tpToggleWell(\'' + id + '\')" data-tip="' + (cc.live.indexOf(id) < 0 ? 'Left out — click to put back' : 'Click to leave this well out') + '">' + id + '</span>').join('');
     h += '<tr class="pick' + (on ? ' on' : '') + '" tabindex="0" onclick="tpTCPick(' + i + ')"><td class="nm" data-h="Dose">' + esc(tpDoseLabel(cc, comp)) + '<span class="sub">' + wells + '</span></td><td class="num" data-h="n">' + cc.live.length + '</td>' +
       '<td class="num" data-h="Largest change">' + (ok ? (m.cls === 'tc-flat' ? '<span class="muted">none</span>' : tpQ(m.extQ === '=' ? '' : m.extQ, tpFold(m.ext))) : '—') + '</td><td class="num" data-h="at">' + (ok && m.cls !== 'tc-flat' ? tpFmtT(m.tExt, 3) : '—') + '</td>' +
       '<td class="num" data-h="t½">' + (ok && m.t12 != null ? tpFmtT(m.t12, 3) : '—') + '</td><td class="num" data-h="Onset">' + (ok && m.onset != null ? tpFmtT(m.onset, 2) : '—') + '</td><td class="num" data-h="End">' + (ok ? tpFold(m.fin) : '—') + '</td>' +
-      '<td class="num" data-h="Fastest">' + (ok && m.rate ? (m.rate.v >= 0 ? '+' : '−') + tpF(Math.abs(tpKV(m.rate.v)), 3) : '—') + '</td><td data-h="Class">' + (ok ? tpPill(m.cls) : '<span class="muted">' + (cc.live.length ? 'too few reads' : 'left out') + '</span>') + '</td></tr>';
+      '<td class="num" data-h="Fastest">' + (ok && m.rate ? (m.rate.v >= 0 ? '+' : '−') + tpF(Math.abs(tpKV(m.rate.v)), 3) : '—') + '</td>' + (TP.S.tc.fit ? '<td class="num" data-h="k">' + tpTCText({ m: m }, 'k') .replace(/^$/, '—') + '</td><td class="num" data-h="Plateau">' + (tpTCText({ m: m }, 'plat') || '—') + '</td>' : '') + '<td data-h="Class">' + (ok ? tpPill(m.cls) : '<span class="muted">' + (cc.live.length ? 'too few reads' : 'left out') + '</span>') + '</td></tr>';
   });
   return h + '</tbody></table></div>';
 }
@@ -4019,7 +4108,7 @@ function tpRenderCurvesTC(p, res) {
   else if (sub === 'dose') svg = tpChartDose(res, comp, { view: 'dose', W: W, H: Math.round(W * .5) });
   else svg = tpChartTCHeat(res, comp, { W: W });
   h += (view ? tpAxBar(view) : '') + '<div class="chart" id="tp-chart">' + svg + '</div>';
-  h += '<p class="hint" style="margin:8px 0 0">' + ({ tc: 'Mean of the replicate wells with their SD (shaded) and each well (thin lines) for the dose picked; the grey band is the smallest change counted. The ring is the largest change, the dotted line t½, the green tick the onset. Nothing is fitted.', dose: 'The level reached at one time against the dose: the mean with its SD, and every well as a hollow dot. No curve is fitted to it, so there is no EC50 here.', heat: 'The level over time for every dose: orange above 1, blue below it.' })[sub] + '</p></div>';
+  h += '<p class="hint" style="margin:8px 0 0">' + ({ tc: 'Mean of the replicate wells with their SD (shaded) and each well (thin lines) for the dose picked; the grey band is the smallest change counted. The ring is the largest change, the dotted line t½, the green tick the onset; the dashed line is the one-phase fit of a rise or a fall.', dose: 'The level reached at one time against the dose: the mean with its SD, and every well as a hollow dot. No curve is fitted to it, so there is no EC50 here.', heat: 'The level over time for every dose: orange above 1, blue below it.' })[sub] + '</p></div>';
   h += '<div class="card">' + tpTCStats(comp, cc) + '</div>';
   h += '<div class="card"><h3>Every ' + (comp.concs.length > 1 ? 'dose' : 'trace') + '<span class="sub">click a well to leave it out · a click on a row picks it</span></h3>' + tpTCConcTable(res, comp, focus) + '</div>';
   h += '</div></div>'; pane.innerHTML = h;
@@ -4189,26 +4278,31 @@ const TC_METRIC_DEF = {
   onset: { l: 'Onset', hi: 0, fmt: v => tpFmtT(v, 2) },
   rate: { l: 'Fastest change (× per ' + 'h)', hi: 1, fmt: v => (v >= 0 ? '+' : '−') + tpF(Math.abs(tpKV(v)), 3) },
   mean: { l: 'Mean change (%)', hi: 1, fmt: v => (v >= 0 ? '+' : '−') + tpF(Math.abs(v), 3) },
-  auc: { l: 'Area (× · h)', hi: 1, fmt: v => tpF(v, 3) }
+  auc: { l: 'Area (× · h)', hi: 1, fmt: v => tpF(v, 3) },
+  k: { l: 'Rate constant k (h⁻¹)', hi: 1, fmt: v => tpF(tpKV(v), 3) },
+  plat: { l: 'Plateau of the fit (×)', hi: 1, fmt: v => tpF(v, 3) },
+  lag: { l: 'Delay of the fit', hi: 0, fmt: v => tpFmtT(v, 2) },
+  v0: { l: 'Initial rate of the fit (× per h)', hi: 1, fmt: v => (v >= 0 ? '+' : '−') + tpF(Math.abs(tpKV(v)), 3) }
 };
 function tpTCDef(k) {
-  if (TC_METRIC_DEF[k]) { const d = TC_METRIC_DEF[k]; return k === 'rate' ? Object.assign({}, d, { l: 'Fastest change (× per ' + tpTU() + ')' }) : d; }
+  if (TC_METRIC_DEF[k]) { const d = TC_METRIC_DEF[k]; return k === 'rate' ? Object.assign({}, d, { l: 'Fastest change (× per ' + tpTU() + ')' }) : k === 'k' ? Object.assign({}, d, { l: 'Rate constant k (' + (tpTU() === 'min' ? 'min⁻¹' : 'h⁻¹') + ')' }) : k === 'v0' ? Object.assign({}, d, { l: 'Initial rate of the fit (× per ' + tpTU() + ')' }) : d; }
   const m = /^at:(.+)$/.exec(k); if (m) return { l: 'Level at ' + tpFmtT(+m[1], 3) + ' (×)', hi: 1, fmt: v => tpF(v, 3) };
   return null;
 }
-function tpTCKeys() { return Object.keys(TC_METRIC_DEF).concat((TP.S.report.times || []).map(T => 'at:' + T)); }
+function tpTCKeys() { return Object.keys(TC_METRIC_DEF).filter(k => TP.S.tc.fit || !/^(k|plat|lag|v0)$/.test(k)).concat((TP.S.report.times || []).map(T => 'at:' + T)); }
 function tpTCM(r, k) {
   const m = r.m; if (!m || !m.ok) return null;
   switch (k) {
     case 'mag': return { v: m.ext >= 1 ? m.ext : 1 / m.ext, q: m.extQ === '=' ? '=' : (m.dir > 0 ? '≥' : '≥') }; case 'ext': return { v: m.ext, q: m.extQ }; case 'fin': return { v: m.fin, q: '=' }; case 'tExt': return m.cls === 'tc-flat' ? null : { v: m.tExt, q: '=' };
     case 't12': return m.t12 != null ? { v: m.t12, q: '=' } : null; case 'onset': return m.onset != null ? { v: m.onset, q: '=' } : null;
+    case 'k': return m.fit && m.fit.ok ? { v: m.fit.k, q: m.fit.kq } : null; case 'plat': return m.fit && m.fit.ok ? { v: m.fit.plat, q: m.fit.platq } : null; case 'lag': return m.fit && m.fit.ok && m.fit.lag != null ? { v: m.fit.lag, q: '=' } : null; case 'v0': return m.fit && m.fit.ok ? { v: m.fit.v0, q: '=' } : null;
     case 'rate': return m.rate ? { v: m.rate.v, q: '=' } : null; case 'mean': return m.auc && m.auc.mean != null ? { v: m.auc.mean * 100, q: '=' } : null; case 'auc': return m.auc ? { v: m.auc.h, q: '=' } : null;
   }
   const a = /^at:(.+)$/.exec(k); if (a) { const x = (m.at || []).find(q => Math.abs(q.t - +a[1]) < 1e-9); return x && x.v != null ? { v: x.v, q: '=' } : null; }
   return null;
 }
 // text of one measure: '' when it is not defined; the same words on the screen, in the copy and in the files
-function tpTCText(r, k) { const x = tpTCM(r, k), d = tpTCDef(k); if (!x || x.v == null || !d) return ''; return tpQ(x.q === '=' ? '' : x.q, d.fmt(x.v)) + (k === 'mean' ? '%' : /^(ext|fin|at:)/.test(k) ? '×' : ''); }
+function tpTCText(r, k) { const x = tpTCM(r, k), d = tpTCDef(k); if (!x || x.v == null || !d) return ''; return tpQ(x.q === '=' ? '' : x.q, d.fmt(x.v)) + (k === 'mean' ? '%' : /^(ext|fin|plat|at:)/.test(k) ? '×' : ''); }
 function tpTCRowLabel(r) { return (r.comp.compound || '(no name)') + (r.cc.c != null ? ' · ' + tpAxConc(r.cc.c, r.cc.cu) : ''); }
 function tpTCRows() {
   const out = []; TP.plates.forEach(p => { const res = tpRes(p); if (!res || res.kind !== 'timecourse') return; res.compounds.forEach(c => c.concs.forEach(cc => out.push({ plate: p, res: res, comp: c, cc: cc, m: cc.m }))); }); return out;
@@ -4219,7 +4313,8 @@ function tpResultsColsTC(multi) {
     { k: 'name', h: 'Condition', s: r => r.comp.compound }, multi ? { k: 'plate', h: 'Plate', s: r => r.plate.name } : null, { k: 'target', h: 'Target / cell line', s: r => r.comp.target },
     { k: 'dose', h: 'Dose', s: r => r.cc.c == null ? '' : tpAxConc(r.cc.c, r.cc.cu), sk: r => r.cc.c },
     { k: 'n', h: 'n', num: 1, s: r => r.cc.live.length },
-    { k: 'ext', h: 'Largest change (×)', num: 1 }, { k: 'tExt', h: 'at', num: 1 }, { k: 'fin', h: 'End (×)', num: 1 }, { k: 't12', h: 't½', num: 1 }, { k: 'onset', h: 'Onset', num: 1 }, { k: 'rate', h: 'Fastest (×/' + tpTU() + ')', num: 1 }, { k: 'mean', h: 'Mean change %', num: 1 }
+    { k: 'ext', h: 'Largest change (×)', num: 1 }, { k: 'tExt', h: 'at', num: 1 }, { k: 'fin', h: 'End (×)', num: 1 }, { k: 't12', h: 't½', num: 1 }, { k: 'onset', h: 'Onset', num: 1 }, { k: 'rate', h: 'Fastest (×/' + tpTU() + ')', num: 1 }, { k: 'mean', h: 'Mean change %', num: 1 },
+    TP.S.tc.fit ? { k: 'k', h: 'k (' + (tpTU() === 'min' ? 'min⁻¹' : 'h⁻¹') + ')', num: 1 } : null, TP.S.tc.fit ? { k: 'plat', h: 'Plateau (×)', num: 1 } : null, TP.S.tc.fit ? { k: 'lag', h: 'Delay', num: 1 } : null
   ].concat(rt.map(T => ({ k: 'at:' + T, h: 'Level at ' + tpFmtT(T, 3) + ' (×)', num: 1 })), [{ k: 'cls', h: 'Class', s: r => (TP_CLS[r.m && r.m.ok ? r.m.cls : ''] || ['—'])[0] }]).filter(Boolean);
 }
 function tpSortRowsTC(rows, cols) {
@@ -4238,7 +4333,7 @@ function tpRenderResultsTC() {
   const pane = $('#pane-results'); const rows = tpAllRows();
   if (!rows.length) { pane.innerHTML = '<div class="card"><div class="empty-state">' + ICO.plate + '<div class="es-t">No results yet</div><div class="es-s">Load a plate and say which wells are conditions: each dose is described as soon as the reads are in.</div><div class="es-a"><button class="btn primary" onclick="tpTab(\'plate\')">Go to Plate</button></div></div></div>'; return; }
   const multi = TP.plates.length > 1, cols = tpResultsColsTC(multi), sorted = tpSortRowsTC(rows, cols), s = TP.ui.tsort, nC = new Set(rows.map(r => r.plate.id + r.comp.key)).size;
-  let h = '<div class="card res-card"><div class="res-tools"><div class="sec-hd" style="margin:0"><h2>Results</h2><span class="sec-sub">' + nC + ' condition' + (nC > 1 ? 's' : '') + ' · ' + rows.length + ' trace' + (rows.length > 1 ? 's' : '') + ' · time course, nothing fitted</span></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm" onclick="tpCopyResults()">Copy table</button><button class="btn sm" onclick="tpExportXLSX()">Excel</button></div></div>';
+  let h = '<div class="card res-card"><div class="res-tools"><div class="sec-hd" style="margin:0"><h2>Results</h2><span class="sec-sub">' + nC + ' condition' + (nC > 1 ? 's' : '') + ' · ' + rows.length + ' trace' + (rows.length > 1 ? 's' : '') + ' · time course</span></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm" onclick="tpCopyResults()">Copy table</button><button class="btn sm" onclick="tpExportXLSX()">Excel</button></div></div>';
   h += '<div class="tbl-wrap"><table class="tbl" id="tp-restbl"><thead><tr>' + cols.map(c => '<th data-k="' + c.k + '" class="' + (c.num ? 'num' : '') + '" tabindex="0" onclick="tpSortByTC(\'' + c.k + '\')" aria-sort="' + (s.k === c.k ? (s.d > 0 ? 'ascending' : 'descending') : 'none') + '">' + esc(c.h) + (s.k === c.k ? '<span class="ar">' + (s.d > 0 ? '▲' : '▼') + '</span>' : '') + '</th>').join('') + '<th>Flags</th></tr></thead><tbody>';
   sorted.forEach(r => {
     h += '<tr class="pick" tabindex="0" onclick="tpOpenComp(\'' + r.plate.id + '\',\'' + r.comp.key.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + '\')">' + cols.map(c => {
@@ -4251,7 +4346,7 @@ function tpRenderResultsTC() {
       return '<td class="num" data-h="' + esc(c.h) + '">' + (tpTCText(r, c.k) ? esc(tpTCText(r, c.k)) : '<span class="muted">—</span>') + '</td>';
     }).join('') + '<td data-h="Flags">' + (tpFlagsOfTC(r) ? '<span class="hint" style="display:block;max-width:300px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" data-tip="' + esc(tpFlagsOfTC(r)) + '">' + esc(tpFlagsOfTC(r)) + '</span>' : '') + '</td></tr>';
   });
-  h += '</tbody></table></div><p class="hint" style="margin:10px 0 0">1× is the level at the start (over the control, when there is one). The largest change is read off the smoothed mean trace; “≥” or “≤” means it was still changing at the last read. t½ is the time to half of that change, onset the first read beyond the smallest change counted. There is no fit, so no DC50, Dmax or KDeg; Send to Labbook and Hit Finder are for dose–response analyses and are not offered. Click a row to see its curve.</p></div>';
+  h += '</tbody></table></div><p class="hint" style="margin:10px 0 0">1× is the level at the start (over the control, when there is one). The largest change is read off the smoothed mean trace; “≥” or “≤” means it was still changing at the last read. t½ is the time to half of that change, onset the first read beyond the smallest change counted. k, plateau and delay come from the one-phase fit of a rise or a fall that settles (a peak that returns is not fitted). There is no DC50, Dmax or KDeg; Send to Labbook and Hit Finder are for dose–response analyses and are not offered. Click a row to see its curve.</p></div>';
   h += '<div class="card mth" id="tp-method"><h3>How this was calculated<span class="sub">normalisation · definitions · what was left out</span></h3><div class="mth-short">' + tpMethodShort().map(t => '<p>' + esc(t) + '</p>').join('') + '</div>' +
     '<details' + (TP.ui.mthOpen ? ' open' : '') + ' ontoggle="TP.ui.mthOpen=this.open"><summary>Every step, definition and setting</summary>' + tpMethodHTML() + '<div class="mth-bt"><button class="btn" onclick="tpCopyMethod()">Copy</button><button class="btn" onclick="tpSaveMethod()">Save as text</button></div></details></div>';
   pane.innerHTML = h;
@@ -4296,10 +4391,10 @@ function tpBase() { const p = tpPlate(); return (p ? p.name : 'tempo').replace(/
 function tpSettingsLines() {
   const S = TP.S, N = S.norm, F = S.fit, D = S.dr, M = S.mm, L = [];
   if (tpTC()) {
-    L.push(['Software', 'Tempo (' + TP_ABOUT.ver + ')']); L.push(['Date', new Date().toISOString()]); L.push(['Experiment', 'Time course (nothing fitted)']);
+    L.push(['Software', 'Tempo (' + TP_ABOUT.ver + ')']); L.push(['Date', new Date().toISOString()]); L.push(['Experiment', 'Time course']);
     L.push(['Normalisation', tpNormName()]); L.push(['Background subtracted', N.bkg ? 'yes' : 'no']); L.push(['T0 = mean of the first … reads', N.t0n]);
     L.push(['Control reference', N.veh === 'ratioOfMeans' ? 'ratio of means' : N.veh === 'meanOfRatios' ? 'mean of ratios' : N.veh === 'perTime' ? 'control at each time' : 'none']); L.push(['Discordant control wells left out', N.vehOutlier ? 'yes' : 'no']); L.push(['Control smoothing', N.smooth]);
-    L.push(['Smallest change counted', S.tc.minChange]); L.push(['Trace smoothed over (reads)', S.tc.smooth]); L.push(['The end = mean of the last … reads', S.tc.finalN]); L.push(['Reporting times (h)', (S.report.times || []).join(', ')]);
+    L.push(['One-phase fit of a rise or a fall', S.tc.fit ? 'yes' : 'no']); L.push(['Delay allowed in the fit', S.tc.lag ? 'yes' : 'no']); L.push(['Smallest change counted', S.tc.minChange]); L.push(['Trace smoothed over (reads)', S.tc.smooth]); L.push(['The end = mean of the last … reads', S.tc.finalN]); L.push(['Reporting times (h)', (S.report.times || []).join(', ')]);
     return L;
   }
   L.push(['Software', 'Tempo (' + TP_ABOUT.ver + ')']); L.push(['Date', new Date().toISOString()]);
@@ -4399,7 +4494,7 @@ function tpMethod() {
   } else {
     const T = S.tc, th = 'max(' + T.minChange + ', 3σ)', sm = T.smooth > 1;
     add('Time course: what is read off each trace', [
-      ['t', 'Nothing is fitted. There is no model of degradation here, so there is no DC50, Dmax or KDeg; each dose is a mean trace and these are the numbers read off it.'],
+      ['t', 'No degradation is modelled, so there is no DC50, Dmax or KDeg. Each dose is a mean trace: the numbers below are read off it, and a rise or a fall that settles is then fitted (next section).'],
       ['kv', 'What is described', 'the mean of the replicate wells of a dose (wells and reads left out are not in it), read by read from time zero: L(t) = y(t), the relative level (1 = the start' + (N.veh === 'none' ? '' : ' and the control') + ')'],
       ['kv', 'Smoothing', sm ? 'a running median of ' + T.smooth + ' reads, applied before the largest change, t½ and onset are read; the end and the area use the reads as they are' : 'none: the largest change, t½ and onset are read from the mean trace as it is'],
       ['kv', 'Noise and the smallest change', 'σ = 1.4826 · MAD of the read-to-read differences / √2. A trace is “no change” when it never leaves 1 by ' + th + '; the same band defines the onset'],
@@ -4411,7 +4506,18 @@ function tpMethod() {
       ['eq', 'Area, mean change', 'area = ∫ (L − 1) dt by trapezoids from the first read [× · h];  mean change = area / (length of the read), in %'],
       ['kv', 'Level at set times', 'the mean of L over the 3 reads around each time: ' + ((S.report.times || []).join(', ') || '—') + ' h'],
       ['kv', 'Class', 'Rises / Falls: most of the change is still there at the end · Peaks, then returns / Dips, then recovers: less than half of it is left at the end · Changes direction: the end is beyond 1 on the other side · No change: see above'],
-      ['kv', 'Doses', 'a molar dose is in nM, a dose by mass in µg/mL as typed; doses are only labels and are never fitted']
+      ['kv', 'Doses', 'a molar dose is in nM, a dose by mass in µg/mL as typed; doses are only labels: no curve is fitted across them (no EC50)']
+    ]);
+    if (T.fit) add('Time course: one-phase fit of a rise or a fall', [
+      ['eq', 'Model', 'L(t) = y0·(1 + A·(1 − exp(−k·τ))),   τ = max(0, t − delay)   [t in h, k in h-1];   plateau = 1 + A, a fold over the fitted start y0'],
+      ['kv', 'Which traces', 'only a rise or a fall that settles (class Rises or Falls). A peak that returns, a dip that recovers, a change of direction and a trace with no change are not one phase and are not fitted; the table says why'],
+      ['kv', 'What is fitted', 'the mean of the replicate wells of a dose, every read from time zero; A is signed (A > 0 a rise, A < 0 a fall, 1 + A kept above 0). The start level y0 is fitted too, because every well was divided by one noisy first read: “1” is the start only to within that read, and the plateau interval would otherwise be far too narrow'],
+      ['kv', 'Method', 'variable projection: for a fixed k and delay the model is linear in A, so k is scanned on a log grid between 0.3 / (length of the read) and 3 / (read interval), A is solved in closed form and the best cell is refined'],
+      ['kv', 'Delay', T.lag ? 'a delay is searched between 0 and a third of the read and kept only if it lowers AICc by at least 6' : 'not allowed (τ = t)'],
+      ['kv', 'Plateau not reached', 'when k·(length of the read − delay) is under 2.3, or k has no lower limit, the plateau cannot be told apart from a slower k: its level is held at the mean of the last ' + T.finalN + ' reads, marked “≥” (rise) or “≤” (fall), and k is refitted and marked “≤” (biased high). The fastest change read off the trace does not depend on the fit'],
+      ['kv', 'Intervals', '95 %, exact profile likelihood of k (the SSE profile is walked to the threshold on both sides; no bound = no interval), widened by (1 + ρ)/(1 − ρ), ρ = lag-1 autocorrelation of the residuals; the interval of the plateau follows from the covariance along that profile'],
+      ['eq', 'Derived', 't½ of the fit = delay + ln 2 / k;   t90 = delay + ln 10 / k;   initial rate = A·k   [× per h]'],
+      ['kv', 'Bounds', 'k “>” = faster than the read interval; “≤” = plateau fixed; the fit is graded by R² (over 0.98 excellent, over 0.95 acceptable)']
     ]);
   }
   // 7 · what was done by hand
@@ -4435,8 +4541,8 @@ function tpMethodShort() {
   const S = TP.S, N = S.norm, F = S.fit, D = S.dr, pre = TP.plates.some(q => q.preNorm);
   if (tpTC()) { const T = S.tc;
     return ['Normalised: ' + (N.veh === 'perTime' ? (N.bkg ? 'background subtracted, ' : '') + 'each read ÷ the control read of the same time.' : (N.bkg ? 'background (mean of the background wells at each read) subtracted, ' : '') + 'each well ÷ its own T0' + (N.veh === 'none' ? ' (no control step).' : ', ÷ the control trace treated the same way (' + (N.veh === 'ratioOfMeans' ? 'ratio of means' : 'mean of ratios') + '), so the level is 1 at T0.')) + (pre ? ' (a plate whose file holds ProNect’s normalised traces is used as supplied)' : ''),
-      'Time course, nothing fitted: the mean of the replicate wells of each dose' + (T.smooth > 1 ? ', smoothed with a running median of ' + T.smooth + ' reads' : '') + '.',
-      'Largest change (farthest from 1) and when; t½ of that change; onset (first read beyond 1 ± max(' + T.minChange + ', 3σ) for three reads); fastest change; level at the end (last ' + T.finalN + ' reads); area.']; }
+      'Time course: the mean of the replicate wells of each dose' + (T.smooth > 1 ? ', smoothed with a running median of ' + T.smooth + ' reads' : '') + '.',
+      'Largest change (farthest from 1) and when; t½ of that change; onset (first read beyond 1 ± max(' + T.minChange + ', 3σ) for three reads); fastest change; level at the end (last ' + T.finalN + ' reads); area.'].concat(T.fit ? ['One-phase fit of a rise or a fall that settles: level = start·(1 + A·(1 − e^(−k·(t − delay)))); k and the plateau 1 + A (a fold over the fitted start) with 95 % profile-likelihood intervals' + (T.lag ? ', a delay kept when it lowers AICc by 6' : '') + '.'] : []); }
   return ['Normalised: ' + (N.veh === 'perTime' ? (N.bkg ? 'background subtracted, ' : '') + 'each read ÷ the vehicle read of the same time.' : (N.bkg ? 'background (mean of the background wells at each read) subtracted, ' : '') + 'each well ÷ its own T0' + (N.veh === 'none' ? '.' : ', ÷ the vehicle trace treated the same way (' + (N.veh === 'ratioOfMeans' ? 'ratio of means' : 'mean of ratios') + '), so Y0 = 1.')) + (pre ? ' (a plate whose file holds ProNect’s normalised traces is used as supplied)' : ''),
     'K: y = P + (' + (F.y0 === 'free' ? 'y0' : '1') + ' − P)·e^(−K·t)' + (F.lag ? ', delay allowed' : '') + ', fitted to the mean trace of each concentration; 95 % profile-likelihood interval; Dmax = 1 − P.',
     'Analysis A: 4PL on the well plateaus, top ' + (D.topFree ? 'free' : 'fixed at 100 %') + ' → DC50 (Dmax50), Dmax. Analysis B: K = KDegMax·c/(KDeg50 + c) → KDegMax, KDeg50, KDegMax/KDeg50.'];
@@ -4556,10 +4662,12 @@ function tpExportXLSXTC() {
   if (!window.XLSX) { tpToast('Excel export needs SheetJS, which did not load (offline?). Use the CSV exports.', 'warn'); return; }
   const rows = tpAllRows(); if (!rows.length) { tpToast('Nothing to export yet', 'warn'); return; }
   const wb = XLSX.utils.book_new(), add = (name, aoa) => { const ws = XLSX.utils.aoa_to_sheet(aoa.map(r => r.map(tpX))); XLSX.utils.book_append_sheet(wb, ws, name.slice(0, 31)); }, multi = TP.plates.length > 1, rt = TP.S.report.times || [];
+  const FITH = TP.S.tc.fit ? ['Fit: k (h-1)', 'k is', 'k CI low', 'k CI high', 'Fit: plateau (x)', 'Plateau is', 'Plateau CI low', 'Plateau CI high', 'Fit: delay (h)', 'Fit: t1/2 (h)', 'Fit: initial rate (x per h)', 'Fit: R2', 'Fit: why not'] : [];
+  const fitCells = r => { if (!TP.S.tc.fit) return []; const f = r.m && r.m.fit; if (!f || !f.ok) return [null, null, null, null, null, null, null, null, null, null, null, null, f ? (TP_TC_WHY[f.why] || f.why) : null]; return [tpSigF(f.k), f.kq === '=' ? 'a value' : f.kq === '>' ? 'a lower bound (faster than the read interval)' : 'an upper bound (plateau fixed)', tpSigF(f.kLo), tpSigF(f.kHi), tpSigF(f.plat), f.platq === '=' ? 'a value' : 'a bound (plateau not reached, fixed to the end level)', tpSigF(f.platLo), tpSigF(f.platHi), f.lag != null ? tpSigF(f.lag) : null, tpSigF(f.t12), tpSigF(f.v0), tpSigF(f.r2, 4), null]; };
   const cols = tpResultsColsTC(multi), num = (r, k) => { const x = tpTCM(r, k); return x && x.v != null ? tpSigF(x.v) : null; };
-  add('Results', [(multi ? ['Plate'] : []).concat(['Condition', 'Target', 'Dose', 'Dose unit', 'Wells (n)', 'Largest change (x over start)', 'Largest change is', 'at (h)', 'Level at the end (x)', 't1/2 of the change (h)', 'Onset (h)', 'Fastest change (x per h)', 'at (h)', 'Mean change (%)', 'Area (x*h)'], rt.map(T => 'Level at ' + T + ' h (x)'), ['Class', 'Flags'])].concat(tpSortRowsTC(rows, cols).map(r => {
+  add('Results', [(multi ? ['Plate'] : []).concat(['Condition', 'Target', 'Dose', 'Dose unit', 'Wells (n)', 'Largest change (x over start)', 'Largest change is', 'at (h)', 'Level at the end (x)', 't1/2 of the change (h)', 'Onset (h)', 'Fastest change (x per h)', 'at (h)', 'Mean change (%)', 'Area (x*h)'], FITH, rt.map(T => 'Level at ' + T + ' h (x)'), ['Class', 'Flags'])].concat(tpSortRowsTC(rows, cols).map(r => {
     const m = r.m, ok = m && m.ok;
-    return (multi ? [r.plate.name] : []).concat([r.comp.compound, r.comp.target, r.cc.c == null ? null : tpSigF(r.cc.c, 6), r.cc.c == null ? null : tpDoseUnitName(r.cc.cu), r.cc.live.length, ok ? tpSigF(m.ext) : null, ok ? (m.extQ === '=' ? 'a value' : m.extQ === '≥' ? 'a lower bound (still rising)' : 'an upper bound (still falling)') : null, ok && m.cls !== 'tc-flat' ? tpSigF(m.tExt) : null, ok ? tpSigF(m.fin) : null, num(r, 't12'), num(r, 'onset'), ok && m.rate ? tpSigF(m.rate.v) : null, ok && m.rate ? tpSigF(m.rate.t) : null, num(r, 'mean'), num(r, 'auc')], rt.map(T => num(r, 'at:' + T)), [ok ? TP_TC_CLS[m.cls] : null, tpFlagsOfTC(r)]);
+    return (multi ? [r.plate.name] : []).concat([r.comp.compound, r.comp.target, r.cc.c == null ? null : tpSigF(r.cc.c, 6), r.cc.c == null ? null : tpDoseUnitName(r.cc.cu), r.cc.live.length, ok ? tpSigF(m.ext) : null, ok ? (m.extQ === '=' ? 'a value' : m.extQ === '≥' ? 'a lower bound (still rising)' : 'an upper bound (still falling)') : null, ok && m.cls !== 'tc-flat' ? tpSigF(m.tExt) : null, ok ? tpSigF(m.fin) : null, num(r, 't12'), num(r, 'onset'), ok && m.rate ? tpSigF(m.rate.v) : null, ok && m.rate ? tpSigF(m.rate.t) : null, num(r, 'mean'), num(r, 'auc')], fitCells(r), rt.map(T => num(r, 'at:' + T)), [ok ? TP_TC_CLS[m.cls] : null, tpFlagsOfTC(r)]);
   }).concat([[]], tpMethodShort().map(t => [t]), [['Every step, definition and setting: sheet “Method”.']])));
   add('Method', tpMethodAoA());
   TP.plates.forEach(p => {
@@ -4588,11 +4696,11 @@ function tpExportPrismTC() {
     out.push(['Level (mean)', 'Time (h)'].concat(cs.map(d))); r.res.t.forEach((t, j) => out.push(['', tpSigF(t, 6)].concat(cs.map(x => tpSigF(x.mean[j], 6))))); out.push([]);
     out.push(['SD', 'Time (h)'].concat(cs.map(d))); r.res.t.forEach((t, j) => out.push(['', tpSigF(t, 6)].concat(cs.map(x => tpSigF(x.sd[j], 6))))); out.push([]);
     out.push(['Wells (n)', ''].concat(cs.map(x => x.live.length))); out.push([]);
-    out.push(['Largest change against dose', 'Dose', 'Largest change (x)', 'at (h)', 'Level at the end (x)']); cs.forEach(x => out.push(['', d(x), x.m && x.m.ok ? tpSigF(x.m.ext) : null, x.m && x.m.ok && x.m.cls !== 'tc-flat' ? tpSigF(x.m.tExt) : null, x.m && x.m.ok ? tpSigF(x.m.fin) : null])); out.push([], []); });
+    out.push(['Largest change against dose', 'Dose', 'Largest change (x)', 'at (h)', 'Level at the end (x)'].concat(TP.S.tc.fit ? ['k (h-1)', 'Plateau (x)', 'Delay (h)'] : [])); cs.forEach(x => { const f = x.m && x.m.fit && x.m.fit.ok ? x.m.fit : null; out.push(['', d(x), x.m && x.m.ok ? tpSigF(x.m.ext) : null, x.m && x.m.ok && x.m.cls !== 'tc-flat' ? tpSigF(x.m.tExt) : null, x.m && x.m.ok ? tpSigF(x.m.fin) : null].concat(TP.S.tc.fit ? [f ? tpSigF(f.k) : null, f ? tpSigF(f.plat) : null, f && f.lag != null ? tpSigF(f.lag) : null] : [])); }); out.push([], []); });
   tpDownload(tpBase() + '_tempo_prism.csv', tpBlob(tpCSV(out))); tpToast('Prism tables written');
 }
 function tpResultsJSONTC(p) {
-  const res = tpRes(p); return { app: TP_ABOUT.ver, experiment: 'timecourse', settings: TP.S, method: tpMethodText(), conditions: res.compounds.map(c => ({ condition: c.compound, target: c.target, class: c.cls, doseUnit: c.cu === 'mass' ? 'ug/mL' : 'nM', doses: c.concs.map(cc => ({ dose: cc.c, n: cc.live.length, largestChange: cc.m.ok ? cc.m.ext : null, largestChangeIs: cc.m.ok ? cc.m.extQ : null, atH: cc.m.ok ? cc.m.tExt : null, endLevel: cc.m.ok ? cc.m.fin : null, t12H: cc.m.ok ? cc.m.t12 : null, onsetH: cc.m.ok ? cc.m.onset : null, fastestPerH: cc.m.ok && cc.m.rate ? cc.m.rate.v : null, meanChangePct: cc.m.ok && cc.m.auc && cc.m.auc.mean != null ? cc.m.auc.mean * 100 : null, class: cc.m.ok ? cc.m.cls : null })) })) };
+  const res = tpRes(p); return { app: TP_ABOUT.ver, experiment: 'timecourse', settings: TP.S, method: tpMethodText(), conditions: res.compounds.map(c => ({ condition: c.compound, target: c.target, class: c.cls, doseUnit: c.cu === 'mass' ? 'ug/mL' : 'nM', doses: c.concs.map(cc => ({ dose: cc.c, n: cc.live.length, largestChange: cc.m.ok ? cc.m.ext : null, largestChangeIs: cc.m.ok ? cc.m.extQ : null, atH: cc.m.ok ? cc.m.tExt : null, endLevel: cc.m.ok ? cc.m.fin : null, t12H: cc.m.ok ? cc.m.t12 : null, onsetH: cc.m.ok ? cc.m.onset : null, fastestPerH: cc.m.ok && cc.m.rate ? cc.m.rate.v : null, meanChangePct: cc.m.ok && cc.m.auc && cc.m.auc.mean != null ? cc.m.auc.mean * 100 : null, class: cc.m.ok ? cc.m.cls : null, fit: cc.m.fit && cc.m.fit.ok ? { kPerH: cc.m.fit.k, kCI: [cc.m.fit.kLo, cc.m.fit.kHi], kIs: cc.m.fit.kq, plateau: cc.m.fit.plat, plateauCI: [cc.m.fit.platLo, cc.m.fit.platHi], plateauIs: cc.m.fit.platq, delayH: cc.m.fit.lag, t12FitH: cc.m.fit.t12, initialRatePerH: cc.m.fit.v0, R2: cc.m.fit.r2 } : (cc.m.fit ? { notFitted: cc.m.fit.why } : null) })) })) };
 }
 function tpChartSVGLightTC() {
   const p = tpPlate(), res = tpRes(p); if (!res) return null; const tab = TP.ui.tab, rows = tpAllRows(), U = TP.ui;
@@ -4689,7 +4797,9 @@ function tpSettingsHTML() {
       row('st-vo', 'Leave out discordant control wells', sel('st-vo', N.vehOutlier ? '1' : '0', [['0', 'No'], ['1', 'Yes']]), 'Drops a control well whose trace sits far from the rest.'));
     panes.tc = sec('Reading the trace', row('st-tmc', 'Smallest change counted (fraction)', num('st-tmc', T.minChange, '0.01'), 'A trace that never leaves 1 by this much (or by 3 × its read-to-read noise) is “no change”; it is also the band for the onset.') +
       row('st-tsm', 'Smooth the trace over (reads)', sel('st-tsm', T.smooth, [['1', '1 (not smoothed)'], ['3', '3'], ['5', '5'], ['7', '7'], ['9', '9']]), 'A running median, applied before the largest change, t½ and onset are read.') +
-      row('st-tfn', 'The end is the mean of the last … reads', num('st-tfn', T.finalN, '1'), 'Default 3.'), 'Nothing is fitted: these three set what is read off the trace.');
+      row('st-tfn', 'The end is the mean of the last … reads', num('st-tfn', T.finalN, '1'), 'Default 3.') +
+      row('st-tfit', 'Fit a rise or a fall to a plateau', sel('st-tfit', T.fit ? '1' : '0', [['1', 'Yes'], ['0', 'No']]), 'One phase: level = start·(1 + A·(1 − e^(−k·t))), for a trace that rises or falls and settles. A peak that returns is not fitted.') +
+      row('st-tlag', 'Allow a delay in the fit', sel('st-tlag', T.lag ? '1' : '0', [['1', 'Yes'], ['0', 'No']]), 'Kept only when it lowers AICc by at least 6.'), 'These three set what is read off the trace; the next two the one-phase fit.');
     panes.report = sec('Reporting times &amp; units',
       row('st-rt', 'Level at (h)', '<input class="inp mono" id="st-rt" value="' + esc((S.report.times || []).join(', ')) + '">', 'Comma separated: a column of the Results table for each.') +
       row('st-tu', 'Time shown in', sel('st-tu', TP.ui.units.time, [['h', 'Hours'], ['min', 'Minutes']])) +
@@ -4705,7 +4815,7 @@ function tpSettingsHTML() {
 function tpApplySettings() {
   const v = id => $('#' + id).value, S = TP.S, N = S.norm, F = S.fit, D = S.dr, M = S.mm, n = (id, d, lo, hi) => { const x = tpNum(v(id)); return x == null ? d : Math.max(lo, Math.min(hi, x)); };
   N.veh = v('st-veh'); N.smooth = v('st-sm'); N.bkg = v('st-bk') === '1'; N.vehOutlier = v('st-vo') === '1';
-  if (tpTC()) { const T = S.tc; T.minChange = n('st-tmc', .1, .01, 1); T.smooth = +v('st-tsm'); T.finalN = Math.round(n('st-tfn', 3, 1, 50)); }
+  if (tpTC()) { const T = S.tc; T.minChange = n('st-tmc', .1, .01, 1); T.smooth = +v('st-tsm'); T.finalN = Math.round(n('st-tfn', 3, 1, 50)); T.fit = v('st-tfit') === '1'; T.lag = v('st-tlag') === '1'; }
   else {
   F.skip = v('st-skip') === 'auto' ? 'auto' : +v('st-skip'); F.y0 = v('st-y0'); F.plateau = v('st-pl'); F.lastN = Math.round(n('st-ln', 25, 5, 100)); F.minEffect = n('st-me', .08, .01, .5); F.lag = v('st-lag') === '1';
   M.flatP = n('st-fp', .85, .3, .99); M.hookK = n('st-hk', .2, .02, .9); M.hookMode = v('st-hm'); M.ciRule = v('st-ci') === '1'; M.fixedPlateau = v('st-fx');
@@ -4819,7 +4929,7 @@ function tpScreenTable(plates) {
   (plates || TP.plates).forEach(p => { const res = tpRes(p); if (res) res.compounds.forEach(c => kin.push(tpKinCells(c))); });
   return [SCR_COLS.concat(TP_KIN_COLS)].concat(recs.map((r, i) => SCR_COLS.map(k => r[k] === undefined ? null : r[k]).concat(kin[i] || TP_KIN_COLS.map(() => null))));
 }
-function tpExportScreenCSV() { if (tpTC()) { tpToast('A time course has no screen table: nothing is fitted.', 'warn'); return; } const t = tpScreenTable(); if (t.length < 2) { tpToast('Nothing to export yet', 'warn'); return; } tpDownload(tpBase() + '_tempo_screen.csv', tpBlob(tpCSV(t))); tpToast('Screen table written: drop it on Hit Finder'); }
+function tpExportScreenCSV() { if (tpTC()) { tpToast('A time course has no screen table: it has no DC50 or Dmax.', 'warn'); return; } const t = tpScreenTable(); if (t.length < 2) { tpToast('Nothing to export yet', 'warn'); return; } tpDownload(tpBase() + '_tempo_screen.csv', tpBlob(tpCSV(t))); tpToast('Screen table written: drop it on Hit Finder'); }
 function tpSendToHitFinder() {
   if (tpTC()) { tpToast('Hit Finder takes degradation screens (DC50, Dmax): a time course has none.', 'warn'); return; }
   const t = tpScreenTable(); if (t.length < 2) { tpToast('Nothing to send yet', 'warn'); return; }

@@ -31,6 +31,7 @@
 // K33 Setup for a time course: conditions, optional doses (a mass series in its own unit, or no dose at all), the control step, Review, and where finishing lands
 // K34 outputs of a time course: Results columns, the Method (follows the settings, never names a fit), workbook, tidy CSV, Prism, ProNect-compatible files, figure, print, menu, Compare; Labbook and Hit Finder say why they do not apply
 // K35 Analysis settings of a time course: Normalise · Time course · Report, one column each, Apply reads them, Back to the defaults keeps the experiment
+// K36 the induction fit: a rise or a fall that settles gets one phase (k, plateau, delay with profile intervals): planted values recovered, intervals cover, a plateau not reached is fixed and said so, a peak is not fitted, the screens and files carry it
 // K15 Analysis settings is four tabs of aligned rows: every control has a caption, sits in one column on its tab, Apply stays in view whichever tab is open, and Apply reads the tabs that are hidden
 import { chromium } from 'playwright';
 import fs from 'fs';
@@ -991,7 +992,7 @@ try {
     check('K30 a rise still going at the last read is a bound (≥), not a number', r.ramp.q === '≥' && r.ramp.cls === 'tc-up', JSON.stringify(r.ramp));
     check('K30 five times the light gives the same numbers within 0.2 % (the unit of the signal is nobody’s business)', r.scale === true, '');
     check('K30 the control step removes a drifting reader (flat with it, a fall without it); noise alone is not a change (at most 2 of 30 runs) and a real 15 % is found (at least 27 of 30)', r.drift[0] === 'tc-flat' && r.drift[1] !== 'tc-flat' && r.fp <= 2 && r.hit >= 27, JSON.stringify([r.drift, r.fp, r.hit]));
-    check('K30 doxycycline in µg/mL is one condition with four doses kept as typed, a molar one is in nM, and nothing is fitted: no DC50, Dmax or KDeg on any condition', r.dox.n === 4 && r.dox.cu === 'mass' && r.dox.doses === '0.001,0.01,0.1,1' && r.molar.cu === null && r.molar.doses === '10,100,1000,10000' && r.noFit, JSON.stringify([r.dox, r.molar, r.noFit]));
+    check('K30 doxycycline in µg/mL is one condition with four doses kept as typed, a molar one is in nM, and no degradation is fitted: no DC50, Dmax or KDeg on any condition', r.dox.n === 4 && r.dox.cu === 'mass' && r.dox.doses === '0.001,0.01,0.1,1' && r.molar.cu === null && r.molar.doses === '10,100,1000,10000' && r.noFit, JSON.stringify([r.dox, r.molar, r.noFit]));
     check('K30 no page error', errs.length === 0, errs.slice(0, 2).join(' | '));
     await c.close();
   }
@@ -1108,7 +1109,7 @@ try {
       const pr = (await got[Object.keys(got).find(n => /prism/.test(n))].text()).replace(/^﻿/, ''); o.prism = [/^Method/.test(pr), /Condition,Doxycycline/.test(pr), /Largest change against dose/.test(pr)].join();
       const js = JSON.parse(await got[Object.keys(got).find(n => /normalized_data\.json$/.test(n))].text()); o.json = [js.Results.experiment, js.Results.conditions.length, js.Results.conditions[0].doses[0].largestChange != null].join();
       const raw = (await got[Object.keys(got).find(n => /raw_kinetic\.csv$/.test(n))].text()).replace(/^﻿/, '').split('\r\n'); o.rawUnit = raw.find(l => /^Unit/.test(l)).split(',').filter(x => x).join('|').slice(0, 60);
-      tpTab('curves'); tpSub('tc'); tpSaveSVG(); await wait(100); const svg = await got[Object.keys(got).find(n => /_chart\.svg$/.test(n))].text(); o.svg = /Time course, nothing fitted/.test(svg) && /Largest change/.test(svg);
+      tpTab('curves'); tpSub('tc'); tpSaveSVG(); await wait(100); const svg = await got[Object.keys(got).find(n => /_chart\.svg$/.test(n))].text(); o.svg = /Time course: the mean of the replicate wells/.test(svg) && /Largest change/.test(svg);
       tpPrint(); await wait(150); const pr2 = document.querySelector('#tp-print').innerHTML; o.print = /Time course/.test(pr2) && /Largest change/.test(pr2) && /How this was calculated/.test(pr2);
       tpExportMenu(document.body); const menu = document.querySelector('#tp-exp-menu').textContent; o.menu = [/Screen table/.test(menu), /Prism tables/.test(menu)].join(); document.querySelector('#tp-exp-menu').remove();
       let toast = ''; window.tpToast = m => { toast = m; }; await tpSendToLabbook(); o.lb = /no DC50/.test(toast); tpSendToHitFinder(); o.hf = /Hit Finder/.test(toast);
@@ -1116,7 +1117,7 @@ try {
       return o;
     });
     check('K34 Results: Condition · Dose · n · Largest change · at · End · t½ · Onset · Fastest · Mean change · a column per reporting time · Class — no DC50, Dmax or KDeg; no Labbook or Hit Finder button', /^Condition\|Target \/ cell line\|Dose\|n\|Largest change \(×\)\|at\|End \(×\)\|t½\|Onset\|Fastest/.test(r.head) && /Level at 2 h/.test(r.head) && /Class\|Flags$/.test(r.head) && !/DC50|Dmax|KDeg/.test(r.head) && r.rows === 11 && r.noBtn, JSON.stringify([r.head, r.rows, r.noBtn]));
-    check('K34 the Method says nothing is fitted, defines every measure, never mentions a Michaelis–Menten or a 4PL, and follows the settings (smoothing 7, smallest change 0.25, end = last 5 reads, no control step)', /Nothing is fitted/.test(r.method) && /Largest change/.test(r.method) && /t½ of the change/.test(r.method) && !/Michaelis|4PL|KDeg|Dmax/.test(r.method.replace(/no DC50, Dmax or KDeg/, '')) && /running median of 7 reads/.test(r.method2) && /max\(0\.25, 3σ\)/.test(r.method2) && /last 5 reads/.test(r.method2) && /no control step|NOT corrected/.test(r.methodNone) && /no control step/.test(r.shortNone), JSON.stringify([r.method.slice(0, 160), r.shortNone.slice(0, 120)]));
+    check('K34 the Method says no degradation is modelled, defines every measure, never mentions a Michaelis–Menten or a 4PL, and follows the settings (smoothing 7, smallest change 0.25, end = last 5 reads, no control step)', /No degradation is modelled/.test(r.method) && /Largest change/.test(r.method) && /t½ of the change/.test(r.method) && !/Michaelis|4PL|KDeg|Dmax/.test(r.method.replace(/no DC50, Dmax or KDeg/, '')) && /running median of 7 reads/.test(r.method2) && /max\(0\.25, 3σ\)/.test(r.method2) && /last 5 reads/.test(r.method2) && /no control step|NOT corrected/.test(r.methodNone) && /no control step/.test(r.shortNone), JSON.stringify([r.method.slice(0, 160), r.shortNone.slice(0, 120)]));
     check('K34 the workbook: Results (with the bound written out), Method, the mean and the SD of every dose, every well, Raw, Layout, Settings; one column per condition and dose', r.sheets === 'Results,Method,Mean level,SD,Level per well,Raw,Layout,Settings' && /Largest change \(x over start\)\|Largest change is\|at \(h\)/.test(r.xHead) && r.meanCols === 13 && r.meanRows === 145, JSON.stringify([r.sheets, r.xHead.slice(0, 120), r.meanCols, r.meanRows]));
     check('K34 tidy CSV (Dose and Dose_unit, ug/mL for doxycycline, nothing for an untreated condition), Prism tables (Method first, a table per condition), ProNect-compatible JSON (the time-course results, ProNect’s unit for a mass dose)', /^Plate,Well,Condition,Target,Dose,Dose_unit,Time_h,RLU_raw,Level,Left_out/.test(r.csvHead) && r.csvDox === 'mass' && r.prism === 'true,true,true' && r.json === 'timecourse,5,true' && /µg\/mL/.test(r.rawUnit), JSON.stringify([r.csvHead, r.csvDox, r.prism, r.json, r.rawUnit]));
     check('K34 the saved figure and the printed summary carry the method; the export menu drops the Screen table and keeps Prism; Send to Labbook and Hit Finder say why they do not apply; Compare draws and saves', r.svg && r.print && r.menu === 'false,true' && r.lb && r.hf && /Ranking\|Two measures against each other\|Traces/.test(r.cmp) && r.cmpSvg, JSON.stringify([r.svg, r.print, r.menu, r.lb, r.hf, r.cmp, r.cmpSvg]));
@@ -1143,6 +1144,49 @@ try {
     check('K35 a time course’s Analysis settings are Normalise · Time course · Report: every control captioned and in one column, none of the fit or Michaelis–Menten controls', r.tabs === 'norm,tc,report' && r.bad.length === 0 && r.ids === '' && r.degOnly === '', JSON.stringify([r.tabs, r.bad, r.ids, r.degOnly]));
     check('K35 Apply reads them (smallest change 0.6 turns many traces flat, no control step adds the control as a condition, two reporting times give two columns) and Back to the defaults keeps the experiment', r.S === '0.6,5,4,none,3,6' && r.flat >= 5 && r.hadCtl && r.cols === 2 && r.kind === 'timecourse' && r.tcReset === 0.1, JSON.stringify(r));
     check('K35 no page error', errs.length === 0, errs.slice(0, 2).join(' | '));
+    await c.close();
+  }
+
+  /* K36 the induction fit: one phase to a plateau for a rise or a fall that settles */
+  {
+    const { c, pg, errs } = await mkPage();
+    const r = await pg.evaluate(async () => {
+      const o = {}, wait = ms => new Promise(r => setTimeout(r, ms)), G = x => x > 0 ? x * Math.exp(1 - x) : 0; TP.S.kind = 'timecourse';
+      const run = (f, o2) => { const p = tpSynthTCPlate(Object.assign({ specs: [{ name: 'X', doses: [null], f: f }], seed: 5, wellCV: 0, readCV: 0, wiggle: 0, roundSig: 12, name: 'K36' }, o2 || {})); return tpAnalyse(p, TP.S, { wells: new Set(), pts: {}, masks: [], mm: {} }).compounds.find(c => c.compound === 'X').concs[0].m; };
+      const rise = run(t => 1 + 3 * (1 - Math.exp(-0.4 * Math.max(0, t - 1.5)))).fit; o.rise = [rise.k, rise.plat, rise.lag, rise.v0, rise.kq, rise.fixed, rise.t12, rise.r2];
+      const fall = run(t => 1 - 0.6 * (1 - Math.exp(-0.25 * t))).fit; o.fall = [fall.k, fall.plat, fall.lag, fall.platq, fall.v0];
+      const slow = run(t => 1 + 0.5 * (1 - Math.exp(-0.04 * t))).fit; o.slow = [slow.fixed, slow.platq, slow.kq, slow.v0, slow.plat];
+      const fast = run(t => 1 + 1 * (1 - Math.exp(-60 * t))).fit; o.fast = [fast.kq, fast.ok];
+      o.not = [run(t => 1 + 1.5 * G(t / 4)).fit.why, run(t => 1 - 0.5 * G(t / 6)).fit.why, run(() => 1).fit.why];
+      // noise: the interval of k and of the plateau cover the truth, k is within a few per cent
+      let ck = 0, cp = 0, ok = 0, errK = []; const N = 60;
+      for (let sd = 1; sd <= N; sd++) { const f = run(t => 1 + 2 * (1 - Math.exp(-0.3 * Math.max(0, t - 1))), { seed: 200 + sd, wellCV: 0.1, readCV: 0.025, wiggle: 0.008, roundSig: 4 }).fit; if (!f.ok) continue; ok++; if (f.kLo != null && f.kLo <= 0.3 && (f.kHi == null || f.kHi >= 0.3)) ck++; if (f.platLo <= 3 && f.platHi >= 3) cp++; errK.push(Math.abs(f.k - 0.3) / 0.3); }
+      errK.sort((a, b) => a - b); o.cov = [ok, ck, cp, errK[Math.floor(errK.length / 2)]];
+      // the settings: off, and no delay
+      TP.S.tc.fit = false; o.off = run(t => 1 + 3 * (1 - Math.exp(-0.4 * t))).fit.why; TP.S.tc.fit = true; TP.S.tc.lag = false; const nl = run(t => 1 + 3 * (1 - Math.exp(-0.4 * Math.max(0, t - 1.5)))).fit; o.nolag = [nl.lag, nl.ok]; TP.S.tc.lag = true;
+      // time stretched: the same trace read twice as slowly has half the rate
+      const a = run(t => 1 + 2 * (1 - Math.exp(-0.5 * t))).fit.k, b2 = run(t => 1 + 2 * (1 - Math.exp(-0.25 * t))).fit.k; o.half = a / b2;
+      // the screens
+      await tpSetKind('timecourse'); await tpLoadExample(); await wait(400); tpTab('results'); await wait(300);
+      o.head = [...document.querySelectorAll('#tp-restbl th')].map(t => t.textContent.replace(/[▲▼]/g, '')).join('|');
+      const cx = tpRes().compounds.find(c => c.compound === 'Doxycycline'); TP.sel.comp = cx.key; tpTab('curves'); tpSub('tc'); tpTCPick(2); await wait(300);
+      o.dash = document.querySelectorAll('#tp-chart path[stroke-dasharray="3 3"]').length; o.stats = /One-phase fit/.test(document.querySelector('.cv-main').textContent) && /Rate constant k/.test(document.querySelector('.cv-main').textContent);
+      TP.sel.comp = tpRes().compounds.find(c => c.compound === 'Heat shock').key; tpRenderCurves(); o.why = /does not settle into a plateau/.test(document.querySelector('.cv-main').textContent);
+      o.method = tpMethodText().join('\n'); const got = {}; window.tpDownload = (n, bl) => { got[n] = bl; }; const wb = { sheets: [] }; window.XLSX = { utils: { book_new: () => wb, aoa_to_sheet: x => x, book_append_sheet: (b, w, n) => b.sheets.push([n, w]) }, writeFile: () => {} }; tpExportXLSX();
+      const rs = wb.sheets.find(s => s[0] === 'Results')[1]; o.xh = rs[0].filter(h => /^Fit/.test(h)).length; o.xlen = [rs[0].length, rs[1].length]; o.xrow = rs.slice(1).find(r => r[0] === 'Doxycycline' && r[2] === 0.1); o.json = JSON.stringify(tpResultsJSON(tpPlate()).conditions.find(c => c.condition === 'Doxycycline').doses[2].fit).slice(0, 80);
+      await tpSetKind('timecourse'); TP.S.tc.fit = false; await tpRunAll(); tpTab('results'); await wait(200); o.headOff = [...document.querySelectorAll('#tp-restbl th')].map(t => t.textContent).join('|'); o.methodOff = !/one-phase fit/i.test(tpMethodText().join('\n')); TP.S.tc.fit = true;
+      return o;
+    });
+    const nr = (x, y, tol) => Math.abs(x - y) <= tol;
+    check('K36 a planted rise is read back: k within 3 %, the plateau within 1 %, the delay within 0.2 h, the initial rate A·k within 5 %, t½ of the fit = delay + ln 2 / k, a good R², neither fixed nor bound', nr(r.rise[0], 0.4, 0.012) && nr(r.rise[1], 4, 0.04) && nr(r.rise[2], 1.5, 0.2) && nr(r.rise[3], 1.2, 0.06) && r.rise[4] === '=' && r.rise[5] === false && nr(r.rise[6], r.rise[2] + Math.LN2 / r.rise[0], 1e-9) && r.rise[7] > 0.99, JSON.stringify(r.rise));
+    check('K36 a planted fall is read back too: negative A, plateau 0.4, k 0.25, no delay', nr(r.fall[0], 0.25, 0.01) && nr(r.fall[1], 0.4, 0.01) && r.fall[2] == null && r.fall[3] === '=' && r.fall[4] < 0, JSON.stringify(r.fall));
+    check('K36 a plateau that is not reached is held at where the trace ends and said so (≥, k ≤: k is biased high, never presented as a value); a k faster than the read interval is a bound (>)', r.slow[0] === true && r.slow[1] === '≥' && r.slow[2] === '≤' && r.slow[3] > 0.02 && r.slow[4] > 1.2 && r.slow[4] < 1.4 && r.fast[0] === '>', JSON.stringify([r.slow, r.fast]));
+    check('K36 a peak that returns, a dip that recovers and a flat trace are not fitted, and each says why', r.not.join() === 'not-one-phase,not-one-phase,no-change', r.not.join());
+    check('K36 with noise the 95 % intervals cover the truth (k and the plateau, at least 50 of 60 each) and the median error of k is under 6 %', r.cov[0] >= 58 && r.cov[1] >= 50 && r.cov[2] >= 50 && r.cov[3] < 0.06, JSON.stringify(r.cov));
+    check('K36 switched off, no fit; with no delay allowed, none is fitted; a trace twice as slow has half the rate', r.off === 'off' && r.nolag[0] == null && r.nolag[1] === true && nr(r.half, 2, 0.05), JSON.stringify([r.off, r.nolag, r.half]));
+    check('K36 Results gains k · Plateau · Delay (and loses them when the fit is off), Curves draws the dashed fit and the card with k, the plateau and the reason a peak is not fitted, the Method has its section', /Mean change %\|k \(h⁻¹\)\|Plateau \(×\)\|Delay\|Level at 2 h/.test(r.head) && !/Plateau \(×\)/.test(r.headOff) && r.dash >= 1 && r.stats && r.why && /one-phase fit of a rise or a fall/i.test(r.method) && /Plateau not reached/.test(r.method) && r.methodOff, JSON.stringify([r.head, r.headOff, r.dash, r.stats, r.why, r.methodOff]));
+    check('K36 the workbook carries the fit (value, bound, interval, delay, t½, initial rate, R², the reason when there is none) and the JSON the same', r.xh === 7 && r.xlen[0] === r.xlen[1] && r.xrow && typeof r.xrow[15] === 'number' && /kPerH/.test(r.json), JSON.stringify([r.xh, r.xrow && r.xrow.slice(14, 22), r.json]));
+    check('K36 no page error', errs.length === 0, errs.slice(0, 2).join(' | '));
     await c.close();
   }
 } catch (e) { findings.push('✗ K30–K35 the run stopped: ' + (e && e.stack || e).toString().split('\n').slice(0, 3).join(' ')); console.log('✗ K30–K35 stopped: ' + (e && e.stack || e)); }
