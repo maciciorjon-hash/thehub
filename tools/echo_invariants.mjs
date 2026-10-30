@@ -77,7 +77,7 @@
 //   E40 history in the cloud Every analysis is written to the cloud store under its name (row, results, whole), versions of one name are one
 //                           analysis there, an empty browser gets it all back (results on demand), deletes travel, no name = no run.
 //   E52 History repairs itself   A database called echo_history with no (or only some) of Echo's stores — what anything that opened it first leaves behind — is repaired in place, keeps what it holds, and an analysis survives a reload (before: "object stores was not found" on every save).
-//   E53 the Results bar is      Compare · Copy TSV · Export ▾ · Send to ▾ — on a single-assay and a multi-assay run alike; every menu item
+//   E53 the Results bar is      Compare · Copy table · Export ▾ · Send to ▾ — on a single-assay and a multi-assay run alike; every menu item
 //       three groups            calls a function that exists; standalone there is no Send menu; and the raw per-well table (no longer a button)
 //                               is the workbook's "Raw data" sheet, row for row and cell for cell the old CSV.
 //   E37 history by name    A History entry is its NAME: runs with one name are versions of one entry (any spelling, any input files), old copies merge, unnamed runs stay by dataset, rename/merge, and every way to compare is findable.
@@ -93,7 +93,7 @@
 //                          plate follows the chosen rule (first dash, last dash, whole barcode, own table) in the run, the Review and
 //                          the Protocol, and editing it in the Review writes the table.
 //   E34 n.d.               A curve flagged "No effect" has no midpoint: with the switch on (Setup › Output) its potency, logs, Hill and
-//                          confidence limits read n.d. in the table, the Curves stats, the summary CSV, Copy TSV, the workbook, Properties
+//                          confidence limits read n.d. in the table, the Curves stats, the summary CSV, Copy table, the workbook, Properties
 //                          and the rows sent to Labbook (nd:true, no potency); it is left off potency axes and says how many; Dmax and R²
 //                          stay numbers; with the switch off every number is printed as before; the data rows keep the fitted values.
 //   E35 keyboard and        Tabs are a tablist (one selected, arrows / Home / End move and select), sortable headers are reachable and sort
@@ -109,7 +109,7 @@
 //                            still says "Plate mean" / "Smart · …". It used to call raw signal a plate mean.
 //   E44 a multi-assay pivot  One result per (assay, group): a compound fitted against two groups of one assay shows BOTH, in the table and in the
 //       overwrites nothing   XLSX, under headers that name the group; two results for one compound in one block open another block.
-//   E45 Copy TSV says which  A multi-assay Copy TSV names the assay of every row and calls the potency column a potency; a single-assay one is unchanged.
+//   E45 Copy table says which  A multi-assay Copy table names the assay of every row and calls the potency column a potency; a single-assay one is unchanged.
 //   E46 the screen export    Screen CSV and the workbook's last sheet are the same table (header = SCR_COLS, Schema echo-screen/1), one row per fitted
 //       is the results        curve plus one per compound that could not be fitted; a midpoint past the doses is a qualifier (>, <, n.d.) with the tested
 //                             range beside it — also with the n.d. display switch off; the button is on both result views; existing sheets keep their place.
@@ -200,7 +200,7 @@
 //   E76 the keyboard is seen  Pressing Tab through every Setup step and every tab, each stop shows a mark (an outline, a shadow or a changed border): the Curves
 //                             selects and Y limits and the Plate tab's search and selects carried outline:none and showed nothing.
 //
-//   E77 a copy is a copy      Copy TSV keeps its icon after it flashes 'Copied' (it was rewritten as bare text), still copies when the async clipboard is refused
+//   E77 a copy is a copy      Copy table keeps its icon after it flashes 'Copied' (it was rewritten as bare text), still copies when the async clipboard is refused
 //                             (textarea fallback), says so on screen when nothing could be copied, and Copy selected IDs does the same instead of failing in silence.
 //
 //   E78 one button, one input  docs/UI.md 2026-10-21 at desktop widths, on every Setup step, tab and the Gradient Planner: a text button is 32px with --r-1 corners and a
@@ -624,7 +624,7 @@ if (run('E12')) await guard('E12', async () => {
 if (run('E13')) await guard('E13', async () => {
   const r = await E(() => ({ order: [...document.querySelectorAll('.tabs .tab')].map(t => t.dataset.tab), panes: document.querySelectorAll('.tabpane.active').length }));
   const o = r.order, first5 = o.slice(0, 5);
-  check('E13', 'the analysis views come first, in the order you use them', JSON.stringify(first5) === JSON.stringify(['results', 'curves', 'scatter', 'plate', 'props']), first5);
+  check('E13', 'the analysis views come first, in the order you use them', JSON.stringify(first5) === JSON.stringify(['results', 'curves', 'scatter', 'graph', 'plate']), first5);
   check('E13', 'housekeeping tabs come after', ['log', 'history', 'protocol', 'survey', 'guide'].every(t => o.indexOf(t) > 4), o);
   check('E13', 'one pane is showing', r.panes === 1, r.panes);
 });
@@ -1465,7 +1465,7 @@ if (run('E34')) await guard('E34', async () => {
   });
   check('E34', 'there are flat curves in the test data and the data rows keep their fitted values', r.nNd >= 2 && r.keeps, r);
   check('E34', 'the table prints n.d. for potency, Abs, logs, Hill and the interval of a flat curve, and numbers for a good one', r.ndCount >= 5 && !/n\.d\./.test(r.okRow), { nd: r.ndRow, ok: r.okRow });
-  check('E34', 'the summary CSV, Copy TSV and the workbook say n.d. too, and Dmax stays a number', r.csvNd >= 4 && r.tsvNd >= 4 && r.xlsxNd >= 4 && typeof r.xlsxDmax === 'number', { csv: r.csvNd, tsv: r.tsvNd, xlsx: r.xlsxNd, dmax: r.xlsxDmax });
+  check('E34', 'the summary CSV, Copy table and the workbook say n.d. too, and Dmax stays a number', r.csvNd >= 4 && r.tsvNd >= 4 && r.xlsxNd >= 4 && typeof r.xlsxDmax === 'number', { csv: r.csvNd, tsv: r.tsvNd, xlsx: r.xlsxNd, dmax: r.xlsxDmax });
   check('E34', 'Labbook gets nd:true and no potency for a flat curve, the numbers for the rest', r.lb.nd === true && r.lb.potency === null && r.lb.fit > 0 && r.lb.bound && r.lb.okNd === false && r.lb.okPotency > 0 && typeof r.lb.effect === 'number', r.lb);
   check('E34', 'Properties shows n.d. for it', r.props && /n\.d\./.test(r.props), r.props);
   check('E34', 'potency plots leave it out and say how many', r.scNd >= 1 && /no effect/.test(r.scNote || ''), { n: r.scNd, note: r.scNote });
@@ -1516,7 +1516,7 @@ if (run('E35')) await guard('E35', async () => {
   const un = Object.entries(r.unnamed).filter(([, v]) => v.length);
   check('E35', 'every visible button, input and select on every view has a name', un.length === 0, un);
   check('E35', 'each tab list has one selected tab and one tab stop', r.tablists.length >= 3 && r.tablists.every(l => l.tabs > 0 && l.selected === 1 && l.focusable === 1), r.tablists);
-  check('E35', '→ selects the next view, End the last, [ the previous', r.afterArrow === 'curves' && r.afterEnd === 'guide' && r.afterBracket === 'survey', { a: r.afterArrow, e: r.afterEnd, b: r.afterBracket });
+  check('E35', '→ selects the next view, End the last, [ the previous', r.afterArrow === 'curves' && r.afterEnd === 'guide' && r.afterBracket === 'history', { a: r.afterArrow, e: r.afterEnd, b: r.afterBracket });
   check('E35', 'a sortable header is a tab stop and Enter sorts it (aria-sort follows)', r.thTab === 0 && r.thSort === 'ascending', { tab: r.thTab, sort: r.thSort });
   check('E35', 'the Setup dialog is a modal dialog, takes focus, traps Tab, closes on Esc and gives focus back', r.dialog.role === 'dialog' && r.dialog.modal === 'true' && r.dialog.inside && r.trapped && r.closed && r.restored, { d: r.dialog, trapped: r.trapped, closed: r.closed, restored: r.restored });
   check('E35', 'progress is a progressbar; the curve describes itself', r.pb === 'progressbar' && /^img \| Dose-response curve of /.test(r.cv), { pb: r.pb, cv: r.cv });
@@ -1648,10 +1648,10 @@ if (run('E45')) await guard('E45', async () => {
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: keepC });
     return { multi, single };
   }, '(' + MA_ROWS + ')');
-  check('E45', 'a multi-assay Copy TSV starts with an Assay column', r.multi[0] && r.multi[0][0] === 'Assay', r.multi[0]);
+  check('E45', 'a multi-assay Copy table starts with an Assay column', r.multi[0] && r.multi[0][0] === 'Assay', r.multi[0]);
   check('E45', 'every row names its assay (HiBiT / Viability)', r.multi.slice(1).every(l => /^(HiBiT|Viability)$/.test(l[0])) && r.multi.slice(1).some(l => l[0] === 'Viability'), r.multi.slice(1).map(l => l[0]));
   check('E45', 'the potency column is called a potency, not DC50, when viability rows share it', (r.multi[0] || []).some(h => /^Potency/.test(h)), r.multi[0]);
-  check('E45', 'a single-assay Copy TSV has no Assay column', r.single[0] && r.single[0][0] !== 'Assay' && !r.single[0].includes('Assay'), r.single[0]);
+  check('E45', 'a single-assay Copy table has no Assay column', r.single[0] && r.single[0][0] !== 'Assay' && !r.single[0].includes('Assay'), r.single[0]);
 });
 
 // A synthetic compound for the engine: 12 doses, a sigmoid around -7.6, and (optionally) the top doses rebounding.
@@ -2105,7 +2105,7 @@ if (run('E53')) await guard('E53', async () => {
     }
     return { lbls, exp, fnsOk, rawN: raw.length, sheetN: sheet && sheet.length, csvN: csv && csv.length, same, sheets: wb && wb.SheetNames };
   });
-  check('E53', 'one Results bar, reading Compare · Copy TSV · Export', r.lbls.length >= 1 && r.lbls.every(l => l.join('|') === 'Compare…|Copy TSV|Export'), r.lbls);
+  check('E53', 'one Results bar, reading Compare · Copy table · Export', r.lbls.length >= 1 && r.lbls.every(l => l.join('|') === 'Compare…|Copy table|Export'), r.lbls);
   check('E53', 'no Raw Data CSV or curve-PDF button in the bar', !r.lbls.flat().some(t => /Raw Data|curve PDFs|Results XLSX|Screen CSV/.test(t)), r.lbls);
   check('E53', 'Export lists the workbook, the Screen table and the curve PDFs', r.exp.map(x => x.l).join('|') === 'Results workbook (XLSX)|Screen table (CSV)|Curve PDFs', r.exp);
   check('E53', 'every action the bar reaches exists', r.fnsOk);
@@ -2885,7 +2885,7 @@ if (run('E77')) await guard('E77', async () => {
   check('E77', 'the button says Copied while it flashes', mid && /Copied/.test(mid.text), mid);
   await q.waitForTimeout(1700);
   const after = await btn();
-  check('E77', 'the button gets its icon and its words back', before && before.svg && after && after.svg && /Copy TSV/.test(after.text), { before, after });
+  check('E77', 'the button gets its icon and its words back', before && before.svg && after && after.svg && /Copy table/.test(after.text), { before, after });
   // 2. nothing works: it is said
   await q.evaluate(() => { document.execCommand = () => false; copyResultsTSV(); }); await q.waitForTimeout(500);
   const say = await q.evaluate(() => document.body.innerText);
@@ -2905,7 +2905,7 @@ if (run('E78')) await guard('E78', async () => {
   await q.evaluate(() => { loadTestData(); }); await q.waitForTimeout(800);
   const PROBE = () => {
     const out = { btn: [], inp: [], glyph: [] }; const modal = document.getElementById('setup-modal'); const mopen = modal && !modal.classList.contains('hidden') && modal.offsetParent !== null; const root = mopen ? modal : document.body;
-    const SKIP_B = /\b(tab|outer-tab|setup-stab|plate-view|hx-ic|hx-tg|na-btn|plate-png|rrm|sx-link|setup-reopen-btn|setup-hclose|opts-btn|eg-x|cv-tbl-x|cv-mode-single|cv-mode-compare|ck-[\w-]+|tk-[\w-]+|as-[\w-]+|eg-sel|eg-tin|pinfo|dz-[\w-]+|ctx[\w-]*|cv-dl-item|rv-fix)\b/;
+    const SKIP_B = /\b(tab|tabgrp|tabmenu-item|outer-tab|setup-stab|plate-view|hx-ic|hx-tg|na-btn|plate-png|rrm|sx-link|setup-reopen-btn|setup-hclose|opts-btn|eg-x|cv-tbl-x|cv-mode-single|cv-mode-compare|ck-[\w-]+|tk-[\w-]+|as-[\w-]+|eg-sel|eg-tin|pinfo|dz-[\w-]+|ctx[\w-]*|cv-dl-item|rv-fix)\b/;
     for (const e of root.querySelectorAll('button')) {
       const r = e.getBoundingClientRect(), cs = getComputedStyle(e); if (r.width < 2 || r.height < 2 || cs.visibility === 'hidden' || cs.display === 'none' || e.disabled === undefined) continue;
       if (SKIP_B.test(e.className + ' ' + e.id) || e.closest('#dep-stack,.ck-root,.as-panel,[class*="tk-"]') || (e.textContent || '').trim().length < 3) continue;

@@ -170,7 +170,7 @@ for (const id of ['echo', 'lumina', 'beacon', 'tempo', 'hitfinder', 'dora', 'bca
   check('S6 with no low control the CV of the high one is judged (≤ 10 % good, ≤ 20 % marginal)', w.tight.verdict === 'good' && w.loose.verdict === 'poor' && /CV/.test(w.onlyHi.basis) && w.none.verdict === 'na', { tight: w.tight.verdict, loose: w.loose.verdict, none: w.none.verdict });
   const lp = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage(); await lp.route(/^https?:/, r => r.abort()); const e6 = []; lp.on('pageerror', e => e6.push(String(e).slice(0, 160)));
   await lp.goto('file://' + path.join(ROOT, 'apps/lumina/lumina.html')); await lp.waitForTimeout(900);
-  const L = await lp.evaluate(() => { loadLuminaTestData(); switchTab('results'); const h = document.getElementById('rs-qc'); const rows = [...h.querySelectorAll('tbody tr')].map(r => r.innerText.replace(/\s+/g, ' ')); return { hidden: h.hidden, rows, plates: state.plates.length }; });
+  const L = await lp.evaluate(() => { loadLuminaTestData(); switchTab('results'); const h = document.getElementById('rs-qc'); const rows = [...h.querySelectorAll('tbody tr')].map(r => r.textContent.replace(/\s+/g, ' ')); return { hidden: h.hidden, rows, plates: state.plates.length }; });
   check('S6 Lumina shows plate quality for each plate that has a 100 % control', !L.hidden && L.rows.length === L.plates && L.rows.every(r => /\d/.test(r)), L);
   const L2 = await lp.evaluate(() => { state.ctrlWells = new Set(); lmPlateQC(); return document.getElementById('rs-qc').hidden; });
   check('S6 …and nothing when no control is marked', L2 === true, L2);

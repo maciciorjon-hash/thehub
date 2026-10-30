@@ -7,6 +7,7 @@
 // F3  no text on the page is off the type scale (10 11 12 13 15 17 20 26 38 px); superscripts and drawn SVG text are the two exemptions
 // F5  the main results table of each app is a ResultsKit table: 11 px headers in sentence case (never uppercase), cells at its density's size in the sans face, numbers aligned on the right,
 //     and — where an app reports an interval — the order potency · 95% CI · … · Hill · R² (Echo, Lumina, Beacon)
+// F6  the tabs: the same order in every app, an icon on each, Guide last (Echo groups what was run under Run)
 // F4  the retired accent #5e87c5 draws nothing of these apps' own (Echo keeps it as the colour of the Displacement assay, a category, not the accent)
 import { chromium } from 'playwright';
 import fs from 'fs';
@@ -17,13 +18,26 @@ const HERE = path.dirname(fileURLToPath(import.meta.url)), ROOT = path.join(HERE
 const findings = []; let passed = 0;
 const check = (name, ok, detail) => { if (ok) passed++; else { const m = '✗ ' + name + (detail ? ' — ' + (typeof detail === 'string' ? detail : JSON.stringify(detail)) : ''); findings.push(m); console.log('  ' + m); } };
 
+const EBOOT = `[...document.querySelectorAll('.outer-tab')].find(b=>/Analysis/.test(b.textContent))?.click(); document.getElementById('setup-modal')?.classList.add('hidden'); loadTestData(); await new Promise(r=>setTimeout(r,300)); runPipeline(); await new Promise(r=>setTimeout(r,3000));`;
+const eTab = t => `document.querySelector('.tab[data-tab="${t}"]').click()`;
 const APPS = {
+  echo: { gutter: 20, boot: EBOOT, tabs: ['results', 'curves', 'scatter', 'graph', 'plate', 'props', 'log', 'protocol', 'survey', 'history', 'guide'].map(eTab) },
   lumina: { boot: `loadLuminaTestData(); switchTab('results')`, tabs: [`switchTab('input')`, `switchTab('results')`, `switchTab('graph')`, `switchTab('history')`, `switchTab('guide')`] },
   beacon: { boot: `loadTestData(); switchTab('results')`, tabs: [`switchTab('plate')`, `switchTab('results')`, `switchTab('graph')`, `switchTab('history')`, `switchTab('guide')`] },
   tempo: { boot: `await tpLoadExample('degradation'); tpTab('results')`, tabs: [`tpTab('plate')`, `tpTab('curves')`, `tpTab('results')`, `tpTab('compare')`, `tpTab('history')`] },
   hitfinder: { boot: `loadHitFinderTestData(); hfTab('hits')`, tabs: [`hfTab('screens')`, `hfTab('criteria')`, `hfTab('hits')`, `hfTab('plots')`, `hfTab('guide')`] },
   dora: { boot: `loadTestData(); switchTab('table')`, tabs: [`switchTab('load')`, `switchTab('table')`, `switchTab('scatter')`, `switchTab('props')`, `switchTab('guide')`] },
   bca: { boot: `loadTestData()`, tabs: [`switchTab('standards')`, `switchTab('history')`, `switchTab('guide')`] },
+};
+// F6  the order of the tabs: Data first, Results before Curves, History then Guide last — what each app has, in the one order (Echo's Run groups Console, Protocol and Source Plate)
+const ORDER = {
+  echo: ['Results', 'Curves', 'Plots', 'Graph', 'Plate', 'Properties', 'Run', 'History', 'Guide'],
+  lumina: ['Plate', 'Results', 'Graph', 'History', 'Guide'],
+  beacon: ['Plate', 'Results', 'Graph', 'History', 'Guide'],
+  tempo: ['Plate', 'Results', 'Curves', 'Compare', 'History', 'Guide'],
+  hitfinder: ['Screens', 'Criteria', 'Hits', 'Sensitivity', 'Plots', 'Health', 'Chemistry', 'Export', 'Guide'],
+  dora: ['Data', 'Results', 'Compare', 'Properties', 'Guide'],
+  bca: ['Workflow', 'History', 'Guide'],
 };
 const SCALE = [10, 11, 12, 13, 15, 17, 20, 26, 38];
 
@@ -36,15 +50,18 @@ for (const [id, A] of Object.entries(APPS)) {
   await pg.evaluate(`(async()=>{ document.getElementById('dep-stack')?.remove(); ${A.boot} })()`); await pg.waitForTimeout(1200);
   const frame = await pg.evaluate(() => {
     const vis = e => { const r = e.getBoundingClientRect(); return r.width > 1 && r.height > 1; };
-    const bar = [...document.querySelectorAll('.tabs,.tabbar')].find(vis), tabs = [...bar.querySelectorAll('.tab,[role=tab]')].filter(vis), first = tabs[0], act = tabs.find(t => t.classList.contains('active') || t.getAttribute('aria-selected') === 'true');
+    const bar = [...document.querySelectorAll('.tabs,.tabbar')].find(vis), tabs = [...bar.querySelectorAll('.tab,.tabgrp,[role=tab]')].filter(vis), first = tabs[0], act = tabs.find(t => t.classList.contains('active') || t.getAttribute('aria-selected') === 'true');
     const cs = e => getComputedStyle(e), pad = parseFloat(cs(first).paddingLeft);
     const card = [...document.querySelectorAll('.card,.rs-card')].find(e => vis(e) && !e.closest('[hidden]'));
     return { barH: bar.getBoundingClientRect().height, tabH: tabs.map(t => Math.round(t.getBoundingClientRect().height)), fs: [...new Set(tabs.map(t => cs(t).fontSize))], w: cs(tabs.find(t => t !== act) || first).fontWeight, wAct: act ? cs(act).fontWeight : null,
       label: first.getBoundingClientRect().left + pad, card: card ? { x: card.getBoundingClientRect().left, r: cs(card).borderRadius, sh: cs(card).boxShadow } : null };
   });
   check(`F1 ${id}: the tab bar is 40 px with 13 px tabs, 500 → 600 when active`, frame.barH >= 40 && frame.barH <= 41.5 && frame.tabH.every(h => h === 40) && frame.fs.join() === '13px' && frame.w === '500' && (frame.wAct === '600' || frame.wAct === null), frame);
-  check(`F1 ${id}: the first tab's label sits on the 28 px gutter`, Math.abs(frame.label - 28) <= 1, frame.label);
-  if (frame.card) { check(`F2 ${id}: a card is --r-3 (9 px) with --shadow-xs, on the gutter`, frame.card.r === '9px' && /rgba\(0, 0, 0, 0\.04\) 0px 1px 4px/.test(frame.card.sh) && Math.abs(frame.card.x - 28) <= 1, frame.card); }
+  check(`F1 ${id}: the first tab's label sits on the page gutter (${A.gutter || 28} px)`, Math.abs(frame.label - (A.gutter || 28)) <= 1, frame.label);
+  if (frame.card && !A.gutter) { check(`F2 ${id}: a card is --r-3 (9 px) with --shadow-xs, on the gutter`, frame.card.r === '9px' && /rgba\(0, 0, 0, 0\.04\) 0px 1px 4px/.test(frame.card.sh) && Math.abs(frame.card.x - 28) <= 1, frame.card); }
+  const labels = await pg.evaluate(() => { const bar = [...document.querySelectorAll('.tabs,.tabbar')].find(e => e.getBoundingClientRect().width > 1); return [...bar.querySelectorAll('.tab,.tabgrp,[role=tab]')].filter(t => { const r = t.getBoundingClientRect(); return r.width > 1 && r.height > 1; }).map(t => t.textContent.replace(/\s+/g, ' ').trim().replace(/\s*\d+$/, '').trim().replace(/^Run · .*/, 'Run')); });
+  check(`F6 ${id}: the tabs, in the order the data apps share`, JSON.stringify(labels) === JSON.stringify(ORDER[id]), labels);
+  check(`F6 ${id}: every tab has an icon`, await pg.evaluate(() => { const bar = [...document.querySelectorAll('.tabs,.tabbar')].find(e => e.getBoundingClientRect().width > 1); return [...bar.querySelectorAll('.tab,.tabgrp,[role=tab]')].filter(t => t.getBoundingClientRect().width > 1).every(t => t.querySelector('svg')); }));
   const odd = [];
   for (const go of A.tabs) {
     await pg.evaluate(`(async()=>{ ${go} })()`); await pg.waitForTimeout(600); await pg.evaluate(() => document.getElementById('dep-stack')?.remove());

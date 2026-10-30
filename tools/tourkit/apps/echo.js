@@ -5,7 +5,7 @@
   var closeSetup = function(){ if (setupOpen()) closeSetupModal(); };
   var tabGo = function(id){ return function(){ analysisOn(); closeSetup(); var t = document.getElementById('tabbtn-' + id); if (t) t.click(); }; };
   var setupGo = function(sub){ return function(){ analysisOn(); if (!setupOpen()) openSetupModal(); switchSetupTab(sub); }; };
-  var tabSel = function(id){ return '#tabbtn-' + id; };
+  var tabSel = function(id){ return '#tabbtn-' + ({ log: 'run', protocol: 'run', survey: 'run' }[id] || id); };   // Console, Protocol and Source Plate live under Run
   var withText = function(root, tag, re){ return function(){ return [].slice.call(document.querySelectorAll(root + ' ' + tag)).filter(function(e){ return re.test(e.textContent); })[0]; }; };
   var MISS = 'This fills in once an analysis has been run.';
   tourRegister({
@@ -115,16 +115,16 @@
           ['Flag · Reason', 'Why a curve deserves a look: low R², noisy replicates, a hook, a midpoint beyond the doses tested (`EC50>range`, `EC50<range`), no effect.'],
           ['95 % CI', 'The confidence interval of the DC50.'],
           ['Normalisation · vs plain mean', 'How the 100 % reference of the curve’s plates was set, and whether the potency changes if the plain plate mean is used instead — **Same** or **Differs**.'],
-          ['Buttons', '**Compare…** (two analyses from History), **Copy TSV**, **Export ▾** — the results workbook (with every well in its *Raw data* sheet), the Screen table Hit Finder reads, the curve PDFs — and inside dHUB **Send to ▾** — Labbook, Hit Finder, Ribbon.']],
+          ['Buttons', '**Compare…** (two analyses from History), **Copy table**, **Export ▾** — the results workbook (with every well in its *Raw data* sheet), the Screen table Hit Finder reads, the curve PDFs — and inside dHUB **Send to ▾** — Labbook, Hit Finder, Ribbon.']],
         watch: [{ k: 'tip', t: 'A curve flagged *No effect* barely moves, or is no better than a flat line through its own readings (F test, p ≥ 0.05) — its potency is n.d. and it is left off potency plots. A midpoint beyond the doses tested is a bound, not a value.' }],
         steps: [
-          { sel: '#results-panel .results-tbl-scroll', t: 'One row per curve', place: 'top', miss: MISS,
+          { sel: '#results-panel .results-tbl-scroll table', t: 'One row per curve', place: 'top', miss: MISS,
             b: 'DC50, Dmax, Hill, R², the flag and why, the confidence interval and how the curve was normalised. **Click a header to sort**; hover an n.d. for the number behind it.' },
           { deep: true, sel: '#results-panel .res-tiles', t: 'At a glance', place: 'bottom', miss: MISS,
             b: 'Compounds, fits (a compound against each target is a fit) and how many are flagged.' },
           { deep: true, sel: '#results-panel details', t: 'How it was normalised', place: 'bottom', miss: MISS,
             b: 'Every curve is also fitted with the plain plate mean as a check. **Same** means the method does not matter for it; **Differs** is worth a look before you quote the number.' },
-          { deep: true, sel: withText('#results-panel', 'button', /Copy TSV/), t: 'Take the numbers out', place: 'bottom', miss: MISS,
+          { deep: true, sel: withText('#results-panel', 'button', /Copy table/), t: 'Take the numbers out', place: 'bottom', miss: MISS,
             b: 'Copy the table, or open **Export** for the workbook, the Screen table and a PDF per group. Inside dHUB, **Send to** puts the potencies on a **Labbook** experiment, the whole screen into **Hit Finder**, or a target into **Ribbon**.' }] },
 
       { id: 'curves', label: 'Curves', sel: tabSel('curves'), go: tabGo('curves'), needs: 'data',

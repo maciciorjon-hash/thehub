@@ -64,6 +64,9 @@ header{min-height:48px;display:flex;align-items:center;gap:14px;padding:0 18px;b
 .tab.active{color:var(--text);font-weight:600;}
 .tab .badge{font-family:var(--mono);font-size:var(--fs-1);font-weight:600;padding:1px 6px;border-radius:var(--r-full);background:var(--accent-dim);color:var(--text);}   /* accent on its own tint was 3.2:1 */
 .tab:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;border-radius:var(--r-1);}
+.tab-end{margin-left:auto;display:flex;gap:8px;align-items:center;height:40px;}
+.tab-end .btn{height:40px;min-height:40px;border:0;border-left:1px solid var(--border);border-radius:0;background:none;}   /* a tab-high action at the end of the bar, so the row stays one height */
+.tab-end .btn:hover{background:var(--surface2);}
 .tab-ink{position:absolute;left:0;bottom:-1px;width:1px;height:2px;background:var(--accent);transform-origin:left center;transition:transform var(--dur-2) var(--ease);pointer-events:none;}
 
 .main{max-width:1680px;margin:0 auto;padding:22px var(--page-x) 70px;}
@@ -871,6 +874,7 @@ var StatsKit = (function () {
   <button class="tab" role="tab" data-tab="export" aria-selected="false" onclick="hfTab('export')"><svg viewBox="0 0 24 24"><path d="M12 3v12"/><path d="M7.5 10.5L12 15l4.5-4.5"/><path d="M4 20h16"/></svg>Export</button>
   <button class="tab" role="tab" data-tab="guide" aria-selected="false" onclick="hfTab('guide')"><svg viewBox="0 0 24 24"><path d="M4 5.5C4 4.7 4.7 4 5.5 4H11v15H5.5A1.5 1.5 0 0 0 4 20.5z"/><path d="M20 5.5c0-.8-.7-1.5-1.5-1.5H13v15h5.5c.8 0 1.5.7 1.5 1.5z"/></svg>Guide</button>
   <span class="tab-ink" id="hf-ink"></span>
+  <span class="tab-end"><button class="btn sm" id="hf-exp-btn" onclick="hfExportMenu(this)" aria-haspopup="menu" title="Take the hit list out: the workbook, the report, the one-pager, the cherry-pick list"><svg viewBox="0 0 24 24"><path d="M12 3v12"/><path d="M7.5 10.5L12 15l4.5-4.5"/><path d="M4 20h16"/></svg>Export</button></span>
 </nav>
 
 <main class="main">
@@ -2989,6 +2993,17 @@ async function hfOfferResume() {
 function hfCloudLine() { const C = HF.cloud; return !hfFb() ? 'Your presets and calls are kept on this device.' : C.state === 'synced' ? 'Your presets and calls follow you between devices · synced ' + esc(hfWhen(C.at)) : 'Your presets and calls are kept on this device; they go to the cloud when it can be reached.'; }
 HF.ex = HF.ex || { tiers: new Set(['hit', 'borderline']) };
 function hfExTier(t) { const s = HF.ex.tiers; s.has(t) ? s.delete(t) : s.add(t); hfRenderExport(); }
+// Export, the same menu in the corner of every data app; the tab after it is the long form, where the report is composed and the project is saved.
+function hfExportMenu(btn) {
+  const ok = !!(HF.verdicts && HF.screens.size), r = btn.getBoundingClientRect();
+  ctxOpen([
+    { label: 'Workbook (.xlsx)', act: hfDownloadWorkbook, disabled: !ok },
+    { label: 'Report (.pdf)', act: hfDownloadReport, disabled: !ok },
+    { label: 'One page (print / PDF)', act: hfPrintSummary, disabled: !ok },
+    { label: 'Cherry-pick list (.csv)', act: hfDownloadCherryCsv, disabled: !ok },
+    { sep: true },
+    { label: 'All export options…', act: () => hfTab('export') }], r.right - 200, r.bottom + 4);
+}
 async function hfRenderExport() {
   const host = $('#pane-export'); if (!host) return;
   if (!HF.verdicts || !HF.screens.size) { host.innerHTML = '<div class="card">' + hfEmpty(HF_ICON.up, 'Nothing to export yet', 'Load a screen and decide what a hit is. The workbook, the cherry-pick list, the one-page summary and the project file all come from that.', '<button class="btn" onclick="hfTab(\'screens\')">Go to Screens</button>' + '<button class="btn" onclick="$(\'#hf-file\').click()">Open a project…</button>') + '</div>'; return; }

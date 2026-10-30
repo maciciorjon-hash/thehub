@@ -14,13 +14,13 @@
     outro: [{ t: 'Come back any time', sel: tabEl(4), place: 'bottom', go: to('guide'),
       b: 'The **Guide** tab has each tab in writing, with a tour of each, and what to do when a number looks odd.' }],
     quick: [
-      'On **Load Data**, drop the screen’s summary workbook, open an analysis from **Echo Dose Response**, or press **Load test data**.',
+      'On **Data**, drop the screen’s summary workbook, open an analysis from **Echo Dose Response**, or press **Load test data**.',
       'Set what “good” means — **Dmax ≥** and **DC50 ≤** — on the same tab.',
-      'In **Table**, search and filter with the sliders and quality pills; click a row for its detail card; export as PNG or CSV.',
-      'In **DC50 vs Dmax**, look at who sits top-left (potent and deep); the **Zones** label the quadrants.',
+      'In **Results**, search and filter with the sliders and quality pills; click a row for its detail card; export as PNG or CSV.',
+      'In **Compare**, look at who sits top-left (potent and deep); the **Zones** label the quadrants.',
       'Add a SMILES file in **Properties** for structures and molecular properties.'],
     tabs: [
-      { id: 'load', label: 'Load Data', sel: tabEl(0), go: to('load'),
+      { id: 'load', label: 'Data', sel: tabEl(0), go: to('load'),
         lead: 'Where a screen comes in, and where you say what “good” means. Targets, cell line and time point are detected from the file.',
         do: ['Drop an Excel summary (`*_degradation_summary.xlsx`) on the drop zone, or click to browse. **Template** (top right) downloads the layout it expects.',
           'Or press **Open from Echo Dose Response** to pick one of the analyses Echo has fitted — they are synced across your devices.',
@@ -38,7 +38,7 @@
           { deep: true, sel: function(){ var q = document.getElementById('q-dmax'); return q && q.parentNode && q.parentNode.parentNode; }, t: 'What “good” means', place: 'top',
             b: '**Dmax ≥** and **DC50 ≤** decide the **Good** badge, the quality pills and the colour in the plot. Change them to match your own cut-off.' }] },
 
-      { id: 'table', label: 'Table', sel: tabEl(1), go: to('table'), needs: 'data',
+      { id: 'table', label: 'Results', sel: tabEl(1), go: to('table'), needs: 'data',
         lead: 'Every compound with its DC50 and Dmax against each target. Filter to what matters, open a row for the detail, and export the table as a picture or a CSV.',
         do: ['**Search** by name, drag the **Dmax ≥** and **DC50 ≤** sliders, or press the **quality pills** (Good · Moderate · Weak). **Hide no-data** drops rows with nothing measured.',
           'Choose the **unit** (nM, µM, M) and the **scale** (log₁₀, linear, pDC50) for the potency column.',
@@ -53,7 +53,7 @@
           { sel: '#table-capture', t: 'One row per compound', place: 'top', miss: MISS,
             b: 'DC50 with its SD and Dmax for each target. **Click a header** to sort and **a row** for its detail card. Export it as a PNG on white, black or transparent, or as a CSV.' }] },
 
-      { id: 'scatter', label: 'DC50 vs Dmax', sel: tabEl(2), go: to('scatter'), needs: 'data',
+      { id: 'scatter', label: 'Compare', sel: tabEl(2), go: to('scatter'), needs: 'data',
         lead: 'The screen as one picture: potency along the bottom (log scale), effect up the side, a colour per target. Compounds that are potent and deep sit top-left.',
         do: ['Switch **targets** on and off at the top; search a compound to highlight it.',
           'Use the same sliders and pills as the table to focus on a subset.',

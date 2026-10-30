@@ -38,7 +38,8 @@ const APPS = {
   dora:      { file: 'apps/dora/dora.html',           data: 'loadTestData()', ready: 'RAW.length>0' },
   bca:       { file: 'apps/bca/bca.html',             data: 'loadTestData()',  ready: 'document.querySelector("#import-results") && document.querySelector("#import-results").offsetParent!==null' },
   lumina:    { file: 'apps/lumina/lumina.html',       data: 'loadLuminaTestData()', ready: 'Object.keys(state.wellData||{}).length>0' },
-  beacon:    { file: 'apps/beacon/beacon.html',       data: "loadTestData('gain')", ready: 'beaconReady()' }
+  beacon:    { file: 'apps/beacon/beacon.html',       data: "loadTestData('gain')", ready: 'beaconReady()' },
+  tempo:     { file: 'apps/tempo/tempo.html',         data: "tpLoadExample('degradation')", ready: 'TP.plates.length>0' }
 };
 const APP_IDS = Object.keys(APPS).filter(a => !only.length || only.includes(a));
 
