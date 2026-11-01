@@ -19,6 +19,7 @@
 //     no two runs of text land on each other, nothing is cut with no way to scroll to it, no dead handler, no misaligned row (the empty-state icon that was 44px inside a button)
 // K19 a GloMax time-course file is read as it comes: the reader's own clock, A:1 labels, several readouts as several plates, missing never 0; a range of wells is parsed or refused
 // K20 Setup (Reads · Time · Controls · Compounds · Review): a layout-less file opens it at Controls, the controls and the series land on the plate, the fit runs once at the end, ⌘Z undoes, nothing leaves the card
+// K26 Setup › Compounds by hand: any wells, any number, one condition with no dose; a drag puts wells in it or takes them out; controls are never overwritten; Clear the compounds empties them all
 // K25 the plate on Setup › Controls is dragged on: pick a control, drag a box (a row letter / column number takes the line, a drag that starts on a marked well clears), Esc cancels, no well without reads is taken; the Normalise / against rows keep their captions
 // K21 normalise X against Y: wells read against control wells of their own (one vehicle per condition on a plate); the rest keep the plate's vehicle; a rule with no usable control leaves its wells without a curve, never on another vehicle; Plate tab and Setup both make, show and remove rules, ⌘Z covers them
 // K22 raw kinetics: Curves › Raw (RLU) draws the reads as written (any plate, a rising protein level too): background, fold over T0, vehicle, single wells; the plate with a number in every well and a slider over the reads
@@ -32,6 +33,7 @@
 // K34 outputs of a time course: Results columns, the Method (follows the settings, never names a fit), workbook, tidy CSV, Prism, ProNect-compatible files, figure, print, menu, Compare; Labbook and Hit Finder say why they do not apply
 // K35 Analysis settings of a time course: Normalise · Time course · Report, one column each, Apply reads them, Back to the defaults keeps the experiment
 // K36 the induction fit: a rise or a fall that settles gets one phase (k, plateau, delay with profile intervals): planted values recovered, intervals cover, a plateau not reached is fixed and said so, a peak is not fitted, the screens and files carry it
+// K37 one frame for every Curves view (time course and degradation): list, card, tabs, option row, axes row and chart start in the same place whichever view is open
 // K15 Analysis settings is four tabs of aligned rows: every control has a caption, sits in one column on its tab, Apply stays in view whichever tab is open, and Apply reads the tabs that are hidden
 import { chromium } from 'playwright';
 import fs from 'fs';
@@ -703,6 +705,35 @@ try {
     check('K25 no page error while painting', e7.length === 0, e7.join(' | '));
     await c7.close();
   }
+
+  /* ───── K26 Setup › Compounds, by hand: any wells, any number, no dose needed ───── */
+  {
+    const c8 = await browser.newContext({ viewport: { width: 1200, height: 900 } }), pg = await c8.newPage(), e8 = [];
+    pg.on('pageerror', e => e8.push(e.message));
+    await pg.route(/^https?:/, r => r.abort()); await pg.addInitScript(() => { try { localStorage.clear(); } catch (e) {} });
+    await pg.goto('file://' + FILE); await pg.waitForFunction(() => typeof tpsOpen === 'function');
+    await pg.evaluate(() => { const p = tpSynthPlate({ seed: 3, compounds: tpSynthDemoSpecs().slice(0, 2), reads: 30 }); Object.values(p.wells).forEach(w => { w.kind = 'sample'; delete w.role; w.compound = ''; w.target = ''; w.conc = null; delete w.cu; }); p.name = 'Hand'; ['A1', 'A2'].forEach(id => { p.wells[id].role = 'veh'; p.wells[id].conc = 0; }); TP.plates = [p]; TP.pi = 0; tpsOpen(3); });
+    await pg.waitForTimeout(250);
+    const cell = id => pg.locator('#tps-mini-p .w[data-p="' + id + '"]');
+    const mid = async id => { const b = await cell(id).boundingBox(); return [b.x + b.width / 2, b.y + b.height / 2]; };
+    const drag = async (a, z) => { await cell(a).scrollIntoViewIfNeeded(); const [ax, ay] = await mid(a), [zx, zy] = await mid(z); await pg.mouse.move(ax, ay); await pg.mouse.down(); await pg.mouse.move(zx, zy, { steps: 5 }); await pg.mouse.up(); };
+    const sum = () => pg.evaluate(() => { const p = tpPlate(), s = tpsSummary(p); return { cpds: s.cpds.map(c => c.name + ':' + c.wells + ':' + c.nconc).join(), veh: s.veh, w: p.wells.C3.compound + '@' + p.wells.C3.conc }; });
+    const r = {};
+    await pg.fill('#tps-hn', 'Heat shock'); await pg.fill('#tps-hw', 'B2:E5, G7'); await pg.click('#tps-hand'); r.typed = await sum(); r.want = await pg.evaluate(() => tpParseRange('B2:E5, G7', tpPlate().fmt).filter(id => tpPlate().wells[id]).length);   // no dose: every well of the range with reads, one condition
+    r.hint = await pg.textContent('#tps-hand-n');
+    await pg.fill('#tps-hn', 'Drug X'); await pg.fill('#tps-hd', '5'); await drag('H1', 'H3'); r.drag = await sum();                       // a drag puts wells in it, with its dose
+    await drag('H1', 'H2'); r.erase = await sum();                                                                                          // a drag that starts on a marked well clears
+    await pg.fill('#tps-hw', 'A1:A2'); await pg.click('#tps-hand'); r.ctl = await pg.evaluate(() => ({ veh: tpsSummary(tpPlate()).veh, A1: tpPlate().wells.A1.compound })); // controls are not overwritten
+    await pg.fill('#tps-hn', ''); await pg.fill('#tps-hw', 'F1'); await pg.click('#tps-hand'); r.noName = await pg.evaluate(() => tpPlate().wells.F1.compound);
+    await pg.click('#tps-unplace'); r.clear = await pg.evaluate(() => { const s = tpsSummary(tpPlate()); return { dose: s.dose, veh: s.veh, none: s.none }; });
+    await pg.keyboard.press('Control+z'); await pg.waitForTimeout(150); r.undo = (await sum()).cpds;
+    check('K26 any wells can be put in one condition with no dose (a typed range: every well of it with reads, one name, no concentration)', r.want > 8 && r.typed.cpds === 'Heat shock:' + r.want + ':1' && r.typed.w === 'Heat shock@null' && new RegExp(r.want + ' wells hold Heat shock with no dose').test(r.hint), JSON.stringify([r.typed, r.want, r.hint]));
+    check('K26 a drag over the plate puts the wells in the condition with its dose; a drag that starts on a marked well takes them out', /Drug X:3:1/.test(r.drag.cpds) && /Drug X:1:1/.test(r.erase.cpds), JSON.stringify([r.drag.cpds, r.erase.cpds]));
+    check('K26 control wells are never overwritten, and a condition with no name takes no wells', r.ctl.veh === 2 && r.ctl.A1 === '' && r.noName === '', JSON.stringify([r.ctl, r.noName]));
+    check('K26 Clear the compounds empties every condition well (by hand too), keeps the controls, and ⌘Z brings them back', r.clear.dose === 0 && r.clear.veh === 2 && /Heat shock:/.test(r.undo), JSON.stringify([r.clear, r.undo]));
+    check('K26 no page error', e8.length === 0, e8.join(' | '));
+    await c8.close();
+  }
   /* ───── K21 normalise X against Y: a vehicle of its own for some wells of the plate ───── */
   {
     const K21 = await ev(() => {
@@ -786,7 +817,7 @@ try {
       p.times.forEach((t, k) => { ids.forEach(id => { const w = p.wells[id]; if (!w.raw) return; w.raw[k] = tpRole(w) === 'bkg' ? 100 : 1000 * (1 + 3 * (1 - Math.exp(-k / 40))) * (tpRole(w) === 'veh' ? 1 : 1 + w.conc / 4000); }); });
       TP.ui.raw = { y: 'rlu', bkg: false, veh: true, wells: false, by: 'auto', k: null };
       tpTab('curves'); tpSub('raw'); await wait(300);
-      o.opens = !!document.getElementById('tp-rawchart') && /Raw kinetics/.test(document.getElementById('pane-curves').textContent) && TP.sel.sub === 'raw';
+      o.opens = !!document.getElementById('tp-rawchart') && (document.querySelector('.cv-main .segw button[aria-pressed="true"]') || {}).textContent === 'Raw (RLU)' && TP.sel.sub === 'raw';
       let M = tpRawModel(p, tpRes(p)); const g = M.groups.find(x => x.kind === 'dose'), k = 100;
       const want = g.ids.reduce((a, id) => a + p.wells[id].raw[k], 0) / g.ids.length; o.mean = Math.abs(g.mean[k] - want) < 1e-9 && want > 3000; o.rising = g.mean[M.N - 1] > 3 * g.mean[M.k0];
       o.hasVeh = M.groups.some(x => x.kind === 'veh') && M.groups.some(x => x.kind === 'bkg');
@@ -840,7 +871,7 @@ try {
       const type = (view, id, b, v) => { const el = document.querySelector('input[data-view="' + view + '"][data-ax="' + id + '"][data-b="' + b + '"]'); if (!el) return false; el.value = v; el.dispatchEvent(new Event('change', { bubbles: true })); return true; };
       // every view with a number axis has the row, and the chart fills it
       o.bars = {}; ['kin', 'dr', 'k', 't', 'res', 'fo'].forEach(v => { tpSub(v); o.bars[v] = document.querySelectorAll('.ax-bar input').length; });
-      o.heatNone = (tpSub('heat'), document.querySelectorAll('.ax-bar').length === 0);
+      o.heatNone = (tpSub('heat'), document.querySelectorAll('.ax-bar input').length === 0 && !/Axes/.test(document.querySelector('.ax-bar').textContent));
       // Kinetics: y from 0.2 to 0.8 by typing; the ticks stay inside, the chart is redrawn, the other boxes keep what was typed
       tpSub('kin'); o.typed = type('kin', 'y', 0, '0.2') && (await wait(30), type('kin', 'y', 1, '0,8')); await wait(80);
       const t1 = yTicks('#tp-chart'); o.kinY = TP.ui.ax.kin.y[0] === 0.2 && TP.ui.ax.kin.y[1] === 0.8 && t1.length >= 3 && Math.min(...t1) >= 0.2 - 1e-9 && Math.max(...t1) <= 0.8 + 1e-9;
@@ -1187,6 +1218,27 @@ try {
     check('K36 Results gains k · Plateau · Delay (and loses them when the fit is off), Curves draws the dashed fit and the card with k, the plateau and the reason a peak is not fitted, the Method has its section', /Mean change %\|k \(h⁻¹\)\|Plateau \(×\)\|Delay\|Level at 2 h/.test(r.head) && !/Plateau \(×\)/.test(r.headOff) && r.dash >= 1 && r.stats && r.why && /one-phase fit of a rise or a fall/i.test(r.method) && /Plateau not reached/.test(r.method) && r.methodOff, JSON.stringify([r.head, r.headOff, r.dash, r.stats, r.why, r.methodOff]));
     check('K36 the workbook carries the fit (value, bound, interval, delay, t½, initial rate, R², the reason when there is none) and the JSON the same', r.xh === 7 && r.xlen[0] === r.xlen[1] && r.xrow && typeof r.xrow[15] === 'number' && /kPerH/.test(r.json), JSON.stringify([r.xh, r.xrow && r.xrow.slice(14, 22), r.json]));
     check('K36 no page error', errs.length === 0, errs.slice(0, 2).join(' | '));
+    await c.close();
+  }
+  /* K37 one frame for every Curves view: the list, the card and the chart start where they started */
+  {
+    const c = await browser.newContext({ viewport: { width: 1440, height: 1100 } }), pg = await c.newPage(), errs = [];
+    pg.on('pageerror', e => errs.push(e.message));
+    await pg.route(/^https?:/, r => r.abort()); await pg.addInitScript(() => { try { localStorage.clear(); } catch (e) {} });
+    await pg.goto('file://' + FILE); await pg.waitForFunction(() => typeof tpLoadExample === 'function');
+    const r = await pg.evaluate(async () => {
+      const wait = ms => new Promise(ok => setTimeout(ok, ms)), box = q => { const e = document.querySelector(q); if (!e) return null; const b = e.getBoundingClientRect(); return [Math.round(b.left), Math.round(b.top + scrollY), Math.round(b.width)].join(','); };
+      const frame = async subs => { const o = {}; for (const s of subs) { tpSub(s); await wait(350); o[s] = { list: box('.cv-list'), main: box('.cv-main'), opts: box('.cv-opts'), ax: box('.ax-bar'), chart: box('.chart svg'), tab: box('.cv-main .segw') }; } return o; };
+      const same = o => { const ks = Object.keys(o), bad = []; ['list', 'main', 'opts', 'ax', 'chart', 'tab'].forEach(k => { const v = new Set(ks.map(s => o[s][k])); if (v.size > 1 || v.has(null)) bad.push(k + ' ' + ks.map(s => o[s][k]).join(' | ')); }); return bad; };
+      await tpSetKind('timecourse'); await tpLoadExample(); await wait(1200); tpTab('curves');
+      const tc = same(await frame(['tc', 'raw', 'dose', 'heat']));
+      await tpSetKind('degradation'); await tpLoadExample(); await wait(1200); tpTab('curves');
+      const dg = same(await frame(['kin', 'raw', 'dr', 'k', 't', 'heat']));
+      return { tc: tc, dg: dg };
+    });
+    check('K37 time course: Time course · Raw · By dose · Heat map keep the list, the card, the tabs, the option row, the axes row and the chart where they are', r.tc.length === 0, r.tc.join(' ; '));
+    check('K37 degradation: every Curves view (Kinetics, Raw, Dmax–response, K–response, Over time, Heat map) has the same list, card, tabs and chart position', r.dg.length === 0, r.dg.join(' ; '));
+    check('K37 no page error', errs.length === 0, errs.slice(0, 2).join(' | '));
     await c.close();
   }
 } catch (e) { findings.push('✗ K30–K35 the run stopped: ' + (e && e.stack || e).toString().split('\n').slice(0, 3).join(' ')); console.log('✗ K30–K35 stopped: ' + (e && e.stack || e)); }

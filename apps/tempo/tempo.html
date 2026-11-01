@@ -239,12 +239,13 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
 .cv-item .n small{display:block;font-weight:400;color:var(--text2);font-size:var(--fs-2);overflow:hidden;text-overflow:ellipsis;}
 .cv-item.on .n small,.cv-item.on .m,.tbl tr.on .sub,.tbl tr.on .muted{color:var(--text);}
 .cv-item .m{font-family:var(--mono);font-size:var(--fs-2);color:var(--text2);text-align:right;white-space:nowrap;}
+.cv-opts{display:flex;gap:8px 14px;flex-wrap:wrap;align-items:center;min-height:34px;margin-bottom:10px;}
 .cv-main{display:flex;flex-direction:column;gap:14px;min-width:0;} .cv-main .card+.card{margin-top:0;}
 .cv-hd{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;} .cv-hd .l{display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-width:0;} .cv-hd h2{margin:0;font-size:var(--fs-7);font-weight:600;letter-spacing:-.3px;}
 .chart{width:100%;overflow:hidden;} .chart svg{display:block;width:100%;height:auto;touch-action:pan-y;user-select:none;-webkit-user-select:none;}
 .chart-tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;}
 .chart-tools .sp{flex:1;}
-.ax-bar{gap:6px 14px;margin:10px 0;} .ax-bar .ax-t{font-size:var(--fs-2);font-weight:600;color:var(--text2);}
+.ax-bar{gap:6px 14px;margin:10px 0;min-height:28px;} .ax-bar .ax-t{font-size:var(--fs-2);font-weight:600;color:var(--text2);}
 .ax-g{display:inline-flex;flex-wrap:wrap;align-items:center;gap:6px;max-width:100%;min-width:0;} .ax-n{font-size:var(--fs-2);color:var(--text2);white-space:nowrap;} .ax-d{color:var(--text3);}
 .ax-g .inp{width:72px;height:28px;padding:0 7px;text-align:right;} .ax-bad{color:var(--danger);}
 .statrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;}
@@ -3408,12 +3409,12 @@ function tpChartRaw(M, o) {
   let s = '<defs>' + F.clip + '</defs>' + F.s + '<g clip-path="url(#cr)">';
   if (fold) s += '<line x1="' + F.m.l + '" x2="' + (F.m.l + F.iw) + '" y1="' + F.Y(1).toFixed(1) + '" y2="' + F.Y(1).toFixed(1) + '" stroke="' + pal.veh + '" stroke-dasharray="5 4" stroke-width="1.2" opacity=".6"/>';
   if (t.length && M.k0 > 0) s += '<rect x="' + F.m.l + '" y="' + F.m.t + '" width="' + Math.max(0, F.X(tpTT(0)) - F.m.l).toFixed(1) + '" height="' + F.ih + '" fill="' + pal.text3 + '" opacity=".08"/>';
-  const showBand = G.length <= 12;
+  const showBand = G.length <= 12, cur = M.cpds.length > 1 ? tpCurComp(tpRes(M.p)) : null;
   G.forEach((g, i) => {
-    const col = tpRawColor(g, i, G.length, M.cpds, pal), op = g.kind === 'dose' ? 0.55 + 0.45 * g.rank : 1, dash = g.kind === 'veh' || g.kind === 'vehr' ? ' stroke-dasharray="6 3"' : g.kind === 'bkg' ? ' stroke-dasharray="2 3"' : '';
+    const col = tpRawColor(g, i, G.length, M.cpds, pal), on = !!cur && g.kind === 'dose' && g.compound === cur.compound, op = g.kind === 'dose' ? 0.55 + 0.45 * g.rank : 1, dash = g.kind === 'veh' || g.kind === 'vehr' ? ' stroke-dasharray="6 3"' : g.kind === 'bkg' ? ' stroke-dasharray="2 3"' : '';
     if (showBand && g.ids.length > 1) { const up = [], dn = []; t.forEach((tt, k) => { const m = g.mean[k], sd = g.sd[k]; if (m != null && sd != null) { up.push([tpTT(tt), m + sd]); dn.push([tpTT(tt), Math.max(0, m - sd)]); } }); if (up.length > 2) s += '<path d="' + tpPath(up.concat(dn.reverse()), F.X, F.Y).replace(/M/g, 'L').replace(/^L/, 'M') + 'Z" fill="' + col + '" opacity=".12"/>'; }
     if (R.wells) g.perWell.forEach(a => { s += '<path d="' + tpPath(t.map((tt, k) => [tpTT(tt), a[k]]), F.X, F.Y) + '" fill="none" stroke="' + col + '" stroke-width=".8" opacity=".35"/>'; });
-    s += '<path class="tr" data-g="' + esc(g.key) + '" d="' + tpPath(t.map((tt, k) => [tpTT(tt), g.mean[k]]), F.X, F.Y) + '" fill="none" stroke="' + col + '" stroke-width="1.8" opacity="' + op.toFixed(2) + '"' + dash + '><title>' + esc(g.key) + ' · ' + g.ids.length + ' well' + (g.ids.length === 1 ? '' : 's') + '</title></path>';
+    s += '<path class="tr" data-g="' + esc(g.key) + '" d="' + tpPath(t.map((tt, k) => [tpTT(tt), g.mean[k]]), F.X, F.Y) + '" fill="none" stroke="' + col + '" stroke-width="' + (on ? 2.8 : 1.8) + '" opacity="' + op.toFixed(2) + '"' + dash + '><title>' + esc(g.key) + ' · ' + g.ids.length + ' well' + (g.ids.length === 1 ? '' : 's') + '</title></path>';
   });
   const kk = Math.max(0, Math.min(t.length - 1, R.k == null ? M.k0 : R.k)); const xk = F.X(tpTT(t[kk]));
   s += '<line id="tp-rawmk" x1="' + xk.toFixed(1) + '" x2="' + xk.toFixed(1) + '" y1="' + F.m.t + '" y2="' + (F.m.t + F.ih) + '" stroke="' + pal.accent + '" stroke-width="1.4" stroke-dasharray="1 4"/>';
@@ -3442,23 +3443,38 @@ function tpRawGrid(M) {
   return h + '</div>';
 }
 function tpRawReadLabel(M) { const R = tpRawOpts(), kk = Math.max(0, Math.min(M.N - 1, R.k == null ? M.k0 : R.k)); return 'Read ' + (kk + 1) + ' of ' + M.N + ' · ' + tpFmtT(M.t[kk], 3) + (M.t[kk] < -1e-9 ? ' before time zero' : ''); }
+// The frame every Curves view shares: the list on the left, the header and the view tabs, one slot for the view's own options, one for its axes, then the chart.
+// Only what is inside the slots changes from one view to the next, so the list, the chart's left edge and its width stay where they are.
+function tpCvW(pane) { const w = pane.clientWidth || 900; return Math.max(300, Math.min(980, w - (w > 1100 ? 300 : 40))); }
+function tpCvList(res, comp) {
+  const tc = tpTC(); if (!res.compounds.length) return '<div class="card cv-list"><p class="hint" style="margin:0">No compounds yet.</p></div>';
+  return '<div class="card cv-list" role="listbox" aria-label="' + (tc ? 'Conditions' : 'Compounds') + '">' + res.compounds.map(c => {
+    let m; if (tc) { const r = c.ref; m = r && r.ok ? (r.cls === 'tc-flat' ? '—' : tpF(r.ext, 3) + '×') : '—'; } else { const A = c.A, B = c.B; m = B && B.ok ? tpF(B.LogEff, 3) : (A && !A.fail && !/No effect/.test(A.Flag_Reason) ? tpFmtNM(A.DC50_nM) : '—'); }
+    return '<button class="cv-item' + (comp && c.key === comp.key ? ' on' : '') + '" role="option" aria-selected="' + !!(comp && c.key === comp.key) + '" onclick="tpPickComp(\'' + c.key.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + '\')"><span class="n">' + esc(c.compound || '(no name)') + '<small>' + esc(c.target || res.name) + '</small></span><span class="m">' + m + '</span></button>';
+  }).join('') + '</div>';
+}
+function tpCvHead(p, res, comp, sub) {
+  const noCmp = !res.compounds.length;
+  return '<div class="card"><div class="cv-hd"><div class="l"><h2>' + esc(comp ? comp.compound || '(no name)' : p.name) + '</h2><span class="muted">' + esc(comp ? comp.target || '' : p.times.length + ' reads') + '</span>' + (comp ? tpPill(comp.cls) : '') + '</div><span class="hint">↑ ↓ ' + (tpTC() ? tpWd().items : 'compounds') + ' · ← → views</span></div>' +
+    '<div class="chart-tools" style="margin-top:12px"><div class="segw" role="group" aria-label="View">' + tpSubs().map(s => '<button aria-pressed="' + (sub === s[0]) + '"' + (noCmp && s[0] !== 'raw' ? ' disabled title="Needs compound wells (say what each well holds on the Plate tab or in Setup)"' : '') + ' onclick="tpSub(\'' + s[0] + '\')">' + s[1] + '</button>').join('') + '</div></div>';
+}
+const tpCvOpts = html => '<div class="cv-opts">' + (html || '') + '</div>';
 function tpRenderRaw(p, res) {
-  const pane = $('#pane-curves'); if (!pane) return; const R = tpRawOpts(), M = tpRawModel(p, res), noCmp = !res.compounds.length;
-  const W = Math.max(300, Math.min(980, (pane.clientWidth || 900) - ((pane.clientWidth || 900) > 1100 ? 40 : 40)));
+  const pane = $('#pane-curves'); if (!pane) return; const R = tpRawOpts(), M = tpRawModel(p, res), noCmp = !res.compounds.length, comp = tpCurComp(res);
+  const W = tpCvW(pane);
   const segs = (key, opts) => '<div class="segw" role="group" aria-label="' + key + '">' + opts.map(a => '<button aria-pressed="' + (R[key] === a[0]) + '" onclick="tpRawSet(\'' + key + '\',\'' + a[0] + '\')">' + a[1] + '</button>').join('') + '</div>';
   const chk = (key, label) => '<label class="chk"><input type="checkbox"' + (R[key] ? ' checked' : '') + ' onchange="tpRawSet(\'' + key + '\',this.checked)"> ' + label + '</label>';
-  let h = '<div class="cv-main" style="max-width:1100px"><div class="card"><div class="cv-hd"><div class="l"><h2>Raw kinetics</h2><span class="muted">' + esc(p.name) + ' · ' + p.times.length + ' reads' + (M.groups.length ? ' · ' + M.groups.length + ' line' + (M.groups.length === 1 ? '' : 's') : '') + '</span></div><span class="hint">← → views</span></div>';
-  h += '<div class="chart-tools" style="margin-top:12px"><div class="segw" role="group" aria-label="View">' + tpSubs().map(s => '<button aria-pressed="' + (TP.sel.sub === s[0]) + '"' + (noCmp && s[0] !== 'raw' ? ' disabled title="Needs compound wells (say what each well holds on the Plate tab or in Setup)"' : '') + ' onclick="tpSub(\'' + s[0] + '\')">' + s[1] + '</button>').join('') + '</div></div>';
-  h += '<div class="chart-tools raw-opts" style="margin:10px 0">' + segs('y', [['rlu', 'RLU'], ['fold', 'Fold over T0']]) + segs('by', [['auto', 'Auto'], ['cond', 'Condition'], ['well', 'Each well'], ['row', 'Row'], ['col', 'Column']]) + chk('bkg', 'Subtract background') + chk('veh', 'Show the ' + TP_ROLE_L.veh.toLowerCase()) + chk('wells', 'Show single wells') + '</div>';
+  let h = '<div class="cv-grid">' + tpCvList(res, comp) + '<div class="cv-main">' + tpCvHead(p, res, comp, 'raw');
+  h += tpCvOpts(segs('y', [['rlu', 'RLU'], ['fold', 'Fold over T0']]) + segs('by', [['auto', 'Auto'], ['cond', 'Condition'], ['well', 'Each well'], ['row', 'Row'], ['col', 'Column']]) + chk('bkg', 'Subtract background') + chk('veh', 'Show the ' + TP_ROLE_L.veh.toLowerCase()) + chk('wells', 'Show single wells'));
   const rawSvg = tpChartRaw(M, { view: 'raw', W: W, H: Math.round(W * .5) });
   h += tpAxBar('raw') + '<div class="chart" id="tp-rawchart">' + rawSvg + '</div>';
-  h += '<p class="hint" style="margin:8px 0 0">' + (noCmp ? 'No compound wells yet, so only this view is available — say what each well holds on the Plate tab or in Setup to get the curves, fits and dose–response. ' : '') + 'Every read as the reader wrote it' + (R.bkg ? ', the background wells subtracted' : '') + '; a shaded band is ± SD of the wells in a line. The dotted vertical line is the read chosen below.</p></div>';
-  h += '<div class="card"><h3>The plate at a read<span class="sub" id="tp-rawlbl">' + esc(tpRawReadLabel(M)) + '</span></h3><div class="scrub" style="margin-bottom:10px"><input type="range" id="tp-rawk" min="0" max="' + (M.N - 1) + '" value="' + Math.max(0, Math.min(M.N - 1, R.k == null ? M.k0 : R.k)) + '" oninput="tpRawTime(this.value)" aria-label="Read"><span class="mono">' + esc(tpFmtT(M.t[0], 3)) + ' → ' + esc(tpFmtT(M.t[M.N - 1], 3)) + '</span></div><div id="tp-rawplate">' + tpRawGrid(M) + '</div></div></div>';
+  h += '<p class="hint" style="margin:8px 0 0">' + (noCmp ? 'No compound wells yet, so only this view is available — say what each well holds on the Plate tab or in Setup to get the curves, fits and dose–response. ' : '') + esc(p.name) + ' · ' + (M.groups.length ? M.groups.length + ' line' + (M.groups.length === 1 ? '' : 's') + '. ' : '') + 'Every read as the reader wrote it' + (R.bkg ? ', the background wells subtracted' : '') + '; a shaded band is ± SD of the wells in a line' + (M.cpds.length > 1 && comp ? '; the lines of the ' + esc(tpTC() ? tpWd().item : 'compound') + ' picked on the left are drawn thicker' : '') + '. The dotted vertical line is the read chosen below.</p></div>';
+  h += '<div class="card"><h3>The plate at a read<span class="sub" id="tp-rawlbl">' + esc(tpRawReadLabel(M)) + '</span></h3><div class="scrub" style="margin-bottom:10px"><input type="range" id="tp-rawk" min="0" max="' + (M.N - 1) + '" value="' + Math.max(0, Math.min(M.N - 1, R.k == null ? M.k0 : R.k)) + '" oninput="tpRawTime(this.value)" aria-label="Read"><span class="mono">' + esc(tpFmtT(M.t[0], 3)) + ' → ' + esc(tpFmtT(M.t[M.N - 1], 3)) + '</span></div><div id="tp-rawplate">' + tpRawGrid(M) + '</div></div></div></div>';
   pane.innerHTML = h;
 }
 function tpRawSet(k, v) { const R = tpRawOpts(); R[k] = (v === 'true' ? true : v === 'false' ? false : v); tpRenderCurves(); }
 function tpRawTime(v) {
-  const R = tpRawOpts(), p = tpPlate(), res = tpRes(p); if (!p || !res) return; R.k = +v; const M = tpRawModel(p, res), W = Math.max(300, Math.min(980, ($('#pane-curves').clientWidth || 900) - 40));
+  const R = tpRawOpts(), p = tpPlate(), res = tpRes(p); if (!p || !res) return; R.k = +v; const M = tpRawModel(p, res), W = tpCvW($('#pane-curves'));
   const g = $('#tp-rawplate'), c = $('#tp-rawchart'), l = $('#tp-rawlbl'); if (g) g.innerHTML = tpRawGrid(M); if (c) c.innerHTML = tpChartRaw(M, { view: 'raw', W: W, H: Math.round(W * .5) }); if (l) l.textContent = tpRawReadLabel(M);
 }
 
@@ -4289,14 +4305,11 @@ function tpRenderCurves() {
   if (TP.sel.sub === 'raw' || !res.compounds.length) { tpRenderRaw(p, res); return; }
   if (!res.compounds.length) { pane.innerHTML = '<div class="card"><div class="empty-state">' + ICO.plate + '<div class="es-t">No compound wells</div><div class="es-s">Tempo needs wells with a compound and a concentration, and vehicle wells to normalise against. Say which are which on the Plate tab.</div><div class="es-a"><button class="btn primary" onclick="tpTab(\'plate\')">Go to Plate</button></div></div></div>'; return; }
   const comp = tpCurComp(res), ci = tpCurConc(comp), sub = TP.sel.sub, cc = comp.concs[ci], ex = tpEx(p);
-  const list = '<div class="card cv-list" role="listbox" aria-label="Compounds">' + res.compounds.map(c => { const A = c.A, B = c.B; const m = B && B.ok ? tpF(B.LogEff, 3) : (A && !A.fail && !/No effect/.test(A.Flag_Reason) ? tpFmtNM(A.DC50_nM) : '—'); return '<button class="cv-item' + (c.key === comp.key ? ' on' : '') + '" role="option" aria-selected="' + (c.key === comp.key) + '" onclick="tpPickComp(\'' + c.key.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + '\')"><span class="n">' + esc(c.compound || '(no name)') + '<small>' + esc(c.target || res.name) + '</small></span><span class="m">' + m + '</span></button>'; }).join('') + '</div>';
-  let h = '<div class="cv-grid">' + list + '<div class="cv-main">';
-  h += '<div class="card"><div class="cv-hd"><div class="l"><h2>' + esc(comp.compound || '(no name)') + '</h2><span class="muted">' + esc(comp.target || '') + '</span>' + tpPill(comp.cls) + '</div><span class="hint">↑ ↓ compounds · ← → views</span></div>';
-  h += '<div class="chart-tools" style="margin-top:12px"><div class="segw" role="group" aria-label="View">' + TP_SUBS.map(s => '<button aria-pressed="' + (sub === s[0]) + '" onclick="tpSub(\'' + s[0] + '\')">' + s[1] + '</button>').join('') + '</div></div>';
-  if (sub === 'kin' || sub === 'res' || sub === 'fo') h += '<div class="segw" style="margin-bottom:10px" role="group" aria-label="Concentration">' + comp.concs.map((c, i) => '<button aria-pressed="' + (i === ci) + '" onclick="tpPickConc(' + i + ')">' + esc(tpAxConc(c.c)) + '</button>').join('') + '</div>';
+  let h = '<div class="cv-grid">' + tpCvList(res, comp) + '<div class="cv-main">' + tpCvHead(p, res, comp, sub);
+  h += tpCvOpts(sub === 'kin' || sub === 'res' || sub === 'fo' ? '<div class="segw" role="group" aria-label="Concentration">' + comp.concs.map((c, i) => '<button aria-pressed="' + (i === ci) + '" onclick="tpPickConc(' + i + ')">' + esc(tpAxConc(c.c)) + '</button>').join('') + '</div>' : '');
   const exPts = {}; if (cc) cc.live.forEach(id => { exPts[id] = (ex.pts[id] || []); });
   let svg;
-  const W = Math.max(300, Math.min(980, ($('#pane-curves').clientWidth || 900) - (($('#pane-curves').clientWidth || 900) > 1100 ? 300 : 40)));
+  const W = tpCvW($('#pane-curves'));
   if (sub === 'kin') svg = tpChartKin(res, comp, { view: 'kin', W: W, H: Math.round(W * .52), sel: ci, legend: true, pts: exPts, masks: ex.masks });
   else if (sub === 'dr') svg = tpChartDR(res, comp, { view: 'dr', W: W, H: Math.round(W * .56) });
   else if (sub === 'k') svg = tpChartK(res, comp, { view: 'k', W: W, H: Math.round(W * .56) });
@@ -4304,7 +4317,7 @@ function tpRenderCurves() {
   else if (sub === 'heat') svg = tpChartHeat(res, comp, { W: W });
   else if (sub === 'res') svg = tpChartRes(res, comp, ci, { view: 'res', W: W, H: Math.round(W * .38) });
   else svg = tpChartFO(res, comp, ci, { view: 'fo', W: W, H: Math.round(W * .38) });
-  h += tpAxBar(sub) + '<div class="chart" id="tp-chart">' + svg + '</div>';
+  h += (tpAxBar(sub) || '<div class="chart-tools ax-bar" aria-hidden="true"></div>') + '<div class="chart" id="tp-chart">' + svg + '</div>';
   h += '<p class="hint" style="margin:8px 0 0">' + ({ kin: 'The dashed line is the fit; dotted lines = plateau (orange), t½ (blue), delay (green). Click a read to leave it out, a red cross to put it back. A dashed trace is a concentration past the optimum (hook). Shift-drag across the plot to leave a time range out for the whole plate.', dr: 'One dot per well at its fitted plateau; a hollow dot with an arrow reached no plateau (Dmax is then a lower bound); a diamond is a hooked concentration, left out of the fit.', k: 'K of every concentration with its 95 % interval; filled = in the fit, hollow = left out (hover for why), diamond = hook. The hyperbola is the Michaelis–Menten fit.', t: 'The same dose–response read off the plate at each reporting time (Settings → Analysis).', heat: 'Percent degradation over time for every concentration.', res: 'Residuals of the fit: they should scatter around zero with no streaks.', fo: 'If the decay is first order, ln of the fraction left to lose against time is a straight line with slope −K.' })[sub] + '</p></div>';
   h += '<div class="card">' + tpCompStats(comp, cc) + '</div>';
   h += '<div class="card"><h3>Every concentration<span class="sub">click a well to leave it out · a click on a row picks it</span></h3>' + tpConcTable(res, comp, ci) + '</div>';
@@ -4390,7 +4403,7 @@ function tpChartDose(res, comp, o) {
 function tpChartTCHeat(res, comp, o) {
   o = Object.assign({ W: 780, light: false }, o || {}); const pal = tpPal(o.light), rows = comp.concs, nb = Math.max(12, Math.min(72, Math.floor((o.W - 140) / 11))), rowH = 26, m = { l: 112, r: 16, t: 14, b: 54 }, W = o.W, iw = W - m.l - m.r, H = m.t + m.b + rows.length * rowH, tMax = res.t[res.t.length - 1] || 1;
   let mx = 0; rows.forEach(c => c.mean.forEach(v => { if (v != null && v > 0) mx = Math.max(mx, Math.abs(Math.log2(v))); })); mx = Math.max(mx, Math.log2(1.5));
-  const up = pal.dark ? '#f0b060' : '#c47818', dn = pal.dark ? '#8aaee0' : '#3b6fb5', per = res.t.length / nb; let s = '';
+  const hc = tpHeatCols(pal), up = hc.up, dn = hc.dn, per = res.t.length / nb; let s = '';
   rows.forEach((c, r) => {
     for (let b = 0; b < nb; b++) { const a = Math.floor(b * per), z = Math.max(a + 1, Math.floor((b + 1) * per)), v = tpMean(c.mean.slice(a, z)), x = m.l + b * iw / nb; const col = v == null || v <= 0 ? pal.grid : tpMixC(pal.bg, Math.log2(v) >= 0 ? up : dn, Math.min(1, Math.abs(Math.log2(v)) / mx));
       s += '<rect x="' + x.toFixed(1) + '" y="' + (m.t + r * rowH) + '" width="' + (iw / nb + 0.6).toFixed(1) + '" height="' + (rowH - 2) + '" fill="' + col + '" data-tip="' + esc(tpDoseLabel(c, comp) + ' · ' + (v == null ? 'no read' : tpF(v, 3) + '× · ' + tpFmtT(res.t[Math.min(res.t.length - 1, a)], 3))) + '"/>'; }
@@ -4431,6 +4444,12 @@ function tpTCConcTable(res, comp, sel) {
   let h = '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>' + (comp.cu === 'mass' ? 'Dose' : comp.concs.some(c => c.c != null) ? 'Dose' : 'Condition') + '</th><th class="num">n</th><th class="num">Largest change</th><th class="num">at</th><th class="num">t½</th><th class="num">Onset</th><th class="num">End</th><th class="num">Fastest</th>' + (TP.S.tc.fit ? '<th class="num">k</th><th class="num">Plateau</th>' : '') + '<th>Class</th></tr></thead><tbody>';
   comp.concs.forEach((cc, i) => {
     const m = cc.m, ok = m && m.ok, on = i === sel;
+const tpHeatCols = pal => ({ up: pal.dark ? '#f0b060' : '#c47818', dn: pal.dark ? '#8aaee0' : '#3b6fb5' });
+// the heat map has no axes to type; its row of the frame holds the colour key instead, so the chart starts at the same height as in the other views
+function tpHeatKey() {
+  const c = tpHeatCols(tpPal()), sw = col => '<span style="display:inline-block;width:14px;height:14px;border-radius:var(--r-1);background:' + col + ';vertical-align:-3px;margin-right:6px"></span>';
+  return '<div class="chart-tools ax-bar" role="group" aria-label="Colour key"><span class="ax-t">Colour</span><span class="ax-g">' + sw(c.up) + 'above 1</span><span class="ax-g">' + sw(c.dn) + 'below 1</span><span class="hint">The deeper the colour, the further from the start level.</span></div>';
+}
     const wells = cc.wells.map(id => '<span class="wchip' + (cc.live.indexOf(id) < 0 ? ' off' : '') + '" role="button" tabindex="0" aria-pressed="' + (cc.live.indexOf(id) < 0) + '" aria-label="Well ' + id + (cc.live.indexOf(id) < 0 ? ', left out' : ', in the analysis') + '" onclick="event.stopPropagation();tpToggleWell(\'' + id + '\')" data-tip="' + (cc.live.indexOf(id) < 0 ? 'Left out — click to put back' : 'Click to leave this well out') + '">' + id + '</span>').join('');
     h += '<tr class="pick' + (on ? ' on' : '') + '" tabindex="0" onclick="tpTCPick(' + i + ')"><td class="nm" data-h="Dose">' + esc(tpDoseLabel(cc, comp)) + '<span class="sub">' + wells + '</span></td><td class="num" data-h="n">' + cc.live.length + '</td>' +
       '<td class="num" data-h="Largest change">' + (ok ? (m.cls === 'tc-flat' ? '<span class="muted">none</span>' : tpQ(m.extQ === '=' ? '' : m.extQ, tpFold(m.ext))) : '—') + '</td><td class="num" data-h="at">' + (ok && m.cls !== 'tc-flat' ? tpFmtT(m.tExt, 3) : '—') + '</td>' +
@@ -4443,18 +4462,18 @@ function tpRenderCurvesTC(p, res) {
   const pane = $('#pane-curves'); let sub = TP.sel.sub; if (!TP_SUBS_TC.some(s => s[0] === sub)) sub = TP.sel.sub = 'tc';
   if (sub === 'raw' || !res.compounds.length) { tpRenderRaw(p, res); return; }
   const comp = tpCurComp(res), sel = tpTCSel(comp), focus = sel != null ? sel : (comp.concs.length === 1 ? 0 : null), cc = focus != null ? comp.concs[focus] : (comp.concs.find(c => c.c === comp.cref) || comp.concs[0]);
-  const list = '<div class="card cv-list" role="listbox" aria-label="Conditions">' + res.compounds.map(c => { const m = c.ref; const v = m && m.ok ? (m.cls === 'tc-flat' ? '—' : tpF(m.ext, 3) + '×') : '—'; return '<button class="cv-item' + (c.key === comp.key ? ' on' : '') + '" role="option" aria-selected="' + (c.key === comp.key) + '" onclick="tpPickComp(\'' + c.key.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + '\')"><span class="n">' + esc(c.compound || '(no name)') + '<small>' + esc(c.target || res.name) + '</small></span><span class="m">' + v + '</span></button>'; }).join('') + '</div>';
-  let h = '<div class="cv-grid">' + list + '<div class="cv-main">';
-  h += '<div class="card"><div class="cv-hd"><div class="l"><h2>' + esc(comp.compound || '(no name)') + '</h2><span class="muted">' + esc(comp.target || '') + '</span>' + tpPill(comp.cls) + '</div><span class="hint">↑ ↓ ' + tpWd().items + ' · ← → views</span></div>';
-  h += '<div class="chart-tools" style="margin-top:12px"><div class="segw" role="group" aria-label="View">' + TP_SUBS_TC.map(s => '<button aria-pressed="' + (sub === s[0]) + '" onclick="tpSub(\'' + s[0] + '\')">' + s[1] + '</button>').join('') + '</div></div>';
-  if (comp.concs.length > 1 && (sub === 'tc')) h += '<div class="segw" style="margin-bottom:10px" role="group" aria-label="Dose"><button aria-pressed="' + (sel == null) + '" onclick="tpTCPick(null)">All doses</button>' + comp.concs.map((c, i) => '<button aria-pressed="' + (i === sel) + '" onclick="tpTCPick(' + i + ')">' + esc(tpDoseLabel(c, comp)) + '</button>').join('') + '</div>';
-  if (sub === 'dose') { const rt = (TP.S.report.times || []).filter(x => x > 0 && x <= res.t[res.t.length - 1] + 1e-9), cur = tpTCDoseTime(res); h += '<div class="chart-tools" style="margin-bottom:10px"><label class="muted" style="display:flex;gap:8px;align-items:center">Level at <select class="inp" aria-label="Time" onchange="TP.ui.tcT=+this.value;tpRenderCurves()">' + [...new Set(rt.concat([res.t[res.t.length - 1], cur]))].sort((a, b) => a - b).map(T => '<option value="' + T + '"' + (Math.abs(T - cur) < 1e-9 ? ' selected' : '') + '>' + esc(tpFmtT(T, 3)) + '</option>').join('') + '</select></label></div>'; }
-  const W = Math.max(300, Math.min(980, (pane.clientWidth || 900) - ((pane.clientWidth || 900) > 1100 ? 300 : 40)));
+  let h = '<div class="cv-grid">' + tpCvList(res, comp) + '<div class="cv-main">' + tpCvHead(p, res, comp, sub);
+  let opts = '';
+  if (comp.concs.length > 1 && sub === 'tc') opts = '<div class="segw" role="group" aria-label="Dose"><button aria-pressed="' + (sel == null) + '" onclick="tpTCPick(null)">All doses</button>' + comp.concs.map((c, i) => '<button aria-pressed="' + (i === sel) + '" onclick="tpTCPick(' + i + ')">' + esc(tpDoseLabel(c, comp)) + '</button>').join('') + '</div>';
+  else if (sub === 'dose') { const rt = (TP.S.report.times || []).filter(x => x > 0 && x <= res.t[res.t.length - 1] + 1e-9), cur = tpTCDoseTime(res); opts = '<label class="muted" style="display:flex;gap:8px;align-items:center">Level at <select class="inp" aria-label="Time" onchange="TP.ui.tcT=+this.value;tpRenderCurves()">' + [...new Set(rt.concat([res.t[res.t.length - 1], cur]))].sort((a, b) => a - b).map(T => '<option value="' + T + '"' + (Math.abs(T - cur) < 1e-9 ? ' selected' : '') + '>' + esc(tpFmtT(T, 3)) + '</option>').join('') + '</select></label>'; }
+  else if (sub === 'heat') opts = '<span class="hint">One row per dose, left to right through the run.</span>';
+  h += tpCvOpts(opts);
+  const W = tpCvW(pane);
   let svg, view = sub === 'tc' ? 'tc' : sub === 'dose' ? 'dose' : null;
   if (sub === 'tc') svg = tpChartTC(res, comp, { view: 'tc', W: W, H: Math.round(W * .52), sel: sel });
   else if (sub === 'dose') svg = tpChartDose(res, comp, { view: 'dose', W: W, H: Math.round(W * .5) });
   else svg = tpChartTCHeat(res, comp, { W: W });
-  h += (view ? tpAxBar(view) : '') + '<div class="chart" id="tp-chart">' + svg + '</div>';
+  h += (view ? tpAxBar(view) : tpHeatKey()) + '<div class="chart" id="tp-chart">' + svg + '</div>';
   h += '<p class="hint" style="margin:8px 0 0">' + ({ tc: 'Mean of the replicate wells with their SD (shaded) and each well (thin lines) for the dose picked; the grey band is the smallest change counted. The ring is the largest change, the dotted line t½, the green tick the onset; the dashed line is the one-phase fit of a rise or a fall.', dose: 'The level reached at one time against the dose: the mean with its SD, and every well as a hollow dot. No curve is fitted to it, so there is no EC50 here.', heat: 'The level over time for every dose: orange above 1, blue below it.' })[sub] + '</p></div>';
   h += '<div class="card">' + tpTCStats(comp, cc) + '</div>';
   h += '<div class="card"><h3>Every ' + (comp.concs.length > 1 ? 'dose' : 'trace') + '<span class="sub">click a well to leave it out · a click on a row picks it</span></h3>' + tpTCConcTable(res, comp, focus) + '</div>';
