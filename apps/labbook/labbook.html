@@ -8828,19 +8828,27 @@ var PlateEngine = (function(){
     return a.length + ' wells';
   }
   // "B2:C11, E1" → those wells; null when nothing in it names a well on this plate.
+  // What a person types is read as they would say it: "A1 to B3", "A1 .. B3", "a1 : b3" and "$A$1:$B$3" (pasted from Excel) are the range A1:B3. unread() lists what could not be read.
+  function _parts(txt){
+    return String(txt || '').toUpperCase().replace(/\$/g, '').replace(/\.\./g, ':').replace(/\s+(?:TO|THROUGH|THRU|UNTIL)\s+/g, ':').replace(/\s*([:\-–—])\s*/g, '$1').split(/[\s,;]+/).filter(Boolean);
+  }
+  function _one(part, dims){
+    var m = part.match(/^([A-P])(\d{1,2})(?:[:\-–—]([A-P])(\d{1,2}))?$/); if (!m) return null;
+    var a = { r: m[1].charCodeAt(0) - 65, c: +m[2] - 1 };
+    var b = m[3] ? { r: m[3].charCodeAt(0) - 65, c: +m[4] - 1 } : a;
+    if (a.r >= dims.r || a.c >= dims.c || a.c < 0 || b.r >= dims.r || b.c >= dims.c || b.c < 0) return null;   // a corner off the plate is a mistake, not a smaller range
+    return rect(a, b, dims);
+  }
   function parseRange(txt, dims){
     var out = [], ok = false;
-    String(txt || '').toUpperCase().split(/[\s,;]+/).forEach(function(part){
-      if (!part) return;
-      var m = part.match(/^([A-P])(\d{1,2})(?:[:\-–]([A-P])(\d{1,2}))?$/);
-      if (!m) return;
-      var a = { r: m[1].charCodeAt(0) - 65, c: +m[2] - 1 };
-      var b = m[3] ? { r: m[3].charCodeAt(0) - 65, c: +m[4] - 1 } : a;
-      if (a.r >= dims.r || a.c >= dims.c || a.c < 0) return;
-      rect(a, b, dims).forEach(function(w){ if (out.indexOf(w) < 0) out.push(w); }); ok = true;
+    _parts(txt).forEach(function(part){
+      var w = _one(part, dims); if (!w) return;
+      w.forEach(function(x){ if (out.indexOf(x) < 0) out.push(x); }); ok = true;
     });
     return ok ? out : null;
   }
+  // the parts of what was typed that name no well on this plate (a word, a typo, a well past the edge) — so a list is never quietly shorter than it was written
+  function unread(txt, dims){ return _parts(txt).filter(function(part){ return !_one(part, dims); }); }
   // A dilution series through any selection. Its points run along a direction and the other
   // axis is replicates; a well's point is its place along that axis, not its place in the list,
   // so any shape dilutes correctly. With no direction given it runs across unless the area is
@@ -8948,7 +8956,7 @@ var PlateEngine = (function(){
     return s + ' 2';
   }
   return { id: id, rc: rc, uniq: uniq, rect: rect, line: line, box: box, isRect: isRect, rangeText: rangeText,
-           parseRange: parseRange, seriesDir: seriesDir, seriesPlan: seriesPlan, seriesConc: seriesConc,
+           parseRange: parseRange, unread: unread, seriesDir: seriesDir, seriesPlan: seriesPlan, seriesConc: seriesConc,
            splitOfShape: splitOfShape, bandPlan: bandPlan, sortZones: sortZones, pasteList: pasteList, nextName: nextName,
            freeStart: freeStart, blockPlan: blockPlan };
 })();

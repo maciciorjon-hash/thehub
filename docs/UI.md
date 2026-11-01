@@ -306,7 +306,15 @@ A control that sets `outline:none` must draw an equivalent ring (a 2px accent bo
 
 **Tabs** — a row of `<button role="tab" aria-selected>` (roving `tabindex`, ←/→ move) over a 1px
 `--border` rail; the active one is `--text`/600 with a 2px `--accent` bottom border. Not pills, not boxes,
-never a `div` with an `onclick`.
+never a `div` with an `onclick`. In Lumina, Beacon and Tempo the row is `MenuKit.tabs` (tools/menukit): the open tab is the one tab stop,
+← → Home End wrap and open the tab they land on, every tab has `aria-controls` → a `role=tabpanel` pane.
+
+**Settings, theme, pop-up menus** — in Lumina, Beacon and Tempo these are one kit (`tools/menukit`, `tools/sync_menukit.py`): the gear is a 30 px
+round `.opts-btn` (`aria-label="Settings"`, `aria-expanded`) over a `.opts-panel` holding the dark-mode switch; `data-theme` is the truth and the
+app redraws once per change (`MenuKit.init({ redraw })`); an Export or Units menu is `.rs-menu > button[aria-haspopup] + .rs-pop[role=menu]` (a CSS chevron,
+items `<button role=menuitem><b>title</b><span>what it makes</span></button>`; `MenuKit.items(id, rows)` when the items depend on the data). Same words
+for the same things: **Excel workbook · Copy for Prism · Results (.csv) · Copy table · Raw data (.csv) · Plot as image (.png)**, then the app's own.
+Checked by `tools/menu_invariants.mjs`; every control on every tab by `tools/views_invariants.mjs`.
 
 **Card** — `--surface`, `1px solid var(--border)`, `--r3`, `--shadow-xs`; hover lifts 3px and goes
 to `--shadow-md`. A card header is `--fs-2`/700 in `--text3`, sentence case (no `text-transform:uppercase`: µ becomes Mu and a unit changes meaning).

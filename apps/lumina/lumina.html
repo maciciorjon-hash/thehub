@@ -313,13 +313,6 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px soli
 .rs-acts{display:flex;flex-wrap:wrap;gap:8px;align-items:center;}
 .rs-dot{display:none;width:7px;height:7px;border-radius:var(--r-full);background:var(--accent);margin-left:7px;vertical-align:1px;}
 .rs-dot.on{display:inline-block;}
-.rs-menu{position:relative;}
-.rs-pop{display:none;position:absolute;right:0;top:calc(100% + 6px);z-index:30;box-sizing:border-box;min-width:min(270px,calc(100vw - 16px));max-width:calc(100vw - 16px);background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-2);box-shadow:var(--shadow-lg);padding:6px;}
-.rs-pop.open{display:block;}
-.rs-pop button[role=menuitem]{display:block;width:100%;text-align:left;border:none;background:none;padding:8px 10px;border-radius:var(--r-1);cursor:pointer;font-family:var(--sans);color:var(--text);}
-.rs-pop button[role=menuitem]:hover,.rs-pop button[role=menuitem]:focus-visible{background:var(--surface2);outline:none;}
-.rs-pop button[role=menuitem] b{display:block;font-size:var(--fs-3);font-weight:600;}
-.rs-pop button[role=menuitem] span{display:block;font-size:var(--fs-2);color:var(--text2);margin-top:1px;}
 /* Fit settings: two groups of rows, each row a checkbox, its sentence and its number. A row that is
    switched off, or does not apply, is dimmed and disabled — never hidden — so clicking one box can
    never move another (it used to: "Fix the bottom" removed "Keep the bottom above" and the grid
@@ -399,9 +392,6 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px soli
 .rs-sub{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;}
 .seg button{white-space:nowrap;}
 .rs-menu .btn b{font-weight:600;color:var(--text);}
-.rs-menu > .btn[aria-haspopup]::after{content:'';display:inline-block;width:5px;height:5px;margin:0 1px 2px 8px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(45deg);vertical-align:middle;}   /* a chevron drawn in CSS, never a typed glyph */
-.rs-pop-hd{padding:6px 10px 8px;font-size:var(--fs-2);color:var(--text2);border-bottom:1px solid var(--border);margin-bottom:4px;}
-.rs-pop-hd b{color:var(--text);font-weight:600;}
 .rs-units{min-width:min(320px,calc(100vw - 16px));padding:12px 14px;}
 .ru-row{display:flex;align-items:center;gap:12px;margin-bottom:10px;}
 .ru-l{width:42px;font-size:var(--fs-2);font-weight:600;color:var(--text2);flex:none;}
@@ -467,18 +457,6 @@ th{font-weight:600;color:var(--text2);font-size:var(--fs-2);text-transform:upper
     transition-duration:1ms!important;scroll-behavior:auto!important;}
 }
 /* One gear in every app's header (2026-09-16): the panel behind it holds the theme switch. */
-.opts-btn{background:none;border:1px solid var(--border2);color:var(--text2);width:30px;height:30px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;padding:0;transition:background .15s,color .15s;}
-.opts-btn:hover{background:var(--surface2);color:var(--text);}
-.opts-panel{display:none;position:fixed;top:58px;right:0;background:var(--surface);border:1px solid var(--border2);border-radius:0 0 0 6px;padding:14px 18px;z-index:200;min-width:190px;box-shadow:0 4px 20px rgba(0,0,0,.15);}
-.opts-panel.open{display:block;}
-.opts-row{display:flex;align-items:center;justify-content:space-between;gap:20px;}
-.opts-row+.opts-row{margin-top:10px;}
-.opts-label{font-size:var(--fs-4);color:var(--text2);}
-.theme-switch{position:relative;display:inline-block;width:40px;height:22px;}
-.theme-switch input{opacity:0;width:0;height:0;}
-.theme-slider{position:absolute;cursor:pointer;inset:0;background:var(--surface3);border-radius:var(--r-4);transition:.2s;border:1px solid var(--border2);}
-.theme-slider:before{position:absolute;content:'';height:16px;width:16px;left:2px;top:2px;background:var(--text2);border-radius:50%;transition:.2s;}
-input:checked+.theme-slider{background:var(--accent);}
 
 /* A screen that cannot be drawn honestly in portrait says so, instead of drawing something nobody can read. */
 .rotate-note{display:none;align-items:center;gap:14px;margin:14px 0;padding:16px 18px;border:1px dashed var(--border2);border-radius:var(--r-3);background:var(--surface2);color:var(--text2);font-size:var(--fs-3);line-height:1.5;}
@@ -1378,6 +1356,8 @@ var SetupKit = (function(){
       if (o.onOpen) o.onOpen(K);
       K.el.classList.remove('hidden');
       K.go(typeof step === 'number' ? step : (o.startStep ? o.startStep(K) : 0));
+      // a dialog that does not put the cursor in a box (focus:false, so a phone's keyboard does not jump up) still takes the focus: onto the open step's tab, so a screen reader says where it is and Tab starts inside
+      setTimeout(function(){ if (K.isOpen() && !K.el.contains(document.activeElement)) { var t = K.el.querySelector('.setup-stab.active'); if (t) try { t.focus({ preventScroll: true }); } catch (e) {} } }, 0);
     };
     K.close = function(){
       if (!K.isOpen()) return;
@@ -1713,6 +1693,178 @@ table.rk td.nd,table.rk .nd{color:var(--text3);font-style:italic;}
 table.rk td.nm,table.rk td:first-child b{font-weight:600;}
 /* results-kit:end */
 </style>
+<style>
+/* menu-kit:begin — generated by tools/sync_menukit.py from tools/menukit/menu.css; do not edit here */
+/* The chrome the analysis apps share: the Settings button and its panel, and the pop-up menus (Export, Units).
+   One copy here; the apps carry it as the last stylesheet of the head (tools/sync_menukit.py). */
+.opts-btn{background:none;border:1px solid var(--border2);color:var(--text2);width:30px;height:30px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;padding:0;transition:background var(--dur-1,.15s) var(--ease,ease),color var(--dur-1,.15s) var(--ease,ease);}
+.opts-btn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;}
+.opts-btn:hover{background:var(--surface2);color:var(--text);}
+.opts-panel{display:none;position:fixed;top:58px;right:0;background:var(--surface);border:1px solid var(--border2);border-radius:0 0 0 var(--r-2);padding:14px 18px;z-index:200;min-width:190px;box-shadow:var(--shadow-md);}
+.opts-panel.open{display:block;}
+.opts-row{display:flex;align-items:center;justify-content:space-between;gap:20px;}
+.opts-row+.opts-row{margin-top:10px;}
+.opts-label{font-size:var(--fs-4);color:var(--text2);}
+.theme-switch{position:relative;display:inline-block;width:40px;height:22px;}
+.theme-switch input{opacity:0;width:0;height:0;}
+.theme-slider{position:absolute;cursor:pointer;inset:0;background:var(--surface3);border-radius:var(--r-4);transition:background var(--dur-2,.2s) var(--ease,ease);border:1px solid var(--border2);}
+.theme-slider:before{position:absolute;content:'';height:16px;width:16px;left:2px;top:2px;background:var(--text2);border-radius:50%;transition:transform var(--dur-2,.2s) var(--ease,ease);}
+.theme-switch input:checked+.theme-slider{background:var(--accent);}
+.theme-switch input:checked+.theme-slider:before{transform:translateX(18px);background:var(--on-accent,#fff);}
+.theme-switch input:focus-visible+.theme-slider{outline:2px solid var(--accent);outline-offset:2px;}
+/* a pop-up menu under its button: <span class="rs-menu"><button aria-haspopup="menu">…</button><div class="rs-pop" id="…" role="menu">…</div></span> */
+.rs-menu{position:relative;}
+.rs-menu > .btn[aria-haspopup]::after{content:'';display:inline-block;width:5px;height:5px;margin:0 1px 2px 8px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(45deg);vertical-align:middle;}   /* a chevron drawn in CSS, never a typed glyph */
+.rs-pop{display:none;position:absolute;right:0;top:calc(100% + 6px);z-index:30;box-sizing:border-box;min-width:min(270px,calc(100vw - 16px));max-width:calc(100vw - 16px);background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-2);box-shadow:var(--shadow-lg);padding:6px;text-align:left;}
+.rs-pop.open{display:block;}
+.rs-pop button[role=menuitem]{display:block;width:100%;text-align:left;border:none;background:none;padding:8px 10px;border-radius:var(--r-1);cursor:pointer;font-family:var(--sans);color:var(--text);}
+.rs-pop button[role=menuitem]:hover,.rs-pop button[role=menuitem]:focus-visible{background:var(--surface2);outline:none;}
+.rs-pop button[role=menuitem]:focus-visible{box-shadow:inset 0 0 0 2px var(--accent);}
+.rs-pop button[role=menuitem] b{display:block;font-size:var(--fs-3);font-weight:600;}
+.rs-pop button[role=menuitem] span{display:block;font-size:var(--fs-2);color:var(--text2);margin-top:1px;}
+.rs-pop-sep{height:1px;background:var(--border);margin:5px 4px;}
+.rs-pop-hd{padding:6px 10px 8px;font-size:var(--fs-2);color:var(--text2);border-bottom:1px solid var(--border);margin-bottom:4px;}
+.rs-pop-hd b{color:var(--text);font-weight:600;}
+/* menu-kit:end */
+</style>
+<script>
+/* menu-kit-js:begin — generated by tools/sync_menukit.py from tools/menukit/menu.js; do not edit here */
+/* MenuKit — the chrome the analysis apps share (Lumina, Beacon, Tempo).
+     The Settings button and its panel   toggleOpts()      opens and closes it; Esc and a click outside close it, a click inside does not
+     The theme                           toggleTheme()     one switch, kept in step with the page's data-theme however it changes (the switch, the Hub's setTheme message, the
+                                                           attribute set from outside); stored as hub_theme; the app's charts are redrawn once per change
+     Pop-up menus                        rsTogglePop(e, id) · rsCloseExport()
+                                                           <span class="rs-menu"><button aria-haspopup="menu">…</button><div class="rs-pop" id="id" role="menu">…<button role="menuitem">…</button></div></span>
+                                                           one open at a time; aria-expanded on the button; opened from the keyboard the focus goes in; ↑ ↓ Home End walk the items,
+                                                           Esc and a click outside close, the focus goes back to the button; the menu is kept on screen.
+   MenuKit.init({ redraw })      redraw() draws the charts again in the new theme
+   MenuKit.items(id, rows)       fills a menu from rows [{ t, s, fn, off }] (a title, its line, what it runs) and null for a rule — for a menu whose items depend on the data
+   MenuKit.closeAll()            a tab change closes whatever is open
+   MenuKit.tabs({ bar, select, pane })  the tab row as one component: roving tabindex (the open tab is the one stop), ← → Home End move along it and wrap, the tab that gets the focus opens
+                                 (select(name) is the app's own switch), aria-controls and role=tabpanel on the panes (pane(name) → the pane's id) */
+var MenuKit = (function(){
+  var root = document.documentElement, redrawFn = null, pend = 0;
+  function byId(i){ return document.getElementById(i); }
+  /* ── the theme ── */
+  function themeNow(){ return root.getAttribute('data-theme') === 'dark' ? 'dark' : 'light'; }
+  function syncSwitch(){ var c = byId('theme-chk'); if (c) c.checked = themeNow() === 'dark'; }
+  function stored(){ try { var t = localStorage.getItem('hub_theme') || localStorage.getItem('lumina_theme'); return t === 'dark' || t === 'light' ? t : null; } catch(e){ return null; } }
+  function afterChange(){
+    syncSwitch();
+    if (pend) return; pend = requestAnimationFrame(function(){ pend = 0; try { if (redrawFn) redrawFn(); } catch(e){} });
+  }
+  function setTheme(t){ t = t === 'dark' ? 'dark' : 'light'; if (themeNow() !== t || !root.hasAttribute('data-theme')) root.setAttribute('data-theme', t); }
+  function toggleTheme(){
+    var c = byId('theme-chk'), t = c ? (c.checked ? 'dark' : 'light') : (themeNow() === 'dark' ? 'light' : 'dark');
+    setTheme(t); try { localStorage.setItem('hub_theme', t); } catch(e){}
+  }
+  /* ── the Settings panel ── */
+  function toggleOpts(force){
+    var p = byId('opts-panel'), b = byId('opts-btn'); if (!p) return;
+    var on = typeof force === 'boolean' ? force : !p.classList.contains('open');
+    p.classList.toggle('open', on); if (b) b.setAttribute('aria-expanded', on ? 'true' : 'false');
+  }
+  /* ── pop-up menus ── */
+  function trigger(m){ var p = m.parentNode; return p ? p.querySelector(':scope > button, :scope > .btn') : null; }
+  function open(){ return [].slice.call(document.querySelectorAll('.rs-pop.open')); }
+  function closeAll(except){
+    var any = false;
+    open().forEach(function(m){
+      if (m === except) return; any = true; var b = trigger(m), had = m.contains(document.activeElement);
+      m.classList.remove('open'); if (b) { b.setAttribute('aria-expanded', 'false'); if (had) b.focus(); }
+    });
+    return any;
+  }
+  function toggle(e, id){
+    if (e && e.stopPropagation) e.stopPropagation();
+    var m = byId(id); if (!m) return; var was = m.classList.contains('open');
+    closeAll(m); m.classList.toggle('open', !was);
+    var b = trigger(m); if (b) b.setAttribute('aria-expanded', !was ? 'true' : 'false');
+    if (was) { if (b && m.contains(document.activeElement)) b.focus(); return; }
+    // opened from the keyboard (a click with no pointer is detail 0): the focus goes in, so ↑ ↓ and Esc have something to act on
+    if (e && e.detail === 0) setTimeout(function(){ var f = m.querySelector('[role=menuitem]:not([disabled])'); if (f) f.focus(); }, 0);
+    // measured, then kept on screen: it opens under a button that can be anywhere on a narrow row
+    m.style.right = '0px'; m.style.left = 'auto';
+    var r = m.getBoundingClientRect(); if (r.left < 8) { m.style.right = 'auto'; m.style.left = (8 - m.parentNode.getBoundingClientRect().left) + 'px'; }
+  }
+  function items(id, rows){
+    var m = byId(id); if (!m) return;
+    var esc = function(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+    m.innerHTML = rows.map(function(r, i){ return r ? '<button type="button" role="menuitem"' + (r.off ? ' disabled' : '') + ' data-i="' + i + '"><b>' + esc(r.t) + '</b>' + (r.s ? '<span>' + esc(r.s) + '</span>' : '') + '</button>' : '<div class="rs-pop-sep" role="separator"></div>'; }).join('');
+    m._rows = rows;
+  }
+  function tabs(o){
+    var bar = typeof o.bar === 'string' ? document.querySelector(o.bar) : o.bar; if (!bar) return;
+    var vis = function(t){ return !t.hidden && t.getClientRects().length > 0; };
+    function list(){ return [].slice.call(bar.querySelectorAll('[role=tab]')).filter(vis); }
+    function sync(){
+      [].slice.call(bar.querySelectorAll('[role=tab]')).forEach(function(t){
+        var on = t.getAttribute('aria-selected') === 'true' || t.classList.contains('active'); t.tabIndex = on ? 0 : -1;
+        var id = o.pane && o.pane(t.dataset.tab), p = id && byId(id);
+        if (p) { if (t.getAttribute('aria-controls') !== id) t.setAttribute('aria-controls', id); if (!p.getAttribute('role')) p.setAttribute('role', 'tabpanel'); }
+      });
+    }
+    new MutationObserver(sync).observe(bar, { subtree: true, attributes: true, attributeFilter: ['class', 'aria-selected', 'hidden'] });
+    bar.addEventListener('keydown', function(e){
+      var t = e.target && e.target.closest && e.target.closest('[role=tab]'); if (!t || e.metaKey || e.ctrlKey || e.altKey) return;
+      var all = list(), i = all.indexOf(t), k = e.key;
+      var j = k === 'ArrowRight' ? i + 1 : k === 'ArrowLeft' ? i - 1 : k === 'Home' ? 0 : k === 'End' ? all.length - 1 : null;
+      if (j === null || i < 0) return;
+      e.preventDefault(); j = (j + all.length) % all.length;
+      if (!all[j].classList.contains('active')) o.select(all[j].dataset.tab);
+      all[j].focus();
+    });
+    sync();
+  }
+  function init(o){
+    redrawFn = o && o.redraw || null;
+    var s = stored(); if (s) setTheme(s); syncSwitch();
+    var c = byId('theme-chk'); if (c) c.addEventListener('change', toggleTheme);
+    new MutationObserver(afterChange).observe(root, { attributes: true, attributeFilter: ['data-theme'] });
+    // the Hub sets the attribute itself and also posts 'setTheme:dark'; Labbook posts { theme }
+    window.addEventListener('message', function(e){
+      var d = e.data, t = typeof d === 'string' && d.indexOf('setTheme:') === 0 ? d.slice(9) : d && typeof d === 'object' && typeof d.theme === 'string' ? d.theme : null;
+      if (t === 'dark' || t === 'light') setTheme(t);
+    });
+    var b = byId('opts-btn'); if (b) { b.setAttribute('aria-haspopup', 'true'); b.setAttribute('aria-expanded', 'false'); if (!b.getAttribute('aria-label')) b.setAttribute('aria-label', 'Settings'); if (!b.title) b.title = 'Settings'; if (!b.getAttribute('onclick')) b.addEventListener('click', function(){ toggleOpts(); }); }
+    var p = byId('opts-panel'); if (p && !p.getAttribute('role')) { p.setAttribute('role', 'group'); p.setAttribute('aria-label', 'Settings'); }
+  }
+  document.addEventListener('click', function(e){
+    var p = byId('opts-panel');
+    if (p && p.classList.contains('open') && !p.contains(e.target) && !(e.target.closest && e.target.closest('#opts-btn'))) toggleOpts(false);
+    if (!e.target.closest || !e.target.closest('.rs-menu')) closeAll();
+    // a row made by items(): run what it says, then close
+    var it = e.target.closest && e.target.closest('.rs-pop [role=menuitem][data-i]'); if (it) { var m = it.closest('.rs-pop'), r = m._rows && m._rows[+it.dataset.i]; closeAll(); if (r && r.fn) r.fn(); }
+  });
+  document.addEventListener('keydown', function(e){
+    var k = e.key;
+    if (k === 'Escape') {
+      // one layer per Esc: a menu or the Settings panel, and nothing under it
+      var p = byId('opts-panel'), shut = closeAll();
+      if (p && p.classList.contains('open')) { var inside = p.contains(document.activeElement); toggleOpts(false); if (inside) { var b = byId('opts-btn'); if (b) b.focus(); } shut = true; }
+      if (shut) e.stopPropagation();
+      return;
+    }
+    // on the button of a menu, ↓ opens it and goes in at the first item (↑ at the last)
+    var t = e.target, tm = t && t.parentNode && t.parentNode.classList && t.parentNode.classList.contains('rs-menu') ? t.parentNode.querySelector(':scope > .rs-pop[role=menu]') : null;
+    if (tm && (k === 'ArrowDown' || k === 'ArrowUp')) {
+      e.preventDefault(); e.stopPropagation(); if (!tm.classList.contains('open')) toggle(null, tm.id);
+      var li = tm.querySelectorAll('[role=menuitem]:not([disabled])'); if (li.length) li[k === 'ArrowUp' ? li.length - 1 : 0].focus(); return;
+    }
+    var m = e.target && e.target.closest && e.target.closest('.rs-pop[role=menu]'); if (!m) return;
+    if (k !== 'ArrowDown' && k !== 'ArrowUp' && k !== 'Home' && k !== 'End') return;
+    var list = [].slice.call(m.querySelectorAll('[role=menuitem]:not([disabled])')), i = list.indexOf(document.activeElement);
+    var j = k === 'Home' ? 0 : k === 'End' ? list.length - 1 : k === 'ArrowDown' ? (i + 1) % list.length : (i <= 0 ? list.length - 1 : i - 1);
+    e.preventDefault(); e.stopPropagation(); if (list[j]) list[j].focus();
+  }, true);
+  return { init: init, tabs: tabs, items: items, closeAll: closeAll, toggle: toggle, toggleOpts: toggleOpts, toggleTheme: toggleTheme };
+})();
+function toggleOpts(f){ MenuKit.toggleOpts(f); }
+function toggleTheme(){ MenuKit.toggleTheme(); }
+function rsTogglePop(e, id){ MenuKit.toggle(e, id); }
+function rsCloseExport(){ MenuKit.closeAll(); }
+/* menu-kit-js:end */
+</script>
 </head>
 <body>
 
@@ -1723,7 +1875,7 @@ table.rk td.nm,table.rk td:first-child b{font-weight:600;}
     <div class="app-sub">Dose–response fitting for plates pipetted by hand</div>
   </div>
   <div class="hdr-spacer"></div>
-  <button class="opts-btn" id="opts-btn" onclick="toggleOpts()" title="Options" aria-label="Options" aria-haspopup="true" aria-expanded="false"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" shape-rendering="geometricPrecision"><circle cx="12" cy="12" r="3.1"/><path d="M12 2.6l1.5 2.6 3-.4.5 3 2.6 1.5-1.6 2.7 1.6 2.7-2.6 1.5-.5 3-3-.4L12 21.4l-1.5-2.6-3 .4-.5-3L4.4 14.7 6 12 4.4 9.3l2.6-1.5.5-3 3 .4z"/></svg></button><div class="opts-panel" id="opts-panel"><div class="opts-row"><span class="opts-label">Dark mode</span><label class="theme-switch"><input type="checkbox" id="theme-chk" onchange="toggleTheme()"><span class="theme-slider"></span></label></div></div>
+  <button class="opts-btn" id="opts-btn" onclick="toggleOpts()" title="Settings" aria-label="Settings" aria-haspopup="true" aria-expanded="false"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" shape-rendering="geometricPrecision"><circle cx="12" cy="12" r="3.1"/><path d="M12 2.6l1.5 2.6 3-.4.5 3 2.6 1.5-1.6 2.7 1.6 2.7-2.6 1.5-.5 3-3-.4L12 21.4l-1.5-2.6-3 .4-.5-3L4.4 14.7 6 12 4.4 9.3l2.6-1.5.5-3 3 .4z"/></svg></button><div class="opts-panel" id="opts-panel"><div class="opts-row"><span class="opts-label">Dark mode</span><label class="theme-switch"><input type="checkbox" id="theme-chk" aria-label="Dark mode"><span class="theme-slider"></span></label></div></div>
 </header>
 
 <div class="tabbar">
@@ -1886,6 +2038,7 @@ table.rk td.nm,table.rk td:first-child b{font-weight:600;}
             <div class="rs-pop" id="rs-exp" role="menu">
               <div class="rs-pop-hd" id="rs-exp-units"></div>
               <button role="menuitem" onclick="rsCloseExport();exportXLSX()"><b>Excel workbook</b><span>Results, raw data, Prism tables, the fit settings</span></button>
+              <button role="menuitem" onclick="rsCloseExport();copyPrism()"><b>Copy for Prism</b><span>Concentration down one column, every compound’s replicates beside it — paste into a Prism XY table</span></button>
               <button role="menuitem" onclick="rsCloseExport();exportResultsCSV()"><b>Results (.csv)</b><span>The table as a plain file</span></button>
               <button role="menuitem" onclick="rsCloseExport();copyResultsTSV()"><b>Copy table</b><span>Paste into Excel, Prism or a notebook</span></button>
               <button role="menuitem" onclick="rsCloseExport();exportRawCSV()"><b>Raw data (.csv)</b><span>One row per well, normalised</span></button>
@@ -2284,18 +2437,8 @@ function lmAssayText(t){ var L = assayFitLabels(t); return (ASSAY_NAMES[t] || t)
 // ══════════════════════════════════════════════════════════════
 // Theme
 // ══════════════════════════════════════════════════════════════
-(function initTheme(){
-  var saved = localStorage.getItem('hub_theme') || localStorage.getItem('lumina_theme');
-  if (saved) document.documentElement.setAttribute('data-theme', saved);
-})();
-function toggleTheme(){
-  var next = document.getElementById('theme-chk').checked ? 'dark' : 'light';
-  document.documentElement.setAttribute('data-theme', next);
-  localStorage.setItem('lumina_theme', next);
-  rsRefreshCharts();
-}
+// the theme and the Settings panel are MenuKit's (tools/menukit); the charts are drawn again once per change — MenuKit.init sits at the end of the script
 window.addEventListener('message', function(e){
-  if (e.data && e.data.theme) { document.documentElement.setAttribute('data-theme', e.data.theme); setTimeout(rsRefreshCharts, 80); }
   // Labbook opening one of its analyses here: "Edit in Lumina". Only the Hub's own frame may do it.
   if (e.data && e.data.type === 'dhub:context' && e.data.version === 1 && e.source === window.parent) {
     var o = e.data.context && e.data.context.open;
@@ -2371,16 +2514,10 @@ function _restoreSnapshot(snap){
 // ══════════════════════════════════════════════════════════════
 // Tabs
 // ══════════════════════════════════════════════════════════════
-// The tabs are a tablist: arrows, Home and End move between them, Enter or Space opens the one that has the focus.
-document.addEventListener('keydown', function(e){
-  var t = e.target && e.target.closest && e.target.closest('#lm-tabbar .tab'); if (!t) return;
-  var tabs = Array.prototype.slice.call(document.querySelectorAll('#lm-tabbar .tab:not([hidden])')), i = tabs.indexOf(t);
-  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); switchTab(t.dataset.tab); return; }
-  var j = e.key === 'ArrowRight' ? (i + 1) % tabs.length : e.key === 'ArrowLeft' ? (i + tabs.length - 1) % tabs.length : e.key === 'Home' ? 0 : e.key === 'End' ? tabs.length - 1 : -1;
-  if (j < 0) return;
-  e.preventDefault(); tabs.forEach(function(x, k){ x.tabIndex = k === j ? 0 : -1; }); tabs[j].focus();
-});
+// The tabs are a tablist, MenuKit's: one stop in the row, ← → Home End move along it (and wrap) and open the tab they land on.
+MenuKit.tabs({ bar: '#lm-tabbar', select: function(n){ switchTab(n); }, pane: function(n){ return 'pane-' + (n === 'viz' ? 'results' : n); } });
 function switchTab(id){
+  MenuKit.closeAll();
   if (id === 'viz') id = 'results';
   document.querySelectorAll('.tab').forEach(function(t){ var on = t.dataset.tab===id; t.classList.toggle('active', on); if (t.getAttribute('role') === 'tab') { t.setAttribute('aria-selected', on ? 'true' : 'false'); t.tabIndex = on ? 0 : -1; } });
   document.querySelectorAll('.tabpane').forEach(function(p){ p.classList.toggle('active', p.id==='pane-'+id); });
@@ -2457,19 +2594,27 @@ var PlateEngine = (function(){
     return a.length + ' wells';
   }
   // "B2:C11, E1" → those wells; null when nothing in it names a well on this plate.
+  // What a person types is read as they would say it: "A1 to B3", "A1 .. B3", "a1 : b3" and "$A$1:$B$3" (pasted from Excel) are the range A1:B3. unread() lists what could not be read.
+  function _parts(txt){
+    return String(txt || '').toUpperCase().replace(/\$/g, '').replace(/\.\./g, ':').replace(/\s+(?:TO|THROUGH|THRU|UNTIL)\s+/g, ':').replace(/\s*([:\-–—])\s*/g, '$1').split(/[\s,;]+/).filter(Boolean);
+  }
+  function _one(part, dims){
+    var m = part.match(/^([A-P])(\d{1,2})(?:[:\-–—]([A-P])(\d{1,2}))?$/); if (!m) return null;
+    var a = { r: m[1].charCodeAt(0) - 65, c: +m[2] - 1 };
+    var b = m[3] ? { r: m[3].charCodeAt(0) - 65, c: +m[4] - 1 } : a;
+    if (a.r >= dims.r || a.c >= dims.c || a.c < 0 || b.r >= dims.r || b.c >= dims.c || b.c < 0) return null;   // a corner off the plate is a mistake, not a smaller range
+    return rect(a, b, dims);
+  }
   function parseRange(txt, dims){
     var out = [], ok = false;
-    String(txt || '').toUpperCase().split(/[\s,;]+/).forEach(function(part){
-      if (!part) return;
-      var m = part.match(/^([A-P])(\d{1,2})(?:[:\-–]([A-P])(\d{1,2}))?$/);
-      if (!m) return;
-      var a = { r: m[1].charCodeAt(0) - 65, c: +m[2] - 1 };
-      var b = m[3] ? { r: m[3].charCodeAt(0) - 65, c: +m[4] - 1 } : a;
-      if (a.r >= dims.r || a.c >= dims.c || a.c < 0) return;
-      rect(a, b, dims).forEach(function(w){ if (out.indexOf(w) < 0) out.push(w); }); ok = true;
+    _parts(txt).forEach(function(part){
+      var w = _one(part, dims); if (!w) return;
+      w.forEach(function(x){ if (out.indexOf(x) < 0) out.push(x); }); ok = true;
     });
     return ok ? out : null;
   }
+  // the parts of what was typed that name no well on this plate (a word, a typo, a well past the edge) — so a list is never quietly shorter than it was written
+  function unread(txt, dims){ return _parts(txt).filter(function(part){ return !_one(part, dims); }); }
   // A dilution series through any selection. Its points run along a direction and the other
   // axis is replicates; a well's point is its place along that axis, not its place in the list,
   // so any shape dilutes correctly. With no direction given it runs across unless the area is
@@ -2577,7 +2722,7 @@ var PlateEngine = (function(){
     return s + ' 2';
   }
   return { id: id, rc: rc, uniq: uniq, rect: rect, line: line, box: box, isRect: isRect, rangeText: rangeText,
-           parseRange: parseRange, seriesDir: seriesDir, seriesPlan: seriesPlan, seriesConc: seriesConc,
+           parseRange: parseRange, unread: unread, seriesDir: seriesDir, seriesPlan: seriesPlan, seriesConc: seriesConc,
            splitOfShape: splitOfShape, bandPlan: bandPlan, sortZones: sortZones, pasteList: pasteList, nextName: nextName,
            freeStart: freeStart, blockPlan: blockPlan };
 })();
@@ -3364,6 +3509,7 @@ document.addEventListener('keydown', function(e){
     e.preventDefault();
     var s = _lmParseRange(rg.value);
     if (!s) { toast('Write a well or a range, e.g. B2 or B2:C11.'); return; }
+    var un = PlateEngine.unread(rg.value, _lmDims()); if (un.length) toast('Not a well on this plate: ' + un.join(', ') + ' — the rest is selected.');
     rg.blur(); _lmPlateActive = true; lmSetSel(s);
   });
   rg.addEventListener('blur', function(){ lmRenderPanel(); });
@@ -4454,6 +4600,7 @@ function lsSetRole(key, text, inp){
   var txt = String(text || '').trim(), row = inp.parentNode, dims = { r: state.rows, c: state.cols }, got = txt ? PlateEngine.parseRange(txt, dims) : [];
   if (txt && (!got || !got.length)) { row.classList.add('bad'); toast('Write a well or a range such as A1:D1 — “' + txt + '” names no well on this plate.'); return; }
   row.classList.remove('bad');
+  var un = txt ? PlateEngine.unread(txt, dims) : []; if (un.length) toast('Not a well on this plate: ' + un.join(', ') + ' — the rest is used.');
   inp.value = SetupKit.rangeStr(got || [], wellPos); lsAssign(key, new Set(got || []));
 }
 // Exactly these wells are that control (what is typed in its box, or dragged on the plate); a well takes the place of whatever it was.
@@ -5664,6 +5811,16 @@ function _lmDownload(name, text, mime){
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(function(){ URL.revokeObjectURL(a.href); }, 4000);
 }
+// The Prism Copy sheet of the workbook, on the clipboard: paste into a Prism XY table (a reading left out of the fit is left out here too).
+function copyPrism(){
+  if (!state.fitResults.length) { toast('Run an analysis first.'); return; }
+  var aoa = _buildLuminaPrismAOA(false);
+  if (aoa.length < 3) { toast('There are no readings to copy yet.'); return; }
+  var txt = aoa.map(function(r){ return r.map(function(c){ return String(c).replace(/[\t\r\n]+/g, ' '); }).join('\t'); }).join('\n');
+  var ok = function(){ toast('Copied for Prism — ' + aoa[1][0] + ' down one column, every compound’s replicates beside it. Paste it into a Prism XY table.'); };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(ok).catch(function(){ toast('The browser did not allow writing to the clipboard — use the Excel workbook’s Prism Copy sheet.'); });
+  else toast('The browser has no clipboard here — use the Excel workbook’s Prism Copy sheet.');
+}
 function copyResultsTSV(){
   if (!state.fitResults.length) { toast('Run an analysis first.'); return; }
   var cols = getResultColumns();
@@ -6402,40 +6559,7 @@ function rsToggleSettings(){
   var s = document.getElementById('rs-set'), b = document.getElementById('rs-set-btn');
   s.hidden = !s.hidden; b.setAttribute('aria-expanded', String(!s.hidden));
 }
-// Two popovers, one open at a time: Units and Export.
-var RS_POPS = { 'rs-exp': 'rs-exp-btn', 'rs-units': 'rs-units-btn' };
-function rsTogglePop(e, id){
-  if (e && e.stopPropagation) e.stopPropagation();
-  var wasOpen = {}; Object.keys(RS_POPS).forEach(function(k){ wasOpen[k] = document.getElementById(k).classList.contains('open'); });
-  Object.keys(RS_POPS).forEach(function(k){ var m = document.getElementById(k); if (k === id) m.classList.toggle('open'); else m.classList.remove('open'); var b = document.getElementById(RS_POPS[k]); if (b) b.setAttribute('aria-expanded', m.classList.contains('open') ? 'true' : 'false'); });
-  var m = document.getElementById(id);
-  // Opened from the keyboard (a click with no pointer is detail 0): the focus goes in, so ↑ ↓ and Esc have something to act on.
-  if (m.classList.contains('open') && e && e.detail === 0 && !wasOpen[id]) setTimeout(function(){ var f = m.querySelector('[role=menuitem]') || m.querySelector('button'); if (f) f.focus(); }, 0);
-  if (m.classList.contains('open')) {   // measured, then kept on screen — it opens under a button that can be anywhere on a narrow row
-    var r = m.getBoundingClientRect(), pad = 8;
-    m.style.right = '0px'; m.style.left = 'auto';
-    r = m.getBoundingClientRect();
-    if (r.left < pad) { m.style.right = 'auto'; m.style.left = (pad - m.parentNode.getBoundingClientRect().left) + 'px'; }
-  }
-}
-// Closing a popover with the focus inside it hands the focus back to the button that opened it (it used to fall to the page).
-function rsCloseExport(){
-  Object.keys(RS_POPS).forEach(function(k){
-    var m = document.getElementById(k); if (!m) return;
-    var had = m.classList.contains('open'), b = document.getElementById(RS_POPS[k]);
-    m.classList.remove('open'); if (b) b.setAttribute('aria-expanded', 'false');
-    if (had && b && m.contains(document.activeElement)) b.focus();
-  });
-}
-// ↑ ↓ Home End walk the items of an open menu.
-document.addEventListener('keydown', function(e){
-  var m = e.target && e.target.closest && e.target.closest('.rs-pop[role=menu]'); if (!m) return;
-  var k = e.key; if (k !== 'ArrowDown' && k !== 'ArrowUp' && k !== 'Home' && k !== 'End') return;
-  var items = Array.prototype.slice.call(m.querySelectorAll('[role=menuitem]')), i = items.indexOf(document.activeElement);
-  var j = k === 'Home' ? 0 : k === 'End' ? items.length - 1 : k === 'ArrowDown' ? (i + 1) % items.length : (i <= 0 ? items.length - 1 : i - 1);
-  e.preventDefault(); e.stopPropagation(); if (items[j]) items[j].focus();
-});
-document.addEventListener('click', function(e){ if (!e.target.closest || !e.target.closest('.rs-menu')) rsCloseExport(); });
+// The Units and Export menus are MenuKit's pop-ups (tools/menukit): one open at a time, ↑ ↓ Home End, Esc and a click outside close them.
 (function wireSettings(){
   var box = document.getElementById('rs-set'), t = null;
   function changed(){ rsSyncOpts(); clearTimeout(t); t = setTimeout(function(){ if (!lmNotReady()) runLuminaAnalysis({ quiet: true }); }, 300); }
@@ -6533,11 +6657,7 @@ renderResults();
 </script>
 <script>
 // One gear, one panel, the same in every app.
-function toggleOpts(force){ var p=document.getElementById('opts-panel'), b=document.getElementById('opts-btn'); if(!p) return; var on = typeof force === 'boolean' ? force : !p.classList.contains('open'); p.classList.toggle('open', on); if (b) b.setAttribute('aria-expanded', on ? 'true' : 'false'); }
-document.addEventListener('keydown',function(e){ var p=document.getElementById('opts-panel'); if(e.key==='Escape' && p && p.classList.contains('open')){ var inside = p.contains(document.activeElement); toggleOpts(false); if (inside) { var b=document.getElementById('opts-btn'); if(b) b.focus(); } } });
-document.addEventListener('click',function(e){ var p=document.getElementById('opts-panel'); if(p&&p.classList.contains('open')&&!p.contains(e.target)&&!e.target.closest('#opts-btn')) toggleOpts(false); });
-(function(){ var c=document.getElementById('theme-chk'); if(c) c.checked=document.documentElement.getAttribute('data-theme')==='dark';
-  if(window.MutationObserver) new MutationObserver(function(){ var k=document.getElementById('theme-chk'); if(k) k.checked=document.documentElement.getAttribute('data-theme')==='dark'; }).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']}); })();
+MenuKit.init({ redraw: function(){ rsRefreshCharts(); } });
 </script>
 <script>
 /* assist-js:begin — generated by tools/sync_assist.py from tools/assist/assist.js + kb/lumina.js; do not edit here */

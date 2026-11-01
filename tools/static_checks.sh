@@ -33,6 +33,7 @@ run "Right-click kit"                  "$PY" tools/sync_ctxkit.py --check
 run "Chart editor kit"                "$PY" tools/sync_chartkit.py --check
 run "Multi-plate reader kit"          "$PY" tools/sync_reader_plates.py --check
 run "Setup dialog kit"                 "$PY" tools/sync_setupkit.py --check
+run "Menu kit"                         "$PY" tools/sync_menukit.py --check
 run "History kit"                      "$PY" tools/sync_historykit.py --check
 run "Statistics kit"                   "$PY" tools/sync_statskit.py --check
 run "Results table kit"                "$PY" tools/sync_resultskit.py --check
