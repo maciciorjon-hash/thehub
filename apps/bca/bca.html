@@ -897,8 +897,11 @@ var StatsKit = (function () {
 .ck-ib{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border:none;border-radius:var(--r-1);background:none;color:var(--text2);cursor:pointer;}
 .ck-ib:hover{background:var(--surface3);color:var(--text);}
 .ck-ib[aria-pressed=true]{background:var(--accent-dim);color:var(--accent-ink,var(--accent));}
-.ck-scroll{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:2px 16px 16px;}
-.ck-body{min-width:0;columns:300px 2;column-gap:32px;}   /* the groups of an entry fill columns when the column is wide enough (a wide window, or the editor beside nothing else) */
+.ck-panel{position:relative;}
+.ck-scroll{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;padding:2px 16px 16px;}   /* the gutter is kept, so an entry that scrolls and one that does not are the same width: switching between them does not re-wrap the text */
+.ck-body{min-width:0;columns:300px 2;column-gap:32px;}   /* the groups of an entry fill columns when the panel is wide (under the figure on a narrow window) */
+.ck-dock .ck-body{columns:auto;}   /* the docked column is never wide enough for two, and laying out as columns costs twice a plain flow on every switch */
+.ck-ghost{position:absolute;left:0;right:0;bottom:0;overflow:hidden;pointer-events:none;}   /* the entry just left, fading out while the new one fades in (ck-ui.js openMenu) */
 .ck-body > .ck-big,.ck-body > .ck-note,.ck-body > .ck-hint{column-span:all;}
 .ck-sg{break-inside:avoid;}
 .ck-sel{margin:12px 0 4px;padding:12px 14px;border:1px solid var(--border2);border-radius:var(--r-2);background:var(--surface2);}
@@ -4559,7 +4562,7 @@ var ChartKit = (function(){
 
   function mount(root, opts){
     opts = opts || {};
-    var KEY = 'ck2:' + (opts.key || 'chart'), spec, doc = { items: [] }, scene = null, sel = null, cur = null, undo = [], redo = [], lastUndoKey = '', lastUndoAt = 0, dpi = 1200, saveT = 0, drag = null, openItems = {}, cmode = null, palOpen = false;
+    var KEY = 'ck2:' + (opts.key || 'chart'), spec, doc = { items: [] }, scene = null, sel = null, cur = null, undo = [], redo = [], lastUndoKey = '', lastUndoAt = 0, dpi = 1200, saveT = 0, drag = null, openItems = {}, cmode = null, palOpen = false, shown = null;
     try { spec = C.withDefaults(JSON.parse(localStorage.getItem(KEY) || 'null')); } catch (e) { spec = C.withDefaults(null); }
 
     root.classList.add('ck-root'); root.setAttribute('tabindex', '-1');
@@ -4767,28 +4770,40 @@ var ChartKit = (function(){
     function renderPanel(){
       if (cur === 'table' && !hasTable()) cur = null;
       renderMenu();
-      if (!cur) { if (!pop.hidden && !pop.getAnimations().length) pop.hidden = true; root.classList.remove('ck-dock'); return; }
+      if (!cur) { shown = null; if (!pop.hidden && !pop.getAnimations().length) pop.hidden = true; root.classList.remove('ck-dock'); return; }
       pop.hidden = false; root.classList.toggle('ck-dock', docked());
       root.querySelector('.ck-pt').textContent = SEC_T[cur];
-      var top = scroller.scrollTop; panel.innerHTML = secBody(cur); renderSel(); scroller.scrollTop = top;
+      // a refresh of the entry on show keeps where it was scrolled to; a different entry starts at its top (and is not measured first)
+      var same = shown === cur, top = same ? scroller.scrollTop : 0; panel.innerHTML = secBody(cur); renderSel(); scroller.scrollTop = top; shown = cur;
       pngNote(); scaleNote();
     }
-    // open an entry: the card fades in under it, or, when another entry was open, glides across to the new one while its content fades in
+    // The entry being left, kept as a picture over the panel while the new one is laid out underneath: nothing is blank between the two.
+    function leaveGhost(){
+      var g = document.createElement('div'), c = scroller.cloneNode(true);
+      g.className = 'ck-ghost'; g.setAttribute('aria-hidden', 'true'); g.style.top = scroller.offsetTop + 'px'; g.style.height = scroller.offsetHeight + 'px';
+      c.removeAttribute('id'); g.appendChild(c); pop.appendChild(g); c.scrollTop = scroller.scrollTop;
+      return g;
+    }
+    function dropGhosts(){ pop.querySelectorAll('.ck-ghost').forEach(function(g){ g.remove(); }); }
+    // open an entry: the card fades in under it, or, when another entry was open, the old content fades out as the new one rises into place (transform and opacity only)
     function openMenu(id){
       if (!SEC_T[id] || (id === 'table' && !hasTable())) return;
-      var was = cur, wasHidden = pop.hidden;
+      var was = cur, wasHidden = pop.hidden, anim = motion(), ghost = null;
+      if (anim) { pop.getAnimations().forEach(function(a){ a.cancel(); }); scroller.getAnimations().forEach(function(a){ a.cancel(); }); dropGhosts(); }
+      if (anim && was && was !== id && !wasHidden) ghost = leaveGhost();
       cur = id; renderPanel();
       if (was === id && !wasHidden) return;
-      if (!motion()) return;
-      pop.getAnimations().forEach(function(a){ a.cancel(); });
+      if (!anim) return;
       if (wasHidden || !was) pop.animate([{ opacity: 0, transform: 'translateX(14px)' }, { opacity: 1, transform: 'none' }], { duration: 170, easing: 'cubic-bezier(.2,.8,.3,1)' });
       else {
-        scroller.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160, easing: 'ease-out' });
+        var out = ghost.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 90, easing: 'ease-out', fill: 'forwards' });
+        out.onfinish = out.oncancel = function(){ ghost.remove(); };
+        scroller.animate([{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }], { duration: 180, delay: 30, easing: 'cubic-bezier(.2,.8,.3,1)', fill: 'backwards' });
       }
     }
     function closeMenu(){
       if (!cur) return;
-      cur = null; renderMenu(); root.classList.remove('ck-dock');
+      cur = null; shown = null; dropGhosts(); renderMenu(); root.classList.remove('ck-dock');
       if (!motion() || pop.hidden) { pop.hidden = true; return; }
       var a = pop.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateX(10px)' }], { duration: 120, easing: 'ease-out' });
       a.onfinish = a.oncancel = function(){ if (!cur) pop.hidden = true; };

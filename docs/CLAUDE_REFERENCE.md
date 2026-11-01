@@ -8618,3 +8618,12 @@ Jon (Spanish): Tempo's plate editor could only be typed (A1:D1); make wells drag
 - **Tempo**: the four control rows are the brush (`TPS.brush`, click a row or focus its box; the row is tinted and the plate header says "Drag over the wells that are Vehicle"). `tpsPaint` → `tpsAssign(key, ids)` is the one place a control's wells change; the typed box (`tpsSetRole`) goes through it too, so both paths share undo (⌘Z) and the refit. Left out wells are slashed on the plate and listed in the legend.
 - **Layout bug fixed**: the Normalise / against rows had no swatch, so the caption slid into the 14 px swatch column and was cut ("Norm", "agai"). `.sx-ctl.nox` is the row without a swatch; the 4th column is `minmax(40px, auto)` so the Add button fits.
 - Invariant `tools/tempo_invariants.mjs` K25 (drag add / move to another control / clear / Esc / column and row headers / Left out / no-read wells / ⌘Z / captions in the controls' column).
+
+## Graph: switching between entries is smooth (K29, 2026-11-01)
+
+Jon (Spanish): inside Graph the transitions had to be smoother — it stuck when selecting the different submenus (Compounds · Chart · Axes · Text · Table · Page).
+
+- **Measured in the bench** (`tools/chartkit/dev.html`, 1500 px): a switch cost 8–14 ms, almost all of it layout of the docked panel as *CSS columns* (12 ms vs 5 ms as a plain flow). The docked column (380–480 px) is never wide enough for two columns, so `.ck-dock .ck-body{columns:auto}`; columns stay for the stacked layout under 900 px.
+- **Other causes**: the new entry faded in from opacity 0 on an instant swap (a blink); the old entry's scroll position was carried to the new one; an entry that scrolls lost 15 px of width against one that did not, so text re-wrapped (`scrollbar-gutter:stable` on `.ck-scroll`).
+- **Now** (`ck-ui.js` `openMenu`): the old entry is kept as a cloned `.ck-ghost` over the panel and fades out in 90 ms while the new one rises 6 px into place (180 ms, opacity + transform only); a click while one is running cancels the animations and drops the ghost; a different entry starts at its top (`shown` tracks which entry the panel holds, a refresh of the same one keeps its scroll). Reduced motion: no ghost, no animation.
+- Invariant `tools/chartkit_invariants.mjs` K29 (no more than one ghost even after six fast switches, none after it faded, new entry at the top, gutter stable, docked body not multicol) — proven by putting the CSS back.

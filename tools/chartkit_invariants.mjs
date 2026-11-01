@@ -57,6 +57,8 @@
 //                          section open, at 1440, 1280, 900 and 390 px wide, in both themes.
 //
 //   node tools/chartkit_invariants.mjs        exit 1 on any finding
+//   K29 switching entries   Going from one entry of the menu to another never leaves the old one behind (no picture of it stays over the new one, however fast the clicks), starts the new one at
+//                         its top, and costs the same width whichever entry scrolls (the scrollbar's room is kept); the docked column lays out as a plain flow, not as columns.
 import { chromium } from 'playwright';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -555,6 +557,15 @@ for (const name of Object.keys(APPS)) {
     check('K28 ' + name + ': a menu along the top with Compounds, Chart, Axes, Text, Table and Page, each saying what is set in it, and no card open until one is chosen', st.ids.join() === 'compounds,chart,axes,text,table,page' && st.sums && st.shut, JSON.stringify(st));
     check('K28 ' + name + ': one entry is open at a time, in a column at the right of the figure that never covers it (the figure takes the whole width again when it is closed); Esc puts it away', st.exclusive && st.docked && st.noOverlap && st.wide && st.escCloses, JSON.stringify(st));
     check('K28 ' + name + ': clicking a title or the legend opens Text, clicking the table opens Table, and a title is typed where it is listed', st.titleOpens && st.legendOpens && st.tableClickable && st.tableOpens && st.typed, JSON.stringify(st));
+    // K29 — switching from one entry to another is smooth: no leftover picture of the old entry, the new one at its top, the same width for every entry, a plain flow when docked
+    { const r1 = await E(([k, r]) => { const kit = window[k], R = document.querySelector(r), P = R.querySelector('.ck-panel'), S = R.querySelector('.ck-scroll'); kit.sections().forEach(x => kit.close(x)); const o = {};
+        kit.open('compounds'); P.getAnimations({ subtree: true }).forEach(x => x.finish()); S.scrollTop = 150; kit.open('page'); o.top = S.scrollTop; o.ghostNow = P.querySelectorAll('.ck-ghost').length; o.title = R.querySelector('.ck-pt').textContent;
+        ['chart', 'axes', 'text', 'compounds', 'page', 'axes'].forEach(x => kit.open(x)); o.ghostFast = P.querySelectorAll('.ck-ghost').length; o.last = R.querySelector('.ck-pt').textContent;
+        o.gutter = getComputedStyle(S).scrollbarGutter; o.cols = getComputedStyle(R.querySelector('.ck-body')).columnCount; o.docked = R.classList.contains('ck-dock'); return o; }, [k, root]);
+      await pg.waitForTimeout(450);
+      const r2 = await E(([k, r]) => { const R = document.querySelector(r), kit = window[k], o = { ghostLater: R.querySelectorAll('.ck-ghost').length, op: getComputedStyle(R.querySelector('.ck-scroll')).opacity }; kit.close('axes'); return o; }, [k, root]);
+      check('K29 ' + name + ': another entry starts at its top and there is never more than the one picture of the old entry over it, and none once it has faded', r1.top === 0 && r1.ghostNow <= 1 && r1.ghostFast <= 1 && r1.title === 'Page' && r1.last === 'Axes' && r2.ghostLater === 0 && +r2.op === 1, JSON.stringify([r1, r2]));
+      check('K29 ' + name + ': every entry is the same width (the scrollbar\'s room is kept) and the docked column is laid out as a plain flow, not as columns', r1.gutter === 'stable' && (!r1.docked || r1.cols === 'auto'), JSON.stringify(r1)); }
     for (const [w, h, theme] of [[1440, 900, 'light'], [1280, 800, 'dark'], [900, 800, 'light'], [390, 844, 'light']]) {
       await pg.setViewportSize({ width: w, height: h }); await E(t => document.documentElement.setAttribute('data-theme', t), theme); await pg.waitForTimeout(350);
       const bad = await E(([k, r, w]) => { const kit = window[k], R = document.querySelector(r); R.scrollIntoView(); kit.spec().table.show = true; kit.refresh(); const out = [], RR = R.getBoundingClientRect();
