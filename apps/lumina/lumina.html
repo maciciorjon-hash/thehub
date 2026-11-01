@@ -2097,7 +2097,7 @@ function lmSession(){
 // moving a fit setting is still the same analysis, so sending again updates it in Labbook instead of
 // adding a second copy; a different plate is a different result.
 function lmDataId(){
-  var str = JSON.stringify([state.format, state.layout, state.plates.map(function(p){ var k = Object.keys(p.signal).sort(); return k.map(function(q){ return q + '=' + p.signal[q]; }); }), (state.viabNorm ? state.plates.map(function(p){ var v = p.viab || {}; return Object.keys(v).sort().map(function(q){ return q + '=' + v[q]; }); }) : 0), Array.from(state.ctrlWells).sort(), Array.from(state.zeroCtrlWells).sort()].concat(state.viabNorm && state.viabView !== 'rel' ? ['view ' + state.viabView] : []));
+  var str = JSON.stringify([state.format, state.layout, state.plates.map(function(p){ var k = Object.keys(p.signal).sort(); return k.map(function(q){ return q + '=' + p.signal[q]; }); }), (lmViabOn() ? state.plates.map(function(p){ var v = p.viab || {}; return Object.keys(v).sort().map(function(q){ return q + '=' + v[q]; }); }) : 0), Array.from(state.ctrlWells).sort(), Array.from(state.zeroCtrlWells).sort()].concat(lmViabOn() && state.viabView !== 'rel' ? ['view ' + state.viabView] : []));
   var h = 5381; for (var i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0;
   return 'lumina-' + (h >>> 0).toString(36);
 }
@@ -2172,8 +2172,8 @@ function lgGraphDoc(){
     var pts = Object.keys(by).map(function(k){ return by[k]; }).sort(function(a, b){ return b.x - a.x; }).map(function(g){ var x = Math.pow(10, g.x) / u[1]; return { x: x, label: String(+x.toPrecision(3)), reps: g.reps }; });
     return { id: r.sampleId, name: r.sampleId, points: pts, fit: fnOf([r.bottom, r.logEC50, r.hill, r.top]), _p: [r.bottom, r.logEC50, r.hill, r.top], nd: !!r.noCurve };
   });
-  return { sig: state.plates.map(function(p){ return (p.file || '') + ':' + Object.keys(p.signal).length + (state.viabNorm ? state.viabView + Object.keys(p.viab || {}).length : ''); }).join('|') + '|' + t + '|' + state.names.join(','),
-    title: [(state.viabNorm && state.viabView === 'viab' ? 'Viability' : ASSAY_NAMES[t]) || 'Dose\u2013response', '', ''], xTitle: '[compound] (' + u[0] + ')', xUnit: u[0], yTitle: lab.yAxis, refLine: state.normalised ? { y: 100 } : null, items: items,
+  return { sig: state.plates.map(function(p){ return (p.file || '') + ':' + Object.keys(p.signal).length + (lmViabOn() ? state.viabView + Object.keys(p.viab || {}).length : ''); }).join('|') + '|' + t + '|' + state.names.join(','),
+    title: [(lmViabOn() && state.viabView === 'viab' ? 'Viability' : ASSAY_NAMES[t]) || 'Dose\u2013response', '', ''], xTitle: '[compound] (' + u[0] + ')', xUnit: u[0], yTitle: lab.yAxis, refLine: state.normalised ? { y: 100 } : null, items: items,
     table: ChartKitCore.fourPL({ potency: lab.ec50Name, effect: gain ? 'Emax' : (lab.dmaxName || 'Span'), pct: _lmNorm(), gain: gain, sig: 4, note: 'Four-parameter logistic fit of the replicates in the figure \u00b7 ' + (gain ? 'Emax = top' : (lab.dmaxName || 'Span') + ' = top \u2212 bottom' + (_lmNorm() ? ' (% of control)' : '')) + ' \u00b7 n.d. = no usable curve' }),
     refit: function(it, pts){
       var xs = [], ys = []; pts.forEach(function(p){ p.reps.forEach(function(v){ xs.push(Math.log10(p.x * u[1])); ys.push(v); }); });
@@ -2265,7 +2265,7 @@ function _lmEffText(r){
   return _lmNorm() ? Math.round(v) + '%' : _lmReadFmt(v, 6);
 }
 function assayFitLabels(t){
-  if (state.viabNorm && state.viabView === 'viab') t = 'ctg';   // the viability curve on its own is a viability curve whatever the assay type says: IC50, Span, % Viability
+  if (lmViabOn() && state.viabView === 'viab') t = 'ctg';   // the viability curve on its own is a viability curve whatever the assay type says: IC50, Span, % Viability
   var m = {
     hibit:        { ec50Name:'DC50', ec50Col:'DC50_nM',  logCol:'LogDC50_M', pCol:'pDC50', dmaxName:'Dmax', hasDmax:true,  yAxis:'% Signal (norm. to ctrl)' },
     ctg:          { ec50Name:'IC50', ec50Col:'IC50_nM',  logCol:'LogIC50_M', pCol:'pIC50', dmaxName:'Span', hasDmax:true,  yAxis:'% Viability' },
@@ -2391,8 +2391,13 @@ function switchTab(id){
   if (id === 'history') lmHist.render();
 }
 function switchSubtab(id){ state.activeSubtab = id; lmAfterChange(); }
+var _lmPrevAssay = 'hibit';
 function onAssayTypeChange(){
   var t = document.getElementById('assay-type').value;
+  // Relative to viability means nothing when the assay is the viability: say it is set aside (and that it comes back).
+  if (state.viabNorm && t === 'ctg' && _lmPrevAssay !== 'ctg') toast('Viability is the assay itself, so “relative to viability” is set aside. It comes back if you choose another assay type.');
+  _lmPrevAssay = t;
+  lmRenderViewSeg(); lmRenderRead();
   document.getElementById('lm-zero').style.display = (t === 'displacement') ? '' : 'none';
   updateFitConstraintAvailability(t);
   lmRenderPanel();
@@ -2633,7 +2638,7 @@ function lmPlateWellData(p){
     // The three views of a double read: the signal as it is (needs no fluorescence), the fluorescence itself (its curve is the
     // viability curve of the plate) or the signal ÷ the fluorescence of the same well.
     // A well with no usable fluorescence has no ratio (it is not read as 0).
-    if (state.viabNorm) { var f = vb[pos], sv = state.viabView === 'signal'; if (!sv && !(f > 0)) return; out[pos] = out[pos] || {}; out[pos].signalRaw = v; if (f !== undefined) out[pos].viab = f; if (!sv) v = state.viabView === 'viab' ? f : v / f; }
+    if (lmViabOn()) { var f = vb[pos], sv = state.viabView === 'signal'; if (!sv && !(f > 0)) return; out[pos] = out[pos] || {}; out[pos].signalRaw = v; if (f !== undefined) out[pos].viab = f; if (!sv) v = state.viabView === 'viab' ? f : v / f; }
     (out[pos] = out[pos] || {}).measurement = v;
   });
   return out;
@@ -2740,7 +2745,7 @@ function _lmNormAoa(){
 }
 // Plates that hold readings but no viability while "Normalise to viability" is on — the analysis leaves them out and says so.
 function lmViabMissing(){
-  if (!state.viabNorm || state.viabView === 'signal') return [];   // the luminescence on its own needs no fluorescence
+  if (!lmViabOn() || state.viabView === 'signal') return [];   // the luminescence on its own needs no fluorescence
   var m = [];
   state.plates.forEach(function(pl, i){ if (Object.keys(pl.signal).length && !Object.keys(pl.viab || {}).some(function(k){ return pl.viab[k] > 0; })) m.push(lmPlateName(i)); });
   return m;
@@ -2751,12 +2756,17 @@ function lmSetViab(on){
   lmMark(); state.viabNorm = on; if (on) state.viabView = 'rel'; lmAfterChange();
   toast(on ? 'Results can now show the signal, the viability and the signal relative to viability (each reading divided by the fluorescence of the same well before the controls are applied).' + (lmViabMissing().length ? ' ' + lmViabMissing().join(', ') + ' has no viability yet — drop its fluorescence file.' : '') : 'Readings are used as they are.');
 }
+// "Relative to viability" is Jon's choice (state.viabNorm; it travels with the session and survives a change of assay), but when the assay IS the
+// viability it has no meaning: the readings are the viability already. So nothing reads state.viabNorm to analyse, show or export — they read this,
+// and changing the assay to Viability sets the division aside, changing it back to HiBiT (or any other) takes it up again.
+function lmViabApplies(){ var el = document.getElementById('assay-type'); return !(el && el.value === 'ctg'); }
+function lmViabOn(){ return !!state.viabNorm && lmViabApplies(); }
 // What Results shows of a double read. It is a view, not an edit of the data: no undo step, the curves are refitted from the same plates.
 var LM_VIEWS = [['signal', 'Luminescence'], ['viab', 'Viability'], ['rel', 'Relative to viability']];
 function _lmViabViewOk(v){ return v === 'signal' || v === 'viab' || v === 'rel'; }
 function lmViewName(v){ for (var i = 0; i < LM_VIEWS.length; i++) if (LM_VIEWS[i][0] === v) return LM_VIEWS[i][1]; return ''; }
 function lmSetViabView(v){
-  if (!state.viabNorm || !_lmViabViewOk(v) || v === state.viabView) return;
+  if (!lmViabOn() || !_lmViabViewOk(v) || v === state.viabView) return;
   state.viabView = v; lmAfterChange(); _lmEnsureFit(true);
   var miss = lmViabMissing(); if (miss.length) toast('Left out — no viability reading: ' + miss.join(', ') + '.');
 }
@@ -4117,7 +4127,7 @@ function lmGlomaxSignal(G){
 // A GloMax file holding nothing but fluorescence is the viability of a plate whose signal is read elsewhere — when
 // "Normalise to viability" is on. Off, it is an ordinary reading.
 async function lmIsViabFile(f){
-  if (!state.viabNorm || !/\.xlsx?$/i.test(f.name) || !window.XLSX) return false;
+  if (!lmViabOn() || !/\.xlsx?$/i.test(f.name) || !window.XLSX) return false;
   try { var G = RDR.glomax(XLSX.read(await f.arrayBuffer(), { type: 'array', cellDates: false, raw: true })); return !!G && G.channels.every(function(x){ return x.kind === 'fluor'; }); } catch (e) { return false; }
 }
 function _lmNameKey(s){ return String(s || '').toLowerCase().replace(/\.(xlsx?|csv|tsv|txt)$/i, '').replace(/[^a-z0-9]+/g, ''); }
@@ -4234,7 +4244,7 @@ function lmRenderRead(){
     '<span class="fn" title="' + esc(pl.file || '') + '">' + (pl.file ? esc(pl.file) : 'typed by hand') + '</span>' +
     '<button class="lm-link" onclick="lmPickFiles(' + state.plate + ')">Replace</button>' +
     '<button class="lm-link" onclick="lmPasteButton()" title="Paste values copied from Excel over these readings — select a well first to paste a block from there">Paste values</button>' +
-    (pl.viab || state.viabNorm ? '<button class="lm-link" id="lm-viab" aria-pressed="' + (state.viabNorm ? 'true' : 'false') + '" onclick="lmSetViab(!state.viabNorm)" title="Relative to viability: Results then offers the luminescence, the viability (fluorescence) and the signal divided by it">' + (state.viabNorm ? 'relative to viability: yes' : 'relative to viability: no') + '</button>' : '');
+    (lmViabApplies() && (pl.viab || state.viabNorm) ? '<button class="lm-link" id="lm-viab" aria-pressed="' + (state.viabNorm ? 'true' : 'false') + '" onclick="lmSetViab(!state.viabNorm)" title="Relative to viability: Results then offers the luminescence, the viability (fluorescence) and the signal divided by it">' + (state.viabNorm ? 'relative to viability: yes' : 'relative to viability: no') + '</button>' : '');
 }
 (function wirePlateName(){
   var strip = document.getElementById('lm-read');
@@ -4270,7 +4280,7 @@ async function handleReaderFiles(list, plateIdx){
   files = await RDR.expand(files);
   // Normalise to viability: files that are only fluorescence are plates' viability, placed after the signal files.
   var vf = [];
-  if (state.viabNorm) { var sf = []; for (var q = 0; q < files.length; q++) (await lmIsViabFile(files[q]) ? vf : sf).push(files[q]); files = sf; }
+  if (lmViabOn()) { var sf = []; for (var q = 0; q < files.length; q++) (await lmIsViabFile(files[q]) ? vf : sf).push(files[q]); files = sf; }
   if (files.length) await lmPlaceSignalFiles(files, plateIdx);
   if (vf.length) await lmAttachViab(vf, files.length ? undefined : plateIdx);
 }
@@ -4308,7 +4318,7 @@ async function lmPlaceSignalFiles(files, plateIdx){
 // (layout, controls, names, readings), so nothing here is a second model: anything done on the plate is in the dialog
 // when it opens, and anything done in the dialog is on the plate when it closes — and ⌘Z undoes either.
 // ══════════════════════════════════════════════════════════════
-var LS = { form: { top: 10, unit: 'µM', fac: 3, pts: null, n: null, reps: 2, dir: 'right', run: 'rows', start: '', names: '' }, same: false, hand: false, from: null, touched: false };
+var LS = { form: { top: 10, unit: 'µM', fac: 3, pts: null, n: null, reps: 2, dir: 'right', run: 'rows', start: '', names: '' }, same: false, hand: false, from: null, touched: false, brush: 'ctrl' };
 var LS_UNIT = { 'M': 1, 'mM': 1e-3, 'µM': 1e-6, 'nM': 1e-9, 'pM': 1e-12 };
 var lsK = null;
 function lsEl(id){ return document.getElementById(id); }
@@ -4370,8 +4380,8 @@ function lsReadings(){
     SetupKit.group('Reader files', '<button class="sx-link" id="ls-demo">Load an example plate</button>',
       SetupKit.drop('ls-drop', 'Drop the reader files or click to choose them', 'One file per plate (.xlsx, .xls, .csv, .txt); a workbook with several plates is read as several. Several files fill Plate 1, 2, 3… in name order.') +
       '<div class="sx-plates" id="ls-plates"></div>') +
-    SetupKit.group('Viability', '<span class="sx-opt">optional</span>', SetupKit.field('', '', SetupKit.seg('ls-viab', [['off', 'No'], ['on', 'Yes — choose the view in Results']], state.viabNorm ? 'on' : 'off', 'v', 'Relative to viability'),
-      'For a double read — luminescence and fluorescence (CellTiter-Fluor) of the same plate. Say Yes and Results offers three views of it: the luminescence on its own, the viability (the fluorescence) on its own, and the luminescence relative to viability (each reading divided by the fluorescence of the same well, then normalised to the controls). The Excel export carries all three. A GloMax file with both readings is used as it is; a GloMax file with only fluorescence is added as the viability of the plate it is named for (drop it with the others).')) +
+    (!lmViabApplies() ? '' : SetupKit.group('Viability', '<span class="sx-opt">optional</span>', SetupKit.field('', '', SetupKit.seg('ls-viab', [['off', 'No'], ['on', 'Yes — choose the view in Results']], state.viabNorm ? 'on' : 'off', 'v', 'Relative to viability'),
+      'For a double read — luminescence and fluorescence (CellTiter-Fluor) of the same plate. Say Yes and Results offers three views of it: the luminescence on its own, the viability (the fluorescence) on its own, and the luminescence relative to viability (each reading divided by the fluorescence of the same well, then normalised to the controls). The Excel export carries all three. A GloMax file with both readings is used as it is; a GloMax file with only fluorescence is added as the viability of the plate it is named for (drop it with the others).'))) +
     SetupKit.group('Paste from Excel', '<span id="ls-paste-for"></span>', SetupKit.field('', '', '<textarea id="ls-paste" rows="3" spellcheck="false" placeholder="Copy the grid of values in Excel, click here and paste (⌘V). With or without the row letters."></textarea>', 'A block that is smaller than the plate goes where the first well of a selection on the Plate tab is, else at A1.')) +
     SetupKit.group('Or type the values', '<button class="sx-link" id="ls-hand-tog">' + (LS.hand ? 'Hide the grid' : 'Show the grid') + '</button>', '<div class="sx-hand' + (LS.hand ? ' open' : '') + '" id="ls-hand"></div>');
   lsPlatesList(); if (LS.hand) lsHand();
@@ -4382,7 +4392,7 @@ function lsPlatesList(){
   var P = state.plates.length;
   el.innerHTML = state.plates.map(function(pl, i){
     var n = Object.keys(pl.signal).length;
-    return SetupKit.plateRow(i, i === state.plate, lmPlateName(i), (state.format + '-well') + (pl.file ? ' · ' + pl.file : (n ? ' · typed or pasted' : ' · empty')), [['Readings', n]].concat(state.viabNorm || pl.viab ? [['Viability', Object.keys(pl.viab || {}).length]] : []), P > 1 ? 'Remove' : (n ? 'Empty' : ''));
+    return SetupKit.plateRow(i, i === state.plate, lmPlateName(i), (state.format + '-well') + (pl.file ? ' · ' + pl.file : (n ? ' · typed or pasted' : ' · empty')), [['Readings', n]].concat(lmViabApplies() && (state.viabNorm || pl.viab) ? [['Viability', Object.keys(pl.viab || {}).length]] : []), P > 1 ? 'Remove' : (n ? 'Empty' : ''));
   }).join('') + '<div><button class="sx-btn" data-addplate="1">+ Add a plate</button></div>';
 }
 function lsHand(){
@@ -4411,9 +4421,25 @@ function lsControls(){
   lsK.pane('controls').innerHTML = '<div class="sx-two"><div>' +
     SetupKit.group('Where the controls are', 'the same wells on every plate',
       '<div id="ls-ctls">' + SetupKit.ctlRow('ctrl', 'var(--accent)', tx.c[0], tx.c[1]) + (tx.z ? SetupKit.ctlRow('zero', 'var(--text3)', tx.z[0], tx.z[1]) : '') + '</div>' +
-      '<div class="sx-hint">Type wells or ranges — <b>A1:D1</b>, <b>E1:F1, H2</b> — and press Enter or leave the box. Empty clears that control. Without a control the readings stay raw counts. Drag on the plate itself for anything irregular.</div>') +
-    '</div><div class="sx-side"><div class="sx-mini-wrap" id="ls-mini-c"></div></div></div>';
-  lsCtlFill(); lsMiniInto('ls-mini-c');
+      '<div class="sx-hint">Type wells or ranges — <b>A1:D1</b>, <b>E1:F1, H2</b> — and press Enter or leave the box. Empty clears that control. Without a control the readings stay raw counts.</div>' +
+      '<div class="sx-hint"><b>Drag on the plate</b> to mark wells: pick a control on the left, then drag a box over its wells (a row letter or a column number takes the whole line; a drag that starts on a well already marked clears them; Esc cancels the drag).</div>') +
+    '</div><div class="sx-side"><div class="sx-hint" id="ls-brush" style="margin:0 0 8px"></div><div class="sx-mini-wrap" id="ls-mini-c"></div></div></div>';
+  lsCtlFill(); lsMiniInto('ls-mini-c'); lsBrush(LS.brush);
+  SetupKit.paint(lsEl('ls-mini-c'), { rows: state.rows, cols: state.cols, has: function(id){ return lsRoleSet(lsBrushKey()).has(id); }, apply: function(ids, add){ lsPaint(ids, add); } });
+}
+// The control a drag on the plate paints: one of the rows, highlighted; clicking a row or its box picks it.
+function lsBrushKey(){ return LS.brush === 'zero' && lsCtlTexts().z ? 'zero' : 'ctrl'; }
+function lsBrush(k){
+  LS.brush = k === 'zero' ? 'zero' : 'ctrl'; var root = lsEl('ls-ctls'); if (!root) return;
+  var key = lsBrushKey(), tx = lsCtlTexts();
+  root.querySelectorAll('.sx-ctl[data-k]').forEach(function(r){ r.classList.add('pick'); r.classList.toggle('on', r.dataset.k === key); });
+  var h = lsEl('ls-brush'); if (h) h.innerHTML = 'Drag over the wells that are <b>' + SetupKit.esc((key === 'zero' ? tx.z : tx.c)[0]) + '</b>';
+}
+function lsPaint(ids, add){
+  var ae = document.activeElement; if (ae && ae.dataset && ae.dataset.role) ae.blur();   // a drag does not move focus; a box still focused would not show the new wells
+  var key = lsBrushKey(), set = new Set(lsRoleSet(key));
+  ids.forEach(function(id){ if (add) set.add(id); else set.delete(id); });
+  lsAssign(key, set);
 }
 function lsRoleSet(key){ return key === 'ctrl' ? state.ctrlWells : state.zeroCtrlWells; }
 function lsCtlFill(){
@@ -4428,14 +4454,16 @@ function lsSetRole(key, text, inp){
   var txt = String(text || '').trim(), row = inp.parentNode, dims = { r: state.rows, c: state.cols }, got = txt ? PlateEngine.parseRange(txt, dims) : [];
   if (txt && (!got || !got.length)) { row.classList.add('bad'); toast('Write a well or a range such as A1:D1 — “' + txt + '” names no well on this plate.'); return; }
   row.classList.remove('bad');
-  var norm = SetupKit.rangeStr(got || [], wellPos);
-  if (norm === SetupKit.rangeStr(Array.from(lsRoleSet(key)), wellPos)) { inp.value = norm; return; }
+  inp.value = SetupKit.rangeStr(got || [], wellPos); lsAssign(key, new Set(got || []));
+}
+// Exactly these wells are that control (what is typed in its box, or dragged on the plate); a well takes the place of whatever it was.
+function lsAssign(key, set){
+  if (SetupKit.rangeStr(Array.from(set), wellPos) === SetupKit.rangeStr(Array.from(lsRoleSet(key)), wellPos)) return;
   lmMark();
-  var set = new Set(got || []);
   _lmTakeWells(set, { zones: 1 });
   var other = lsRoleSet(key === 'ctrl' ? 'zero' : 'ctrl'); set.forEach(function(p){ other.delete(p); });
   if (key === 'ctrl') state.ctrlWells = set; else state.zeroCtrlWells = set;
-  inp.value = norm; lmAfterChange();
+  lmAfterChange();
 }
 // The plate, small: what the layout is, as it is typed. Compounds in their colours, controls in the accent, readings as a tint.
 function lsMiniInto(id){
@@ -4444,7 +4472,7 @@ function lsMiniInto(id){
   if (state.ctrlWells.size) lg.push(['var(--accent)', tx.c[0], state.ctrlWells.size]);
   if (state.zeroCtrlWells.size) lg.push(['var(--text3)', (tx.z || ['0 % control'])[0], state.zeroCtrlWells.size]);
   var S = _lmS(); if (S) lg.push(['rgb(' + LM_PAL[0].join(',') + ')', S + (S === 1 ? ' compound' : ' compounds') + ' per plate', Object.keys(zm).length]);
-  el.innerHTML = SetupKit.mini({ rows: state.rows, cols: state.cols, title: lmPlateName(state.plate), sub: state.format + '-well · readings in blue', legend: lg, cell: function(r, c){
+  el.innerHTML = SetupKit.mini({ paint: id === 'ls-mini-c', rows: state.rows, cols: state.cols, title: lmPlateName(state.plate), sub: state.format + '-well · readings in blue', legend: lg, cell: function(r, c){
     var p = wellPos(r, c), bg = '', t = p;
     if (state.ctrlWells.has(p)) { bg = 'var(--accent)'; t += ' · ' + tx.c[0]; }
     else if (state.zeroCtrlWells.has(p)) { bg = 'var(--text3)'; t += ' · 0 % control'; }
@@ -4580,6 +4608,7 @@ function lsWire(d){
     else if (t.dataset.role) lsSetRole(t.dataset.role, t.value, t);
     else if (t.closest && t.closest('#ls-hand') && t.dataset.p) lsHandCommit(t);
   });
+  d.addEventListener('focusin', function(e){ var r = e.target.closest && e.target.closest('#ls-ctls .sx-ctl[data-k]'); if (r) lsBrush(r.dataset.k); });
   d.addEventListener('keydown', function(e){
     var t = e.target;
     if (t.dataset && t.dataset.role && e.key === 'Enter') { e.preventDefault(); lsSetRole(t.dataset.role, t.value, t); return; }
@@ -4588,6 +4617,7 @@ function lsWire(d){
   });
   d.addEventListener('paste', function(e){ var t = e.target; if (t.closest && t.closest('#ls-hand') && t.dataset.p) SetupKit.handPaste(lsEl('ls-hand'), e, t, lsHandCommit); });
   d.addEventListener('click', function(e){
+    var row = e.target.closest('#ls-ctls .sx-ctl[data-k]'); if (row) lsBrush(row.dataset.k);
     var t = e.target.closest('button, .sx-drop, [data-plate]'); if (!t) return;
     var f = LS.form;
     if (t.id === 'ls-drop') { lmPickFiles(state.plate); return; }
@@ -4866,7 +4896,7 @@ function _numFieldOr(id, fallback){
 // are refitted the moment Results is opened — there is no button to remember to press.
 function _lmFitSig(){
   var qc = Array.prototype.map.call(document.querySelectorAll('#rs-set input'), function(el){ return el.type === 'checkbox' ? el.checked : el.value; });
-  return JSON.stringify([document.getElementById('assay-type').value, state.format, state.layout, state.plates.map(function(p, i){ return [lmPlateName(i), p.signal, state.viabNorm ? (p.viab || null) : 0]; }), state.viabNorm ? state.viabView : 0,
+  return JSON.stringify([document.getElementById('assay-type').value, state.format, state.layout, state.plates.map(function(p, i){ return [lmPlateName(i), p.signal, lmViabOn() ? (p.viab || null) : 0]; }), lmViabOn() ? state.viabView : 0,
     state.names, Array.from(state.ctrlWells), Array.from(state.zeroCtrlWells), Array.from(state.excluded).sort(), qc]);
 }
 function _lmFitFail(msg, quiet){
@@ -4960,7 +4990,7 @@ function runLuminaAnalysis(opts){
   var noViab = lmViabMissing();
   if (!rows.length) return _lmFitFail(noViab.length ? 'Normalise to viability is on, but ' + noViab.join(', ') + (noViab.length > 1 ? ' have' : ' has') + ' no viability reading. Drop the fluorescence (a GloMax file named like the plate), or switch it off.' : 'No well holds a compound, a concentration and a reading yet.', quiet);
   if (noViab.length && !quiet) toast('Left out — no viability reading: ' + noViab.join(', ') + '.');
-  state.rawViab = !!state.viabNorm; state.rawViabView = state.viabNorm ? state.viabView : '';
+  state.rawViab = lmViabOn(); state.rawViabView = lmViabOn() ? state.viabView : '';
   var doNormalize = anyCtrl;
   state.normalised = doNormalize;
   // Without a control the readings are raw counts. The percentage settings (fixed top and bottom, the
@@ -5529,11 +5559,14 @@ function lmPlateQC(){
   h += '</tbody></table><div class="qc-note">Z′ = 1 − 3(SD of the 100% + SD of the 0%) / |difference of the means|; ≥ 0.5 is an excellent assay, 0–0.5 marginal, below 0 the two controls overlap. It needs three wells of each; without a 0% control only the CV of the 100% control is judged.</div>';
   host.innerHTML = h; host.hidden = false;
 }
+function lmRenderViewSeg(){
+  var vw = document.getElementById('rs-view'), on = lmViabOn();
+  if (vw) { vw.hidden = !on; vw.innerHTML = on ? LM_VIEWS.map(function(m){ return '<button data-v="' + m[0] + '" aria-pressed="' + (state.viabView === m[0]) + '" class="' + (state.viabView === m[0] ? 'active' : '') + '" onclick="lmSetViabView(\'' + m[0] + '\')">' + m[1] + '</button>'; }).join('') : ''; }
+}
 function renderResults(){
   var R = state.fitResults, body = document.getElementById('rs-body'); if (!body) return;
   // A double read has three views; the choice stays on screen even when one of them cannot be fitted, so it can be changed back.
-  var vw = document.getElementById('rs-view');
-  if (vw) { vw.hidden = !state.viabNorm; vw.innerHTML = state.viabNorm ? LM_VIEWS.map(function(m){ return '<button data-v="' + m[0] + '" aria-pressed="' + (state.viabView === m[0]) + '" class="' + (state.viabView === m[0] ? 'active' : '') + '" onclick="lmSetViabView(\'' + m[0] + '\')">' + m[1] + '</button>'; }).join('') : ''; }
+  lmRenderViewSeg();
   document.getElementById('tab-res-n').textContent = R.length || '';
   lmPlateQC();
   var nf = R.filter(function(r){ return r.flagged; }).length;
@@ -5616,7 +5649,7 @@ function _lmFileStem(){
   return nm.replace(/[\\/:*?"<>|]+/g, '_').replace(/\s+/g, '_');
 }
 // The view on screen, for the name of a one-view file (a double read) and the note of a copy.
-function _lmViewStem(){ return state.viabNorm ? '_' + LM_VIEW_SHEET[state.viabView] : ''; }
+function _lmViewStem(){ return lmViabOn() ? '_' + LM_VIEW_SHEET[state.viabView] : ''; }
 // A CSV cell: quoted when it holds a comma, a quote or a line break, and a leading = + - @ made
 // harmless so a compound named "=cmd" is text in Excel, not a formula.
 function _csvCell(v){
@@ -5636,7 +5669,7 @@ function copyResultsTSV(){
   var cols = getResultColumns();
   var rows = [cols.map(function(c){ return c.xh; }).join('\t')];
   state.fitResults.forEach(function(r){ rows.push(cols.map(function(c){ return c.get(r); }).join('\t')); });
-  navigator.clipboard.writeText(rows.join('\n')).then(function(){ toast('Table copied (' + (state.viabNorm ? lmViewName(state.viabView).toLowerCase() + ', ' : '') + _unitsText() + ') — paste it into Excel or Prism.'); }).catch(function(){ toast('Clipboard write failed.'); });
+  navigator.clipboard.writeText(rows.join('\n')).then(function(){ toast('Table copied (' + (lmViabOn() ? lmViewName(state.viabView).toLowerCase() + ', ' : '') + _unitsText() + ') — paste it into Excel or Prism.'); }).catch(function(){ toast('Clipboard write failed.'); });
 }
 function exportResultsCSV(){
   if (!state.fitResults.length) { toast('Run an analysis first.'); return; }
@@ -5685,7 +5718,7 @@ function _lmViewSheets(){
 function exportXLSX(){
   if (!state.fitResults.length) { toast('Run an analysis first.'); return; }
   if (!window.XLSX) { toast('SheetJS failed to load — try CSV export instead.'); return; }
-  var views = state.viabNorm ? lmEachView(function(v){ var o = _lmViewSheets(); o.view = v; return o; }) : [Object.assign(_lmViewSheets(), { view: '' })];
+  var views = lmViabOn() ? lmEachView(function(v){ var o = _lmViewSheets(); o.view = v; return o; }) : [Object.assign(_lmViewSheets(), { view: '' })];
   if (!views.length) { toast('Nothing could be fitted.'); return; }
   var protoAoA = [
     ['Lumina — Analysis Protocol'],

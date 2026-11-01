@@ -398,6 +398,31 @@ try {
   check('L13 Review says what is missing, the last button says what comes next, and Escape closes', /no readings|No dilution|no name|Before you fit/.test(r.review) && /Open the plate|Fit curves/.test(r.next) && r.closed, JSON.stringify([r.next, r.closed]));
 } catch (e) { findings.push('✗ L13 the run stopped: ' + e.message.split('\n')[0]); }
 
+// L13b — Setup › Controls: like Tempo's, pick a control on the left and drag a box over its wells on the small plate.
+try {
+  await ev(async () => { const wait = ms => new Promise(r => setTimeout(r, ms)); if (state.format !== 96) setPlateFormat(96); lsClose(); lmMark(); state.ctrlWells = new Set(); state.zeroCtrlWells = new Set(); state.layout = { grads: [], zones: [] }; state.names = []; document.getElementById('assay-type').value = 'displacement'; onAssayTypeChange(); lsOpen(2); await wait(250); });
+  const mid = async id => { const b = await (await page.$('#ls-mini-c .w[data-p="' + id + '"]')).boundingBox(); return [b.x + b.width / 2, b.y + b.height / 2]; };
+  const dr = async (a, z, esc) => { const [ax, ay] = await mid(a), [zx, zy] = await mid(z); await page.mouse.move(ax, ay); await page.mouse.down(); await page.mouse.move(zx, zy, { steps: 5 }); if (esc) await page.keyboard.press('Escape'); await page.mouse.up(); await page.waitForTimeout(80); };
+  const st = () => ev(() => ({ c: [...state.ctrlWells].sort().join(), z: [...state.zeroCtrlWells].sort().join(), box: document.querySelector('#ls-ctls input[data-role=ctrl]').value, hint: document.getElementById('ls-brush').textContent, on: [...document.querySelectorAll('#ls-ctls .sx-ctl.on')].map(x => x.dataset.k).join() }));
+  const r = {};
+  r.start = await st();
+  await dr('A1', 'B2'); r.ctrl = await st();
+  await page.click('#ls-ctls .sx-ctl[data-k="zero"] .t'); r.pick = await st();
+  await dr('H11', 'H12'); r.zero = await st();
+  await dr('A1', 'A2'); r.take = await st();                                    // a well painted for the other control moves to it
+  await page.click('#ls-ctls .sx-ctl[data-k="ctrl"] .t'); await dr('B1', 'B2'); r.erase = await st();   // a drag that starts on a marked well clears
+  await dr('D3', 'D4', true); r.esc = await st();                              // Esc leaves it as it was
+  await page.click('#ls-mini-c .l[data-col="12"]'); r.col = (await st()).c;
+  await page.keyboard.press('Control+z'); await page.waitForTimeout(120); r.undo = (await st()).c;
+  check('L13b Controls opens with a control picked and says what a drag paints', r.start.on === 'ctrl' && /Drag over the wells that are/.test(r.start.hint) && /100 % control/.test(r.start.hint), JSON.stringify(r.start));
+  check('L13b a drag over the plate marks the wells of the picked control and the typed box follows', r.ctrl.c === 'A1,A2,B1,B2' && r.ctrl.box === 'A1:B2', JSON.stringify(r.ctrl));
+  check('L13b clicking the other control picks it, and a drag then marks the 0 % wells', r.pick.on === 'zero' && /0 % control/.test(r.pick.hint) && r.zero.z === 'H11,H12', JSON.stringify([r.pick, r.zero]));
+  check('L13b a well painted for the other control moves to it', r.take.z.indexOf('A1') >= 0 && r.take.c === 'B1,B2', JSON.stringify(r.take));
+  check('L13b a drag that starts on a marked well clears them; Esc cancels a drag', r.erase.c === '' && r.esc.c === '', JSON.stringify([r.erase.c, r.esc.c]));
+  check('L13b a column number takes the whole column; ⌘Z takes the last drag back', /H12/.test(r.col) && r.col.split(',').length === 8 && r.undo === '', JSON.stringify([r.col, r.undo]));
+  await ev(() => lsClose());
+} catch (e) { findings.push('✗ L13b the run stopped: ' + e.message.split('\n')[0]); }
+
 // L14 — Normalise to viability (optional).
 try {
   const r = await ev(async () => {
@@ -512,6 +537,49 @@ try {
   check('L14b with the option off the sheet names carry no view', r.offSheets.indexOf('(') < 0 && /Results,Raw Data/.test(r.offSheets), r.offSheets);
   await ev(() => { state.viabNorm = false; state.viabView = 'rel'; switchTab('results'); });
 } catch (e) { findings.push('✗ L14b the run stopped: ' + e.message.split('\n')[0]); }
+// L14c — "relative to viability" means nothing when the assay IS the viability (Jon: "si estoy midiendo viability este apartado no tiene sentido").
+// The choice is kept, but nothing reads it while the assay is Viability: no Setup group, no strip toggle, no view buttons, no division, no view sheets;
+// choosing another assay takes it up again, and the change says so once.
+try {
+  const r = await ev(async () => {
+    const LET = 'ABCDEFGHIJKLMNOP', fac = (ri, ci) => 0.6 + ((ri * 7 + ci * 3) % 11) / 10, q3 = v => Number(v).toPrecision(3);
+    const sel = document.getElementById('assay-type');
+    const setAssay = v => { sel.value = v; onAssayTypeChange(); };
+    const fit = () => { state.fitSig = null; const ok = runLuminaAnalysis({ quiet: true }); return { ok, snap: JSON.stringify(Object.fromEntries((state.fitResults || []).map(x => [x.sampleId, q3(x.logEC50) + '|' + q3(x.hill) + '|' + q3(x.top)]))) }; };
+    const toasts = []; const t0 = window.toast; window.toast = m => { toasts.push(String(m)); };
+    const o = {};
+    loadLuminaTestData(); setAssay('hibit'); state.viabNorm = false; state.viabView = 'rel';
+    const orig = state.plates.map(p => Object.assign({}, p.signal));
+    state.plates.forEach((pl, i) => { pl.viab = {}; pl.viabFile = 'x'; Object.keys(orig[i]).forEach(k => { const m = /^([A-P])(\d+)$/.exec(k); pl.viab[k] = orig[i][k] * fac(LET.indexOf(m[1]), +m[2] - 1); }); });
+    lmSetViab(true); toasts.length = 0;
+    o.hibitOn = lmViabOn(); o.hibitFit = fit();
+    // a plain run of the same readings on the Viability assay, with the division off, is what the Viability assay must give with it "on"
+    state.viabNorm = false; setAssay('ctg'); o.ref = fit(); state.viabNorm = true; toasts.length = 0;
+    setAssay('hibit'); o.noToastOnOther = toasts.length; setAssay('ctg');
+    o.toastOnCtg = toasts.filter(m => /Viability is the assay itself/.test(m)).length;
+    setAssay('ctg'); o.toastOnce = toasts.filter(m => /Viability is the assay itself/.test(m)).length;
+    o.ctgOn = lmViabOn(); o.ctgFit = fit(); o.kept = state.viabNorm;
+    renderResults(); o.segHidden = document.getElementById('rs-view').hidden;
+    state.activeSubtab = 'signal'; lmRenderRead(); o.strip = !!document.getElementById('lm-viab');
+    lsKit(); lsReadings(); o.setupHtml = lsK.pane('readings').innerHTML; o.missing = lmViabMissing().length;
+    // the plates with no viability at all are not "left out" on the Viability assay
+    state.plates.forEach(pl => { delete pl.viab; }); o.noViabFit = fit(); state.plates.forEach((pl, i) => { pl.viab = {}; Object.keys(orig[i]).forEach(k => { const m = /^([A-P])(\d+)$/.exec(k); pl.viab[k] = orig[i][k] * fac(LET.indexOf(m[1]), +m[2] - 1); }); });
+    o.sess = lmSession(); o.sessKept = o.sess.viabNorm === true;
+    let wb = null; const wf = XLSX.writeFile; XLSX.writeFile = w => { wb = w; }; fit(); exportXLSX(); XLSX.writeFile = wf; o.sheets = wb ? wb.SheetNames.join() : '';
+    // and back: HiBiT takes the division up again, exactly as before
+    setAssay('hibit'); o.backOn = lmViabOn(); o.backFit = fit(); renderResults(); o.segBack = !document.getElementById('rs-view').hidden;
+    lsReadings(); o.setupBack = /Relative to viability/.test(lsK.pane('readings').innerHTML);
+    window.toast = t0; state.viabNorm = false; state.viabView = 'rel'; setAssay('hibit'); switchTab('results');
+    return o;
+  });
+  check('L14c on HiBiT the division is in use', r.hibitOn === true && r.hibitFit.ok, r.hibitOn);
+  check('L14c on Viability the readings are not divided: exactly a plain Viability run, with the choice still on', r.ctgOn === false && r.kept === true && r.ctgFit.snap === r.ref.snap && r.ctgFit.snap !== r.hibitFit.snap, { on: r.ctgOn, kept: r.kept });
+  check('L14c on Viability there is no view choice in Results, no toggle on the readings strip and no Viability group in Setup', r.segHidden === true && r.strip === false && !/Relative to viability/.test(r.setupHtml), { seg: r.segHidden, strip: r.strip });
+  check('L14c a plate without viability is not left out on the Viability assay', r.missing === 0 && r.noViabFit.ok, { m: r.missing });
+  check('L14c choosing Viability says it once; choosing another assay says nothing', r.toastOnCtg === 1 && r.toastOnce === 1 && r.noToastOnOther === 0, [r.toastOnCtg, r.toastOnce, r.noToastOnOther]);
+  check('L14c the session keeps the choice, and the workbook has no view sheets on Viability', r.sessKept && r.sheets.indexOf('(') < 0 && /Results,Raw Data/.test(r.sheets), r.sheets);
+  check('L14c back on HiBiT the division, the view buttons and the Setup group are back, with the same curves', r.backOn === true && r.backFit.snap === r.hibitFit.snap && r.segBack && r.setupBack, { on: r.backOn, seg: r.segBack, setup: r.setupBack });
+} catch (e) { findings.push('✗ L14c the run stopped: ' + e.message.split('\n')[0]); }
 // _lmReadFmt is arithmetic and needs no file
 {
   const r = await ev(() => [[3237970, 5], [9100, 5], [76190, 5], [1274665, 4], [-2500000, 5], [0.00123, 5]].map(([v, f]) => _lmReadFmt(v, f).length <= Math.max(f, 3)));
