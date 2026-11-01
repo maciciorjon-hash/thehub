@@ -404,8 +404,8 @@ var ChartKitCore = (function(){
     var yTitleW = yt ? spec.yTitle.size * 1.5 : 0, xTitleH = xt ? spec.xTitle.size * 1.6 : 0;
 
     // y scale
-    var lo = Infinity, hi = -Infinity;
-    function take(v){ if (fin(v)) { lo = Math.min(lo, v); hi = Math.max(hi, v); } }
+    var lo = Infinity, hi = -Infinity, loPos = Infinity;
+    function take(v){ if (fin(v)) { lo = Math.min(lo, v); hi = Math.max(hi, v); if (v > 0) loPos = Math.min(loPos, v); } }
     vis.forEach(function(it){ it.pts.forEach(function(p){
       if (!p.st.n) return; take(p.st.mean); var e = errOf(p.st, spec.err.type); if (e) { take(e[0]); take(e[1]); }
       if (spec.pts.show || (kind === 'xy' && spec.xy.points)) p.kept.forEach(function(r){ take(r.v); });
@@ -416,19 +416,31 @@ var ChartKitCore = (function(){
     if (kind === 'bars' && lo > 0) lo = 0;
     var yMin = fin(spec.y.min) ? +spec.y.min : null, yMax = fin(spec.y.max) ? +spec.y.max : null, yTicks;
     if (yMin !== null && yMax !== null && yMin >= yMax) { yMin = null; yMax = null; }   // a range that is not one: the axis stays on auto
+    function yAxisFor(yMin, yMax){
+    var yTicks;
     if (spec.y.log) {
-      var l0 = Math.max(1e-12, yMin !== null ? yMin : lo * 0.8), l1 = yMax !== null ? yMax : hi * 1.25;
+      var l0 = Math.max(1e-12, yMin !== null ? yMin : (loPos < Infinity ? loPos : lo) * 0.8), l1 = yMax !== null ? yMax : Math.max(hi * 1.25, l0 * 10);   // a zero reading is not a decade to the floor of the axis
       yTicks = { step: 0, ticks: [], min: Math.pow(10, Math.floor(Math.log10(l0))), max: Math.pow(10, Math.ceil(Math.log10(l1))) };
       for (var q = Math.log10(yTicks.min); q <= Math.log10(yTicks.max) + 1e-9; q++) yTicks.ticks.push(Math.pow(10, q));
     } else {
       var pad = (hi - lo) * 0.04 || 1, a0 = yMin !== null ? yMin : (lo < 0 ? lo - pad : (kind === 'bars' ? 0 : lo - pad)), a1 = yMax !== null ? yMax : hi + pad;
       if (a1 <= a0) { if (yMax !== null && yMin === null) a0 = a1 - Math.max(hi - lo, 1); else a1 = a0 + Math.max(hi - lo, 1); }   // one bound set past the data: the other follows it
       var tk = linTicks(a0, a1, +spec.y.major || 0, 6);
-      if (yMin === null) a0 = Math.min(a0, tk.ticks.length ? tk.ticks[0] : a0); if (yMax === null) a1 = Math.max(a1, tk.ticks.length ? tk.ticks[tk.ticks.length - 1] : a1);
-      if (yMax === null && tk.ticks.length && a1 > tk.ticks[tk.ticks.length - 1] + tk.step * 0.02) a1 = tk.ticks[tk.ticks.length - 1] + (a1 > tk.ticks[tk.ticks.length - 1] + tk.step * 0.5 ? tk.step : 0);
+      // An end left on auto is a tick at or beyond the data (and its padding): rounded outwards, never in, so no point, bar or error bar is cut off.
+      if (tk.ticks.length) {
+        var t0 = tk.ticks[0], t1 = tk.ticks[tk.ticks.length - 1], eps = tk.step * 0.02;
+        if (yMin === null) a0 = t0 - a0 > eps ? t0 - tk.step : t0;
+        if (yMax === null) a1 = a1 - t1 > eps ? t1 + tk.step : t1;
+      }
       tk = linTicks(a0, a1, +spec.y.major || tk.step, 6);
       yTicks = { step: tk.step, ticks: tk.ticks, min: a0, max: a1 };
     }
+    return yTicks;
+    }
+    yTicks = yAxisFor(yMin, yMax);
+    // a range typed by hand that leaves data outside it: what auto would have shown is offered beside the warning
+    var yAuto = null, yCut = false;
+    if (fin(lo) && (yMin !== null || yMax !== null)) { var tol = 1e-9 * Math.max(Math.abs(lo), Math.abs(hi), 1); yCut = hi > yTicks.max + tol || (spec.y.log ? loPos < yTicks.min : lo < yTicks.min - tol); if (yCut) { yAuto = yAxisFor(null, null); yAuto = { min: yAuto.min, max: yAuto.max }; } }
     var yDec = spec.y.dec !== null && spec.y.dec !== undefined && spec.y.dec !== '' ? +spec.y.dec : decimalsOf(yTicks.step);
     var yLabels = spec.y.log ? decadeLabels(yTicks.ticks.map(function(v){ return Math.round(Math.log10(v)); })) : yTicks.ticks.map(function(v){ return fmt(v, yDec); });
     var yLabW = Math.max.apply(null, yLabels.map(function(l){ return measure(l, spec.y.size, false, false, F); }).concat([0]));
@@ -551,7 +563,7 @@ var ChartKitCore = (function(){
     if (fin(refY) && refY >= yTicks.min && refY <= yTicks.max) {
       prims.push({ t: 'line', el: 'ref', x1: plot.x, y1: yPx(refY), x2: plot.x + plot.w, y2: yPx(refY), stroke: '#000000', sw: spec.ref.w, dash: spec.ref.dash ? '1.5 3' : '' });
     }
-    data.forEach(function(d){ prims.push(d); });
+    data.forEach(function(d){ if (d.t === 'circle' || d.t === 'marker' || d.t === 'rect' || d.t === 'path') d.clip = true; prims.push(d); });   // nothing is drawn past the plot: a point beyond a typed axis ends at its edge, not over the labels
 
     // axes
     var ax = spec.axisW;
@@ -602,7 +614,7 @@ var ChartKitCore = (function(){
       var TB = tableBlock(vis, doc.table, spec, kind, W, H, F);
       if (TB) { TB.prims.forEach(function(p){ prims.push(p); }); tableH = TB.h; }
     }
-    return { W: W, H: H + tableH, figH: H, prims: prims, plot: plot, kind: kind, font: F, clip: { x: plot.x, y: plot.y - 2, w: plot.w, h: plot.h + 4 }, items: items, yTicks: yTicks, titles: titles.length, grew: grew };
+    return { W: W, H: H + tableH, figH: H, prims: prims, plot: plot, kind: kind, font: F, clip: { x: plot.x - 8, y: plot.y - 3, w: plot.w + 16, h: plot.h + 6 }, items: items, yTicks: yTicks, yData: fin(lo) ? { lo: lo, hi: hi } : null, yCut: yCut, yAuto: yAuto, titles: titles.length, grew: grew };
   }
   function autoKind(doc, spec){
     var vis = (doc.items || []).filter(function(i){ return !spec.hidden[i.id]; });

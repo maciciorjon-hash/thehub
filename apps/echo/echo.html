@@ -17017,8 +17017,8 @@ var ChartKitCore = (function(){
     var yTitleW = yt ? spec.yTitle.size * 1.5 : 0, xTitleH = xt ? spec.xTitle.size * 1.6 : 0;
 
     // y scale
-    var lo = Infinity, hi = -Infinity;
-    function take(v){ if (fin(v)) { lo = Math.min(lo, v); hi = Math.max(hi, v); } }
+    var lo = Infinity, hi = -Infinity, loPos = Infinity;
+    function take(v){ if (fin(v)) { lo = Math.min(lo, v); hi = Math.max(hi, v); if (v > 0) loPos = Math.min(loPos, v); } }
     vis.forEach(function(it){ it.pts.forEach(function(p){
       if (!p.st.n) return; take(p.st.mean); var e = errOf(p.st, spec.err.type); if (e) { take(e[0]); take(e[1]); }
       if (spec.pts.show || (kind === 'xy' && spec.xy.points)) p.kept.forEach(function(r){ take(r.v); });
@@ -17029,19 +17029,31 @@ var ChartKitCore = (function(){
     if (kind === 'bars' && lo > 0) lo = 0;
     var yMin = fin(spec.y.min) ? +spec.y.min : null, yMax = fin(spec.y.max) ? +spec.y.max : null, yTicks;
     if (yMin !== null && yMax !== null && yMin >= yMax) { yMin = null; yMax = null; }   // a range that is not one: the axis stays on auto
+    function yAxisFor(yMin, yMax){
+    var yTicks;
     if (spec.y.log) {
-      var l0 = Math.max(1e-12, yMin !== null ? yMin : lo * 0.8), l1 = yMax !== null ? yMax : hi * 1.25;
+      var l0 = Math.max(1e-12, yMin !== null ? yMin : (loPos < Infinity ? loPos : lo) * 0.8), l1 = yMax !== null ? yMax : Math.max(hi * 1.25, l0 * 10);   // a zero reading is not a decade to the floor of the axis
       yTicks = { step: 0, ticks: [], min: Math.pow(10, Math.floor(Math.log10(l0))), max: Math.pow(10, Math.ceil(Math.log10(l1))) };
       for (var q = Math.log10(yTicks.min); q <= Math.log10(yTicks.max) + 1e-9; q++) yTicks.ticks.push(Math.pow(10, q));
     } else {
       var pad = (hi - lo) * 0.04 || 1, a0 = yMin !== null ? yMin : (lo < 0 ? lo - pad : (kind === 'bars' ? 0 : lo - pad)), a1 = yMax !== null ? yMax : hi + pad;
       if (a1 <= a0) { if (yMax !== null && yMin === null) a0 = a1 - Math.max(hi - lo, 1); else a1 = a0 + Math.max(hi - lo, 1); }   // one bound set past the data: the other follows it
       var tk = linTicks(a0, a1, +spec.y.major || 0, 6);
-      if (yMin === null) a0 = Math.min(a0, tk.ticks.length ? tk.ticks[0] : a0); if (yMax === null) a1 = Math.max(a1, tk.ticks.length ? tk.ticks[tk.ticks.length - 1] : a1);
-      if (yMax === null && tk.ticks.length && a1 > tk.ticks[tk.ticks.length - 1] + tk.step * 0.02) a1 = tk.ticks[tk.ticks.length - 1] + (a1 > tk.ticks[tk.ticks.length - 1] + tk.step * 0.5 ? tk.step : 0);
+      // An end left on auto is a tick at or beyond the data (and its padding): rounded outwards, never in, so no point, bar or error bar is cut off.
+      if (tk.ticks.length) {
+        var t0 = tk.ticks[0], t1 = tk.ticks[tk.ticks.length - 1], eps = tk.step * 0.02;
+        if (yMin === null) a0 = t0 - a0 > eps ? t0 - tk.step : t0;
+        if (yMax === null) a1 = a1 - t1 > eps ? t1 + tk.step : t1;
+      }
       tk = linTicks(a0, a1, +spec.y.major || tk.step, 6);
       yTicks = { step: tk.step, ticks: tk.ticks, min: a0, max: a1 };
     }
+    return yTicks;
+    }
+    yTicks = yAxisFor(yMin, yMax);
+    // a range typed by hand that leaves data outside it: what auto would have shown is offered beside the warning
+    var yAuto = null, yCut = false;
+    if (fin(lo) && (yMin !== null || yMax !== null)) { var tol = 1e-9 * Math.max(Math.abs(lo), Math.abs(hi), 1); yCut = hi > yTicks.max + tol || (spec.y.log ? loPos < yTicks.min : lo < yTicks.min - tol); if (yCut) { yAuto = yAxisFor(null, null); yAuto = { min: yAuto.min, max: yAuto.max }; } }
     var yDec = spec.y.dec !== null && spec.y.dec !== undefined && spec.y.dec !== '' ? +spec.y.dec : decimalsOf(yTicks.step);
     var yLabels = spec.y.log ? decadeLabels(yTicks.ticks.map(function(v){ return Math.round(Math.log10(v)); })) : yTicks.ticks.map(function(v){ return fmt(v, yDec); });
     var yLabW = Math.max.apply(null, yLabels.map(function(l){ return measure(l, spec.y.size, false, false, F); }).concat([0]));
@@ -17164,7 +17176,7 @@ var ChartKitCore = (function(){
     if (fin(refY) && refY >= yTicks.min && refY <= yTicks.max) {
       prims.push({ t: 'line', el: 'ref', x1: plot.x, y1: yPx(refY), x2: plot.x + plot.w, y2: yPx(refY), stroke: '#000000', sw: spec.ref.w, dash: spec.ref.dash ? '1.5 3' : '' });
     }
-    data.forEach(function(d){ prims.push(d); });
+    data.forEach(function(d){ if (d.t === 'circle' || d.t === 'marker' || d.t === 'rect' || d.t === 'path') d.clip = true; prims.push(d); });   // nothing is drawn past the plot: a point beyond a typed axis ends at its edge, not over the labels
 
     // axes
     var ax = spec.axisW;
@@ -17215,7 +17227,7 @@ var ChartKitCore = (function(){
       var TB = tableBlock(vis, doc.table, spec, kind, W, H, F);
       if (TB) { TB.prims.forEach(function(p){ prims.push(p); }); tableH = TB.h; }
     }
-    return { W: W, H: H + tableH, figH: H, prims: prims, plot: plot, kind: kind, font: F, clip: { x: plot.x, y: plot.y - 2, w: plot.w, h: plot.h + 4 }, items: items, yTicks: yTicks, titles: titles.length, grew: grew };
+    return { W: W, H: H + tableH, figH: H, prims: prims, plot: plot, kind: kind, font: F, clip: { x: plot.x - 8, y: plot.y - 3, w: plot.w + 16, h: plot.h + 6 }, items: items, yTicks: yTicks, yData: fin(lo) ? { lo: lo, hi: hi } : null, yCut: yCut, yAuto: yAuto, titles: titles.length, grew: grew };
   }
   function autoKind(doc, spec){
     var vis = (doc.items || []).filter(function(i){ return !spec.hidden[i.id]; });
@@ -17248,8 +17260,8 @@ var ChartKitExport = (function(){
     if (p.t === 'line') return '<line' + el + a + ' x1="' + n(p.x1) + '" y1="' + n(p.y1) + '" x2="' + n(p.x2) + '" y2="' + n(p.y2) + '"' + st() + '/>';
     if (p.t === 'path') { if (!p.pts.length) return ''; var d = p.pts.map(function(q, i){ return (i ? 'L' : 'M') + n(q[0]) + ' ' + n(q[1]); }).join(''); return '<path' + el + a + ' d="' + d + '" fill="none"' + st() + (p.clip ? ' clip-path="url(#ckclip)"' : '') + '/>'; }
     if (p.t === 'rect') return '<rect' + el + a + ' x="' + n(p.x) + '" y="' + n(p.y) + '" width="' + n(p.w) + '" height="' + n(p.h) + '" fill="' + (p.fill || 'none') + '"' + st() + '/>';
-    if (p.t === 'circle') return '<circle' + el + a + ' cx="' + n(p.cx) + '" cy="' + n(p.cy) + '" r="' + n(p.r) + '" fill="' + (p.fill || 'none') + '"' + st() + '/>';
-    if (p.t === 'marker') { var mp = markerPath(p.type, p.cx, p.cy, p.r); return mp ? '<path' + el + a + ' d="' + mp + '" fill="' + (p.fill || 'none') + '"' + st() + '/>' : '<circle' + el + a + ' cx="' + n(p.cx) + '" cy="' + n(p.cy) + '" r="' + n(p.r) + '" fill="' + (p.fill || 'none') + '"' + st() + '/>'; }
+    if (p.t === 'circle') return '<circle' + el + a + ' cx="' + n(p.cx) + '" cy="' + n(p.cy) + '" r="' + n(p.r) + '" fill="' + (p.fill || 'none') + '"' + st() + (p.clip ? ' clip-path="url(#ckclip)"' : '') + '/>';
+    if (p.t === 'marker') { var mp = markerPath(p.type, p.cx, p.cy, p.r); return mp ? '<path' + el + a + ' d="' + mp + '" fill="' + (p.fill || 'none') + '"' + st() + (p.clip ? ' clip-path="url(#ckclip)"' : '') + '/>' : '<circle' + el + a + ' cx="' + n(p.cx) + '" cy="' + n(p.cy) + '" r="' + n(p.r) + '" fill="' + (p.fill || 'none') + '"' + st() + (p.clip ? ' clip-path="url(#ckclip)"' : '') + '/>'; }
     if (p.t === 'text') {
       var tf = (p.rot ? ' transform="rotate(' + n(p.rot) + ' ' + n(p.x) + ' ' + n(p.y) + ')"' : '');
       return '<text' + el + a + ' x="' + n(p.x) + '" y="' + n(p.y) + '"' + tf + ' font-family="' + esc(p.font || 'Arial') + ', Helvetica, sans-serif" font-size="' + n(p.size) + '"' + (p.bold ? ' font-weight="bold"' : '') + (p.italic ? ' font-style="italic"' : '') + ' text-anchor="' + p.anchor + '" fill="' + (p.fill || '#000') + '">' + textSpans(p) + '</text>';
@@ -17335,6 +17347,8 @@ var ChartKitExport = (function(){
       return 'q ' + o + ' Q';
     }
     function draw(p){
+      // a shape clipped to the plot (a point or bar past the end of a typed axis) is drawn inside the plot's rectangle
+      if (p.clip && (p.t === 'rect' || p.t === 'circle' || p.t === 'marker')) { ops.push('q ' + n(scene.clip.x) + ' ' + Y(scene.clip.y + scene.clip.h) + ' ' + n(scene.clip.w) + ' ' + n(scene.clip.h) + ' re W n'); draw(Object.assign({}, p, { clip: false })); ops.push('Q'); return; }
       if (p.t === 'line') ops.push(paint(p, n(p.x1) + ' ' + Y(p.y1) + ' m ' + n(p.x2) + ' ' + Y(p.y2) + ' l'));
       else if (p.t === 'path') { if (p.pts.length < 2) return; var d = p.pts.map(function(q, i){ return n(q[0]) + ' ' + Y(q[1]) + (i ? ' l' : ' m'); }).join(' '); ops.push((p.clip ? 'q ' + n(scene.clip.x) + ' ' + Y(scene.clip.y + scene.clip.h) + ' ' + n(scene.clip.w) + ' ' + n(scene.clip.h) + ' re W n ' : '') + paint({ stroke: p.stroke, sw: p.sw, dash: p.dash, cap: p.cap }, d) + (p.clip ? ' Q' : '')); }
       else if (p.t === 'rect') ops.push(paint(p, n(p.x) + ' ' + Y(p.y + p.h) + ' ' + n(p.w) + ' ' + n(p.h) + ' re'));
@@ -17484,8 +17498,17 @@ var ChartKit = (function(){
       var f = Math.min(aw / scene.W, ah / scene.H);
       svg.style.width = Math.floor(scene.W * f) + 'px'; svg.style.height = Math.floor(scene.H * f) + 'px';
     }
+    // a range typed by hand that leaves data outside the figure: say so, with the range auto would draw (kept up to date as the numbers are typed)
+    function yCutNote(){
+      if (!scene || !scene.yCut || !scene.yAuto || !scene.yData) return '';
+      var n = function(v){ return String(+(+v).toPrecision(4)); };
+      return '<div class="ck-warn">Some of the data lie outside this range (they run from ' + n(scene.yData.lo) + ' to ' + n(scene.yData.hi) + '). On auto the axis would be ' + n(scene.yAuto.min) + ' to ' + n(scene.yAuto.max) + '.</div><div class="ck-row"><button type="button" class="ck-btn" data-a="yauto">Use auto</button></div>';
+    }
+    var ynoteHtml = '';
+    function yNote(){ var el = panel.querySelector('#ck-ynote'); if (!el || !scene) return; var h = yCutNote(); if (ynoteHtml !== h) { el.innerHTML = h; ynoteHtml = h; } }   // left alone when unchanged: a button under the pointer is not replaced between its press and release
     function draw(){
       scene = C.build(doc, spec);
+      yNote();
       var s = X.toSVG(scene, { transparent: true });
       var inner = s.slice(s.indexOf('>') + 1, s.lastIndexOf('</svg>'));
       svg.setAttribute('viewBox', '0 0 ' + scene.W.toFixed(2) + ' ' + scene.H.toFixed(2));
@@ -17586,7 +17609,7 @@ var ChartKit = (function(){
       var kind = scene ? scene.kind : 'bars', its = doc.items || [], nOn = its.filter(function(it){ return !spec.hidden[it.id]; }).length;
       if (id === 'compounds') return its.length ? nOn + ' of ' + its.length + ' drawn' : 'none yet';
       if (id === 'chart') return (kind === 'bars' ? 'Bars' : 'Curves') + ' · ' + ({ sd: 'SD', sem: 'SEM', ci95: '95% CI', range: 'range', none: 'no bars' }[spec.err.type] || 'SD');
-      if (id === 'axes') { var rg = function(a){ return a.min !== null && a.min !== '' && a.max !== null && a.max !== '' ? a.min + '–' + a.max : 'auto'; }; var uo = C.xUnitOf(doc, spec); return kind === 'xy' && uo.to ? uo.to + ' · ' + (spec.y.log ? 'log ' : '') + 'Y ' + rg(spec.y) : 'Y ' + (spec.y.log ? 'log ' : '') + rg(spec.y); }
+      if (id === 'axes') { var rg = function(a){ var s = function(v){ return v !== null && v !== '' && v !== undefined; }; return s(a.min) || s(a.max) ? (s(a.min) ? a.min : 'auto') + '–' + (s(a.max) ? a.max : 'auto') : 'auto'; }; var uo = C.xUnitOf(doc, spec); return kind === 'xy' && uo.to ? uo.to + ' · ' + (spec.y.log ? 'log ' : '') + 'Y ' + rg(spec.y) : 'Y ' + (spec.y.log ? 'log ' : '') + rg(spec.y); }
       if (id === 'text') return 'legend ' + (spec.legend.show ? (spec.legend.pos === 'auto' ? 'auto' : spec.legend.pos) : 'off');
       if (id === 'table') { if (!spec.table.show) return 'off'; var n = doc.table.cols.filter(function(c){ return spec.table.cols[c.id] === undefined ? c.on : !!spec.table.cols[c.id]; }).length; return 'on · ' + n + ' value' + (n === 1 ? '' : 's'); }
       if (id === 'page') return +spec.w.toFixed(1) + ' × ' + +spec.h.toFixed(1) + ' in';
@@ -17666,7 +17689,7 @@ var ChartKit = (function(){
     }
     function axesHtml(kind){
       var yBad = C.fin(+spec.y.min) && C.fin(+spec.y.max) && spec.y.min !== null && spec.y.max !== null && +spec.y.min >= +spec.y.max;
-      return grp('Y axis', pair(pf('Minimum', 'y.min', { auto: 1 }), pf('Maximum', 'y.max', { auto: 1 })) + pair(pf('Major step', 'y.major', { auto: 1 }), pf('Decimals', 'y.dec', { auto: 1, step: 1 })) + (yBad ? '<div class="ck-warn">The maximum has to be above the minimum — the axis is on auto until it is.</div>' : '') + fld('Logarithmic', 'y.log', 'bool')) +
+      return grp('Y axis', pair(pf('Minimum', 'y.min', { auto: 1 }), pf('Maximum', 'y.max', { auto: 1 })) + pair(pf('Major step', 'y.major', { auto: 1 }), pf('Decimals', 'y.dec', { auto: 1, step: 1 })) + (yBad ? '<div class="ck-warn">The maximum has to be above the minimum — the axis is on auto until it is.</div>' : '') + '<div id="ck-ynote">' + (ynoteHtml = yCutNote()) + '</div>' + fld('Logarithmic', 'y.log', 'bool')) +
         grp('X axis', (doc.xUnit ? fld('Concentration unit', 'x.unit', 'sel', { seg: true, opts: [['auto', 'Auto'], ['M', 'M'], ['mM', 'mM'], ['\u00b5M', '\u00b5M'], ['nM', 'nM'], ['pM', 'pM']], hint: spec.x.unit === 'auto' ? 'Auto keeps ' + doc.xUnit + ', chosen from your data' : 'the numbers on the axis, the curves and the title follow' }) : '') + (kind === 'xy' && doc.xScale !== 'lin' ? fld('Numbers on the axis', 'x.fmt', 'sel', { seg: true, opts: [['auto', 'Auto'], ['plain', 'Numbers'], ['pow', 'Powers'], ['log', 'log']], hint: spec.x.fmt === 'log' ? 'log of the molar concentration, as Prism writes it' : 'Numbers 0.1, 1, 10 · Powers 10\u207b\u2079' }) : '') + (kind === 'bars' ? fld('Label angle', 'x.rot', 'sel', { seg: true, num: 1, opts: [[0, 'Flat'], [45, '45°'], [90, 'Vertical']] }) + fld('Order', 'x.order', 'sel', { seg: true, opts: [['given', 'As given'], ['desc', 'High → low'], ['asc', 'Low → high']] }) + fld('Concentration labels', 'x.labels', 'bool') : pair(pf('Minimum', 'x.min', { auto: 1 }), pf('Maximum', 'x.max', { auto: 1 })))) +
         grp('Lines', fld('Axis width', 'axisW', 'num', { step: 0.25, min: 0.25, max: 5 }) + fld('Tick length', 'tick', 'num', { step: 0.5, min: 0, max: 12 }) + fld('Box around the plot', 'box', 'bool') + fld('Horizontal grid', 'grid', 'bool')) +
         grp('Reference line', fld('Show', 'ref.show', 'bool') + pair(pf('At', 'ref.y', { auto: 1 }), pf('Width', 'ref.w', { step: 0.25, min: 0.25, max: 5 })) + fld('Dotted', 'ref.dash', 'bool'));
@@ -17763,7 +17786,11 @@ var ChartKit = (function(){
       else if (t.dataset.a === 'snap') { pushUndo('snap'); spec.snap = t.checked; save(); }
       else if (t.dataset.hex) { var hx = String(t.value).trim(); if (hx.charAt(0) !== '#') hx = '#' + hx; if (/^#[0-9a-f]{6}$/i.test(hx)) { pushUndo('col:' + t.dataset.hex); spec.colors[t.dataset.hex] = hx.toLowerCase(); draw(); save(); } renderSel(); renderPanel(); }
       else if (t.dataset.item) { renderSel(); renderPanel(); }
-      else if (t.dataset.p) renderPanel();
+      else if (t.dataset.p) {
+        // The panel is laid out again only when the field has to show something other than what was typed (a number held to its range): a button pressed right after typing is not replaced between its press and release
+        var cv = get(spec, t.dataset.p), num = t.dataset.t === 'num' || t.dataset.t === 'numauto';
+        if (!num || (cv === null || cv === undefined ? t.value !== '' : +t.value !== +cv)) renderPanel();
+      }
     });
     root.addEventListener('click', function(e){
       var t = e.target.closest('button, .ck-swb'); if (!t || !root.contains(t)) return;
@@ -17796,6 +17823,7 @@ var ChartKit = (function(){
       else if (a === 'hideleg') { pushUndo('leg'); spec.legend.show = false; sel = null; draw(); renderSel(); renderPanel(); save(); }
       else if (a === 'resetpos') { if (sel) { pushUndo('pos'); delete spec.pos[sel.indexOf('leg:') === 0 ? 'legend' : sel]; draw(); overlay(); save(); } }
       else if (a === 'restoreomit') { pushUndo('omit'); spec.omit = {}; draw(); renderPanel(); save(); }
+      else if (a === 'yauto') { pushUndo('yauto'); spec.y.min = null; spec.y.max = null; draw(); renderPanel(); save(); }
       else if (a === 'resetlayout') { pushUndo('layout'); spec.pos = {}; spec.margin = { l: 0, r: 0, t: 0, b: 0 }; draw(); renderPanel(); save(); }
       else if (a === 'resetall') { pushUndo('all'); spec = C.withDefaults(null); adoptItems(); sel = null; syncBar(); draw(); renderSel(); renderPanel(); save(); }
     });

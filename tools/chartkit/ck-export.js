@@ -20,8 +20,8 @@ var ChartKitExport = (function(){
     if (p.t === 'line') return '<line' + el + a + ' x1="' + n(p.x1) + '" y1="' + n(p.y1) + '" x2="' + n(p.x2) + '" y2="' + n(p.y2) + '"' + st() + '/>';
     if (p.t === 'path') { if (!p.pts.length) return ''; var d = p.pts.map(function(q, i){ return (i ? 'L' : 'M') + n(q[0]) + ' ' + n(q[1]); }).join(''); return '<path' + el + a + ' d="' + d + '" fill="none"' + st() + (p.clip ? ' clip-path="url(#ckclip)"' : '') + '/>'; }
     if (p.t === 'rect') return '<rect' + el + a + ' x="' + n(p.x) + '" y="' + n(p.y) + '" width="' + n(p.w) + '" height="' + n(p.h) + '" fill="' + (p.fill || 'none') + '"' + st() + '/>';
-    if (p.t === 'circle') return '<circle' + el + a + ' cx="' + n(p.cx) + '" cy="' + n(p.cy) + '" r="' + n(p.r) + '" fill="' + (p.fill || 'none') + '"' + st() + '/>';
-    if (p.t === 'marker') { var mp = markerPath(p.type, p.cx, p.cy, p.r); return mp ? '<path' + el + a + ' d="' + mp + '" fill="' + (p.fill || 'none') + '"' + st() + '/>' : '<circle' + el + a + ' cx="' + n(p.cx) + '" cy="' + n(p.cy) + '" r="' + n(p.r) + '" fill="' + (p.fill || 'none') + '"' + st() + '/>'; }
+    if (p.t === 'circle') return '<circle' + el + a + ' cx="' + n(p.cx) + '" cy="' + n(p.cy) + '" r="' + n(p.r) + '" fill="' + (p.fill || 'none') + '"' + st() + (p.clip ? ' clip-path="url(#ckclip)"' : '') + '/>';
+    if (p.t === 'marker') { var mp = markerPath(p.type, p.cx, p.cy, p.r); return mp ? '<path' + el + a + ' d="' + mp + '" fill="' + (p.fill || 'none') + '"' + st() + (p.clip ? ' clip-path="url(#ckclip)"' : '') + '/>' : '<circle' + el + a + ' cx="' + n(p.cx) + '" cy="' + n(p.cy) + '" r="' + n(p.r) + '" fill="' + (p.fill || 'none') + '"' + st() + (p.clip ? ' clip-path="url(#ckclip)"' : '') + '/>'; }
     if (p.t === 'text') {
       var tf = (p.rot ? ' transform="rotate(' + n(p.rot) + ' ' + n(p.x) + ' ' + n(p.y) + ')"' : '');
       return '<text' + el + a + ' x="' + n(p.x) + '" y="' + n(p.y) + '"' + tf + ' font-family="' + esc(p.font || 'Arial') + ', Helvetica, sans-serif" font-size="' + n(p.size) + '"' + (p.bold ? ' font-weight="bold"' : '') + (p.italic ? ' font-style="italic"' : '') + ' text-anchor="' + p.anchor + '" fill="' + (p.fill || '#000') + '">' + textSpans(p) + '</text>';
@@ -107,6 +107,8 @@ var ChartKitExport = (function(){
       return 'q ' + o + ' Q';
     }
     function draw(p){
+      // a shape clipped to the plot (a point or bar past the end of a typed axis) is drawn inside the plot's rectangle
+      if (p.clip && (p.t === 'rect' || p.t === 'circle' || p.t === 'marker')) { ops.push('q ' + n(scene.clip.x) + ' ' + Y(scene.clip.y + scene.clip.h) + ' ' + n(scene.clip.w) + ' ' + n(scene.clip.h) + ' re W n'); draw(Object.assign({}, p, { clip: false })); ops.push('Q'); return; }
       if (p.t === 'line') ops.push(paint(p, n(p.x1) + ' ' + Y(p.y1) + ' m ' + n(p.x2) + ' ' + Y(p.y2) + ' l'));
       else if (p.t === 'path') { if (p.pts.length < 2) return; var d = p.pts.map(function(q, i){ return n(q[0]) + ' ' + Y(q[1]) + (i ? ' l' : ' m'); }).join(' '); ops.push((p.clip ? 'q ' + n(scene.clip.x) + ' ' + Y(scene.clip.y + scene.clip.h) + ' ' + n(scene.clip.w) + ' ' + n(scene.clip.h) + ' re W n ' : '') + paint({ stroke: p.stroke, sw: p.sw, dash: p.dash, cap: p.cap }, d) + (p.clip ? ' Q' : '')); }
       else if (p.t === 'rect') ops.push(paint(p, n(p.x) + ' ' + Y(p.y + p.h) + ' ' + n(p.w) + ' ' + n(p.h) + ' re'));

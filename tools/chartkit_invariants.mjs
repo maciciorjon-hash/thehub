@@ -57,6 +57,8 @@
 //                          section open, at 1440, 1280, 900 and 390 px wide, in both themes.
 //
 //   node tools/chartkit_invariants.mjs        exit 1 on any finding
+//   K30 auto keeps data      A Y axis left on auto holds every mean, error bar and shown replicate, whatever the range of the values (0.5 ± 0.001, 12 000, negatives, log): its ends are round ticks
+//                         at or beyond the data, never inside them (it once stopped on a tick a little below the highest bar).
 //   K29 switching entries   Going from one entry of the menu to another never leaves the old one behind (no picture of it stays over the new one, however fast the clicks), starts the new one at
 //                         its top, and costs the same width whichever entry scrolls (the scrollbar's room is kept); the docked column lays out as a plain flow, not as columns.
 import { chromium } from 'playwright';
@@ -353,6 +355,34 @@ check('K18 default markers (r ≤ 3.2 pt), lines (≤ 1.6 pt), error caps (≤ 3
 await open('xy');
 const k14 = await ev(() => { const C = ChartKitCore, out = {}; [[-4, 2], [-6, 1], [-2, 2], [0, 3], [-8, -4]].forEach(r => { const e = []; for (let x = r[0]; x <= r[1]; x++) e.push(x); out[r.join('..')] = C.decadeLabels(e); }); return out; });
 check('K14 a run of decades is all powers of ten or all plain numbers', Object.values(k14).every(l => l.every(x => /^10\^/.test(x)) || l.every(x => !/^10\^/.test(x))), JSON.stringify(k14));
+
+// K30 — the Y axis on auto never leaves data outside it (the editor's own core, a few thousand random figures of every size of number)
+await open('xy');
+const k30 = await ev(() => { const C = ChartKitCore; let s = 7; const R = () => (s = (s * 1664525 + 1013904223) % 4294967296) / 4294967296, bad = [];
+  for (let t = 0; t < 1500; t++) { const kind = t % 2 ? 'bars' : 'xy', base = [0, 0.5, 1, 10, 100, 1000, -50][t % 7], scale = [0.001, 0.1, 1, 7, 100, 12345][Math.floor(R() * 6)], lg = t % 5 === 0 && base > 0;
+    const mk = i => ({ id: 'c' + i, name: 'n' + i, points: [1, 3, 10, 30, 100].map((c, j) => ({ x: c, label: '' + c, reps: [0, 1, 2].map(r => ({ id: 'c' + i + ':' + j + ':' + r, v: base + R() * scale })) })) });
+    const spec = C.withDefaults({ kind, hidden: {}, pts: { show: R() < 0.5 }, y: { log: lg } }), sc = C.build({ kind, items: [mk(0), mk(1)], xScale: 'log' }, spec);
+    let lo = Infinity, hi = -Infinity; sc.items.forEach(it => it.pts.forEach(p => { if (!p.st.n) return; const v = [p.st.mean]; if (p.st.n > 1) v.push(p.st.mean - p.st.sd, p.st.mean + p.st.sd); if (spec.pts.show) p.kept.forEach(r => v.push(r.v)); v.forEach(x => { lo = Math.min(lo, x); hi = Math.max(hi, x); }); }));
+    if (lg) lo = Math.max(lo, sc.yTicks.min);
+    const yt = sc.yTicks; if (hi > yt.max * (1 + 1e-9) || lo < yt.min - 1e-9 * Math.abs(yt.min)) bad.push([kind, lg, +lo.toPrecision(5), +hi.toPrecision(5), yt.min, yt.max].join(' ')); }
+  return bad.slice(0, 5); });
+check('K30 a Y axis on auto holds all the data, whatever the numbers (means, error bars, replicates; linear and log)', k30.length === 0, JSON.stringify(k30));
+
+// K30b — a range typed by hand that cuts the data says so and offers the range auto would draw (which holds the data); on auto there is nothing to say
+const k30b = await ev(() => { const C = ChartKitCore, mk = i => ({ id: 'c' + i, name: 'n' + i, points: [1, 3, 10, 30, 100].map((c, j) => ({ x: c, label: '' + c, reps: [0, 1, 2].map(r => ({ id: 'c' + i + ':' + j + ':' + r, v: 20 + 10 * j + r })) })) }), doc = { kind: 'xy', items: [mk(0)], xScale: 'log' };
+  const cut = C.build(doc, C.withDefaults({ kind: 'xy', y: { min: 0, max: 40 } })), fine = C.build(doc, C.withDefaults({ kind: 'xy', y: { min: 0, max: 100 } })), auto = C.build(doc, C.withDefaults({ kind: 'xy' }));
+  return { cut: cut.yCut, data: cut.yData, sug: cut.yAuto, fine: fine.yCut, auto: auto.yCut, autoNone: auto.yAuto }; });
+check('K30 a typed range that cuts the data is flagged with the range auto would draw (holding the data); one that holds it, or auto, is not', k30b.cut && k30b.sug && k30b.sug.min <= k30b.data.lo && k30b.sug.max >= k30b.data.hi && !k30b.fine && !k30b.auto && !k30b.autoNone, JSON.stringify(k30b));
+
+// K30c — nothing is drawn past the plot: with a typed range that cuts the data, every point and bar is clipped to the plot (screen, SVG and PDF), and "Use auto" works on the first click after typing
+await open('xy');
+const k30c = await ev(() => { const kit = window.kit; kit.open('axes'); return true; });
+await page.locator('input[data-p="y.min"]').fill('0.3'); await page.waitForTimeout(300);
+const k30d = await ev(() => { const sc = window.kit.scene ? window.kit.scene() : null, svg = document.querySelector('.ck-svg, svg.ck-fig, .ck-stage svg') || document.querySelector('svg'); const circles = svg ? [...svg.querySelectorAll('circle[clip-path], path[clip-path]')].length : -1;
+  return { warn: !!document.querySelector('#ck-ynote .ck-warn'), clipped: circles }; });
+await page.click('button[data-a="yauto"]'); await page.waitForTimeout(300);
+const k30e = await ev(() => ({ min: window.kit.spec().y.min, warn: !!document.querySelector('#ck-ynote .ck-warn') }));
+check('K30 a point or bar past the end of a typed axis is clipped to the plot, a warning offers auto, and its button works on the first click after typing', k30c && k30d.warn && k30d.clipped > 5 && k30e.min === null && !k30e.warn, JSON.stringify([k30d, k30e]));
 
 // K29 — the unit of the concentration axis: M, mM, µM, nM or pM. Everything on the figure is the same physical figure in another unit
 await open('xy');
