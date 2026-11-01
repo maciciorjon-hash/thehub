@@ -458,46 +458,59 @@ try {
   check('L14 option off: a fluorescence-only file is an ordinary reading (no viability)', r.flOff === '96/0', r.flOff);
   check('L14 a double read keeps its fluorescence with the plate whether or not the option is on', r.dbl.sig === 1000 * 0.6 && r.dbl.via === 20000 * 0.6 && r.dbl.nVia === 96, r.dbl);
 } catch (e) { findings.push('✗ L14 the run stopped: ' + e.message.split('\n')[0]); }
-// L14b — the three views of a double read: signal, viability on its own, signal relative to viability.
+// L14b — a double read has three views, chosen in Results (Setup only says yes or no): luminescence, viability, relative to viability.
 try {
   const r = await ev(async () => {
-    const LET = 'ABCDEFGHIJKLMNOP', fac = (ri, ci) => 0.6 + ((ri * 7 + ci * 3) % 11) / 10, posOf = (ri, ci) => LET[ri] + (ci + 1);
+    const LET = 'ABCDEFGHIJKLMNOP', fac = (ri, ci) => 0.6 + ((ri * 7 + ci * 3) % 11) / 10;
     const q3 = v => Number(v).toPrecision(3);
     const fit = () => { state.fitSig = null; const ok = runLuminaAnalysis({ quiet: true }); return { ok, snap: JSON.stringify(Object.fromEntries((state.fitResults || []).map(x => [x.sampleId, q3(x.logEC50) + '|' + q3(x.hill) + '|' + q3(x.top)]))), L: assayFitLabels('hibit').ec50Name }; };
     const o = {};
-    loadLuminaTestData(); state.viabNorm = false; state.viabAlone = false;
+    loadLuminaTestData(); state.viabNorm = false; state.viabView = 'rel';
     const orig = state.plates.map(p => Object.assign({}, p.signal));
     o.base = fit();
-    // viability = the signal distorted well by well, so "viability on its own" must equal a plain run on those distorted values
+    // viability = the signal distorted well by well, so the viability view must equal a plain run on those distorted values
     state.plates.forEach((pl, i) => { pl.viab = {}; pl.viabFile = 'x'; Object.keys(orig[i]).forEach(k => { const m = /^([A-P])(\d+)$/.exec(k); pl.viab[k] = orig[i][k] * fac(LET.indexOf(m[1]), +m[2] - 1); }); });
-    o.sig = fit(); o.mode0 = lmViabMode();
-    lmSetViabMode('only'); o.alone = fit(); o.mode1 = lmViabMode(); o.sess = lmSession(); o.exportHdr = _rawHeader(); o.protoNote = !!state.rawViabAlone;
-    lmUndo(); o.undoMode = lmViabMode(); lmRedo(); o.redoMode = lmViabMode();
-    lmSetViabMode('on'); o.ratio = fit(); o.mode2 = lmViabMode();
+    o.offSetup = document.getElementById('rs-view').hidden;
+    lmSetViab(true); o.defView = state.viabView; o.rel = fit();
+    renderResults(); o.btns = [...document.querySelectorAll('#rs-view button')].map(b => b.textContent + ':' + b.getAttribute('aria-pressed')).join('|');
+    // the Results buttons, clicked as a person would
+    document.querySelector('#rs-view button[data-v="signal"]').click(); o.clickSig = state.viabView; o.sig = { snap: JSON.stringify(Object.fromEntries((state.fitResults || []).map(x => [x.sampleId, q3(x.logEC50) + '|' + q3(x.hill) + '|' + q3(x.top)]))), L: assayFitLabels('hibit').ec50Name };
+    document.querySelector('#rs-view button[data-v="viab"]').click(); o.alone = { snap: JSON.stringify(Object.fromEntries((state.fitResults || []).map(x => [x.sampleId, q3(x.logEC50) + '|' + q3(x.hill) + '|' + q3(x.top)]))), L: assayFitLabels('hibit').ec50Name };
+    o.hdr = document.getElementById('results-table-wrap').innerText.replace(/\s+/g, ' ').slice(0, 120);
+    o.sess = JSON.parse(JSON.stringify(lmSession())); o.sessView = o.sess.viabView;
+    // the Excel workbook: every view, its own sheets
+    let wb = null; const wf = XLSX.writeFile; XLSX.writeFile = (w) => { wb = w; }; exportXLSX(); XLSX.writeFile = wf;
+    o.sheets = wb ? wb.SheetNames : [];
+    const aoa = n => XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, defval: '' });
+    o.hdrL = (aoa('Results (Luminescence)')[0] || []).join(','); o.hdrV = (aoa('Results (Viability)')[0] || []).join(',');
+    o.nRes = ['Luminescence', 'Viability', 'Relative'].map(v => aoa('Results (' + v + ')').length).join();
+    const pr = v => aoa('Prism Copy (' + v + ')');
+    o.prism = ['Luminescence', 'Viability', 'Relative'].map(v => { const a = pr(v); return a.length + 'x' + a[0].length + ':' + a[0].filter(Boolean).length; }).join();
+    o.prismDiffer = JSON.stringify(pr('Luminescence').slice(2, 4)) !== JSON.stringify(pr('Viability').slice(2, 4)) && JSON.stringify(pr('Viability').slice(2, 4)) !== JSON.stringify(pr('Relative').slice(2, 4));
+    o.rawHdr = (aoa('Raw Data (Relative)')[0] || []).join(',');
+    o.proto = JSON.stringify(aoa('Data Analysis Protocol')).indexOf('three views') >= 0;
+    o.afterView = state.viabView; o.afterSnap = JSON.stringify(Object.fromEntries((state.fitResults || []).map(x => [x.sampleId, q3(x.logEC50) + '|' + q3(x.hill) + '|' + q3(x.top)])));
     // the reference: a plain run on the distorted values themselves
-    state.viabNorm = false; state.viabAlone = false; state.plates.forEach((pl, i) => { pl.signal = Object.assign({}, pl.viab); }); o.ref = fit();
-    // stale-fit check: switching with a fit on screen refits by itself
-    state.plates.forEach((pl, i) => { pl.signal = Object.assign({}, orig[i]); });
-    const sn = () => JSON.stringify(Object.fromEntries((state.fitResults || []).map(x => [x.sampleId, q3(x.logEC50)])));
-    lmSetViabMode('off'); _lmEnsureFit(true); o.s1 = sn(); lmSetViabMode('only'); _lmEnsureFit(true); o.s2 = sn(); lmSetViabMode('off'); _lmEnsureFit(true); o.s3 = sn();
-    // restoring a session keeps the choice
-    lmSetViabMode('only'); const sv = JSON.parse(JSON.stringify(lmSession())); state.viabNorm = false; state.viabAlone = false;
-    o.sessAlone = sv.viabAlone === true && sv.viabNorm === true;
-    o.dataIdDiffers = (() => { lmSetViabMode('on'); const a = lmDataId(); lmSetViabMode('only'); const b = lmDataId(); return a !== b; })();
-    o.ui = (() => { switchTab('plate'); state.activeSubtab = 'signal'; lmRenderRead(); return document.getElementById('lm-viab') ? document.getElementById('lm-viab').innerText.replace(/\s+/g, ' ') : ''; })();
-    o.pressed = [...document.querySelectorAll('#lm-viab button')].map(b => b.getAttribute('aria-pressed')).join();
-    state.viabNorm = false; state.viabAlone = false; switchTab('results');
-    return o;
+    state.viabNorm = false; state.plates.forEach(pl => { pl.signal = Object.assign({}, pl.viab); }); o.ref = fit();
+    // with the option off the workbook has no view in its sheet names
+    state.plates.forEach((pl, i) => { pl.signal = Object.assign({}, orig[i]); }); fit();
+    wb = null; XLSX.writeFile = (w) => { wb = w; }; exportXLSX(); XLSX.writeFile = wf; o.offSheets = wb ? wb.SheetNames.join() : '';
+    // an old session that said "viability on its own" opens on the viability view
+       return o;
   });
-  check('L14b signal as it is = the plain luminescence curves', r.sig.ok && r.sig.snap === r.base.snap && r.mode0 === 'off', { mode: r.mode0 });
-  check('L14b viability on its own = exactly a plain run on the fluorescence values', r.alone.ok && r.alone.snap === r.ref.snap && r.mode1 === 'only', { a: r.alone.snap.slice(0, 80), ref: r.ref.snap.slice(0, 80) });
-  check('L14b the three views are three different sets of curves', r.sig.snap !== r.alone.snap && r.sig.snap !== r.ratio.snap && r.alone.snap !== r.ratio.snap && r.mode2 === 'on', { sig: r.sig.snap.slice(0, 60), alone: r.alone.snap.slice(0, 60), ratio: r.ratio.snap.slice(0, 60) });
-  check('L14b viability on its own is a viability curve (IC50 / Span / % Viability), the others keep the assay\'s names', r.alone.L === 'IC50' && r.sig.L === 'DC50', [r.alone.L, r.sig.L]);
-  check('L14b ⌘Z and redo move between the views', r.undoMode === 'off' && r.redoMode === 'only', [r.undoMode, r.redoMode]);
-  check('L14b switching with a fit on screen refits by itself and back restores it', r.s1 !== r.s2 && r.s1 === r.s3, { s1: r.s1.slice(0, 50), s2: r.s2.slice(0, 50) });
-  check('L14b the raw export carries both readings and says it is the viability that was read', r.exportHdr.indexOf('Viability_Reading') >= 0 && r.protoNote, r.exportHdr);
-  check('L14b the session keeps the choice, and the analysis id tells the two views apart', r.sessAlone && r.dataIdDiffers, [r.sessAlone, r.dataIdDiffers]);
-  check('L14b the readings strip offers the three views and marks the one in use', /Signal.*÷ viability.*Viability/.test(r.ui) && r.pressed === 'false,false,true', [r.ui, r.pressed]);
+  check('L14b Setup only says yes or no: with it off Results has no view buttons, with it on the default is relative to viability', r.offSetup === true && r.defView === 'rel', [r.offSetup, r.defView]);
+  check('L14b Results offers Luminescence · Viability · Relative to viability and marks the one shown', /Luminescence:false\|Viability:false\|Relative to viability:true/.test(r.btns), r.btns);
+  check('L14b the luminescence view is exactly the plain luminescence curves', r.clickSig === 'signal' && r.sig.snap === r.base.snap, { v: r.clickSig });
+  check('L14b the viability view is exactly a plain run on the fluorescence values, named as a viability curve (IC50)', r.alone.snap === r.ref.snap && r.alone.L === 'IC50' && /IC50/.test(r.hdr) && r.sig.L === 'DC50', { a: r.alone.snap.slice(0, 80), ref: r.ref.snap.slice(0, 80), L: [r.alone.L, r.sig.L] });
+  check('L14b the three views are three different sets of curves', r.sig.snap !== r.alone.snap && r.sig.snap !== r.rel.snap && r.alone.snap !== r.rel.snap, {});
+  check('L14b the session keeps the view', r.sessView === 'viab', r.sessView);
+  check('L14b the Excel workbook carries every view: Results, Raw Data, Prism Copy and Prism Fraction once for each, and the protocol', ['Results', 'Raw Data', 'Prism Copy', 'Prism Fraction'].every(n => ['Luminescence', 'Viability', 'Relative'].every(v => r.sheets.includes(n + ' (' + v + ')'))) && r.sheets.includes('Data Analysis Protocol') && r.sheets.every(n => n.length <= 31), r.sheets);
+  check('L14b each view has its own potency name in its sheet (DC50 for the luminescence, IC50 for the viability) and the same compounds', /DC50/.test(r.hdrL) && /IC50/.test(r.hdrV) && new Set(r.nRes.split(',')).size === 1, [r.hdrL, r.hdrV, r.nRes]);
+  check('L14b the Prism Copy sheets are separate, one per view, each a full table (a row per dose, a column per replicate) with different numbers', r.prismDiffer && new Set(r.prism.split(',')).size === 1, r.prism);
+  check('L14b the raw sheet of a view carries both readings, the protocol explains the three views', /Signal,Viability_Reading/.test(r.rawHdr) && r.proto, [r.rawHdr, r.proto]);
+  check('L14b exporting leaves the view and the curves on screen as they were', r.afterView === 'viab' && r.afterSnap === r.alone.snap, [r.afterView]);
+  check('L14b with the option off the sheet names carry no view', r.offSheets.indexOf('(') < 0 && /Results,Raw Data/.test(r.offSheets), r.offSheets);
+  await ev(() => { state.viabNorm = false; state.viabView = 'rel'; switchTab('results'); });
 } catch (e) { findings.push('✗ L14b the run stopped: ' + e.message.split('\n')[0]); }
 // _lmReadFmt is arithmetic and needs no file
 {
