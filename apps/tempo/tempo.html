@@ -3881,7 +3881,7 @@ function tpPasteLayout(text) {
    Reads · Time · Controls · Compounds · Review, with Back / Next. The dialog and its pieces are the Setup kit's (tools/setupkit); what is here is what Tempo's steps are.
    It writes into the very plate the Plate tab edits (roles, names, concentrations, left-out wells), so nothing here is a second model: what is done on the plate is in the
    dialog when it opens, what is done in the dialog is on the plate when it closes — and ⌘Z undoes either. The fit runs once, when the dialog closes. */
-var TPS = { form: { names: '', n: null, top: 1000, unit: 'nM', fac: 3, pts: null, reps: 2, dir: 'right', run: 'rows', start: '', target: '' }, seeded: null, dirty: false, all: false, go: null };
+var TPS = { form: { names: '', n: null, top: 1000, unit: 'nM', fac: 3, pts: null, reps: 2, dir: 'right', run: 'rows', start: '', target: '' }, hand: { name: '', dose: null, unit: '' }, seeded: null, dirty: false, all: false, go: null };
 var tpsK = null;
 const tpsEl = id => document.getElementById(id);
 const tpsPos = (r, c) => String.fromCharCode(65 + r) + (c + 1);
@@ -3892,7 +3892,7 @@ function tpsKit() {
       { key: 'reads', label: 'Reads', render: () => tpsReads(), live: () => tpsPlates(), focus: false, done: () => TP.plates.length > 0 },
       { key: 'time', label: 'Time', render: () => tpsTime(), done: () => !!tpPlate() },
       { key: 'controls', label: 'Controls', render: () => tpsControls(), live: () => { tpsMini('tps-mini-c'); tpsCtlFill(); tpsRulesFill(); }, done: () => { const s = tpsSummary(tpPlate()); return !!s && tpsVehOK(s) && s.none === 0; } },
-      { key: 'compounds', label: 'Compounds', render: () => tpsCompounds(), live: () => { tpsMini('tps-mini-p'); tpsPlanText(); }, done: () => { const s = tpsSummary(tpPlate()); return !!s && s.cpds.length > 0; } },
+      { key: 'compounds', label: 'Compounds', render: () => tpsCompounds(), live: () => { tpsMini('tps-mini-p'); tpsPlanText(); tpsHandText(); }, done: () => { const s = tpsSummary(tpPlate()); return !!s && s.cpds.length > 0; } },
       { key: 'review', label: 'Review', render: () => tpsReview(), live: () => tpsReview() }
     ],
     foot: [{ label: 'Paste a layout…', title: 'One well per line: Well · Compound · Concentration · Unit · Role', quiet: true, fn: () => { if (tpPlate()) tpPasteLayoutDlg(); else tpToast('Load a plate first', 'warn'); } }],
@@ -4075,7 +4075,7 @@ function tpsMini(id) {
   else if (names.length) lg.push([tpCompColor(p, names[0], pal), names.length + ' ' + tpWd().items, s.dose]);
   if (s.none) lg.push(['var(--surface3)', 'No role yet', s.none]);
   if (s.out) lg.push(['var(--danger)', 'Left out (slashed)', s.out]);
-  el.innerHTML = SetupKit.mini({ paint: id === 'tps-mini-c', rows: p.fmt.rows, cols: p.fmt.cols, title: p.name, sub: p.fmt.n + '-well · reads in a tint', legend: lg, empty: 'Nothing is marked on this plate yet.', cell: (r, c) => {
+  el.innerHTML = SetupKit.mini({ paint: id === 'tps-mini-c' || id === 'tps-mini-p', rows: p.fmt.rows, cols: p.fmt.cols, title: p.name, sub: p.fmt.n + '-well · reads in a tint', legend: lg, empty: 'Nothing is marked on this plate yet.', cell: (r, c) => {
     const id = tpsPos(r, c), w = p.wells[id]; if (!w) return { t: id + ' · no reads' };
     const role = tpsRoleOf(w), x = ex.has(id) ? ' · left out' : '', cls = ex.has(id) ? 'out' : '';
     if (role === 'veh' || role === 'bkg' || role === 'blank') return { bg: TPS_CTL[role][0], rd: true, cls: cls, t: id + ' · ' + TPS_CTL[role][1] + x };
@@ -4121,8 +4121,47 @@ function tpsCompounds() {
       SetupKit.field('Number of ' + W.items, 'tps-n', '<input id="tps-n" type="number" step="1" min="1" max="96" placeholder="auto: the names" value="' + (f.n || '') + '">', 'more than the names: the rest are called ' + W.Item + ' 3, 4…') +
       SetupKit.field('Target / cell line', 'tps-target', '<input id="tps-target" type="text" maxlength="60" placeholder="optional" value="' + esc(f.target) + '" autocomplete="off">', tc ? 'written on every well; the same condition in two cell lines is two curves' : 'written on every compound well; the same compound against two targets is two curves') +
     '</div><div class="sx-plan" id="tps-plan"></div><div class="sx-inline"><button class="sx-pri" id="tps-place">Place ' + W.items + '</button><button class="sx-link" id="tps-unplace">Clear the ' + W.items + '</button></div>') +
+    SetupKit.group('Or choose the wells yourself', 'any wells, any number — no dose needed',
+      '<div class="sx-grid">' +
+      SetupKit.field(W.Item + ' name', 'tps-hn', '<input id="tps-hn" type="text" list="tps-hn-l" maxlength="60" autocomplete="off" spellcheck="false" placeholder="e.g. ' + (tc ? 'Heat shock' : 'Compound A') + '" value="' + esc(TPS.hand.name) + '"><datalist id="tps-hn-l">' + tpsNames().map(n => '<option value="' + esc(n) + '">').join('') + '</datalist>', 'the wells you mark are put in it') +
+      SetupKit.field('Dose', 'tps-hd', '<div class="sx-inline"><input id="tps-hd" type="number" step="any" min="0" placeholder="none" value="' + (TPS.hand.dose > 0 ? TPS.hand.dose : '') + '"><select id="tps-hu">' + units.map(u => '<option' + (u === (TPS.hand.unit || f.unit) ? ' selected' : '') + '>' + u + '</option>').join('') + '</select></div>', 'optional — empty is a ' + W.item + ' with no dose') +
+      SetupKit.field('Wells', 'tps-hw', '<input id="tps-hw" type="text" placeholder="e.g. A1:D6, F8" spellcheck="false" autocomplete="off">', 'or drag over the plate: a drag that starts on a marked well clears them') +
+      '</div><div class="sx-hint" id="tps-hand-n"></div><div class="sx-inline"><button class="sx-pri" id="tps-hand">Put the wells in it</button></div>') +
     '</div><div class="sx-side"><div class="sx-mini-wrap" id="tps-mini-p"></div></div></div>';
-  tpsPlanText(); tpsMini('tps-mini-p');
+  tpsPlanText(); tpsMini('tps-mini-p'); tpsHandText();
+  SetupKit.paint(tpsEl('tps-mini-p'), { rows: p.fmt.rows, cols: p.fmt.cols, exists: id => !!p.wells[id], has: id => tpsHandHas(p.wells[id]), apply: (ids, add) => tpsHandApply(ids, add) });
+}
+// What a well put in by hand holds: the name, and the dose when there is one (empty = no dose).
+function tpsHandCond() {
+  const h = TPS.hand, du = tpUnitConc(h.unit || TPS.form.unit) || { cu: null, f: 1 }, dose = h.dose > 0;
+  return { name: tpCleanName(h.name), conc: dose ? h.dose * du.f : null, cu: dose ? du.cu : null, du: du };
+}
+function tpsHandHas(w) {
+  if (!w || tpsRoleOf(w) !== 'dose') return false; const c = tpsHandCond();
+  return !!c.name && w.compound === c.name && tpCKey(w.conc) === tpCKey(c.conc) && (w.cu || null) === c.cu;
+}
+function tpsHandText() {
+  const el = tpsEl('tps-hand-n'), p = tpPlate(); if (!el || !p) return; const c = tpsHandCond();
+  const n = c.name ? Object.keys(p.wells).filter(id => tpsHandHas(p.wells[id])).length : 0;
+  el.textContent = c.name ? n + (n === 1 ? ' well holds ' : ' wells hold ') + c.name + (c.conc != null ? ' at ' + tpAxConc(c.conc, c.cu) : ' with no dose') + '.' : 'Name the ' + tpWd().item + ', then type the wells or drag over the plate.';
+}
+// Put these wells in the condition named above (add), or take them out of it (a drag that began on a marked well). Controls are not overwritten.
+function tpsHandApply(ids, add) {
+  const p = tpPlate(); if (!p) return; const c = tpsHandCond(), f = TPS.form;
+  if (!c.name) { tpToast('Name the ' + tpWd().item + ' first: the wells you mark are put in it.', 'warn'); const e = tpsEl('tps-hn'); if (e) e.focus(); return; }
+  if (c.cu && !tpTC()) { tpToast('A dose by mass (ng/mL, µg/mL…) is for a time course: a DC50 needs a molar concentration.', 'warn'); return; }
+  const got = ids.filter(id => p.wells[id]); if (!got.length) { tpToast('None of those wells has reads.', 'warn'); return; }
+  const take = add ? got.filter(id => ['veh', 'bkg', 'blank'].indexOf(tpsRoleOf(p.wells[id])) < 0) : got.filter(id => tpsHandHas(p.wells[id])), skipped = add ? got.length - take.length : 0;
+  if (!take.length) { tpToast(add ? 'Those are control wells: change them in Controls first.' : 'Those wells do not hold ' + c.name + '.', 'warn'); return; }
+  tpUndoMark(tpWd().items + (add ? ' placed' : ' cleared'));
+  take.forEach(id => { const w = p.wells[id]; if (!add) { tpsToNone(w); return; } w.kind = 'sample'; delete w.role; w.compound = c.name; w.target = f.target ? tpCleanName(f.target) : ''; w.conc = c.conc; if (c.cu) w.cu = c.cu; else delete w.cu; });
+  p._mx = null; TPS.dirty = true; tpAutosaveSoon(); tpsK.refresh();
+  tpToast(take.length + (take.length === 1 ? ' well ' : ' wells ') + (add ? 'in ' + c.name + (c.conc != null ? ' at ' + tpAxConc(c.conc, c.cu) : '') : 'taken out of ' + c.name) + (skipped ? ' (' + skipped + ' control wells in the way were kept)' : '') + '. ⌘Z undoes it.');
+}
+function tpsHandPlace() {
+  const p = tpPlate(), a = tpsEl('tps-hw'); if (!p || !a) return; const txt = a.value.trim(), got = txt ? tpParseRange(txt, p.fmt) : [];
+  if (!txt || got === null) { tpToast(!txt ? 'Write the wells, as a well or a range such as A1:D6 — or drag over the plate.' : 'Write a well or a range such as A1:D6 — “' + txt.slice(0, 24) + '” names no well on this plate.', 'warn'); a.focus(); return; }
+  tpsHandApply(got, true); if (tpsHandCond().name) a.value = '';
 }
 // a time course with the top dose left empty has no dose at all: one well-block per condition
 function tpsNoDose() { return tpTC() && !(TPS.form.top > 0); }
@@ -4157,7 +4196,7 @@ function tpsPlace() {
 function tpsUnplace() {
   const p = tpPlate(); if (!p) return; const ids = Object.keys(p.wells).filter(id => tpsRoleOf(p.wells[id]) === 'dose');
   if (!ids.length) { tpToast('There was nothing to clear.'); return; }
-  tpUndoMark(tpWd().items + ' cleared'); ids.forEach(id => tpsToNone(p.wells[id])); p._mx = null; TPS.dirty = true; tpAutosaveSoon(); tpsK.refresh(); tpToast('Cleared — controls and reads kept. ⌘Z undoes it.');
+  tpUndoMark(tpWd().items + ' cleared'); ids.forEach(id => tpsToNone(p.wells[id])); p._mx = null; TPS.dirty = true; tpAutosaveSoon(); tpsK.refresh(); tpToast(ids.length + (ids.length === 1 ? ' well' : ' wells') + ' cleared — controls and reads kept; those wells have no role now. ⌘Z undoes it.');
 }
 /* — 5 · Review — */
 function tpsReview() {
@@ -4195,16 +4234,20 @@ function tpsWire(d) {
     else if (t.id === 'tps-n') { const m = parseInt(t.value, 10); f.n = m >= 1 ? Math.min(96, m) : null; tpsPlanText(); }
     else if (t.id === 'tps-start') { f.start = t.value.trim(); tpsPlanText(); }
     else if (t.id === 'tps-target') f.target = t.value;
+    else if (t.id === 'tps-hn') { TPS.hand.name = t.value; tpsHandText(); }
+    else if (t.id === 'tps-hd') { TPS.hand.dose = parseFloat(t.value); tpsHandText(); }
   });
   d.addEventListener('change', e => {
     const t = e.target, p = tpPlate();
     if (t.id === 'tps-unit') { TPS.form.unit = t.value; tpsPlanText(); }
+    else if (t.id === 'tps-hu') { TPS.hand.unit = t.value; tpsHandText(); }
     else if (t.id === 'tps-tzero' && p) { tpUndoMark('time zero'); p.tZero = +t.value; TPS.dirty = true; tpAutosaveSoon(); }
     else if (t.id === 'tps-t0n') { TP.S.norm.t0n = Math.max(1, Math.min(20, Math.round(+t.value) || 1)); t.value = TP.S.norm.t0n; TPS.all = true; }
     else if (t.dataset && t.dataset.role) tpsSetRole(t.dataset.role, t.value, t);
   });
   d.addEventListener('keydown', e => {
     const t = e.target;
+    if (t.id === 'tps-hw' && e.key === 'Enter') { e.preventDefault(); tpsHandPlace(); return; }
     if (t.dataset && t.dataset.role && e.key === 'Enter') { e.preventDefault(); tpsSetRole(t.dataset.role, t.value, t); return; }
     if ((t.id === 'tps-rx' || t.id === 'tps-ry') && e.key === 'Enter') { e.preventDefault(); tpsRuleAdd(); return; }
     if (t.id === 'tps-drop' && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); tpPickFiles(); }
@@ -4227,6 +4270,7 @@ function tpsWire(d) {
     if (t.dataset.rdel !== undefined) { const q = tpPlate(); if (q && tpRules(q)[+t.dataset.rdel]) { tpUndoMark('a normalisation rule removed'); q.norm.splice(+t.dataset.rdel, 1); tpRulePrune(q); q._mx = null; TPS.dirty = true; tpAutosaveSoon(); tpsK.refresh(); } return; }
     if (t.id === 'tps-place') { tpsPlace(); return; }
     if (t.id === 'tps-unplace') { tpsUnplace(); return; }
+    if (t.id === 'tps-hand') { tpsHandPlace(); return; }
   });
 }
 function tpRenderPlate() {
