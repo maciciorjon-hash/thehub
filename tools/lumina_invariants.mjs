@@ -458,6 +458,47 @@ try {
   check('L14 option off: a fluorescence-only file is an ordinary reading (no viability)', r.flOff === '96/0', r.flOff);
   check('L14 a double read keeps its fluorescence with the plate whether or not the option is on', r.dbl.sig === 1000 * 0.6 && r.dbl.via === 20000 * 0.6 && r.dbl.nVia === 96, r.dbl);
 } catch (e) { findings.push('✗ L14 the run stopped: ' + e.message.split('\n')[0]); }
+// L14b — the three views of a double read: signal, viability on its own, signal relative to viability.
+try {
+  const r = await ev(async () => {
+    const LET = 'ABCDEFGHIJKLMNOP', fac = (ri, ci) => 0.6 + ((ri * 7 + ci * 3) % 11) / 10, posOf = (ri, ci) => LET[ri] + (ci + 1);
+    const q3 = v => Number(v).toPrecision(3);
+    const fit = () => { state.fitSig = null; const ok = runLuminaAnalysis({ quiet: true }); return { ok, snap: JSON.stringify(Object.fromEntries((state.fitResults || []).map(x => [x.sampleId, q3(x.logEC50) + '|' + q3(x.hill) + '|' + q3(x.top)]))), L: assayFitLabels('hibit').ec50Name }; };
+    const o = {};
+    loadLuminaTestData(); state.viabNorm = false; state.viabAlone = false;
+    const orig = state.plates.map(p => Object.assign({}, p.signal));
+    o.base = fit();
+    // viability = the signal distorted well by well, so "viability on its own" must equal a plain run on those distorted values
+    state.plates.forEach((pl, i) => { pl.viab = {}; pl.viabFile = 'x'; Object.keys(orig[i]).forEach(k => { const m = /^([A-P])(\d+)$/.exec(k); pl.viab[k] = orig[i][k] * fac(LET.indexOf(m[1]), +m[2] - 1); }); });
+    o.sig = fit(); o.mode0 = lmViabMode();
+    lmSetViabMode('only'); o.alone = fit(); o.mode1 = lmViabMode(); o.sess = lmSession(); o.exportHdr = _rawHeader(); o.protoNote = !!state.rawViabAlone;
+    lmUndo(); o.undoMode = lmViabMode(); lmRedo(); o.redoMode = lmViabMode();
+    lmSetViabMode('on'); o.ratio = fit(); o.mode2 = lmViabMode();
+    // the reference: a plain run on the distorted values themselves
+    state.viabNorm = false; state.viabAlone = false; state.plates.forEach((pl, i) => { pl.signal = Object.assign({}, pl.viab); }); o.ref = fit();
+    // stale-fit check: switching with a fit on screen refits by itself
+    state.plates.forEach((pl, i) => { pl.signal = Object.assign({}, orig[i]); });
+    const sn = () => JSON.stringify(Object.fromEntries((state.fitResults || []).map(x => [x.sampleId, q3(x.logEC50)])));
+    lmSetViabMode('off'); _lmEnsureFit(true); o.s1 = sn(); lmSetViabMode('only'); _lmEnsureFit(true); o.s2 = sn(); lmSetViabMode('off'); _lmEnsureFit(true); o.s3 = sn();
+    // restoring a session keeps the choice
+    lmSetViabMode('only'); const sv = JSON.parse(JSON.stringify(lmSession())); state.viabNorm = false; state.viabAlone = false;
+    o.sessAlone = sv.viabAlone === true && sv.viabNorm === true;
+    o.dataIdDiffers = (() => { lmSetViabMode('on'); const a = lmDataId(); lmSetViabMode('only'); const b = lmDataId(); return a !== b; })();
+    o.ui = (() => { switchTab('plate'); state.activeSubtab = 'signal'; lmRenderRead(); return document.getElementById('lm-viab') ? document.getElementById('lm-viab').innerText.replace(/\s+/g, ' ') : ''; })();
+    o.pressed = [...document.querySelectorAll('#lm-viab button')].map(b => b.getAttribute('aria-pressed')).join();
+    state.viabNorm = false; state.viabAlone = false; switchTab('results');
+    return o;
+  });
+  check('L14b signal as it is = the plain luminescence curves', r.sig.ok && r.sig.snap === r.base.snap && r.mode0 === 'off', { mode: r.mode0 });
+  check('L14b viability on its own = exactly a plain run on the fluorescence values', r.alone.ok && r.alone.snap === r.ref.snap && r.mode1 === 'only', { a: r.alone.snap.slice(0, 80), ref: r.ref.snap.slice(0, 80) });
+  check('L14b the three views are three different sets of curves', r.sig.snap !== r.alone.snap && r.sig.snap !== r.ratio.snap && r.alone.snap !== r.ratio.snap && r.mode2 === 'on', { sig: r.sig.snap.slice(0, 60), alone: r.alone.snap.slice(0, 60), ratio: r.ratio.snap.slice(0, 60) });
+  check('L14b viability on its own is a viability curve (IC50 / Span / % Viability), the others keep the assay\'s names', r.alone.L === 'IC50' && r.sig.L === 'DC50', [r.alone.L, r.sig.L]);
+  check('L14b ⌘Z and redo move between the views', r.undoMode === 'off' && r.redoMode === 'only', [r.undoMode, r.redoMode]);
+  check('L14b switching with a fit on screen refits by itself and back restores it', r.s1 !== r.s2 && r.s1 === r.s3, { s1: r.s1.slice(0, 50), s2: r.s2.slice(0, 50) });
+  check('L14b the raw export carries both readings and says it is the viability that was read', r.exportHdr.indexOf('Viability_Reading') >= 0 && r.protoNote, r.exportHdr);
+  check('L14b the session keeps the choice, and the analysis id tells the two views apart', r.sessAlone && r.dataIdDiffers, [r.sessAlone, r.dataIdDiffers]);
+  check('L14b the readings strip offers the three views and marks the one in use', /Signal.*÷ viability.*Viability/.test(r.ui) && r.pressed === 'false,false,true', [r.ui, r.pressed]);
+} catch (e) { findings.push('✗ L14b the run stopped: ' + e.message.split('\n')[0]); }
 // _lmReadFmt is arithmetic and needs no file
 {
   const r = await ev(() => [[3237970, 5], [9100, 5], [76190, 5], [1274665, 4], [-2500000, 5], [0.00123, 5]].map(([v, f]) => _lmReadFmt(v, f).length <= Math.max(f, 3)));
