@@ -2097,7 +2097,7 @@ var SheetKit = (function(){
             <button class="btn" id="rs-exp-btn" onclick="rsTogglePop(event,'rs-exp')" aria-haspopup="true" aria-expanded="false">Export</button>
             <div class="rs-pop" id="rs-exp" role="menu">
               <div class="rs-pop-hd" id="rs-exp-units"></div>
-              <button role="menuitem" onclick="rsCloseExport();exportXLSX()"><b>Excel workbook</b><span>Results, Raw Data, Prism (percent and fraction), Normalisation, protocol — each read from the top down</span></button>
+              <button role="menuitem" onclick="rsCloseExport();exportXLSX()"><b>Excel workbook</b><span>Results, Raw Data, Prism (percent), Prism (fraction), Normalisation, protocol — each read from the top down</span></button>
               <button role="menuitem" onclick="rsCloseExport();copyPrism()"><b>Copy for Prism</b><span>Concentration down one column, every compound’s replicates beside it — percent of control, paste into a Prism XY table</span></button>
               <button role="menuitem" onclick="rsCloseExport();copyPrism(true)"><b>Copy for Prism (fraction)</b><span>The same table as a fraction of the control (1 = control)</span></button>
               <button role="menuitem" onclick="rsCloseExport();exportResultsCSV()"><b>Results (.csv)</b><span>The table as a plain file</span></button>
@@ -5977,11 +5977,11 @@ function exportXLSX(){
   ];
   if (state.rawViab) {
     protoAoA.splice(4, 0,
-      ['Viability', 'A double read, three views, each fitted on its own; Results, Raw Data and Prism hold all three, one under the other, each under a title naming the view: Luminescence = the signal as it is; Viability = the fluorescence of each well is what was read; Relative = each reading divided by the fluorescence of the same well. All three are then normalised to the controls. In Raw Data, Measurement_raw is the value that was read in that view, Signal the luminescence and Viability_Reading the fluorescence of the same well.']);
+      ['Viability', 'A double read, three views, each fitted on its own; Results, Raw Data and the two Prism sheets hold all three, one under the other, each under a title naming the view: Luminescence = the signal as it is; Viability = the fluorescence of each well is what was read; Relative = each reading divided by the fluorescence of the same well. All three are then normalised to the controls. In Raw Data, Measurement_raw is the value that was read in that view, Signal the luminescence and Viability_Reading the fluorescence of the same well.']);
     if (views.failed && views.failed.length) protoAoA.splice(5, 0, ['Not fitted', views.failed.map(function(v){ return LM_VIEW_SHEET[v]; }).join(', ') + ' — see the Review step (a plate without viability, or no usable control).']);
   }
-  // Five sheets, whatever the number of views: Results · Raw Data · Prism · Normalisation · Data Analysis Protocol. Each reads from the top down: a double read
-  // puts its three views one under the other (a title row each), and Prism holds, for every view, the percentage table and then the fraction table — nothing
+  // Six sheets, whatever the number of views: Results · Raw Data · Prism (percent) · Prism (fraction) · Normalisation · Data Analysis Protocol. Each reads from the top down: a double read
+  // puts its three views one under the other (a title row each), and the two Prism sheets hold the percentage tables and the fraction tables — nothing
   // sits beside anything, so a table is copied from its header row to its last row.
   var multi = views.length > 1 || !!views[0].view, vname = function(v){ return LM_VIEW_SHEET[v.view]; };
   var tag = function(v, what){ return multi ? vname(v) + ' \u2014 ' + what : what; };
@@ -5989,20 +5989,21 @@ function exportXLSX(){
   state.fitResults.forEach(function(r){ if (r.flagged) nflag++; });
   var summary = [['Assay ID', state.assayId || ''], ['Assay', lmAssayText(state.assayType)], ['Plates', state.plates.map(function(pl, i){ return lmPlateName(i) + ' (' + state.format + '-well)'; }).join('; ')],
     ['Curves fitted', nres + (multi ? ' per view' : '')], ['Curves flagged', nflag + (multi ? ' (view on screen)' : '')], ['Potency units', _unitsText()], ['Generated', new Date().toISOString().slice(0, 16).replace('T', ' ')],
-    ['Sheets', 'Results (this) · Raw Data (every well) · Prism (tables to paste, percentage then fraction) · Normalisation (what each well was divided by) · Data Analysis Protocol']];
-  var resB = [{ title: 'ANALYSIS', aoa: summary }], rawB = [], prismB = [], normB = [];
+    ['Sheets', 'Results (this) · Raw Data (every well) · Prism (percent) and Prism (fraction) (tables to paste, one per view) · Normalisation (what each well was divided by) · Data Analysis Protocol']];
+  var resB = [{ title: 'ANALYSIS', aoa: summary }], rawB = [], prismB = [], prismF = [], normB = [];
   views.forEach(function(v){
     resB.push({ title: tag(v, 'RESULTS'), note: v.potency + ' \u2014 one row per compound; Flag says why a fit is not to be trusted', aoa: v.results });
     rawB.push({ title: tag(v, 'RAW DATA'), note: 'One row per well; the Measurement is what the fit used', aoa: v.raw });
     prismB.push({ title: tag(v, 'PRISM \u2014 PERCENT OF CONTROL'), note: 'Select from the header row to the last row and paste into a Prism XY table', aoa: v.prism });
-    prismB.push({ title: tag(v, 'PRISM \u2014 FRACTION OF CONTROL'), note: 'The same, as a fraction (1 = the control) \u2014 for Prism tables that take 0\u20131', aoa: v.prismFrac });
+    prismF.push({ title: tag(v, 'PRISM \u2014 FRACTION OF CONTROL'), note: 'The same, as a fraction (1 = the control) \u2014 for Prism tables that take 0\u20131', aoa: v.prismFrac });
     if (v.norm) v.norm.forEach(function(b){ normB.push(multi ? Object.assign({}, b, { title: b.title + ' \u2014 ' + vname(v) }) : b); });
   });
   var protoB = [{ title: 'DATA ANALYSIS PROTOCOL', aoa: protoAoA.slice(1) }];
   var wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, SheetKit.sheet(resB), 'Results');
   XLSX.utils.book_append_sheet(wb, SheetKit.sheet(rawB), 'Raw Data');
-  XLSX.utils.book_append_sheet(wb, SheetKit.sheet(prismB), 'Prism');
+  XLSX.utils.book_append_sheet(wb, SheetKit.sheet(prismB), 'Prism (percent)');
+  XLSX.utils.book_append_sheet(wb, SheetKit.sheet(prismF), 'Prism (fraction)');
   if (normB.length) XLSX.utils.book_append_sheet(wb, SheetKit.sheet(normB), 'Normalisation');
   XLSX.utils.book_append_sheet(wb, SheetKit.sheet(protoB), 'Data Analysis Protocol');
   XLSX.writeFile(wb, _lmFileStem() + '_Results_' + new Date().toISOString().slice(0,10) + '.xlsx');

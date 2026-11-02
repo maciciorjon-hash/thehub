@@ -511,15 +511,15 @@ try {
     const res = aoa('Results'), at = v => res.findIndex(x => x[0] === v + ' \u2014 RESULTS'), ia = at('Luminescence'), ib = at('Viability'), ic = at('Relative');
     o.hdrL = (res[ia + 2] || []).join(','); o.hdrV = (res[ib + 2] || []).join(',');
     o.nRes = [ib - ia - 1, ic - ib - 1, res.length - ic].join();
-    // one Prism sheet, read from the top down: for every view the percentage table and, under it, the fraction table (a title row, a note row, then the table)
-    const pr = aoa('Prism'), tt = (v, k) => pr.findIndex(x => x[0] === v + ' \u2014 PRISM \u2014 ' + k + ' OF CONTROL');
-    const P = ['Luminescence', 'Viability', 'Relative'].map(v => ({ p: tt(v, 'PERCENT'), f: tt(v, 'FRACTION') }));
-    const cell = (i, r, c) => pr[i + 3 + r][c];
-    o.prism = JSON.stringify(P) + ':' + pr.length;
-    o.prismOk = P.every((q, k) => q.p >= 0 && q.f > q.p && (k ? q.p > P[k - 1].f : true)) && pr.filter(x => /PRISM/.test(x[0])).every(x => x.slice(1).every(v => v === ''));
-    o.prismFrac = P.every(q => { let ok = true; for (let r = 1; r <= 3; r++) for (let c = 1; c <= 3; c++) { const a = cell(q.p, r, c), f = cell(q.f, r, c); if (a !== '' && Math.abs(a / 100 - f) > 1e-5) ok = false; } return ok && typeof cell(q.p, 1, 1) === 'number'; });
-    o.prismDiffer = cell(P[0].p, 1, 1) !== cell(P[1].p, 1, 1) && cell(P[1].p, 1, 1) !== cell(P[2].p, 1, 1);
-    o.prismWide = XLSX.utils.decode_range(wb.Sheets['Prism']['!ref']).e.c + 1;
+    // two Prism sheets, each read from the top down: the percentage tables (one per view) in 'Prism (percent)', the fraction tables in 'Prism (fraction)' (a title row, a note row, then the table)
+    const pp = aoa('Prism (percent)'), pf = aoa('Prism (fraction)'), tt = (a, v, k) => a.findIndex(x => x[0] === v + ' \u2014 PRISM \u2014 ' + k + ' OF CONTROL');
+    const P = ['Luminescence', 'Viability', 'Relative'].map(v => ({ p: tt(pp, v, 'PERCENT'), f: tt(pf, v, 'FRACTION') }));
+    const cell = (a, i, r, c) => a[i + 3 + r][c];
+    o.prism = JSON.stringify(P) + ':' + pp.length + ':' + pf.length;
+    o.prismOk = P.every((q, k) => q.p >= 0 && q.f >= 0 && (k ? q.p > P[k - 1].p && q.f > P[k - 1].f : true)) && [pp, pf].every(a => a.filter(x => /PRISM/.test(x[0])).every(x => x.slice(1).every(v => v === '')));
+    o.prismFrac = P.every(q => { let ok = true; for (let r = 1; r <= 3; r++) for (let c = 1; c <= 3; c++) { const a = cell(pp, q.p, r, c), f = cell(pf, q.f, r, c); if (a !== '' && Math.abs(a / 100 - f) > 1e-5) ok = false; } return ok && typeof cell(pp, q.p, 1, 1) === 'number'; });
+    o.prismDiffer = cell(pp, P[0].p, 1, 1) !== cell(pp, P[1].p, 1, 1) && cell(pp, P[1].p, 1, 1) !== cell(pp, P[2].p, 1, 1);
+    o.prismWide = Math.max(...['Prism (percent)', 'Prism (fraction)'].map(n => XLSX.utils.decode_range(wb.Sheets[n]['!ref']).e.c + 1));
     const rw = aoa('Raw Data'); o.rawViews = rw.map(x => x[0]).filter(t => / \u2014 RAW DATA$/.test(t)).map(t => t.replace(' \u2014 RAW DATA', '')).join();
     o.rawHdr = (rw[rw.findIndex(x => x[0] === 'Luminescence \u2014 RAW DATA') + 2] || []).join(',');
     o.proto = JSON.stringify(aoa('Data Analysis Protocol')).indexOf('three views') >= 0;
@@ -538,13 +538,13 @@ try {
   check('L14b the viability view is exactly a plain run on the fluorescence values, named as a viability curve (IC50)', r.alone.snap === r.ref.snap && r.alone.L === 'IC50' && /IC50/.test(r.hdr) && r.sig.L === 'DC50', { a: r.alone.snap.slice(0, 80), ref: r.ref.snap.slice(0, 80), L: [r.alone.L, r.sig.L] });
   check('L14b the three views are three different sets of curves', r.sig.snap !== r.alone.snap && r.sig.snap !== r.rel.snap && r.alone.snap !== r.rel.snap, {});
   check('L14b the session keeps the view', r.sessView === 'viab', r.sessView);
-  check('L14b the Excel workbook is the same sheets whatever the views — Results, Raw Data, Prism, the protocol — each holding all three views, one under the other', r.sheets.join() === 'Results,Raw Data,Prism,Data Analysis Protocol' && r.rawViews === 'Luminescence,Viability,Relative', [r.sheets, r.rawViews]);
+  check('L14b the Excel workbook is the same sheets whatever the views — Results, Raw Data, Prism (percent), Prism (fraction), the protocol — each holding all three views, one under the other', r.sheets.join() === 'Results,Raw Data,Prism (percent),Prism (fraction),Data Analysis Protocol' && r.rawViews === 'Luminescence,Viability,Relative', [r.sheets, r.rawViews]);
   check('L14b each view has its own potency name in its Results block (DC50 for the luminescence, IC50 for the viability) and the same compounds', /DC50/.test(r.hdrL) && /IC50/.test(r.hdrV) && new Set(r.nRes.split(',')).size === 1, [r.hdrL, r.hdrV, r.nRes]);
-  check('L14b the Prism sheet reads top to bottom: for every view the percentage table, then the fraction table, titles in column A, nothing beside anything, different numbers per view', r.prismOk && r.prismDiffer, r.prism);
+  check('L14b the two Prism sheets read top to bottom: a percentage table per view in one, a fraction table per view in the other, titles in column A, nothing beside anything, different numbers per view', r.prismOk && r.prismDiffer, r.prism);
   check('L14b the Prism fraction table is the percentage table divided by 100, number for number', r.prismFrac, r.prism);
   check('L14b the raw sheet of a view carries both readings, the protocol explains the three views', /Signal,Viability_Reading/.test(r.rawHdr) && r.proto, [r.rawHdr, r.proto]);
   check('L14b exporting leaves the view and the curves on screen as they were', r.afterView === 'viab' && r.afterSnap === r.alone.snap, [r.afterView]);
-  check('L14b with the option off the sheet names carry no view', r.offSheets.indexOf('(') < 0 && /Results,Raw Data/.test(r.offSheets), r.offSheets);
+  check('L14b with the option off the sheet names carry no view', !/Luminescence|Viability|Relative/.test(r.offSheets) && /Results,Raw Data/.test(r.offSheets), r.offSheets);
   await ev(() => { state.viabNorm = false; state.viabView = 'rel'; switchTab('results'); });
 } catch (e) { findings.push('✗ L14b the run stopped: ' + e.message.split('\n')[0]); }
 // L14c — "relative to viability" means nothing when the assay IS the viability (Jon: "si estoy midiendo viability este apartado no tiene sentido").
@@ -587,7 +587,7 @@ try {
   check('L14c on Viability there is no view choice in Results, no toggle on the readings strip and no Viability group in Setup', r.segHidden === true && r.strip === false && !/Relative to viability/.test(r.setupHtml), { seg: r.segHidden, strip: r.strip });
   check('L14c a plate without viability is not left out on the Viability assay', r.missing === 0 && r.noViabFit.ok, { m: r.missing });
   check('L14c choosing Viability says it once; choosing another assay says nothing', r.toastOnCtg === 1 && r.toastOnce === 1 && r.noToastOnOther === 0, [r.toastOnCtg, r.toastOnce, r.noToastOnOther]);
-  check('L14c the session keeps the choice, and the workbook has no view sheets on Viability', r.sessKept && r.sheets.indexOf('(') < 0 && /Results,Raw Data/.test(r.sheets), r.sheets);
+  check('L14c the session keeps the choice, and the workbook has no view sheets on Viability', r.sessKept && !/Luminescence|Viability|Relative/.test(r.sheets) && /Results,Raw Data/.test(r.sheets), r.sheets);
   check('L14c back on HiBiT the division, the view buttons and the Setup group are back, with the same curves', r.backOn === true && r.backFit.snap === r.hibitFit.snap && r.segBack && r.setupBack, { on: r.backOn, seg: r.segBack, setup: r.setupBack });
 } catch (e) { findings.push('✗ L14c the run stopped: ' + e.message.split('\n')[0]); }
 // _lmReadFmt is arithmetic and needs no file
@@ -881,7 +881,7 @@ try {
     // a typed top of 20000 nM comes out as 20000 in the Prism sheet
     let wb = null; const wf = XLSX.writeFile; XLSX.writeFile = w => { wb = w; }; exportXLSX(); XLSX.writeFile = wf;
     o.sheets = wb.SheetNames.join();
-    const pa = XLSX.utils.sheet_to_json(wb.Sheets['Prism'], { header: 1, defval: '' }), pi = pa.findIndex(x => /PERCENT OF CONTROL$/.test(x[0])), first = pa.slice(pi + 4, pi + 4 + o.prism.length).map(x => x[0]);
+    const pa = XLSX.utils.sheet_to_json(wb.Sheets['Prism (percent)'], { header: 1, defval: '' }), pi = pa.findIndex(x => /PERCENT OF CONTROL$/.test(x[0])), first = pa.slice(pi + 4, pi + 4 + o.prism.length).map(x => x[0]);
     o.firstPrism = first.join();
     // Graph: the three views
     o.offHead = document.getElementById('lg-head').hidden;
@@ -898,7 +898,7 @@ try {
     return o;
   });
   check('L31 the Prism concentration column is the concentration that was set (every value is one in the raw data)', r.stray.length === 0 && r.prism.length > 3, JSON.stringify({ stray: r.stray, prism: r.prism }));
-  check('L32 the workbook is Results, Raw Data, Prism, Data Analysis Protocol (and Normalisation when there are rules)', r.sheets === 'Results,Raw Data,Prism,Data Analysis Protocol', r.sheets);
+  check('L32 the workbook is Results, Raw Data, Prism (percent), Prism (fraction), Data Analysis Protocol (and Normalisation when there are rules)', r.sheets === 'Results,Raw Data,Prism (percent),Prism (fraction),Data Analysis Protocol', r.sheets);
   check('L33 Graph offers Luminescence · Viability · Relative to viability with a double read, and nothing without one', r.offHead === true && r.head === false && /Luminescence:false\|Viability:false\|Relative to viability:true/.test(r.btns) && r.hiddenAgain === true, JSON.stringify([r.offHead, r.head, r.btns, r.hiddenAgain]));
   check('L33 choosing a view on Graph is the same choice as on Results, and the figure follows it (title and curves)', r.view === 'viab' && r.resBtn === 'true' && r.title === 'Viability' && r.title2 !== 'Viability', JSON.stringify([r.view, r.resBtn, r.title, r.title2]));
 } catch (err) { check('L31–L33 the checks ran to the end', false, String(err && err.message || err).split('\n')[0]); }
