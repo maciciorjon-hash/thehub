@@ -10,7 +10,9 @@
    MenuKit.items(id, rows)       fills a menu from rows [{ t, s, fn, off }] (a title, its line, what it runs) and null for a rule — for a menu whose items depend on the data
    MenuKit.closeAll()            a tab change closes whatever is open
    MenuKit.tabs({ bar, select, pane })  the tab row as one component: roving tabindex (the open tab is the one stop), ← → Home End move along it and wrap, the tab that gets the focus opens
-                                 (select(name) is the app's own switch), aria-controls and role=tabpanel on the panes (pane(name) → the pane's id) */
+                                 (select(name) is the app's own switch), aria-controls and role=tabpanel on the panes (pane(name) → the pane's id); [ and ] open the previous and the
+                                 next tab from anywhere outside a field, a menu or a dialog
+   Pinned chrome                 the header and the tab row stay at the top while the page scrolls (menu.css); --mk-top and --mk-stick are measured here */
 var MenuKit = (function(){
   var root = document.documentElement, redrawFn = null, pend = 0;
   function byId(i){ return document.getElementById(i); }
@@ -84,8 +86,27 @@ var MenuKit = (function(){
       all[j].focus();
     });
     sync();
+    // [ and ] walk the tabs in the order of the bar, wherever the focus is (not in a field, a menu or a dialog): the same two keys in the three apps
+    document.addEventListener('keydown', function(e){
+      if ((e.key !== '[' && e.key !== ']') || e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
+      var t = e.target, tag = t && t.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (t && t.isContentEditable)) return;
+      if (open().length || [].some.call(document.querySelectorAll('[aria-modal="true"],[role=dialog],[role=alertdialog]'), function(d){ var cs = getComputedStyle(d); return vis(d) && cs.visibility !== 'hidden' && +cs.opacity > 0; })) return;   // a closed drawer or help panel is only invisible
+      var all = list(); if (!all.length) return;
+      var i = all.findIndex(function(x){ return x.getAttribute('aria-selected') === 'true' || x.classList.contains('active'); });
+      e.preventDefault(); o.select(all[((i < 0 ? 0 : i) + (e.key === ']' ? 1 : -1) + all.length) % all.length].dataset.tab);
+    });
+  }
+  /* ── pinned chrome: where the tab row sticks (under the header when the app shows one) and how much the two cover ── */
+  function pin(){
+    var bar = document.querySelector('.tabbar'), h = document.querySelector('body > header');
+    if (!bar || getComputedStyle(bar).position !== 'sticky') { root.style.setProperty('--mk-top', '0px'); root.style.setProperty('--mk-stick', '0px'); return; }
+    var hh = h && getComputedStyle(h).display !== 'none' ? h.offsetHeight : 0;
+    root.style.setProperty('--mk-top', hh + 'px'); root.style.setProperty('--mk-stick', (hh + bar.offsetHeight) + 'px');
   }
   function init(o){
+    pin(); window.addEventListener('resize', pin);
+    if (window.ResizeObserver) { var ro = new ResizeObserver(pin); [document.querySelector('body > header'), document.querySelector('.tabbar')].forEach(function(x){ if (x) ro.observe(x); }); }
     redrawFn = o && o.redraw || null;
     var s = stored(); if (s) setTheme(s); syncSwitch();
     var c = byId('theme-chk'); if (c) c.addEventListener('change', toggleTheme);

@@ -16,8 +16,11 @@ var SheetKit = (function(){
     return { aoa: aoa, merges: merges, starts: starts };
   }
   // The worksheet of a stack; the columns are as wide as their longest table cell (titles and notes run over the empty cells beside them).
+  // A number goes in to six significant figures (103.873, 0.999622, 3333.33), as Tempo always wrote them: the float's tail (103.87337551440858) is noise nobody measured,
+  // and it made every numeric column 20 characters wide. Whole numbers and text are left as they are.
+  function tidy(v){ return typeof v === 'number' && isFinite(v) && !Number.isInteger(v) ? +v.toPrecision(6) : v; }
   function sheet(blocks, clean){
-    var s = stack(blocks), rows = clean ? clean(s.aoa) : s.aoa, ws = XLSX.utils.aoa_to_sheet(rows), w = [], skip = {};
+    var s = stack(blocks), rows = (clean ? clean(s.aoa) : s.aoa).map(function(r){ return r.map(tidy); }), ws = XLSX.utils.aoa_to_sheet(rows), w = [], skip = {};
     var r = 0;
     blocks.forEach(function(b){
       if (!b || !b.aoa || !b.aoa.length) return;

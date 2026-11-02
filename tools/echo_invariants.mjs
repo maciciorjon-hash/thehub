@@ -2101,7 +2101,7 @@ if (run('E53')) await guard('E53', async () => {
     if (same) for (let i = 1; i < csv.length && same; i++) for (let k = 0; k < csv[i].length; k++) {
       const a = csv[i][k], b = sheet[i][k] == null ? '' : sheet[i][k];
       if (a === '' && b === '') continue;
-      if (isFinite(+a) && a !== '' ? Math.abs(+a - +b) > 1e-9 * Math.max(1, Math.abs(+a)) : String(a) !== String(b)) { same = { i, k, a, b }; break; }
+      if (isFinite(+a) && a !== '' ? Math.abs(+a - +b) > 6e-6 * Math.max(1, Math.abs(+a)) /* a workbook number is six significant figures (SheetKit); the CSV keeps the float */ : String(a) !== String(b)) { same = { i, k, a, b }; break; }
     }
     return { lbls, exp, fnsOk, rawN: raw.length, sheetN: sheet && sheet.length, csvN: csv && csv.length, same, sheets: wb && wb.SheetNames };
   });

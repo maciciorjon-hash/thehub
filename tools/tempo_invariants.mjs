@@ -531,14 +531,14 @@ try {
   {
     const hit = await ev(() => {
       const pal = tpPal(false), out = [];
-      // The tick labels are monospaced: 0.6 em a character, a line box of 1.3 em with the baseline 1.025 em from the top (IBM Plex Mono). Modelled, not measured: the
+      // The tick labels are modelled as monospaced (they are drawn in the sans face, narrower): 0.6 em a character, a line box of 1.3 em with the baseline 1.025 em from the top (IBM Plex Mono). Modelled, not measured: the
       // offline page has no Plex, and the hub's real font has a taller box than the fallback — the 4px overlap the sweep found at 1024 was invisible without it.
       const box = e => { const fs = +e.getAttribute('font-size'), w = e.textContent.length * .6 * fs, a = e.getAttribute('text-anchor'), x = +e.getAttribute('x'), y = +e.getAttribute('y'); const l = a === 'end' ? x - w : a === 'middle' ? x - w / 2 : x; return { l: l, r: l + w, t: y - 1.025 * fs, b: y + .275 * fs, s: e.textContent }; };
       // a log concentration axis whose first decade (100 pM, 1 nM, 10 nM) sits right at the left edge, over a y axis that starts at 0
       for (const lo of [0.1, 0.1004, 0.14, 0.2, 1, 1.002, 10]) for (const W of [560, 420, 320]) {
         const F = tpFrame({ W: W, H: 300, pal: pal, id: 'k', x: { lo: lo, hi: lo * 400, log: true, label: 'Concentration', fmt: tpAxConc }, y: { lo: 0, hi: 100, label: 'K' } });
         const d = document.createElement('div'); d.innerHTML = tpSvg(W, 300, F.s, pal);
-        const t = [...d.querySelectorAll('text')].filter(e => /Mono/.test(e.getAttribute('font-family') || '') && e.textContent.trim()).map(box);
+        const t = [...d.querySelectorAll('text')].filter(e => /Plex/.test(e.getAttribute('font-family') || '') && e.textContent.trim()).map(box);
         for (let i = 0; i < t.length; i++) for (let j = i + 1; j < t.length; j++) { const a = t[i], b = t[j], ox = Math.min(a.r, b.r) - Math.max(a.l, b.l), oy = Math.min(a.b, b.b) - Math.max(a.t, b.t); if (ox > 1 && oy > 1) out.push(W + 'px lo ' + lo + ': "' + a.s + '" touches "' + b.s + '"'); }
       }
       return out;
@@ -1049,7 +1049,7 @@ try {
       return o;
     });
     check('K31 the same plate read the other way keeps its layout, and switching there and back leaves every DC50 and log efficiency exactly as it was', r.layTc && r.before === r.after && r.tcRows > 0 && r.tcKind === 'timecourse', JSON.stringify([r.layTc, r.tcRows, r.tcKind, r.before.slice(0, 80), r.after.slice(0, 80)]));
-    check('K31 a time course has its own Results columns (no DC50, Dmax or KDeg) and its own views; the degradation ones come back unchanged', !/DC50|Dmax|KDeg|K at/.test(r.tcHead) && /Largest change/.test(r.tcHead) && /t½/.test(r.tcHead) && r.tcSubs === 'Time course,Raw (RLU),By dose,Heat map' && /DC50 \(Dmax50\)/.test(r.degHead) && /KDegMax/.test(r.degHead), JSON.stringify([r.tcHead, r.tcSubs, r.degHead.slice(0, 120)]));
+    check('K31 a time course has its own Results columns (no DC50, Dmax or KDeg) and its own views; the degradation ones come back unchanged', !/DC50|Dmax|KDeg|K at/.test(r.tcHead) && /Largest change/.test(r.tcHead) && /t½/.test(r.tcHead) && r.tcSubs === 'Time course,Raw (RLU),By dose,Heat map' && /DC50 \(Dmax50/.test(r.degHead) && /KDegMax/.test(r.degHead), JSON.stringify([r.tcHead, r.tcSubs, r.degHead.slice(0, 120)]));
     check('K31 no page error', errs.length === 0, errs.slice(0, 2).join(' | '));
     await c.close();
   }
