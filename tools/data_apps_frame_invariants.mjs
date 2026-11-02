@@ -34,7 +34,7 @@ const ORDER = {
   echo: ['Results', 'Curves', 'Plots', 'Graph', 'Plate', 'Properties', 'Run', 'History', 'Guide'],
   lumina: ['Plate', 'Results', 'Graph', 'History', 'Guide'],
   beacon: ['Plate', 'Results', 'Graph', 'History', 'Guide'],
-  tempo: ['Plate', 'Results', 'Curves', 'Compare', 'Graph', 'History', 'Guide'],
+  tempo: ['Plate', 'Results', 'Curves', 'Compare', 'History', 'Guide'],
   hitfinder: ['Screens', 'Criteria', 'Hits', 'Sensitivity', 'Plots', 'Graph', 'Health', 'Chemistry', 'Export', 'Guide'],
   dora: ['Data', 'Results', 'Compare', 'Graph', 'Properties', 'Guide'],
   bca: ['Workflow', 'Graph', 'History', 'Guide'],

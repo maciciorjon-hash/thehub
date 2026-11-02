@@ -33,6 +33,7 @@
 // K34 outputs of a time course: Results columns, the Method (follows the settings, never names a fit), workbook, tidy CSV, Prism, ProNect-compatible files, figure, print, menu, Compare; Labbook and Hit Finder say why they do not apply
 // K35 Analysis settings of a time course: Normalise · Time course · Report, one column each, Apply reads them, Back to the defaults keeps the experiment
 // K36 the induction fit: a rise or a fall that settles gets one phase (k, plateau, delay with profile intervals): planted values recovered, intervals cover, a plateau not reached is fixed and said so, a peak is not fitted, the screens and files carry it
+// K39 Compare is the figure (no Graph tab): every number drawn is made from the wells — the mean, SD, SEM and 95 % interval, the percent and log₂ measures, RLU with and without the background and the fold over T0 — a well or a read left out stays out, the datasets ticked are the ones drawn, the dose view reads the level at one time and carries the two fits, and the screen, the PNG/SVG and the caption are one figure
 // K37 one frame for every Curves view (time course and degradation): list, card, tabs, option row, axes row and chart start in the same place whichever view is open
 // K15 Analysis settings is four tabs of aligned rows: every control has a caption, sits in one column on its tab, Apply stays in view whichever tab is open, and Apply reads the tabs that are hidden
 import { chromium } from 'playwright';
@@ -898,18 +899,18 @@ try {
       tpSub('raw'); await wait(100); type('raw', 'y', 1, '5000'); await wait(80); o.raw = TP_AX.raw.y.eff[1] === 5000 && /data-chart="raw"/.test(tpChartSVGLight()) && yTicks('#tp-rawchart').every(v => v <= 5000 + 1e-9);
       o.svg = (TP.sel.sub = 'kin', TP.ui.ax.kin = { y: [0.3, 0.6] }, tpChartSVGLight(), TP_AX.kin.y.eff[0] === 0.3 && TP_AX.kin.y.eff[1] === 0.6); delete TP.ui.ax.kin;
       // Compare: the three plots take ranges
-      tpTab('compare'); await wait(300); o.cmp = ['cmpS', 'cmpK', 'cmpT'].map(v => document.querySelectorAll('input[data-view="' + v + '"]').length);
-      type('cmpT', 'y', 1, '0.9'); await wait(80); o.cmpT = TP_AX.cmpT.y.eff[1] === 0.9;
+      tpTab('compare'); await wait(300); o.cmp = ['cmpS', 'fig'].map(v => document.querySelectorAll('input[data-view="' + v + '"]').length);
+      type('fig', 'y', 1, '0.9'); await wait(80); o.cmpT = TP_AX.fig.y.eff[1] === 0.9;
       TP.ui.cmpX = 'dc50'; TP.ui.cmpY = 'kmax'; tpRenderCompare(); const a0 = TP_AX.cmpS.x.auto.slice(); type('cmpS', 'x', 0, '0.5'); await wait(80); o.cmpS = Math.abs(TP_AX.cmpS.x.eff[0] - 0.5) < 1e-9 && a0[0] !== 0.5;
       return o;
     });
-    check('K23 every chart with a number axis has an Axes row (Kinetics, Dmax–, K–response, Over time, Residuals, First-order, Raw and the three Compare plots); the heat map, which has none, does not', ['kin', 'dr', 'k', 't', 'res', 'fo'].every(v => r.bars[v] >= 2) && r.bars.t === 6 && r.heatNone && r.cmp.every(n => n === 4 || n === 4), JSON.stringify([r.bars, r.heatNone, r.cmp]));
+    check('K23 every chart with a number axis has an Axes row (Kinetics, Dmax–, K–response, Over time, Residuals, First-order, Raw and the two Compare plots); the heat map, which has none, does not', ['kin', 'dr', 'k', 't', 'res', 'fo'].every(v => r.bars[v] >= 2) && r.bars.t === 6 && r.heatNone && r.cmp.every(n => n === 4), JSON.stringify([r.bars, r.heatNone, r.cmp]));
     check('K23 typing a minimum and a maximum (a comma is a decimal point) redraws the chart inside them, with ticks inside, and the boxes keep what was typed', r.typed && r.kinY && r.kinKept, JSON.stringify([r.typed, r.kinY, r.kinKept]));
     check('K23 the time axis is typed in the unit it is read in, and a range of 60–240 min is the chart\'s range', r.kinX, '');
     check('K23 a range that is not one (min above max, 0 on a log axis, text) stays on automatic and says so; empty boxes and Auto put it back', r.bad && r.cleared && r.junk && r.reset && r.logZero, JSON.stringify([r.bad, r.cleared, r.junk, r.reset, r.logZero]));
     check('K23 K is typed in the unit on the axis, and a log axis cut to 5–60 nM still has its labels', r.kUnit && r.logNarrow, JSON.stringify([r.kUnit, r.logNarrow]));
     check('K23 the shift-drag and the saved figure follow the range on show', r.dragAxis && r.svg && r.raw, JSON.stringify([r.dragAxis, r.svg, r.raw]));
-    check('K23 Compare: a metric shown as itself (a log10 scale) is typed as itself, and the traces plot takes a range', r.cmpT && r.cmpS, JSON.stringify([r.cmpT, r.cmpS]));
+    check('K23 Compare: a metric shown as itself (a log10 scale) is typed as itself, and the figure takes a range', r.cmpT && r.cmpS, JSON.stringify([r.cmpT, r.cmpS]));
     check('K23 no page error through any of it', e9.length === 0, e9.slice(0, 2).join(' | '));
     await c9.close();
   }
@@ -1151,7 +1152,7 @@ try {
     check('K34 the Method says no degradation is modelled, defines every measure, never mentions a Michaelis–Menten or a 4PL, and follows the settings (smoothing 7, smallest change 0.25, end = last 5 reads, no control step)', /No degradation is modelled/.test(r.method) && /Largest change/.test(r.method) && /t½ of the change/.test(r.method) && !/Michaelis|4PL|KDeg|Dmax/.test(r.method.replace(/no DC50, Dmax or KDeg/, '')) && /running median of 7 reads/.test(r.method2) && /max\(0\.25, 3σ\)/.test(r.method2) && /last 5 reads/.test(r.method2) && /no control step|NOT corrected/.test(r.methodNone) && /no control step/.test(r.shortNone), JSON.stringify([r.method.slice(0, 160), r.shortNone.slice(0, 120)]));
     check('K34 the workbook is four sheets: Results (with the bound written out), Prism (the mean table, then the SD table under it, one column per condition and dose), Wells (tidy), Method', r.sheets === 'Results,Prism,Wells,Method' && /Largest change \(x over start\)\|Largest change is\|at \(h\)/.test(r.xHead) && r.meanCols === 12 && r.meanRows === 145 && r.meanSd && r.lateral, JSON.stringify([r.sheets, r.xHead.slice(0, 120), r.meanCols, r.meanRows]));
     check('K34 tidy CSV (Dose and Dose_unit, ug/mL for doxycycline, nothing for an untreated condition), Prism tables (Method first, a table per condition), ProNect-compatible JSON (the time-course results, ProNect’s unit for a mass dose)', /^Plate,Well,Condition,Target,Dose,Dose_unit,Time_h,RLU_raw,Level,Left_out/.test(r.csvHead) && r.csvDox === 'mass' && r.prism === 'true,true,true' && r.json === 'timecourse,5,true' && /µg\/mL/.test(r.rawUnit), JSON.stringify([r.csvHead, r.csvDox, r.prism, r.json, r.rawUnit]));
-    check('K34 the saved figure and the printed summary carry the method; the export menu drops the Screen table and keeps Prism; Send to Labbook and Hit Finder say why they do not apply; Compare draws and saves', r.svg && r.print && r.menu === 'false,true' && r.lb && r.hf && /Ranking\|Two measures against each other\|Traces/.test(r.cmp) && r.cmpSvg, JSON.stringify([r.svg, r.print, r.menu, r.lb, r.hf, r.cmp, r.cmpSvg]));
+    check('K34 the saved figure and the printed summary carry the method; the export menu drops the Screen table and keeps Prism; Send to Labbook and Hit Finder say why they do not apply; Compare draws and saves', r.svg && r.print && r.menu === 'false,true' && r.lb && r.hf && /Datasets\|Appearance\|Ranking\|Two measures against each other/.test(r.cmp) && r.cmpSvg, JSON.stringify([r.svg, r.print, r.menu, r.lb, r.hf, r.cmp, r.cmpSvg]));
     check('K34 no page error', errs.length === 0, errs.slice(0, 2).join(' | '));
     await c.close();
   }
@@ -1299,6 +1300,59 @@ try {
   check('K38 Results reads top to bottom: Analysis A (one row per compound, Flags last) and, under it, Analysis B; nothing beside anything', r.both === 'true,true,true,true' && r.nData === r.rows, JSON.stringify([r.both, r.nData, r.rows]));
   check('K38 Details holds per concentration, per well and DC50 over time; Wells is one row per well and read with its role and left-out flag; Method ends with the settings', r.det === 'true,true,true' && r.wells[0] === r.wells[1] && /^Plate\|Well\|Role\|Compound\|Target\|Concentration \(nM\)\|Time \(h\)\|Raw \(RLU\)\|Fractional\|Left out/.test(r.wHead) && r.method, JSON.stringify([r.det, r.wells, r.wHead, r.method]));
 } catch (e) { findings.push('✗ K38 the checks ran to the end: ' + String(e && e.message || e).split('\n')[0]); }
+
+
+// K39 Compare is the figure
+try {
+  const r = await ev(async () => {
+    const o = {}; await tpSetKind('timecourse'); await tpLoadExample('timecourse'); tpTab('compare'); delete TP.ui.fig; const F = tpFig();
+    const U = tpFigUnits(); o.nU = U.length; o.noGraph = !document.querySelector('.tab[data-tab="graph"]') && !document.getElementById('pane-graph') && typeof tpRenderGraph === 'undefined';
+    F.pick = {}; U.forEach(u => { F.pick[u.k] = true; }); F.q = 'rel'; F.err = 'sd';
+    let plan = tpFigPlan(), S = tpFigSeries(plan).filter(s => s.kind === 'dose'); o.nS = S.length;
+    o.rel = S.every(s => s.mean.every((m, k) => (m == null && s.u.cc.mean[k] == null) || Math.abs(m - s.u.cc.mean[k]) < 1e-9) && s.err.every((e, k) => (e == null && (s.u.cc.sd[k] == null || s.n < 2)) || Math.abs(e - s.u.cc.sd[k]) < 1e-9));
+    F.err = 'sem'; S = tpFigSeries(tpFigPlan()).filter(s => s.kind === 'dose'); const a = S.find(s => s.n > 1); const k0 = 40; o.sem = Math.abs(a.err[k0] - a.u.cc.sd[k0] / Math.sqrt(a.nAt[k0])) < 1e-9;
+    F.err = 'ci'; S = tpFigSeries(tpFigPlan()).filter(s => s.kind === 'dose'); const b = S.find(s => s.n > 1); o.ci = Math.abs(b.err[k0] - _tQ95(b.nAt[k0] - 1) * b.u.cc.sd[k0] / Math.sqrt(b.nAt[k0])) < 1e-9 && b.err[k0] > b.u.cc.sd[k0];
+    const one = S.find(s => s.n === 1); o.one = !one || one.err.every(e => e == null);
+    F.err = 'sd'; F.q = 'pct'; const sp = tpFigSeries(tpFigPlan()).filter(s => s.kind === 'dose')[3]; o.pct = Math.abs(sp.mean[50] - 100 * sp.u.cc.mean[50]) < 1e-7;
+    F.q = 'log2'; const sl = tpFigSeries(tpFigPlan()).filter(s => s.kind === 'dose')[3], lw = sl.u.cc.live.map(id => Math.log2(tpRes(sl.u.plate).nm.frac[id][50])); o.log2 = Math.abs(sl.mean[50] - lw.reduce((x, y) => x + y, 0) / lw.length) < 1e-9;
+    F.q = 'rlu'; F.bkg = false; const sr = tpFigSeries(tpFigPlan()).filter(s => s.kind === 'dose')[2], p = sr.u.plate, res = sr.u.res, i50 = res.nm.idx[50];
+    const raws = sr.u.cc.live.map(w => p.wells[w].raw[i50]); o.rlu = Math.abs(sr.mean[50] - raws.reduce((x, y) => x + y, 0) / raws.length) < 1e-6;
+    F.bkg = true; const sb = tpFigSeries(tpFigPlan()).filter(s => s.kind === 'dose')[2], bk = Object.keys(p.wells).filter(w => tpRole(p.wells[w]) === 'bkg'); const bmean = bk.reduce((x, w) => x + p.wells[w].raw[i50], 0) / bk.length;
+    o.bkg = bk.length > 0 && Math.abs((sr.mean[50] - sb.mean[50]) - bmean) < 1e-6;
+    F.q = 'fold'; F.bkg = false; const sf = tpFigSeries(tpFigPlan()).filter(s => s.kind === 'dose')[2]; o.fold = sf.wells.every(w => w[0] == null || Math.abs(w[0] - 1) < 1e-9);
+    o.veh = tpFigSeries(tpFigPlan()).some(s => s.kind === 'veh') || TP.S.norm.veh === 'none';
+    F.q = 'rel'; const t0 = tpFigUnits().find(u => u.cc.live.length >= 2), pl = t0.plate, ex = tpEx(pl), wid = t0.cc.live[0]; F.pick = {}; F.pick[t0.k] = true; const before = tpFigSeries(tpFigPlan())[0].n;
+    ex.wells.push(wid); await tpRunPlate(pl); const t1 = tpFigUnits().find(u => u.k === t0.k); F.pick = {}; F.pick[t1.k] = true; const after = tpFigSeries(tpFigPlan())[0];
+    o.wellOut = after.n === before - 1 && after.wells.length === before - 1 && after.mean.every((m, k) => (m == null && t1.cc.mean[k] == null) || Math.abs(m - t1.cc.mean[k]) < 1e-9);
+    ex.wells.length = 0; await tpRunPlate(pl); const t2 = tpFigUnits().find(u => u.k === t0.k), w2 = t2.cc.live[0]; (ex.pts[w2] = ex.pts[w2] || []).push(30); await tpRunPlate(pl); const t3 = tpFigUnits().find(u => u.k === t0.k); F.pick = {}; F.pick[t3.k] = true;
+    const s3 = tpFigSeries(tpFigPlan())[0]; o.readOut = s3.nAt[30] === t3.cc.nAt[30] && s3.nAt[30] === t3.cc.live.length - 1 && Math.abs(s3.mean[30] - t3.cc.mean[30]) < 1e-9; delete ex.pts[w2]; await tpRunPlate(pl);
+    delete TP.ui.fig; tpTab('compare'); let pn = tpFigPlan(); const gs = pn.groups; o.nG = gs.length; o.auto = pn.auto && pn.on.size === Math.min(10, gs.length) && gs.slice(0, 10).every(g => g.units.some(u => pn.on.has(u.k) && u === tpFigStrong(g)));
+    const n0 = pn.on.size, dox = gs.slice(0, 10).find(g => g.units.length > 2 && !pn.on.has(g.units[0].k)); tpFigTog(pn.units.indexOf(dox.units[0])); pn = tpFigPlan(); o.tick = !pn.auto && pn.on.size === n0 + 1 && pn.on.has(dox.units[0].k);
+    tpFigQuick('none'); o.none = tpFigPlan().on.size === 0 && /Nothing to draw/.test(tpFigBuild().svg) && document.querySelectorAll('#fig-out svg').length === 1;
+    const dk = tpFigUnits().filter(u => u.dk)[0].dk; tpFigQuick(dk); pn = tpFigPlan(); o.same = pn.on.size > 0 && [...pn.on].every(k => pn.units.find(u => u.k === k).dk === dk);
+    tpFigQuick('all'); Object.assign(tpFig(), { view: 'dose', q: 'rel', T: null }); const D = tpFigDoseItems(tpFigPlan()), it = D.items[0], u = tpFigUnits().find(x => x.ck === it.g.ck && x.cc.c === it.pts[0].c), ref = tpTCAt(u.res, u.cc, tpFigT(u.res));
+    o.at = D.items.length > 0 && Math.abs(it.pts[0].mean - ref.mean) < 1e-9; o.mass = D.notes.length > 0 || D.items.every(x => x.cu === D.items[0].cu);
+    tpFigQuick('strong'); Object.assign(tpFig(), { view: 'time', err: 'ci', lines: 'both' }); tpRender(); const sv = tpChartSVGLight();
+    o.same2 = sv === tpFigBuild({ exp: true }).svg && document.querySelectorAll('#fig-out svg path.tr').length === (sv.match(/class="tr"/g) || []).length;
+    const cap = tpFigBuild().cap.join(' '); o.cap = /95 % interval/.test(cap) && /n = \d/.test(cap) && /technical replicates/.test(cap) && /single wells/.test(cap);
+    const foot = tpFootFor(sv), vh = /viewBox="0 0 1000 (\d+)"/.exec(foot); o.foot = foot.indexOf('technical replicates') >= 0 && !!vh && +vh[1] > 560;
+    tpFig().cap = false; o.noCap = tpFootFor(sv) === sv; tpFig().cap = true;
+    await tpSetKind('degradation'); await tpLoadExample('degradation'); delete TP.ui.fig; Object.assign(tpFig(), { view: 'dose', dq: 'plateau' }); tpTab('compare');
+    const Dp = tpFigDoseItems(tpFigPlan()), c0 = Dp.items[0], A = c0.g.comp.A; o.half = Math.abs(c0.curve(A.DC50_nM) - (100 - (A._bot + A._tc) / 2)) < 1.5;
+    o.dc50 = c0.extra.indexOf('DC50 ' + tpF(A.DC50_nM, 3)) >= 0 || /DC50 /.test(c0.extra);
+    Object.assign(tpFig(), { dq: 'k' }); const Dk = tpFigDoseItems(tpFigPlan()), k0i = Dk.items[0], B = k0i.g.comp.B; o.kfit = !!k0i.curve && Math.abs(k0i.curve(1e6) - B.curve(1e6)) < 1e-12 && k0i.pts.length === B.rows.filter(x => x.K != null).length;
+    o.svgs = ['time', 'dose'].every(v => { tpFig().view = v; return tpFigBuild().ok; });
+    return o;
+  });
+  check('K39 Compare has no Graph tab behind it: the figure is the Compare tab\'s', r.noGraph && r.nU >= 10, JSON.stringify([r.noGraph, r.nU]));
+  check('K39 the mean and the SD drawn are the engine\'s at every read; SEM is SD/√n; the 95 % interval is Student t × SEM and is wider; one well has no band', r.rel && r.sem && r.ci && r.one, JSON.stringify([r.rel, r.sem, r.ci, r.one]));
+  check('K39 percent is 100 × the level, log₂ is the mean of each well\'s log₂, RLU is the raw read (the background wells subtracted on request), fold over T0 starts at 1, the control is a line of its own', r.pct && r.log2 && r.rlu && r.bkg && r.fold && r.veh, JSON.stringify([r.pct, r.log2, r.rlu, r.bkg, r.fold, r.veh]));
+  check('K39 a well left out and a read left out stay out of the figure, and the mean is still the engine\'s', r.wellOut && r.readOut, JSON.stringify([r.wellOut, r.readOut]));
+  check('K39 the datasets: automatic is the strongest dose of each condition, a tick adds a dose, nothing ticked says so, “same dose” ticks that dose and no other', r.auto && r.tick && r.none && r.same, JSON.stringify([r.auto, r.tick, r.none, r.same]));
+  check('K39 the dose view is the level at one time (three reads around it) as the engine reads it; doses in two units never share an axis', r.at && r.mass, JSON.stringify([r.at, r.mass]));
+  check('K39 the screen, the saved image and the caption are one figure (the caption says n, the error and that the wells are technical replicates; it can be left off the image)', r.same2 && r.cap && r.foot && r.noCap, JSON.stringify([r.same2, r.cap, r.foot, r.noCap]));
+  check('K39 a degradation\'s dose view carries Analysis A\'s curve (half-way at the DC50, the DC50 in the legend) and Analysis B\'s K–response', r.half && r.dc50 && r.kfit && r.svgs, JSON.stringify([r.half, r.dc50, r.kfit, r.svgs]));
+} catch (e) { findings.push('✗ K39 the checks ran to the end: ' + String(e && e.message || e).split('\n')[0]); }
 
 await browser.close();
 if (findings.length) { console.log('\n' + findings.length + ' finding(s), ' + passed + ' checks passed.'); process.exit(1); }

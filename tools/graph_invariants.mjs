@@ -111,29 +111,17 @@ const exportsOk = (pg, kitName) => pg.evaluate(async name => {
   check('GR9 no script error in BCA', errs.length === 0, errs.join(' | ')); await ctx.close();
 }
 
-/* ───── GR8: Tempo ───── */
+/* ───── GR8: Tempo — no Graph tab any more (Compare is its figure); the dose–response document stays for the Curve PDFs ───── */
 {
-  const { pg, errs, ctx } = await open('tempo', "await tpLoadExample('degradation'); tpTab('graph');");
+  const { pg, errs, ctx } = await open('tempo', "await tpLoadExample('degradation');");
   const d = await pg.evaluate(async () => {
     const dr = tgDRDoc(), rows = tgRows(), n = dr.items.length, it = dr.items[0], reps = it.points.reduce((a, p) => a + p.reps.length, 0), A = rows.find(r => r.plate.id + '|' + r.comp.key === it.id).comp.A;
     const ref = it.fit.ec50nM, rel = Math.abs(ref - A.DC50_nM) / A.DC50_nM, half = (A._bot + A._tc) / 2;
-    const kit = _tgKit.dr; const sp = kit.spec(); sp.hidden = {}; kit.refresh(); const before = kit.scene().items.find(i => i.id === it.id).fit.ec50nM;
-    const mid = it.points[Math.floor(it.points.length / 2)]; sp.omit[mid.reps[0].id] = true; kit.refresh(); const sc = kit.scene(), after = sc.items.find(i => i.id === it.id).fit, other = dr.items[1], oBefore = other.fit.ec50nM, oAfter = sc.items.find(i => i.id === other.id).fit.ec50nM;
-    return { n, reps, rel, fnAt: it.fit.fn(A.DC50_nM), half, before, after: after && after.ec50nM, other: [oBefore, oAfter], table: !!dr.table, top: A._tc };
+    return { n, reps, rel, fnAt: it.fit.fn(A.DC50_nM), half, table: !!dr.table, tab: !!document.querySelector('.tab[data-tab="graph"]') || !!document.getElementById('pane-graph'), kit: typeof tpRenderGraph };
   });
-  check('GR8 Tempo\'s dose–response has every compound with a dose–response, its replicates, and the fit of Analysis A', d.n >= 8 && d.reps >= 8 && d.rel < 0.01, d);
+  check('GR8 Tempo\'s dose–response document (the Curve PDFs\' source) has every compound with a dose–response, its replicates, and the fit of Analysis A', d.n >= 8 && d.reps >= 8 && d.rel < 0.01, d);
   check('GR8 the curve passes half-way between its bottom and its top at the DC50', Math.abs(d.fnAt - d.half) < 0.02 * Math.abs(d.half) + 0.5, d);
-  check('GR8 leaving a replicate out refits that compound alone', d.after != null && Math.abs(d.after - d.before) > 1e-9 && Math.abs(d.other[1] - d.other[0]) < 1e-9, d);
-  check('GR8 the figure can carry a table of DC50 and Dmax', d.table, d.table);
-  const K = await pg.evaluate(async () => { TP.ui.gfig = 'kin'; tpRenderGraph(); await new Promise(r => setTimeout(r, 300)); const doc = tgKinDoc(), kit = _tgKit.kin, sc = kit.scene(), first = doc.items[0].name;
-    const rows = tgRows(), other = rows.find(r => r.comp.key !== rows[0].comp.key), sel = document.getElementById('tg-comp'); sel.value = other.plate.id + '|' + other.comp.key; sel.dispatchEvent(new Event('change')); await new Promise(r => setTimeout(r, 300));
-    return { n: doc.items.length, pts: doc.items[0].points.length, reads: TP.plates[0] && tpRes(TP.plates[0]).t.length, markers: kit.spec().xy.points, err: kit.spec().err.type, join: sc.prims.filter(p => /^join:/.test(p.el || '')).length, title2: tgKinDoc().title[0], title1: doc.title[0], first, other: other.comp.compound };
-  });
-  check('GR8 Kinetics draws one joined line per concentration, every read, no markers and no error bars until asked', K.n >= 5 && K.pts >= 100 && K.markers === false && K.err === 'none' && K.join === K.n, K);
-  check('GR8 choosing another compound redraws the figure for it', K.title2.startsWith(K.other) && K.title1 !== K.title2, K);
-  const ex = await exportsOk(pg, '_tgKit.kin'); check('GR9 Tempo\'s figure exports', ex.svg && ex.withText && ex.pdf === '%PDF-', ex);
-  const T = await pg.evaluate(async () => { await tpLoadExample('timecourse'); tpTab('graph'); await new Promise(r => setTimeout(r, 400)); const btn = [...document.querySelectorAll('#tg-bar .btn')].map(b => [b.textContent, b.disabled, b.getAttribute('aria-pressed')]); return { btn, root: document.getElementById('tg-root-kin').style.display !== 'none', note: document.getElementById('tg-note').textContent }; });
-  check('GR8 a time course has no dose–response: that button is off and Kinetics is shown', T.btn[0][1] === true && T.btn[1][2] === 'true' && T.root, T);
+  check('GR8 the traditional Graph tab is gone from Tempo (Compare is its figure)', !d.tab && d.kit === 'undefined', d);
   check('GR9 no script error in Tempo', errs.length === 0, errs.join(' | ')); await ctx.close();
 }
 

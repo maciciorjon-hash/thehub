@@ -28,7 +28,7 @@ const check = (name, ok, detail) => { if (ok) passed++; else { const m = '✗ ' 
 const APPS = {
   lumina: { seed: 'loadLuminaTestData()', results: `switchTab('results')`, graph: `switchTab('graph')`, btn: '#rs-exp-btn', menu: '#rs-exp', spy: 'rsRefreshCharts', bar: '#lm-tabbar' },
   beacon: { seed: `loadTestData('gain')`, results: `switchTab('results')`, graph: `switchTab('graph')`, btn: '#rs-exp-btn', menu: '#rs-exp', spy: 'bDrawResults', bar: '#tabs' },
-  tempo: { seed: `await tpLoadExample('degradation')`, results: `tpTab('results')`, graph: `tpTab('graph')`, btn: '#tp-exp-btn', menu: '#tp-exp-menu', spy: 'tpRender', bar: '#tp-tabs' },
+  tempo: { seed: `await tpLoadExample('degradation')`, results: `tpTab('results')`, graph: `tpTab('compare')`, btn: '#tp-exp-btn', menu: '#tp-exp-menu', spy: 'tpRender', bar: '#tp-tabs' },
 };
 const browser = await chromium.launch();
 async function boot(id, keepTheme) {
