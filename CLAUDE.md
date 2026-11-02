@@ -4,7 +4,7 @@ Short index, loaded every session. **Long-form memory: [`docs/CLAUDE_REFERENCE.m
 
 ## What it is
 
-**dHUB** (`dHUB.html`) is Jon Macicior's (postdoc, Ciulli Lab, Dundee) experiment tracker for targeted protein degradation and chemical biology. Vanilla HTML/CSS/JS, no build step, no server; every app is base64-embedded in one self-contained file. Product = **Log · Annotate · Analyse · Export**; the moat is encoded domain knowledge (34 Archive protocols with live calculators, parameterised experiment templates, a loop that understands a dose-response plate). **Spine** Labbook · **Flagship** Echo Dose Response · **Moat** Archive. No new app surface area; invest in the Echo ↔ Labbook loop and the export side.
+**dHUB** (`dHUB.html`) is Jon Macicior's (postdoc, Ciulli Lab, Dundee) experiment tracker for targeted protein degradation and chemical biology. Vanilla HTML/CSS/JS, no build step, no server; every app is base64-embedded in one self-contained file. Product = **Log · Annotate · Analyse · Export**; the moat is encoded domain knowledge (35 Archive protocols with live calculators, parameterised experiment templates, a loop that understands a dose-response plate). **Spine** Labbook · **Flagship** Echo Dose Response · **Moat** Archive. No new app surface area; invest in the Echo ↔ Labbook loop and the export side.
 
 Blocked on Jon, not on code: University of Dundee IP ownership (gates any sale); pasting `echo/**` rules from `storage.rules` into the Firebase console.
 

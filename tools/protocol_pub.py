@@ -71,6 +71,12 @@ PUB = {
    'Surviving cells were expanded and expression of the construct was confirmed by inducing with {{tet}} tetracycline for {{induceH}}.',
    'The confirmed line was expanded without hygromycin and frozen for long-term storage.',
  ],
+ 'alphalisa': [
+   'MEF cells were seeded at {{cellsPerWell}} cells per well in DMEM in a {{format}}-well plate.',
+   'The medium was replaced with {{treatVol}} of DMEM containing the compound, with chloroquine at {{cq}} final, and the cells were treated for {{treatTime}} at {{treatTemp}}.',
+   'The cells were washed once with PBS and lysed in {{lysisVol}} of lysis buffer containing protease and phosphatase inhibitors, shaking at {{shakeRpm}} at room temperature for {{shakeTime}}. {{acceptorVol}} of AlphaLISA SureFire Ultra Acceptor bead mix was added in the dark and incubated for {{acceptorTime}} at room temperature.',
+   '{{donorVol}} of Donor bead mix was added in the dark and the plate incubated for at least {{donorTime}} at room temperature before reading on an AlphaScreen/AlphaLISA-compatible plate reader.',
+ ],
  'ctg2': [
    '',   # reagent thawing
    'Plates were equilibrated to room temperature for ~30 min, CellTiter-Glo 2.0 reagent added at a volume equal to the culture medium, mixed on an orbital shaker for 2 min and luminescence recorded after a 10 min incubation.',

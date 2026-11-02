@@ -26,7 +26,8 @@
 //   AR17 no glyphs as text       no emoji, warning sign or check mark in the Archive source (UI.md: the drawn icon set, or words)
 //   AR18 the bench checklist     checklist mode: a named role=checkbox on every step (Space ticks), progress, a timer on every duration of 3 h or less whose length IS the parameter,
 //                                the wake lock taken on and released (one the person switched on is left alone), ticks kept over a reload and cleared by Reset, step notes survive the repaint, 44px on the phone
-//   AR11 offline                 the installable build, after one visit, reloads with the network gone and still lists 34 protocols
+//   AR19 alphalisa               the AlphaLISA p-Rab10 protocol: its five calculators against hand arithmetic (Revvity's 300 uL Acceptor mix = 141 + 141 + 12 + 6), four stages on days 0,1,1,1, five boxes
+//   AR11 offline                 the installable build, after one visit, reloads with the network gone and still lists 35 protocols
 //
 //   node tools/archive_audit_invariants.mjs [--only=AR3] [--url=http://127.0.0.1:8807]      exit 1 on any finding
 import { chromium, devices } from 'playwright';
@@ -313,7 +314,7 @@ if (run('AR7')) await guard('AR7', 'data', async () => {
     return out;
   });
   if (r.leftovers.length) bad('AR7', 'protocols that render a leftover token, undefined or NaN: ' + r.leftovers.join(', ')); else ok();
-  if (r.n !== 34 || r.cards !== 34) bad('AR7', `34 protocols expected, data ${r.n} / cards ${r.cards}`); else ok();
+  if (r.n !== 35 || r.cards !== 35) bad('AR7', `35 protocols expected, data ${r.n} / cards ${r.cards}`); else ok();
   if (/Q9NWF9/.test(r.text) || !/DCAF15[^<]{0,12}Q66K64/.test(r.text.replace(/<[^>]+>/g, '').replace(/&quot;/g, '"'))) bad('AR7', 'the AlphaFold example must pair DCAF15 with Q66K64 (Q9NWF9 is RNF216)'); else ok();
   const txt = r.text.replace(/<[^>]+>/g, '');
   if (/multi-cycle kinetics \(MCK\) for high-affinity/i.test(txt) || !/single-cycle kinetics \(SCK\) for high-affinity/i.test(txt)) bad('AR7', 'SPR: single-cycle is for slow off-rates (no regeneration), multi-cycle for fast ones — the text had them the wrong way round'); else ok();
@@ -329,7 +330,7 @@ if (run('AR8')) await guard('AR8', 'bridge', async () => {
   const r = await host.evaluate(() => {
     const out = { bad: [], n: 0 };
     const idx = window.ARCHIVE_INDEX || [];
-    if (idx.length !== 34) out.bad.push('ARCHIVE_INDEX has ' + idx.length);
+    if (idx.length !== 35) out.bad.push('ARCHIVE_INDEX has ' + idx.length);
     const fr = document.getElementById('a').contentDocument;
     idx.filter(p => p.hasCalc).forEach(p => {
       const sch = window.ARCHIVE_CALC_SCHEMA(p.id); if (!sch) { out.bad.push(p.id + ': no schema'); return; }
@@ -675,6 +676,41 @@ if (run('AR18')) await guard('AR18', 'checklist', async () => {
     await t.context().close();
   }
 });
+// ═════════ AR19 — the AlphaLISA p-Rab10 protocol and its five calculators ═════════
+if (run('AR19')) await guard('AR19', 'alphalisa', async () => {
+  const p = await open();
+  const N = (label, t, re, want, tol = 0.011) => expectNum('AR19', label, t, re, want, tol);
+  let t = await stepsOf(p, 'alphalisa', { 'al-wells': 40, 'al-cpw': 12000, 'al-vpw': 40, 'al-count': 2, 'al-excess': 1.2,
+    'al-twells': 30, 'al-tvol': 40, 'al-tex': 1.1, 'al-cqstock': 20, 'al-cqtarget': 50, 'al-echonl': 80,
+    'al-lwells': 24, 'al-lvol': 12, 'al-lex': 1.25, 'al-lbx': 5, 'al-pix': 20, 'al-phix': 20,
+    'al-awells': 24, 'al-avol': 5, 'al-aex': 1.25, 'al-dwells': 24, 'al-dvol': 5, 'al-dex': 1.25, 'al-dbeads': 6 });
+  N('suspension mL (40 wells x 40 uL x 1.2)', t, /Prepare ([\d.]+) mL of suspension/, 1.92, 0.006);
+  N('cells uL (12,000 x 40 x 1.2 / 2,000 per uL)', t, /: ([\d.]+) µL of your/, 288, 0.6);
+  N('DMEM mL (1920 - 288 uL)', t, /\+ ([\d.]+) mL DMEM/, 1.63, 0.006);
+  N('chloroquine uL (50 ug/mL x 1.32 mL / 20 mg/mL)', t, /Chloroquine 50 µg\/mL final: ([\d.]+) µL/, 3.3, 0.006);
+  N('Echo DMSO % (80 nL in 40 uL)', t, /= ([\d.]+) % of the well/, 0.2, 0.0006);
+  N('5X lysis buffer uL (360 / 5)', t, /: ([\d.]+) µL of 5X lysis buffer/, 72, 0.6);
+  N('protease inhibitor uL (360 / 20)', t, /([\d.]+) µL of 20X protease/, 18, 0.06);
+  N('lysis water uL (360 - 72 - 18 - 18)', t, /and ([\d.]+) µL of water/, 252, 0.6);
+  N('Reaction Buffer 1 uL ((150 - 6 - 3) / 2)', t, /Reaction Buffer 1 ([\d.]+) µL/, 70.5, 0.06);
+  N('Activation Buffer uL (150 / 25)', t, /Activation Buffer ([\d.]+) µL/, 6, 0.06);
+  N('Acceptor Beads uL (150 / 50)', t, /Acceptor Beads ([\d.]+) µL/, 3, 0.06);
+  N('Donor beads uL (150 x 6 / 306)', t, /Donor beads ([\d.]+) µL/, 150 * 6 / 306, 0.006);
+  N('Dilution buffer uL (150 - beads)', t, /dilution buffer ([\d.]+) µL/, 150 - 150 * 6 / 306, 0.6);
+  // Revvity's own worked example: 300 uL of Acceptor mix is 141 + 141 + 12 + 6
+  t = await stepsOf(p, 'alphalisa', { 'al-awells': 48, 'al-avol': 5, 'al-aex': 1.25 });
+  N('Revvity example, Reaction Buffer 1', t, /Reaction Buffer 1 ([\d.]+) µL/, 141, 0);
+  N('Revvity example, Activation Buffer', t, /Activation Buffer ([\d.]+) µL/, 12, 0);
+  N('Revvity example, Acceptor Beads', t, /Acceptor Beads ([\d.]+) µL/, 6, 0);
+  const d = await p.evaluate(() => { const D = PROTOCOL_DATA.alphalisa, c = PROTOCOLS.find(x => x.id === 'alphalisa');
+    return { days: (D.stages || []).map(s => s.day), cat: c && c.category, boxes: document.querySelectorAll('#detail-alphalisa .calc-box').length,
+             tokens: JSON.stringify(D).match(/\{\{[^}]*\}\}/g).length > 0 }; });
+  if (d.days.join() !== '0,1,1,1') bad('AR19', 'the stages fall on days ' + d.days.join() + ', not 0,1,1,1'); else ok();
+  if (d.cat !== 'cellbio') bad('AR19', 'the card is under ' + d.cat); else ok();
+  if (d.boxes !== 5) bad('AR19', d.boxes + ' calculator boxes, not 5'); else ok();
+  await p.context().close();
+});
+
 // ═════════ AR11 — offline ═════════
 if (run('AR11')) await guard('AR11', 'offline', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'archive-pwa-'));
@@ -688,7 +724,7 @@ if (run('AR11')) await guard('AR11', 'offline', async () => {
   await pg.evaluate(() => navigator.serviceWorker.ready); await pg.waitForTimeout(1500);
   await ctx.setOffline(true); await pg.reload(); await pg.waitForTimeout(800);
   const n = await pg.evaluate(() => document.querySelectorAll('.proto-card').length);
-  if (n !== 34) bad('AR11', 'offline, the installed build shows ' + n + ' protocols instead of 34'); else ok();
+  if (n !== 35) bad('AR11', 'offline, the installed build shows ' + n + ' protocols instead of 35'); else ok();
   await pg.evaluate(() => { openProtocol('gibson'); showDTab('gibson', 'calc'); }); await pg.waitForTimeout(200);
   const calc = await pg.evaluate(() => document.getElementById('gb-result').textContent.length); if (calc < 40) bad('AR11', 'a calculator is empty offline'); else ok();
   await ctx.close(); s.close();
