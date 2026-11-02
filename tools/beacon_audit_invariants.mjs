@@ -226,7 +226,7 @@ if (run('BA7')) await guard('BA7', async () => {
   await pg.evaluate("loadTestData('gain')"); await pg.waitForTimeout(1600);
   await pg.reload(); await pg.waitForTimeout(1500);
   const r = await pg.evaluate(() => { const e = document.getElementById('bc-recent'); return { shown: getComputedStyle(e).display !== 'none', text: e.textContent, plates: state.plates.length }; });
-  check('BA7', 'after a reload the empty plate offers the analysis it was on', r.shown && /Demo - protein-protein/.test(r.text), r);
+  check('BA7', 'after a reload the empty plate offers the analysis it was on', r.shown && /BEA\d{8}_\d{4}/.test(r.text), r);   // nobody typed a name, so it is the dated id (a name suggested from the reader file is not an Assay ID)
   await pg.evaluate(() => document.querySelector('#bc-recent button').click()); await pg.waitForTimeout(500);
   const o = await pg.evaluate(() => ({ plates: state.plates.length, series: state.series.length }));
   check('BA7', 'one click brings it back (two plates, four compounds)', o.plates === 2 && o.series === 4, o);

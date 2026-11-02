@@ -507,12 +507,18 @@ try {
     let wb = null; const wf = XLSX.writeFile; XLSX.writeFile = (w) => { wb = w; }; exportXLSX(); XLSX.writeFile = wf;
     o.sheets = wb ? wb.SheetNames : [];
     const aoa = n => XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, defval: '' });
-    o.hdrL = (aoa('Results (Luminescence)')[0] || []).join(','); o.hdrV = (aoa('Results (Viability)')[0] || []).join(',');
-    o.nRes = ['Luminescence', 'Viability', 'Relative'].map(v => aoa('Results (' + v + ')').length).join();
-    const pr = v => aoa('Prism Copy (' + v + ')');
-    o.prism = ['Luminescence', 'Viability', 'Relative'].map(v => { const a = pr(v); return a.length + 'x' + a[0].length + ':' + a[0].filter(Boolean).length; }).join();
-    o.prismDiffer = JSON.stringify(pr('Luminescence').slice(2, 4)) !== JSON.stringify(pr('Viability').slice(2, 4)) && JSON.stringify(pr('Viability').slice(2, 4)) !== JSON.stringify(pr('Relative').slice(2, 4));
-    o.rawHdr = (aoa('Raw Data (Relative)')[0] || []).join(',');
+    // one Results sheet, a block for each view (its name, then its header and rows)
+    const res = aoa('Results'), at = v => res.findIndex(x => x[0] === v), ia = at('Luminescence'), ib = at('Viability'), ic = at('Relative');
+    o.hdrL = (res[ia + 1] || []).join(','); o.hdrV = (res[ib + 1] || []).join(',');
+    o.nRes = [ib - ia - 1, ic - ib - 1, res.length - ic].join();
+    // one Prism sheet: the three tables side by side from the top of the sheet, a blank column between, the view's name in each table's corner
+    const pr = aoa('Prism'), c0 = pr[0].indexOf('Luminescence'), c1 = pr[0].indexOf('Viability'), c2 = pr[0].indexOf('Relative'), w = c1 - c0 - 1;
+    const blk = k => pr.slice(2, 4).map(row => row.slice(k, k + w).join('|')).join('/');
+    o.prism = [c0, c1, c2].join() + ':' + w + ':' + (c2 - c1 - 1) + ':' + pr.length;
+    o.prismOk = c0 === 0 && w > 1 && c2 - c1 - 1 === w && pr[0][c1 - 1] === '' && pr[1][0] !== '';
+    o.prismDiffer = blk(c0) !== blk(c1) && blk(c1) !== blk(c2);
+    o.rawViews = [...new Set(aoa('Raw Data').slice(1).map(x => x[0]))].join();
+    o.rawHdr = (aoa('Raw Data')[0] || []).join(',');
     o.proto = JSON.stringify(aoa('Data Analysis Protocol')).indexOf('three views') >= 0;
     o.afterView = state.viabView; o.afterSnap = JSON.stringify(Object.fromEntries((state.fitResults || []).map(x => [x.sampleId, q3(x.logEC50) + '|' + q3(x.hill) + '|' + q3(x.top)])));
     // the reference: a plain run on the distorted values themselves
@@ -529,9 +535,9 @@ try {
   check('L14b the viability view is exactly a plain run on the fluorescence values, named as a viability curve (IC50)', r.alone.snap === r.ref.snap && r.alone.L === 'IC50' && /IC50/.test(r.hdr) && r.sig.L === 'DC50', { a: r.alone.snap.slice(0, 80), ref: r.ref.snap.slice(0, 80), L: [r.alone.L, r.sig.L] });
   check('L14b the three views are three different sets of curves', r.sig.snap !== r.alone.snap && r.sig.snap !== r.rel.snap && r.alone.snap !== r.rel.snap, {});
   check('L14b the session keeps the view', r.sessView === 'viab', r.sessView);
-  check('L14b the Excel workbook carries every view: Results, Raw Data, Prism Copy and Prism Fraction once for each, and the protocol', ['Results', 'Raw Data', 'Prism Copy', 'Prism Fraction'].every(n => ['Luminescence', 'Viability', 'Relative'].every(v => r.sheets.includes(n + ' (' + v + ')'))) && r.sheets.includes('Data Analysis Protocol') && r.sheets.every(n => n.length <= 31), r.sheets);
-  check('L14b each view has its own potency name in its sheet (DC50 for the luminescence, IC50 for the viability) and the same compounds', /DC50/.test(r.hdrL) && /IC50/.test(r.hdrV) && new Set(r.nRes.split(',')).size === 1, [r.hdrL, r.hdrV, r.nRes]);
-  check('L14b the Prism Copy sheets are separate, one per view, each a full table (a row per dose, a column per replicate) with different numbers', r.prismDiffer && new Set(r.prism.split(',')).size === 1, r.prism);
+  check('L14b the Excel workbook is four sheets whatever the views — Results, Raw Data, Prism, the protocol — each holding all three views', r.sheets.join() === 'Results,Raw Data,Prism,Data Analysis Protocol' && r.rawViews === 'Luminescence,Viability,Relative', [r.sheets, r.rawViews]);
+  check('L14b each view has its own potency name in its Results block (DC50 for the luminescence, IC50 for the viability) and the same compounds', /DC50/.test(r.hdrL) && /IC50/.test(r.hdrV) && new Set(r.nRes.split(',')).size === 1, [r.hdrL, r.hdrV, r.nRes]);
+  check('L14b the Prism sheet holds one table per view side by side, each from the top of the sheet (a row per dose, a column per replicate) with different numbers', r.prismOk && r.prismDiffer, r.prism);
   check('L14b the raw sheet of a view carries both readings, the protocol explains the three views', /Signal,Viability_Reading/.test(r.rawHdr) && r.proto, [r.rawHdr, r.proto]);
   check('L14b exporting leaves the view and the curves on screen as they were', r.afterView === 'viab' && r.afterSnap === r.alone.snap, [r.afterView]);
   check('L14b with the option off the sheet names carry no view', r.offSheets.indexOf('(') < 0 && /Results,Raw Data/.test(r.offSheets), r.offSheets);
@@ -855,6 +861,81 @@ try {
   check('L25 the exclusion is the one the curve and the session know (a left-out well is in the saved session)', r.sess === 1, JSON.stringify(r.sess));
   check('L25 right-click on a left-out reading offers to put it back; X again does, and the DC50 is what it was; ⌘Z takes an exclusion back', /Put this reading back/.test(r.menu[1]) && r.back === 0 && Math.abs(r.ec2 - r.ec0) < r.ec0 * 1e-9 && r.undone === 0 && r.same, JSON.stringify([r.menu, r.back, r.ec2, r.ec0, r.undone]));
 } catch (err) { check('L25 the checks ran to the end', false, String(err && err.message || err).split('\n')[0]); }
+
+
+// ── L31–L34 the export, the Graph, History and the curve PDFs (2026-11-02) ─────────────────────────────────────────────────────────────
+// L31 the Prism table's concentration column is the concentration that was set. It was 10^(log10 rounded to 4 places): 20000 nM came out 19998.6.
+// L32 the workbook is four sheets, however many views. L33 Graph offers the same three views as Results. L34 History names an analysis by its Assay ID,
+// else LUM<date>_<time>. L35 Curve PDFs: one PDF per plate, six curves to a page, the curves vector.
+try {
+  const r = await ev(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    state.assayId = ''; loadLuminaTestData(); await wait(300); _lmEnsureFit(true); await wait(400);
+    const o = {}, setConc = new Set(state.rawRows.filter(x => !x.isCtrl).map(x => _concNum(x.conc)));
+    const pr = _buildLuminaPrismAOA(false);
+    o.prism = pr.slice(2).map(x => x[0]); o.stray = o.prism.filter(v => !setConc.has(v));
+    // a typed top of 20000 nM comes out as 20000 in the Prism sheet
+    let wb = null; const wf = XLSX.writeFile; XLSX.writeFile = w => { wb = w; }; exportXLSX(); XLSX.writeFile = wf;
+    o.sheets = wb.SheetNames.join();
+    const first = XLSX.utils.sheet_to_json(wb.Sheets['Prism'], { header: 1, defval: '' }).slice(2).map(x => x[0]);
+    o.firstPrism = first.join();
+    // Graph: the three views
+    o.offHead = document.getElementById('lg-head').hidden;
+    state.plates.forEach(pl => { pl.viab = {}; pl.viabFile = 'x'; Object.keys(pl.signal).forEach((k, i) => { pl.viab[k] = pl.signal[k] * (1.5 + (i % 7) / 10); }); });
+    lmSetViab(true); await wait(300); switchTab('graph'); await wait(400);
+    o.head = document.getElementById('lg-head').hidden;
+    o.btns = [...document.querySelectorAll('#lg-view button')].map(b => b.textContent + ':' + b.getAttribute('aria-pressed')).join('|');
+    document.querySelector('#lg-view button[data-v="viab"]').click(); await wait(600);
+    o.view = state.viabView; o.title = lgGraphDoc().title[0]; o.resBtn = document.querySelector('#rs-view button[data-v="viab"]').getAttribute('aria-pressed');
+    o.sceneTxt = JSON.stringify(_lgKit.scene().prims.filter(p => p.t === 'text').map(p => p.text)).slice(0, 400);
+    document.querySelector('#lg-view button[data-v="signal"]').click(); await wait(600);
+    o.title2 = lgGraphDoc().title[0];
+    lmSetViab(false); await wait(200); switchTab('graph'); o.hiddenAgain = document.getElementById('lg-head').hidden;
+    return o;
+  });
+  check('L31 the Prism concentration column is the concentration that was set (every value is one in the raw data)', r.stray.length === 0 && r.prism.length > 3, JSON.stringify({ stray: r.stray, prism: r.prism }));
+  check('L32 the workbook is four sheets: Results, Raw Data, Prism, Data Analysis Protocol', r.sheets === 'Results,Raw Data,Prism,Data Analysis Protocol', r.sheets);
+  check('L33 Graph offers Luminescence · Viability · Relative to viability with a double read, and nothing without one', r.offHead === true && r.head === false && /Luminescence:false\|Viability:false\|Relative to viability:true/.test(r.btns) && r.hiddenAgain === true, JSON.stringify([r.offHead, r.head, r.btns, r.hiddenAgain]));
+  check('L33 choosing a view on Graph is the same choice as on Results, and the figure follows it (title and curves)', r.view === 'viab' && r.resBtn === 'true' && r.title === 'Viability' && r.title2 !== 'Viability', JSON.stringify([r.view, r.resBtn, r.title, r.title2]));
+} catch (err) { check('L31–L33 the checks ran to the end', false, String(err && err.message || err).split('\n')[0]); }
+try {
+  const r = await ev(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    state.viabNorm = false; state.assayId = ''; loadLuminaTestData(); await wait(300); _lmEnsureFit(true); await wait(300);
+    const o = {};
+    await lmHist.load(); lmHist.save(); await wait(500);
+    const L = lmHist.list; o.generic = L[0] && L[0].name;
+    state.assayId = 'VIAB20261102_72h'; lmHist.touch(); await wait(1500); o.typed = lmHist.list[0] && lmHist.list[0].name; o.n = lmHist.list.length;
+    state.assayId = ''; lmHist.touch(); await wait(1500); o.back = lmHist.list[0] && lmHist.list[0].name;
+    return o;
+  });
+  check('L34 History calls an analysis without an Assay ID LUM<date>_<time>', /^LUM\d{8}_\d{4}$/.test(r.generic || ''), JSON.stringify(r));
+  check('L34 with an Assay ID typed the entry is called by it (the same entry, not a second), and without it again the dated id comes back', r.typed === 'VIAB20261102_72h' && r.n === 1 && r.back === r.generic, JSON.stringify(r));
+} catch (err) { check('L34 the checks ran to the end', false, String(err && err.message || err).split('\n')[0]); }
+try {
+  const r = await ev(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    state.viabNorm = false; state.assayId = 'PDF1'; loadLuminaTestData(); await wait(300); _lmEnsureFit(true); await wait(300);
+    const o = { n: state.fitResults.length, names: state.fitResults.map(x => x.sampleId), plates: state.fitResults.map(x => x.plateIdx) }, got = [];
+    const was = ChartKitExport.save; ChartKitExport.save = (b, nm) => got.push({ b, nm });
+    // two plates: a list to tick, all ticked; leave the second out
+    lmCurvePDFs(); await wait(200); o.dlg = !!document.querySelector('.hk-back .hk-pick'); o.boxes = document.querySelectorAll('.hk-pick input').length; o.ticked = document.querySelectorAll('.hk-pick input:checked').length;
+    document.querySelectorAll('.hk-pick input')[1].click(); document.querySelector('.hk-back [data-x="1"]').click(); await wait(1500);
+    o.one = got.map(g => g.nm); got.length = 0;
+    lmCurvePDFs(); await wait(200); document.querySelector('.hk-back [data-x="1"]').click(); await wait(2000); ChartKitExport.save = was;
+    o.files = got.map(g => g.nm);
+    const txts = []; for (const g of got) txts.push(await g.b.text());
+    o.head = txts.map(t => t.slice(0, 8)).join(); o.pages = txts.map(t => +(/\/Count (\d+)/.exec(t) || [])[1]).join();
+    const grp = [0, 1].map(k => o.names.filter((_, i) => o.plates[i] === k));
+    const has = (t, nm) => t.indexOf('(' + nm.replace(/[()\\]/g, '\\$&') + ')') >= 0;
+    o.hasNames = txts.length === 2 && grp[0].every(nm => has(txts[0], nm)) && grp[1].every(nm => has(txts[1], nm)) && grp[1].every(nm => !has(txts[0], nm));
+    o.cm = txts.map(t => (t.match(/ cm\n/g) || []).length).join();
+    o.curves = txts.map(t => (t.match(/ c\n| c /g) || []).length > 20).join();
+    return o;
+  });
+  check('L35 Curve PDFs: with two plates a list of plates to tick (all ticked), one PDF per ticked plate, named for the Assay ID and the plate', r.dlg && r.boxes === 2 && r.ticked === 2 && r.one.join() === 'PDF1_Curves_Plate_1.pdf' && r.files.join() === 'PDF1_Curves_Plate_1.pdf,PDF1_Curves_Plate_2.pdf', JSON.stringify([r.dlg, r.boxes, r.ticked, r.one, r.files]));
+  check('L35 each PDF is a real PDF with a page per six curves, the figures drawn inside it as vectors, and holds its own plate\'s compounds only', r.head === '%PDF-1.4,%PDF-1.4' && r.pages === '1,1' && r.hasNames && r.cm.split(',').every((c, i) => +c >= (i ? 2 : 4)) && r.curves === 'true,true', JSON.stringify([r.head, r.pages, r.hasNames, r.cm, r.curves]));
+} catch (err) { check('L35 the checks ran to the end', false, String(err && err.message || err).split('\n')[0]); }
 
 check('no page or console errors', errs.length === 0, errs.slice(0, 3).join(' | '));
 await browser.close();

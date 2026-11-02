@@ -33,14 +33,16 @@ const APPS = {
       lmLoadSession({ v: 1, assay: document.getElementById('assay-type').value, format: 96, layout: { grads: [], zones: [] }, plates: [{ signal: sig, file: 'HB20260504.xlsx', name: 'HB20260504' }], names: ['Compound A', 'Compound B'], ctrl: [], zero: [], excluded: [], settings: [], units: { u: 'auto', log: false } }); return true; },
     what: () => JSON.stringify(lmSession()), clear: () => { lmLoadSession({ v: 1, format: 96, layout: { grads: [], zones: [] }, plates: [], names: [], ctrl: [], zero: [], excluded: [], settings: [] }); },
     edit: () => { state.names[0] = 'Compound Z'; lmAfterChange(); }, tab: () => document.querySelector('.tab.active').dataset.tab,
-    hist: () => lmHist, entryName: 'HB20260504'
+    hist: () => lmHist, entryName: 'LUM', entryRe: /^LUM\d{8}_\d{4}$/,
+    typed: { set: () => { state.assayId = 'VIAB20261102_72h'; lmHist.touch(); }, name: 'VIAB20261102_72h', unset: () => { state.assayId = ''; lmHist.touch(); } }
   },
   tempo: {
     file: 'apps/tempo/tempo.html', ready: () => typeof tpLoadExample === 'function' && typeof tpHist !== 'undefined',
     load: async () => { await tpLoadExample(); return true; },
     what: () => JSON.stringify(tpProject().plates.map(p => [p.id, p.name, Object.keys(p.wells).length, p.times.length])), clear: async () => { TP.plates = []; TP.res = {}; TP.pi = 0; tpAfterLoad(); },
     edit: () => { TP.plates[0].name = 'Renamed plate'; tpRender(); }, tab: () => TP.ui.tab,
-    hist: () => tpHist, entryName: 'Example plate A + 1 more'
+    hist: () => tpHist, entryName: 'TEM', entryRe: /^TEM\d{8}_\d{4}$/,
+    typed: { set: () => { TP.plates[0].name = 'TC20261102'; TP.plates[0].idTyped = true; tpHist.touch(); }, name: 'TC20261102', unset: () => { TP.plates[0].idTyped = false; TP.plates[0].name = 'Example plate A'; tpHist.touch(); } }
   },
   beacon: {
     file: 'apps/beacon/beacon.html', ready: () => typeof bhist !== 'undefined' && typeof loadTestData === 'function',
@@ -73,18 +75,26 @@ for (const [id, A] of Object.entries(APPS)) {
   await page.evaluate(A.load); await settle();
   let r = await recs();
   check(id + ' H1 the analysis is kept by itself', r.length === 1, JSON.stringify(r));
-  check(id + ' H1 named after the plate', r[0] && (A.prefix ? r[0].name.indexOf(A.entryName) === 0 : r[0].name === A.entryName), r[0] && r[0].name);
+  check(id + (A.entryRe ? ' H1 an analysis nobody named is called <APP><date>_<time>' : ' H1 named after the plate'), r[0] && (A.entryRe ? A.entryRe.test(r[0].name) : A.prefix ? r[0].name.indexOf(A.entryName) === 0 : r[0].name === A.entryName), r[0] && r[0].name);
 
   await page.evaluate(() => { const b = document.querySelector('.tab[data-tab="history"]'); b.click(); });
   await page.waitForTimeout(300);
   const rows = await page.evaluate(() => [...document.querySelectorAll('.hk-row')].map(x => x.innerText.replace(/\s+/g, ' ')));
-  check(id + ' H2 the tab lists it once', rows.length === 1 && rows[0].indexOf(A.entryName) >= 0 && /plate|sample/i.test(rows[0]), JSON.stringify(rows));
+  check(id + ' H2 the tab lists it once', rows.length === 1 && rows[0].indexOf(r[0].name) >= 0 && /plate|sample/i.test(rows[0]), JSON.stringify(rows));
   check(id + ' H2 marked open now', /Open now/i.test(rows[0] || ''));
 
   await page.evaluate(A.edit); await settle();
   r = await recs();
   check(id + ' H3 an edit updates the entry, no second copy', r.length === 1, JSON.stringify(r.map(x => x.name)));
 
+  // H8 an Assay ID typed names the entry (the same one), and taking it away brings the dated id back
+  if (A.typed) {
+    const was = r[0].name;
+    await page.evaluate(A.typed.set); await settle(); r = await recs();
+    check(id + ' H8 an Assay ID typed names the entry, no second copy', r.length === 1 && r[0].name === A.typed.name, JSON.stringify(r.map(x => x.name)));
+    await page.evaluate(A.typed.unset); await settle(); r = await recs();
+    check(id + ' H8 without it the dated id is back, the same one', r.length === 1 && r[0].name === was, JSON.stringify(r.map(x => x.name)));
+  }
   // a new session with the same readings finds its entry
   await page.reload(); await page.waitForFunction(A.ready, null, { timeout: 15000 });
   await page.evaluate(A.clear); await settle();

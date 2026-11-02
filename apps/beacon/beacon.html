@@ -1412,11 +1412,17 @@ var SetupKit = (function(){
 .hk-dlg{width:min(420px,100%);box-sizing:border-box;padding:20px 22px;border-radius:var(--r-2);background:var(--surface);border:1px solid var(--border2);color:var(--text);box-shadow:0 12px 40px rgba(0,0,0,.28);}
 .hk-dlg h3{margin:0 0 6px;font-size:var(--fs-5);font-weight:600;}
 .hk-dlg p{margin:0 0 12px;font-size:var(--fs-3);color:var(--text2);line-height:1.45;}
-.hk-dlg input{width:100%;box-sizing:border-box;height:32px;padding:0 10px;margin-bottom:14px;border-radius:var(--r-1);border:1px solid var(--border2);background:var(--surface2);color:var(--text);font-family:var(--sans);font-size:var(--fs-3);outline:none;}
-.hk-dlg input:focus{border-color:var(--accent);}
+.hk-dlg input[type="text"]{width:100%;box-sizing:border-box;height:32px;padding:0 10px;margin-bottom:14px;border-radius:var(--r-1);border:1px solid var(--border2);background:var(--surface2);color:var(--text);font-family:var(--sans);font-size:var(--fs-3);outline:none;}
+.hk-dlg input[type="text"]:focus{border-color:var(--accent);}
 .hk-dlg .hk-btns{display:flex;justify-content:flex-end;gap:8px;}
 .hk-dlg .btn.danger,.hk-dlg .btn-danger{background:var(--danger);border-color:var(--danger);color:var(--on-accent);}
 @media (max-width:720px){.hk-row{grid-template-columns:minmax(0,1fr);}.hk-side{align-items:flex-start;flex-direction:row;justify-content:space-between;}}
+.hk-pick{margin:0 0 14px;}
+.hk-pick-bar{display:flex;gap:6px;margin-bottom:8px;}
+.hk-pick-list{display:flex;flex-direction:column;gap:5px;max-height:min(320px,50dvh);overflow-y:auto;}
+.hk-pick-list label{display:flex;align-items:center;gap:9px;padding:7px 11px;border:1px solid var(--border);border-radius:var(--r-1);background:var(--surface2);font-size:var(--fs-3);cursor:pointer;}
+.hk-pick-list label span{flex:1;min-width:0;overflow-wrap:anywhere;}
+.hk-pick-list label small{color:var(--text3);font-size:var(--fs-2);white-space:nowrap;}
 /* history-kit:end */
 </style>
 <script>
@@ -1434,6 +1440,8 @@ var SetupKit = (function(){
      open     (data, rec) → puts the analysis back; returns false when it could not
      afterOpen (rec) → lands the person where the analysis is shown
      toast    (message, kind)
+     name     the Assay ID the person typed. Without one (empty), the entry is called <APP><YYYYMMDD>_<HHMM> after the moment it was first kept, so
+              two analyses are never told apart by "Untitled" — and the id stays the same on every later save. o.code sets the letters (default: the first three of app)
      current may also give x (small facts the app reads back from the list, kept as they are) and nameWins: true when the app
               has its own name field, so the entry follows it; otherwise a name a person gave in History is kept
      onRename (rec, isOpen) the app takes the new name when the entry is the one open
@@ -1455,16 +1463,26 @@ var HistoryKit = (function(){
     del: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg>'
   };
   // A small dialog of the kit's own, so a rename or a delete asks the same way in every app.
+  // o.choices: [{ label, note, on }] — a list of boxes to tick (All / None above it); the answer's third argument is the indices that are ticked.
+  function pickHtml(ch){
+    return '<div class="hk-pick"><div class="hk-pick-bar"><button type="button" class="btn" data-all="1">All</button><button type="button" class="btn" data-all="0">None</button></div><div class="hk-pick-list">' +
+      ch.map(function(c, i){ return '<label><input type="checkbox" data-i="' + i + '"' + (c.on === false ? '' : ' checked') + '><span>' + esc(c.label) + '</span>' + (c.note ? '<small>' + esc(c.note) + '</small>' : '') + '</label>'; }).join('') + '</div></div>';
+  }
   function ask(title, body, o, cb){
     var back = document.createElement('div'); back.className = 'hk-back';
-    back.innerHTML = '<div class="hk-dlg" role="dialog" aria-modal="true" aria-label="' + esc(title) + '"><h3>' + esc(title) + '</h3>' + (body ? '<p>' + esc(body) + '</p>' : '') + (o.input ? '<input type="text" maxlength="80" spellcheck="false" autocomplete="off" value="' + esc(o.value || '') + '">' : '') + '<div class="hk-btns"><button type="button" class="btn' + (o.sec ? ' ' + o.sec : '') + '" data-x="0">Cancel</button><button type="button" class="btn ' + (o.danger ? (o.dangerCls || 'danger') : (o.primary || 'primary')) + '" data-x="1">' + esc(o.ok || 'OK') + '</button></div></div>';
+    back.innerHTML = '<div class="hk-dlg" role="dialog" aria-modal="true" aria-label="' + esc(title) + '"><h3>' + esc(title) + '</h3>' + (body ? '<p>' + esc(body) + '</p>' : '') + (o.choices ? pickHtml(o.choices) : '') + (o.input ? '<input type="text" maxlength="80" spellcheck="false" autocomplete="off" value="' + esc(o.value || '') + '">' : '') + '<div class="hk-btns"><button type="button" class="btn' + (o.sec ? ' ' + o.sec : '') + '" data-x="0">Cancel</button><button type="button" class="btn ' + (o.danger ? (o.dangerCls || 'danger') : (o.primary || 'primary')) + '" data-x="1">' + esc(o.ok || 'OK') + '</button></div></div>';
     var prev = document.activeElement;
-    function done(ok){ var v = o.input ? back.querySelector('input').value : null; back.remove(); document.removeEventListener('keydown', key, true); if (prev && prev.focus) { try { prev.focus({ preventScroll: true }); } catch (e) {} } cb(ok, v); }
+    function done(ok){ var v = o.input ? back.querySelector('input').value : null; back.remove(); document.removeEventListener('keydown', key, true); if (prev && prev.focus) { try { prev.focus({ preventScroll: true }); } catch (e) {} } cb(ok, v, o.choices ? [].slice.call(back.querySelectorAll('.hk-pick input:checked')).map(function(c){ return +c.dataset.i; }) : null); }
     function key(e){ if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(false); } else if (e.key === 'Enter' && o.input) { e.preventDefault(); e.stopPropagation(); done(true); } }
-    back.addEventListener('click', function(e){ if (e.target === back) done(false); else { var b = e.target.closest('[data-x]'); if (b) done(b.dataset.x === '1'); } });
+    back.addEventListener('click', function(e){ var al = e.target.closest && e.target.closest('[data-all]'); if (al) { [].slice.call(back.querySelectorAll('.hk-pick input')).forEach(function(c){ c.checked = al.dataset.all === '1'; }); return; } if (e.target === back) done(false); else { var b = e.target.closest('[data-x]'); if (b) done(b.dataset.x === '1'); } });
     document.addEventListener('keydown', key, true);
     document.body.appendChild(back);
-    var f = back.querySelector('input') || back.querySelector('[data-x="1"]'); if (f) { f.focus(); if (f.select) f.select(); }
+    var f = (o.input && back.querySelector('input')) || back.querySelector('[data-x="1"]'); if (f) { f.focus(); if (f.select) f.select(); }
+  }
+  // The name of an analysis nobody named: its app and the moment it was first kept (LUM20261102_1432), the shape of an Assay ID.
+  function stampName(code, t){
+    var d = new Date(t), z = function(v){ return (v < 10 ? '0' : '') + v; };
+    return code + d.getFullYear() + z(d.getMonth() + 1) + z(d.getDate()) + '_' + z(d.getHours()) + z(d.getMinutes());
   }
   function create(o){
     var H = { dbp: null, broken: null, list: [], q: '', timer: 0, loaded: false, id: null, quiet: 0, sig: '', warned: false };
@@ -1515,7 +1533,7 @@ var HistoryKit = (function(){
       if (rec && H.id !== rec.id) { H.id = rec.id; H.sig = ''; }
       if (rec && sig === H.sig) return Promise.resolve();
       var now = Date.now();
-      var out = { id: rec ? rec.id : 'h' + now.toString(36) + Math.random().toString(36).slice(2, 6), dkey: cur.key || '', name: rec && rec.named && !cur.nameWins ? rec.name : (cur.name || 'Untitled ' + noun), named: !!(rec && rec.named),
+      var out = { id: rec ? rec.id : 'h' + now.toString(36) + Math.random().toString(36).slice(2, 6), dkey: cur.key || '', name: rec && rec.named && !cur.nameWins ? rec.name : (cur.name || stampName(o.code || String(o.app || noun).replace(/[^A-Za-z0-9]/g, '').slice(0, 3).toUpperCase(), rec ? rec.created : now)), named: !!(rec && rec.named),
         x: cur.x || null, bits: cur.bits || [], chips: cur.chips || [], files: cur.files || [], data: cur.data, created: rec ? rec.created : now, updated: now, pinned: rec ? !!rec.pinned : false };
       return req('readwrite', function(st){ return st.put(out); }).then(function(){
         H.id = out.id; H.sig = sig;
@@ -4331,8 +4349,8 @@ function copyPrism(){
   if (!b) { beaconToast('No compound has a dose series yet — mark one on the Plate tab, then copy it for Prism.', 'err'); return; }
   var txt = b.aoa.map(function(r){ return r.map(function(c){ return String(c).replace(/[\t\r\n]+/g, ' '); }).join('\t'); }).join('\n');
   var done = function(){ beaconToast('Copied for Prism — ' + (rel ? 'BRET relative to the vehicle' : 'corrected mBU (' + (bHasVehicle() ? 'the vehicle wells are not above the baseline' : 'no vehicle wells are marked') + ')') + ', concentration in nM, every compound’s replicates side by side. Paste into an XY table.'); };
-  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(done).catch(function(){ beaconToast('The browser did not allow writing to the clipboard — use the Excel workbook’s Prism Copy sheet.', 'err'); });
-  else beaconToast('The browser has no clipboard here — use the Excel workbook’s Prism Copy sheet.', 'err');
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(done).catch(function(){ beaconToast('The browser did not allow writing to the clipboard — use the Excel workbook’s Prism sheet.', 'err'); });
+  else beaconToast('The browser has no clipboard here — use the Excel workbook’s Prism sheet.', 'err');
 }
 // The Y axis choice lives in the editor's own toolbar (its slot), so there is one row of controls above the figure, not two.
 function bGraphSlot(el){
@@ -4641,8 +4659,9 @@ function renderResults(){
   var head = '<div class="rs-head"><div class="rs-title">Results<span class="sub">' + esc(bAnalysisName() ? bAnalysisName() + ' · ' : '') + bPlural(P, 'plate') + ' · ' + (disp ? 'tracer displacement' : 'protein–protein') + '</span></div><div class="rs-acts">' +
     (pooled ? '<div class="seg" id="rs-per" role="group" aria-label="Replicate plates"><button class="' + (RS_PER ? '' : 'active') + '" onclick="rsSetPer(false)" title="The same name on several plates is one compound: its replicates pool">Pooled</button><button class="' + (RS_PER ? 'active' : '') + '" onclick="rsSetPer(true)" title="One row per compound per plate">Per plate</button></div>' : '') +
     '<div class="rs-menu"><button class="btn btn-sec" id="rs-exp-btn" onclick="rsTogglePop(event,\'rs-exp\')" aria-haspopup="true" aria-expanded="false">Export</button><div class="rs-pop" id="rs-exp" role="menu">' +
-    '<button role="menuitem" onclick="rsCloseExport();generateOutputXLSX()"><b>Excel workbook</b><span>Results, every well of every plate, Prism tables, the protocol</span></button>' +
+    '<button role="menuitem" onclick="rsCloseExport();generateOutputXLSX()"><b>Excel workbook</b><span>Four sheets: Results, Plates, Prism, the protocol</span></button>' +
     '<button role="menuitem" onclick="rsCloseExport();copyPrism()"><b>Copy for Prism</b><span>Concentration (nM) down one column, every compound’s replicates beside it — paste into a Prism XY table</span></button>' +
+    '<button role="menuitem" onclick="rsCloseExport();bCurvePDFs()"><b>Curve PDFs</b><span>One PDF per plate, six curves to a page, vector</span></button>' +
     '<button role="menuitem" onclick="rsCloseExport();exportPlateMBretXLSX()"><b>Plate mBRET (.xlsx)</b><span>Every well of every plate, raw and corrected</span></button>' +
     '<button role="menuitem" onclick="rsCloseExport();exportResultsCSV()"><b>Results (.csv)</b><span>The table as a plain file</span></button>' +
     '<button role="menuitem" onclick="rsCloseExport();copyResultsTSV()"><b>Copy table</b><span>Paste into Excel or a notebook</span></button>' +
@@ -5092,6 +5111,46 @@ function _bPrismTracer(){
   for (var q = 0; q < n; q++) sub.push(n > 1 ? 'Rep ' + (q + 1) : '');
   return { aoa: [top, sub].concat(t.pairs.slice().sort(function(a, b){ return b.conc - a.conc; }).map(function(p){ var r = [+p.conc.toPrecision(6)]; for (var i = 0; i < n; i++) r.push(p.reps[i] !== undefined ? +p.reps[i].toPrecision(6) : ''); return r; })), merges: merges };
 }
+// ── Curve PDFs — one PDF per group (the plate a compound sits on), A4, six curves to a page, every curve vector (Echo's "Generate curve PDFs", drawn by
+// ChartKit: the Graph tab's drawing, one compound each).
+function bCurvePDFs(){
+  var fits = bFits().filter(function(f){ return f.fit || f.pts.length; });
+  if (!fits.length) { beaconToast('There are no curves yet — add the readings and mark a dose series.', 'err'); return; }
+  var by = {}, ids = [];
+  fits.forEach(function(f){ var k = f.plates[0]; if (!by[k]) { by[k] = []; ids.push(k); } by[k].push(f); });
+  ids.sort(function(a, b){ return a - b; });
+  if (ids.length < 2) { bWriteCurvePDFs(ids.map(function(k){ return { plate: k, fs: by[k] }; })); return; }
+  HistoryKit.ask('Curve PDFs', 'One PDF per plate, six curves to a page. Pick the plates to make.', { ok: 'Make PDFs', primary: 'btn-primary', sec: 'btn-sec', choices: ids.map(function(k){ return { label: bPlateName(k), note: by[k].length + (by[k].length === 1 ? ' compound' : ' compounds') }; }) }, function(ok, v, picked){
+    if (ok && picked && picked.length) bWriteCurvePDFs(picked.map(function(i){ return { plate: ids[i], fs: by[ids[i]] }; }));
+  });
+}
+var _bPdfBusy = false;
+async function bWriteCurvePDFs(groups){
+  if (_bPdfBusy) return;
+  _bPdfBusy = true;
+  try {
+    var C = ChartKitCore, X = ChartKitExport, doc = bGraphDoc(), spec = X.curveSpec(), pn = bPotencyName(), files = [], name = bAnalysisName();
+    var stamp = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }), mode = state.assayMode === 'displacement' ? 'Tracer displacement' : 'Protein\u2013protein NanoBRET';
+    for (var g = 0; g < groups.length; g++) {
+      var cards = [];
+      for (var i = 0; i < groups[g].fs.length; i++) {
+        var f = groups[g].fs[i], it = doc.items.filter(function(q){ return q.id === f.sid; })[0], flags = bFlagReasons(f), bad = !f.fit || !!flags.length;
+        var ci = f.ciLo !== undefined && f.ciHi !== undefined ? ' (95% CI ' + bFmtConc(f.ciLo) + '\u2013' + bFmtConc(f.ciHi) + ')' : '';
+        cards.push({ name: f.name, tag: bad ? 'FLAGGED' : 'OK', bad: bad,
+          stat: f.fit ? pn + ' ' + (f.bound ? f.bound + ' ' + bFmtConc(f.limit) : bFmtConc(f.ec50) + ci) : pn + ' \u2014',
+          stat2: f.fit ? 'Hill ' + f.hill.toFixed(2) + '    R\u00b2 ' + f.r2.toFixed(3) + '    n ' + f.nW + (f.ki !== undefined ? '    Ki ' + bFmtConc(f.ki) : '') : f.pts.length + ' concentrations',
+          note: !f.fit ? (f.failed ? 'No fit: did not converge' : f.flat ? 'No dose-response: the series is flat' : 'No fit: needs 4 concentrations') : flags.join('; '),
+          scene: it ? C.build(Object.assign({}, doc, { items: [it], title: ['', '', ''] }), spec) : null });
+        if (i % 6 === 5) await new Promise(function(res){ setTimeout(res, 0); });
+      }
+      var pl = bPlateName(groups[g].plate), blob = X.curvePDF({ cards: cards, title: pl + ' \u00b7 ' + mode, right: (name ? name + '   \u00b7   ' : '') + cards.length + (cards.length === 1 ? ' compound' : ' compounds'), foot: 'dHUB Beacon \u00b7 ' + stamp });
+      files.push({ blob: blob, name: _bFileStem() + '-curves' + (state.plates.filter(bComplete).length > 1 ? '-' + String(pl).replace(/[\\/:*?"<>|\s]+/g, '_') : '') + '.pdf' });
+    }
+    files.forEach(function(f, k){ setTimeout(function(){ X.save(f.blob, f.name); }, k * 350); });
+    beaconToast(files.length === 1 ? 'Curve PDF ready \u2014 ' + files[0].name : files.length + ' curve PDFs ready (one per plate).');
+  } catch (e) { beaconToast('The curve PDFs could not be made: ' + (e && e.message || e), 'err'); }
+  finally { _bPdfBusy = false; }
+}
 function generateOutputXLSX(){
   if (!bReadyPlates().length) { beaconToast('Add the readings first — there is nothing to export yet.', 'err'); return; }
   var wb = XLSX.utils.book_new(), rt = bResultsTable(), aoa = [['DOSE-RESPONSE'], rt.head].concat(rt.rows.length ? rt.rows : [['No compound has a dose series yet.']]);
@@ -5099,18 +5158,35 @@ function generateOutputXLSX(){
   bReadyPlates().forEach(function(pl){ var q = bPlateQC(pl); aoa.push([bPlateName(state.plates.indexOf(pl)), q.base ? q.base.mean : '', q.base && q.base.sd !== null ? q.base.sd : '', q.base ? q.base.n : '', q.veh ? q.veh.mean : '', q.veh && q.veh.sd !== null ? q.veh.sd : '', q.veh ? q.veh.n : '', q.window === null ? '' : q.window, q.sb === null ? '' : q.sb, q.z === null ? '' : q.z]); });
   var t = state.assayMode === 'displacement' ? bTracerFit() : null;
   if (t) { aoa.push([], ['TRACER TITRATION']); if (t.fit) { var tn = bTracerNow(); aoa.push(['Bmax (mBU)', t.fit.params[0]], ['Kd (nM)', t.fit.params[1]], ['R2', t.fit.r2], ['Suggested working concentration (nM)', t.working], ['Tracer concentration used for Ki (nM)', tn.T]); } else aoa.push(['Needs at least 4 tracer concentrations']); }
+  // Four sheets: Results · Plates · Prism · Assay Protocol. The normalisation and each reader file's own protocol are sections of the last one, and the
+  // Prism tables (relative to the vehicle, corrected mBU, the tracer titration) sit side by side on one sheet, each from the top of it.
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(_sanitizeAoa(aoa)), 'Results');
-  if (bHasRules()) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(_sanitizeAoa(_bNormAoa())), 'Normalisation');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(_sanitizeAoa(bPlateLongRows())), 'Plates');
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(_sanitizeAoa(_bProtocolAoa())), 'Assay Protocol');
-  var seen = {}, n = 0;
-  state.plates.forEach(function(pl){ if (pl.metaRows && pl.metaRows.length && !seen[pl.file]) { seen[pl.file] = 1; n++; XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(_sanitizeAoa(pl.metaRows)), ('PHERAstar Protocol' + (n > 1 ? ' ' + n : '')).slice(0, 31)); } });
-  function prismSheet(blk, name){ if (!blk) return; var ws = XLSX.utils.aoa_to_sheet(_sanitizeAoa(blk.aoa)); if (blk.merges.length) ws['!merges'] = blk.merges; XLSX.utils.book_append_sheet(wb, ws, name); }
-  var hv = bHasVehicle();
-  var pcb = _bPrismBlock(hv);
-  prismSheet(pcb, 'Prism Copy');              // BRET relative to the vehicle (corrected mBU when no usable vehicle is marked)
-  if (pcb && pcb.rel) prismSheet(_bPrismBlock(false), 'Prism (mBU)');   // the same, in corrected mBU
-  prismSheet(_bPrismTracer(), 'Prism (tracer)');
+  var hv = bHasVehicle(), pcb = _bPrismBlock(hv), blks = [];
+  if (pcb) blks.push({ b: pcb, lab: pcb.rel ? 'BRET relative to the vehicle' : 'Corrected mBU' });   // (corrected mBU when no usable vehicle is marked)
+  if (pcb && pcb.rel) blks.push({ b: _bPrismBlock(false), lab: 'Corrected mBU' });
+  var trc = _bPrismTracer(); if (trc) blks.push({ b: trc, lab: '' });
+  if (blks.length) {
+    var pa = [], pm = [], off = 0;
+    blks.forEach(function(k){
+      var w = k.b.aoa.reduce(function(m, r){ return Math.max(m, r.length); }, 0);
+      k.b.aoa.forEach(function(r, i){
+        while (pa.length <= i) pa.push([]);
+        while (pa[i].length < off) pa[i].push('');
+        var row = r.slice(); if (!i && k.lab && blks.length > 1) row[0] = k.lab;
+        while (row.length < w) row.push('');
+        pa[i] = pa[i].concat(row);
+      });
+      k.b.merges.forEach(function(m){ pm.push({ s: { r: m.s.r, c: m.s.c + off }, e: { r: m.e.r, c: m.e.c + off } }); });
+      off += w + 1;
+    });
+    var ws = XLSX.utils.aoa_to_sheet(_sanitizeAoa(pa)); if (pm.length) ws['!merges'] = pm; XLSX.utils.book_append_sheet(wb, ws, 'Prism');
+  }
+  var proto = _bProtocolAoa();
+  if (bHasRules()) proto = proto.concat([[]], _bNormAoa());
+  var seen = {};
+  state.plates.forEach(function(pl){ if (pl.metaRows && pl.metaRows.length && !seen[pl.file]) { seen[pl.file] = 1; proto = proto.concat([[], ['--- PHERAstar PROTOCOL' + (pl.file ? ' (' + pl.file + ')' : '') + ' ---']], pl.metaRows); } });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(_sanitizeAoa(proto)), 'Assay Protocol');
   XLSX.writeFile(wb, _bFileStem() + '.xlsx');
 }
 
@@ -5229,7 +5305,8 @@ function bhCurrent(){
   var files = [], seen = {};
   state.plates.forEach(function(pl){ if (pl.file && !seen[pl.file]) { seen[pl.file] = 1; files.push(pl.file); } });
   var comps = state.series.map(function(s){ return s.name; }), ready = bReadyPlates().length;
-  return { name: bAnalysisName() || 'Untitled analysis', nameWins: true, key: bhKey(), files: files, chips: comps, x: { plates: state.plates.length },
+  return { name: state.nameAuto ? '' : bAnalysisName(), nameWins: true,   // typed by the person; an auto-suggested name is not an ID, so the kit names it BEA<date>_<time>
+     key: bhKey(), files: files, chips: comps, x: { plates: state.plates.length },
     bits: bhBits(state.assayMode, state.plates.length, ready, state.plates.map(function(pl){ return pl.cols > 12 ? 384 : 96; }), comps.length, state.info),
     data: { snap: _bSnap(), info: state.info || {} } };
 }
@@ -7112,8 +7189,10 @@ var ChartKitExport = (function(){
     return '(' + out + ')';
   }
   function col(h){ var m = /^#?([0-9a-f]{6})$/i.exec(h || ''); if (!m) return '0 0 0'; var v = parseInt(m[1], 16); return [v >> 16 & 255, v >> 8 & 255, v & 255].map(function(x){ return n(x / 255); }).join(' '); }
-  function toPDF(scene){
-    var W = scene.W, H = scene.H, ops = [], fontOf = function(p){ return p.bold && p.italic ? 'F4' : p.bold ? 'F2' : p.italic ? 'F3' : 'F1'; };
+  // A PDF of one or more pages. A page is { W, H, parts: [{ scene, x, y, s }] }: each part is a scene drawn at (x, y) from the page's top-left
+  // at scale s (1 = its own size), so a page can hold six small figures and their captions. The figure's own PDF is the one-page, one-part case.
+  function pdfWrite(pages){
+    var scene = null, H = 0, ops = [], fontOf = function(p){ return p.bold && p.italic ? 'F4' : p.bold ? 'F2' : p.italic ? 'F3' : 'F1'; };
     function Y(y){ return n(H - y); }
     function stroke(p){ var s = n(p.sw || 1) + ' w ' + (p.cap === 'square' ? '2' : '1') + ' J 1 j ' + col(p.stroke) + ' RG ' + (p.dash ? '[' + p.dash + '] 0 d ' : '[] 0 d '); return s; }
     function paint(p, shape){
@@ -7151,14 +7230,25 @@ var ChartKitExport = (function(){
     }
     function measureStr(s, size, p){ return ChartKitCore.measure(s, size, p.bold, p.italic, 'Arial'); }
     function measureText(p){ return String(p.text).split(/\^(-?\d+)/).reduce(function(a, s, i){ return a + measureStr(s, i % 2 ? p.size * 0.7 : p.size, p); }, 0); }
-    scene.prims.forEach(draw);
-    var content = ops.join('\n');
+    var contents = pages.map(function(pg){
+      ops = [];
+      pg.parts.forEach(function(pt){
+        scene = pt.scene; H = scene.H;
+        var s = pt.s == null ? 1 : pt.s, moved = s !== 1 || pt.x || pt.y;
+        if (moved) ops.push('q ' + n(s) + ' 0 0 ' + n(s) + ' ' + n(pt.x || 0) + ' ' + n(pg.H - (pt.y || 0) - s * H) + ' cm');
+        scene.prims.forEach(draw);
+        if (moved) ops.push('Q');
+      });
+      return ops.join('\n');
+    });
     var objs = [];
     objs.push('<< /Type /Catalog /Pages 2 0 R >>');
-    objs.push('<< /Type /Pages /Kids [3 0 R] /Count 1 >>');
-    objs.push('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + n(W) + ' ' + n(H) + '] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R /F3 7 0 R /F4 8 0 R >> >> >>');
-    objs.push('<< /Length ' + content.length + ' >>\nstream\n' + content + '\nendstream');
+    objs.push('<< /Type /Pages /Kids [' + pages.map(function(_, k){ return (7 + 2 * k) + ' 0 R'; }).join(' ') + '] /Count ' + pages.length + ' >>');
     ['Helvetica', 'Helvetica-Bold', 'Helvetica-Oblique', 'Helvetica-BoldOblique'].forEach(function(f){ objs.push('<< /Type /Font /Subtype /Type1 /BaseFont /' + f + ' /Encoding /WinAnsiEncoding >>'); });
+    pages.forEach(function(pg, k){
+      objs.push('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + n(pg.W) + ' ' + n(pg.H) + '] /Contents ' + (8 + 2 * k) + ' 0 R /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R >> >> >>');
+      objs.push('<< /Length ' + contents[k].length + ' >>\nstream\n' + contents[k] + '\nendstream');
+    });
     var out = '%PDF-1.4\n', offs = [];
     objs.forEach(function(o, i){ offs.push(out.length); out += (i + 1) + ' 0 obj\n' + o + '\nendobj\n'; });
     var xref = out.length; out += 'xref\n0 ' + (objs.length + 1) + '\n0000000000 65535 f \n';
@@ -7167,13 +7257,64 @@ var ChartKitExport = (function(){
     var bytes = new Uint8Array(out.length); for (var i2 = 0; i2 < out.length; i2++) bytes[i2] = out.charCodeAt(i2) & 255;
     return new Blob([bytes], { type: 'application/pdf' });
   }
+  function toPDF(scene){ return pdfWrite([{ W: scene.W, H: scene.H, parts: [{ scene: scene, x: 0, y: 0, s: 1 }] }]); }
+  function toPDFPages(pages){ return pdfWrite(pages); }
+
+  // A PDF of small figures, six to an A4 page (2 × 3), each under its own name and numbers: the way a group of dose-response curves is looked at
+  // one by one. Every figure is a ChartKit scene (vector), so each keeps its own axes. o = { title, right, foot, cards: [{ name, tag, bad, stat, stat2, note, scene }], cols, rows }.
+  // A card's scene is drawn at the width of its cell; its height is whatever the scene gives, so the caller builds scenes of the cell's shape (cellSize()).
+  var A4 = { W: 595.28, H: 841.89, M: 34, GX: 18, GY: 14, HEAD: 30, FOOT: 24, TXT: 48 };
+  function cellSize(cols, rows){
+    cols = cols || 2; rows = rows || 3;
+    var w = (A4.W - 2 * A4.M - A4.GX * (cols - 1)) / cols, h = (A4.H - 2 * A4.M - A4.HEAD - A4.FOOT - A4.GY * (rows - 1)) / rows - A4.TXT;
+    return { w: w, h: h };
+  }
+  // The spec a small figure is drawn with: the cell's shape, fonts at their own size (not scaled to a page), no legend, no table.
+  function curveSpec(){
+    var c = cellSize(2, 3), spec = ChartKitCore.withDefaults(null);
+    spec.w = c.w / 72; spec.h = c.h / 72; spec.scale = false; spec.legend.show = false; spec.table.show = false;
+    spec.x.size = 7; spec.y.size = 7; spec.xTitle.size = 7.5; spec.yTitle.size = 7.5; spec.xy.msize = 2.2; spec.xy.lw = 1.1; spec.axisW = 0.8; spec.tick = 3; spec.margin.t = -8;
+    return spec;
+  }
+  function fitText(s, size, bold, maxW){
+    s = String(s == null ? '' : s);
+    if (ChartKitCore.measure(s, size, bold, false, 'Arial') <= maxW) return s;
+    while (s.length > 1 && ChartKitCore.measure(s + '…', size, bold, false, 'Arial') > maxW) s = s.slice(0, -1);
+    return s + '…';
+  }
+  function curvePDF(o){
+    var cols = o.cols || 2, rows = o.rows || 3, per = cols * rows, cards = o.cards || [], pages = [], c = cellSize(cols, rows), n = Math.max(1, Math.ceil(cards.length / per));
+    var cellH = c.h + A4.TXT;
+    for (var pg = 0; pg < n; pg++) {
+      var prims = [], parts = [];
+      var T = function(text, x, y, size, o2){ o2 = o2 || {}; prims.push({ t: 'text', text: text, x: x, y: y, size: size, bold: !!o2.bold, italic: !!o2.italic, anchor: o2.anchor || 'start', rot: 0, fill: o2.fill || '#1f2330', font: 'Arial' }); };
+      var right = o.right ? fitText(o.right, 8.5, false, 220) : '';
+      T(fitText(o.title || '', 12, true, A4.W - 2 * A4.M - (right ? 230 : 0)), A4.M, A4.M + 12, 12, { bold: true });
+      if (right) T(right, A4.W - A4.M, A4.M + 12, 8.5, { anchor: 'end', fill: '#5a5f73' });
+      prims.push({ t: 'line', x1: A4.M, y1: A4.M + 20, x2: A4.W - A4.M, y2: A4.M + 20, stroke: '#c8cbd6', sw: 0.6 });
+      T(fitText(o.foot || '', 7.5, false, A4.W - 2 * A4.M - 70), A4.M, A4.H - A4.M + 4, 7.5, { fill: '#8c90a0' });
+      T('Page ' + (pg + 1) + ' of ' + n, A4.W - A4.M, A4.H - A4.M + 4, 7.5, { anchor: 'end', fill: '#8c90a0' });
+      for (var i = 0; i < per; i++) {
+        var cd = cards[pg * per + i]; if (!cd) break;
+        var x = A4.M + (i % cols) * (c.w + A4.GX), y = A4.M + A4.HEAD + Math.floor(i / cols) * (cellH + A4.GY);
+        T(fitText(cd.name || '—', 9.5, true, c.w - (cd.tag ? 52 : 0)), x, y + 9, 9.5, { bold: true });
+        if (cd.tag) T(cd.tag, x + c.w, y + 9, 7.5, { anchor: 'end', fill: cd.bad ? '#c47818' : '#2d9462' });
+        if (cd.stat) T(fitText(cd.stat, 7.5, false, c.w), x, y + 20, 7.5, { fill: '#3d4254' });
+        if (cd.stat2) T(fitText(cd.stat2, 7.5, false, c.w), x, y + 30, 7.5, { fill: '#3d4254' });
+        if (cd.note) T(fitText(cd.note, 7, false, c.w), x, y + 40, 7, { fill: cd.bad ? '#a05a0a' : '#6e7387' });
+        if (cd.scene) parts.push({ scene: cd.scene, x: x, y: y + A4.TXT - 4, s: Math.min(1, c.w / cd.scene.W) });
+      }
+      pages.push({ W: A4.W, H: A4.H, parts: [{ scene: { W: A4.W, H: A4.H, prims: prims, clip: { x: 0, y: 0, w: 0, h: 0 } }, x: 0, y: 0, s: 1 }].concat(parts) });
+    }
+    return pdfWrite(pages);
+  }
 
   function save(blob, name){
     var a = document.createElement('a'), url = URL.createObjectURL(blob);
     a.href = url; a.download = name; document.body.appendChild(a); a.click();
     setTimeout(function(){ URL.revokeObjectURL(url); a.remove(); }, 4000);
   }
-  return { toSVG: toSVG, toPNG: toPNG, toPDF: toPDF, pngSize: pngSize, save: save, setPngDpi: setPngDpi, esc: esc };
+  return { toSVG: toSVG, toPNG: toPNG, toPDF: toPDF, toPDFPages: toPDFPages, curvePDF: curvePDF, curveCell: cellSize, curveSpec: curveSpec, pngSize: pngSize, save: save, setPngDpi: setPngDpi, esc: esc };
 })();
 /* ChartKit UI — the editor around the scene.
  *

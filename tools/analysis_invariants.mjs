@@ -738,6 +738,36 @@ if (run('B22')) await guard('B22', async () => {
   await ctx.close();
 });
 
+// B24 — the workbook is four sheets (Results · Plates · Prism · Assay Protocol): the Prism tables sit side by side from the top of their sheet, the normalisation
+// and each reader file's protocol are sections of the protocol; Curve PDFs: one PDF per plate group, six curves to a page, every compound on it.
+if (run('B24')) await guard('B24', async () => {
+  const { ctx, pg } = await open('/apps/beacon/beacon.html');
+  const r = await pg.evaluate(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms)), o = {};
+    loadTestData('gain'); await wait(900);
+    let wb = null; const wf = XLSX.writeFile; XLSX.writeFile = w => { wb = w; }; generateOutputXLSX(); XLSX.writeFile = wf;
+    o.sheets = wb.SheetNames.join();
+    const pr = XLSX.utils.sheet_to_json(wb.Sheets['Prism'], { header: 1, defval: '' });
+    o.heads = pr[1].map((v, i) => v === 'Concentration (nM)' ? i : -1).filter(i => i >= 0).join();
+    o.corner = [pr[0][0], pr[0][pr[1].indexOf('Concentration (nM)', 1)]].join('|');
+    o.merges = (wb.Sheets['Prism']['!merges'] || []).map(m => m.s.c + '-' + m.e.c).join();
+    o.proto = XLSX.utils.sheet_to_json(wb.Sheets['Assay Protocol'], { header: 1, defval: '' }).length;
+    const names = state.series.map(s => s.name), got = [];
+    const was = ChartKitExport.save; ChartKitExport.save = (b, nm) => got.push({ b, nm });
+    bCurvePDFs(); await wait(500); o.dlg = !!document.querySelector('.hk-back');
+    if (o.dlg) { document.querySelector('.hk-back [data-x="1"]').click(); await wait(1500); }
+    ChartKitExport.save = was;
+    o.files = got.map(g => g.nm); const txt = got.length ? await got[0].b.text() : '';
+    o.head = txt.slice(0, 8); o.pages = +(/\/Count (\d+)/.exec(txt) || [])[1]; o.names = names;
+    o.has = names.every(nm => txt.indexOf('(' + nm.replace(/[()\\]/g, '\\$&') + ')') >= 0); o.cm = (txt.match(/ cm\n/g) || []).length;
+    return o;
+  });
+  check('B24', 'the workbook is four sheets: Results, Plates, Prism, Assay Protocol', r.sheets === 'Results,Plates,Prism,Assay Protocol', r.sheets);
+  check('B24', 'the Prism sheet holds the tables side by side from its first row (relative to the vehicle, then corrected mBU), each with its own X column and its merged names shifted with it', r.heads.split(',').length === 2 && r.heads.split(',')[0] === '0' && /^BRET relative to the vehicle\|Corrected mBU$/.test(r.corner) && r.merges.split(',').length === 8, r);
+  check('B24', 'Curve PDFs: one PDF, a page per six curves, every compound named on it, the figures drawn into it', r.files.length >= 1 && r.head === '%PDF-1.4' && r.pages === Math.ceil(r.names.length / 6) && r.has && r.cm >= r.names.length, r);
+  await ctx.close();
+});
+
 if (run('B18')) await guard('B18', async () => {
   const src = fs.readFileSync(path.join(ROOT, 'shell/hub-shell.html'), 'utf8');
   check('B18', 'the shell hides Beacon\'s whole header like every other app (it hid only the logo and name and left a 48 px white band)', /var embedStyle = common \+ 'header:not\(\[class\]\)\{display:none!important;\}';/.test(src) && !/id === 'beacon'\s*\?\s*common/.test(src), '');

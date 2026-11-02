@@ -17339,8 +17339,10 @@ var ChartKitExport = (function(){
     return '(' + out + ')';
   }
   function col(h){ var m = /^#?([0-9a-f]{6})$/i.exec(h || ''); if (!m) return '0 0 0'; var v = parseInt(m[1], 16); return [v >> 16 & 255, v >> 8 & 255, v & 255].map(function(x){ return n(x / 255); }).join(' '); }
-  function toPDF(scene){
-    var W = scene.W, H = scene.H, ops = [], fontOf = function(p){ return p.bold && p.italic ? 'F4' : p.bold ? 'F2' : p.italic ? 'F3' : 'F1'; };
+  // A PDF of one or more pages. A page is { W, H, parts: [{ scene, x, y, s }] }: each part is a scene drawn at (x, y) from the page's top-left
+  // at scale s (1 = its own size), so a page can hold six small figures and their captions. The figure's own PDF is the one-page, one-part case.
+  function pdfWrite(pages){
+    var scene = null, H = 0, ops = [], fontOf = function(p){ return p.bold && p.italic ? 'F4' : p.bold ? 'F2' : p.italic ? 'F3' : 'F1'; };
     function Y(y){ return n(H - y); }
     function stroke(p){ var s = n(p.sw || 1) + ' w ' + (p.cap === 'square' ? '2' : '1') + ' J 1 j ' + col(p.stroke) + ' RG ' + (p.dash ? '[' + p.dash + '] 0 d ' : '[] 0 d '); return s; }
     function paint(p, shape){
@@ -17378,14 +17380,25 @@ var ChartKitExport = (function(){
     }
     function measureStr(s, size, p){ return ChartKitCore.measure(s, size, p.bold, p.italic, 'Arial'); }
     function measureText(p){ return String(p.text).split(/\^(-?\d+)/).reduce(function(a, s, i){ return a + measureStr(s, i % 2 ? p.size * 0.7 : p.size, p); }, 0); }
-    scene.prims.forEach(draw);
-    var content = ops.join('\n');
+    var contents = pages.map(function(pg){
+      ops = [];
+      pg.parts.forEach(function(pt){
+        scene = pt.scene; H = scene.H;
+        var s = pt.s == null ? 1 : pt.s, moved = s !== 1 || pt.x || pt.y;
+        if (moved) ops.push('q ' + n(s) + ' 0 0 ' + n(s) + ' ' + n(pt.x || 0) + ' ' + n(pg.H - (pt.y || 0) - s * H) + ' cm');
+        scene.prims.forEach(draw);
+        if (moved) ops.push('Q');
+      });
+      return ops.join('\n');
+    });
     var objs = [];
     objs.push('<< /Type /Catalog /Pages 2 0 R >>');
-    objs.push('<< /Type /Pages /Kids [3 0 R] /Count 1 >>');
-    objs.push('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + n(W) + ' ' + n(H) + '] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R /F3 7 0 R /F4 8 0 R >> >> >>');
-    objs.push('<< /Length ' + content.length + ' >>\nstream\n' + content + '\nendstream');
+    objs.push('<< /Type /Pages /Kids [' + pages.map(function(_, k){ return (7 + 2 * k) + ' 0 R'; }).join(' ') + '] /Count ' + pages.length + ' >>');
     ['Helvetica', 'Helvetica-Bold', 'Helvetica-Oblique', 'Helvetica-BoldOblique'].forEach(function(f){ objs.push('<< /Type /Font /Subtype /Type1 /BaseFont /' + f + ' /Encoding /WinAnsiEncoding >>'); });
+    pages.forEach(function(pg, k){
+      objs.push('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + n(pg.W) + ' ' + n(pg.H) + '] /Contents ' + (8 + 2 * k) + ' 0 R /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R >> >> >>');
+      objs.push('<< /Length ' + contents[k].length + ' >>\nstream\n' + contents[k] + '\nendstream');
+    });
     var out = '%PDF-1.4\n', offs = [];
     objs.forEach(function(o, i){ offs.push(out.length); out += (i + 1) + ' 0 obj\n' + o + '\nendobj\n'; });
     var xref = out.length; out += 'xref\n0 ' + (objs.length + 1) + '\n0000000000 65535 f \n';
@@ -17394,13 +17407,64 @@ var ChartKitExport = (function(){
     var bytes = new Uint8Array(out.length); for (var i2 = 0; i2 < out.length; i2++) bytes[i2] = out.charCodeAt(i2) & 255;
     return new Blob([bytes], { type: 'application/pdf' });
   }
+  function toPDF(scene){ return pdfWrite([{ W: scene.W, H: scene.H, parts: [{ scene: scene, x: 0, y: 0, s: 1 }] }]); }
+  function toPDFPages(pages){ return pdfWrite(pages); }
+
+  // A PDF of small figures, six to an A4 page (2 × 3), each under its own name and numbers: the way a group of dose-response curves is looked at
+  // one by one. Every figure is a ChartKit scene (vector), so each keeps its own axes. o = { title, right, foot, cards: [{ name, tag, bad, stat, stat2, note, scene }], cols, rows }.
+  // A card's scene is drawn at the width of its cell; its height is whatever the scene gives, so the caller builds scenes of the cell's shape (cellSize()).
+  var A4 = { W: 595.28, H: 841.89, M: 34, GX: 18, GY: 14, HEAD: 30, FOOT: 24, TXT: 48 };
+  function cellSize(cols, rows){
+    cols = cols || 2; rows = rows || 3;
+    var w = (A4.W - 2 * A4.M - A4.GX * (cols - 1)) / cols, h = (A4.H - 2 * A4.M - A4.HEAD - A4.FOOT - A4.GY * (rows - 1)) / rows - A4.TXT;
+    return { w: w, h: h };
+  }
+  // The spec a small figure is drawn with: the cell's shape, fonts at their own size (not scaled to a page), no legend, no table.
+  function curveSpec(){
+    var c = cellSize(2, 3), spec = ChartKitCore.withDefaults(null);
+    spec.w = c.w / 72; spec.h = c.h / 72; spec.scale = false; spec.legend.show = false; spec.table.show = false;
+    spec.x.size = 7; spec.y.size = 7; spec.xTitle.size = 7.5; spec.yTitle.size = 7.5; spec.xy.msize = 2.2; spec.xy.lw = 1.1; spec.axisW = 0.8; spec.tick = 3; spec.margin.t = -8;
+    return spec;
+  }
+  function fitText(s, size, bold, maxW){
+    s = String(s == null ? '' : s);
+    if (ChartKitCore.measure(s, size, bold, false, 'Arial') <= maxW) return s;
+    while (s.length > 1 && ChartKitCore.measure(s + '…', size, bold, false, 'Arial') > maxW) s = s.slice(0, -1);
+    return s + '…';
+  }
+  function curvePDF(o){
+    var cols = o.cols || 2, rows = o.rows || 3, per = cols * rows, cards = o.cards || [], pages = [], c = cellSize(cols, rows), n = Math.max(1, Math.ceil(cards.length / per));
+    var cellH = c.h + A4.TXT;
+    for (var pg = 0; pg < n; pg++) {
+      var prims = [], parts = [];
+      var T = function(text, x, y, size, o2){ o2 = o2 || {}; prims.push({ t: 'text', text: text, x: x, y: y, size: size, bold: !!o2.bold, italic: !!o2.italic, anchor: o2.anchor || 'start', rot: 0, fill: o2.fill || '#1f2330', font: 'Arial' }); };
+      var right = o.right ? fitText(o.right, 8.5, false, 220) : '';
+      T(fitText(o.title || '', 12, true, A4.W - 2 * A4.M - (right ? 230 : 0)), A4.M, A4.M + 12, 12, { bold: true });
+      if (right) T(right, A4.W - A4.M, A4.M + 12, 8.5, { anchor: 'end', fill: '#5a5f73' });
+      prims.push({ t: 'line', x1: A4.M, y1: A4.M + 20, x2: A4.W - A4.M, y2: A4.M + 20, stroke: '#c8cbd6', sw: 0.6 });
+      T(fitText(o.foot || '', 7.5, false, A4.W - 2 * A4.M - 70), A4.M, A4.H - A4.M + 4, 7.5, { fill: '#8c90a0' });
+      T('Page ' + (pg + 1) + ' of ' + n, A4.W - A4.M, A4.H - A4.M + 4, 7.5, { anchor: 'end', fill: '#8c90a0' });
+      for (var i = 0; i < per; i++) {
+        var cd = cards[pg * per + i]; if (!cd) break;
+        var x = A4.M + (i % cols) * (c.w + A4.GX), y = A4.M + A4.HEAD + Math.floor(i / cols) * (cellH + A4.GY);
+        T(fitText(cd.name || '—', 9.5, true, c.w - (cd.tag ? 52 : 0)), x, y + 9, 9.5, { bold: true });
+        if (cd.tag) T(cd.tag, x + c.w, y + 9, 7.5, { anchor: 'end', fill: cd.bad ? '#c47818' : '#2d9462' });
+        if (cd.stat) T(fitText(cd.stat, 7.5, false, c.w), x, y + 20, 7.5, { fill: '#3d4254' });
+        if (cd.stat2) T(fitText(cd.stat2, 7.5, false, c.w), x, y + 30, 7.5, { fill: '#3d4254' });
+        if (cd.note) T(fitText(cd.note, 7, false, c.w), x, y + 40, 7, { fill: cd.bad ? '#a05a0a' : '#6e7387' });
+        if (cd.scene) parts.push({ scene: cd.scene, x: x, y: y + A4.TXT - 4, s: Math.min(1, c.w / cd.scene.W) });
+      }
+      pages.push({ W: A4.W, H: A4.H, parts: [{ scene: { W: A4.W, H: A4.H, prims: prims, clip: { x: 0, y: 0, w: 0, h: 0 } }, x: 0, y: 0, s: 1 }].concat(parts) });
+    }
+    return pdfWrite(pages);
+  }
 
   function save(blob, name){
     var a = document.createElement('a'), url = URL.createObjectURL(blob);
     a.href = url; a.download = name; document.body.appendChild(a); a.click();
     setTimeout(function(){ URL.revokeObjectURL(url); a.remove(); }, 4000);
   }
-  return { toSVG: toSVG, toPNG: toPNG, toPDF: toPDF, pngSize: pngSize, save: save, setPngDpi: setPngDpi, esc: esc };
+  return { toSVG: toSVG, toPNG: toPNG, toPDF: toPDF, toPDFPages: toPDFPages, curvePDF: curvePDF, curveCell: cellSize, curveSpec: curveSpec, pngSize: pngSize, save: save, setPngDpi: setPngDpi, esc: esc };
 })();
 /* ChartKit UI — the editor around the scene.
  *

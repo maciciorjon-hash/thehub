@@ -861,11 +861,17 @@ var SetupKit = (function(){
 .hk-dlg{width:min(420px,100%);box-sizing:border-box;padding:20px 22px;border-radius:var(--r-2);background:var(--surface);border:1px solid var(--border2);color:var(--text);box-shadow:0 12px 40px rgba(0,0,0,.28);}
 .hk-dlg h3{margin:0 0 6px;font-size:var(--fs-5);font-weight:600;}
 .hk-dlg p{margin:0 0 12px;font-size:var(--fs-3);color:var(--text2);line-height:1.45;}
-.hk-dlg input{width:100%;box-sizing:border-box;height:32px;padding:0 10px;margin-bottom:14px;border-radius:var(--r-1);border:1px solid var(--border2);background:var(--surface2);color:var(--text);font-family:var(--sans);font-size:var(--fs-3);outline:none;}
-.hk-dlg input:focus{border-color:var(--accent);}
+.hk-dlg input[type="text"]{width:100%;box-sizing:border-box;height:32px;padding:0 10px;margin-bottom:14px;border-radius:var(--r-1);border:1px solid var(--border2);background:var(--surface2);color:var(--text);font-family:var(--sans);font-size:var(--fs-3);outline:none;}
+.hk-dlg input[type="text"]:focus{border-color:var(--accent);}
 .hk-dlg .hk-btns{display:flex;justify-content:flex-end;gap:8px;}
 .hk-dlg .btn.danger,.hk-dlg .btn-danger{background:var(--danger);border-color:var(--danger);color:var(--on-accent);}
 @media (max-width:720px){.hk-row{grid-template-columns:minmax(0,1fr);}.hk-side{align-items:flex-start;flex-direction:row;justify-content:space-between;}}
+.hk-pick{margin:0 0 14px;}
+.hk-pick-bar{display:flex;gap:6px;margin-bottom:8px;}
+.hk-pick-list{display:flex;flex-direction:column;gap:5px;max-height:min(320px,50dvh);overflow-y:auto;}
+.hk-pick-list label{display:flex;align-items:center;gap:9px;padding:7px 11px;border:1px solid var(--border);border-radius:var(--r-1);background:var(--surface2);font-size:var(--fs-3);cursor:pointer;}
+.hk-pick-list label span{flex:1;min-width:0;overflow-wrap:anywhere;}
+.hk-pick-list label small{color:var(--text3);font-size:var(--fs-2);white-space:nowrap;}
 /* history-kit:end */
 </style>
 <script>
@@ -883,6 +889,8 @@ var SetupKit = (function(){
      open     (data, rec) → puts the analysis back; returns false when it could not
      afterOpen (rec) → lands the person where the analysis is shown
      toast    (message, kind)
+     name     the Assay ID the person typed. Without one (empty), the entry is called <APP><YYYYMMDD>_<HHMM> after the moment it was first kept, so
+              two analyses are never told apart by "Untitled" — and the id stays the same on every later save. o.code sets the letters (default: the first three of app)
      current may also give x (small facts the app reads back from the list, kept as they are) and nameWins: true when the app
               has its own name field, so the entry follows it; otherwise a name a person gave in History is kept
      onRename (rec, isOpen) the app takes the new name when the entry is the one open
@@ -904,16 +912,26 @@ var HistoryKit = (function(){
     del: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg>'
   };
   // A small dialog of the kit's own, so a rename or a delete asks the same way in every app.
+  // o.choices: [{ label, note, on }] — a list of boxes to tick (All / None above it); the answer's third argument is the indices that are ticked.
+  function pickHtml(ch){
+    return '<div class="hk-pick"><div class="hk-pick-bar"><button type="button" class="btn" data-all="1">All</button><button type="button" class="btn" data-all="0">None</button></div><div class="hk-pick-list">' +
+      ch.map(function(c, i){ return '<label><input type="checkbox" data-i="' + i + '"' + (c.on === false ? '' : ' checked') + '><span>' + esc(c.label) + '</span>' + (c.note ? '<small>' + esc(c.note) + '</small>' : '') + '</label>'; }).join('') + '</div></div>';
+  }
   function ask(title, body, o, cb){
     var back = document.createElement('div'); back.className = 'hk-back';
-    back.innerHTML = '<div class="hk-dlg" role="dialog" aria-modal="true" aria-label="' + esc(title) + '"><h3>' + esc(title) + '</h3>' + (body ? '<p>' + esc(body) + '</p>' : '') + (o.input ? '<input type="text" maxlength="80" spellcheck="false" autocomplete="off" value="' + esc(o.value || '') + '">' : '') + '<div class="hk-btns"><button type="button" class="btn' + (o.sec ? ' ' + o.sec : '') + '" data-x="0">Cancel</button><button type="button" class="btn ' + (o.danger ? (o.dangerCls || 'danger') : (o.primary || 'primary')) + '" data-x="1">' + esc(o.ok || 'OK') + '</button></div></div>';
+    back.innerHTML = '<div class="hk-dlg" role="dialog" aria-modal="true" aria-label="' + esc(title) + '"><h3>' + esc(title) + '</h3>' + (body ? '<p>' + esc(body) + '</p>' : '') + (o.choices ? pickHtml(o.choices) : '') + (o.input ? '<input type="text" maxlength="80" spellcheck="false" autocomplete="off" value="' + esc(o.value || '') + '">' : '') + '<div class="hk-btns"><button type="button" class="btn' + (o.sec ? ' ' + o.sec : '') + '" data-x="0">Cancel</button><button type="button" class="btn ' + (o.danger ? (o.dangerCls || 'danger') : (o.primary || 'primary')) + '" data-x="1">' + esc(o.ok || 'OK') + '</button></div></div>';
     var prev = document.activeElement;
-    function done(ok){ var v = o.input ? back.querySelector('input').value : null; back.remove(); document.removeEventListener('keydown', key, true); if (prev && prev.focus) { try { prev.focus({ preventScroll: true }); } catch (e) {} } cb(ok, v); }
+    function done(ok){ var v = o.input ? back.querySelector('input').value : null; back.remove(); document.removeEventListener('keydown', key, true); if (prev && prev.focus) { try { prev.focus({ preventScroll: true }); } catch (e) {} } cb(ok, v, o.choices ? [].slice.call(back.querySelectorAll('.hk-pick input:checked')).map(function(c){ return +c.dataset.i; }) : null); }
     function key(e){ if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(false); } else if (e.key === 'Enter' && o.input) { e.preventDefault(); e.stopPropagation(); done(true); } }
-    back.addEventListener('click', function(e){ if (e.target === back) done(false); else { var b = e.target.closest('[data-x]'); if (b) done(b.dataset.x === '1'); } });
+    back.addEventListener('click', function(e){ var al = e.target.closest && e.target.closest('[data-all]'); if (al) { [].slice.call(back.querySelectorAll('.hk-pick input')).forEach(function(c){ c.checked = al.dataset.all === '1'; }); return; } if (e.target === back) done(false); else { var b = e.target.closest('[data-x]'); if (b) done(b.dataset.x === '1'); } });
     document.addEventListener('keydown', key, true);
     document.body.appendChild(back);
-    var f = back.querySelector('input') || back.querySelector('[data-x="1"]'); if (f) { f.focus(); if (f.select) f.select(); }
+    var f = (o.input && back.querySelector('input')) || back.querySelector('[data-x="1"]'); if (f) { f.focus(); if (f.select) f.select(); }
+  }
+  // The name of an analysis nobody named: its app and the moment it was first kept (LUM20261102_1432), the shape of an Assay ID.
+  function stampName(code, t){
+    var d = new Date(t), z = function(v){ return (v < 10 ? '0' : '') + v; };
+    return code + d.getFullYear() + z(d.getMonth() + 1) + z(d.getDate()) + '_' + z(d.getHours()) + z(d.getMinutes());
   }
   function create(o){
     var H = { dbp: null, broken: null, list: [], q: '', timer: 0, loaded: false, id: null, quiet: 0, sig: '', warned: false };
@@ -964,7 +982,7 @@ var HistoryKit = (function(){
       if (rec && H.id !== rec.id) { H.id = rec.id; H.sig = ''; }
       if (rec && sig === H.sig) return Promise.resolve();
       var now = Date.now();
-      var out = { id: rec ? rec.id : 'h' + now.toString(36) + Math.random().toString(36).slice(2, 6), dkey: cur.key || '', name: rec && rec.named && !cur.nameWins ? rec.name : (cur.name || 'Untitled ' + noun), named: !!(rec && rec.named),
+      var out = { id: rec ? rec.id : 'h' + now.toString(36) + Math.random().toString(36).slice(2, 6), dkey: cur.key || '', name: rec && rec.named && !cur.nameWins ? rec.name : (cur.name || stampName(o.code || String(o.app || noun).replace(/[^A-Za-z0-9]/g, '').slice(0, 3).toUpperCase(), rec ? rec.created : now)), named: !!(rec && rec.named),
         x: cur.x || null, bits: cur.bits || [], chips: cur.chips || [], files: cur.files || [], data: cur.data, created: rec ? rec.created : now, updated: now, pinned: rec ? !!rec.pinned : false };
       return req('readwrite', function(st){ return st.put(out); }).then(function(){
         H.id = out.id; H.sig = sig;
@@ -3321,11 +3339,12 @@ const tpHist = HistoryKit.create({
   shown: () => TP.ui.tab === 'history', toast: (m, k) => tpToast(m, k),
   current() {
     if (!tpHasReads()) return null;
-    const names = TP.plates.map(p => p.name).filter(Boolean), cpds = [], seen = {};
+    const cpds = [], seen = {};
     TP.plates.forEach(p => Object.keys(p.wells).forEach(id => { const w = p.wells[id], c = String(w.compound || '').trim(); if (c && w.kind === 'sample' && !seen[c]) { seen[c] = 1; cpds.push(c); } }));
     const files = []; TP.plates.forEach(p => { if (p.source && files.indexOf(p.source) < 0) files.push(p.source); });
     const p0 = tpPlate(), nT = p0 && p0.times ? p0.times.length : 0;
-    return { name: (names[0] || 'Untitled plate') + (names.length > 1 ? ' + ' + (names.length - 1) + ' more' : ''), key: TP.plates.map(tpDataId).join('+'), data: tpProject(), chips: cpds, files: files,
+    const typed = TP.plates.filter(p => p.idTyped && p.name).map(p => p.name);   // the Assay ID the person typed; otherwise the kit names the entry TEM<date>_<time>
+    return { name: typed.length ? typed[0] + (typed.length > 1 ? ' + ' + (typed.length - 1) + ' more' : '') : '', key: TP.plates.map(tpDataId).join('+'), data: tpProject(), chips: cpds, files: files,
       bits: [TP.plates.length + (TP.plates.length === 1 ? ' plate' : ' plates'), nT + ' reads', cpds.length + ' ' + (cpds.length === 1 ? tpWd().item : tpWd().items)].concat(tpTC() ? ['time course'] : []) };
   },
   open: d => tpLoadProject(d).then(() => true),
@@ -4392,7 +4411,7 @@ function tpsWire(d) {
   d.addEventListener('input', e => {
     const t = e.target, f = TPS.form, p = tpPlate();
     if (t.id === 'tps-paste') { const txt = t.value; if (txt && txt.split(/\r\n|\n|\r/).length >= 4) { t.value = ''; tpsPaste(txt); } return; }
-    if (t.id === 'tps-name') { const v = tpCleanName(t.value); if (p && v) { p.name = v; tpAutosaveSoon(); tpsPlates(); } return; }
+    if (t.id === 'tps-name') { const v = tpCleanName(t.value); if (p && v) { p.name = v; p.idTyped = true; tpAutosaveSoon(); tpsPlates(); } return; }
     if (t.id === 'tps-names') { f.names = t.value; tpsPlanText(); }
     else if (t.id === 'tps-top') { f.top = parseFloat(t.value); tpsPlanText(); }
     else if (t.id === 'tps-fac') { f.fac = parseFloat(t.value); tpsPlanText(); }
@@ -5210,6 +5229,41 @@ function tpFootSvg(svg) {
   return svg.replace(m[0], 'viewBox="0 0 ' + W + ' ' + (H + h) + '"').replace(/<rect width="[\d.]+" height="[\d.]+"/, '<rect width="' + W + '" height="' + (H + h) + '"').replace('</svg>', '<line x1="20" x2="' + (W - 20) + '" y1="' + (H + 4) + '" y2="' + (H + 4) + '" stroke="#bbb" stroke-width=".6"/>' + txt + '</svg>');
 }
 function tpRowsFlat() { return tpAllRows(); }
+// Curve PDFs — one PDF per plate (a degradation's dose–response curves: a time course has none), A4, six curves to a page, every curve vector. The curves are
+// ChartKit's (the Graph tab's drawing, one compound each), under the numbers of Analysis A.
+function tpCurvePDFs() {
+  const rows = tpTC() ? [] : tgRows().filter(r => r.comp.A && !r.comp.A.fail && r.comp.A._reps && r.comp.A._reps.length >= 4);
+  if (!rows.length) { tpToast(tpTC() ? 'A time course has no dose–response curves to print.' : 'There are no dose–response curves yet.', 'warn'); return; }
+  const by = {}, ids = []; rows.forEach(r => { if (!by[r.plate.id]) { by[r.plate.id] = { plate: r.plate, rs: [] }; ids.push(r.plate.id); } by[r.plate.id].rs.push(r); });
+  if (ids.length < 2) { tpWriteCurvePDFs(ids.map(i => by[i])); return; }
+  HistoryKit.ask('Curve PDFs', 'One PDF per plate, six curves to a page. Pick the plates to make.', { ok: 'Make PDFs', choices: ids.map(i => ({ label: by[i].plate.name, note: by[i].rs.length + (by[i].rs.length === 1 ? ' compound' : ' compounds') })) }, (ok, v, picked) => {
+    if (ok && picked && picked.length) tpWriteCurvePDFs(picked.map(k => by[ids[k]]));
+  });
+}
+let _tpPdfBusy = false;
+async function tpWriteCurvePDFs(groups) {
+  if (_tpPdfBusy) return; _tpPdfBusy = true;
+  try {
+    const C = ChartKitCore, X = ChartKitExport, doc = tgDRDoc(), spec = X.curveSpec(), files = [], stamp = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    for (const g of groups) {
+      const cards = [];
+      for (let i = 0; i < g.rs.length; i++) {
+        const r = g.rs[i], A = r.comp.A, it = doc.items.filter(q => q.id === r.plate.id + '|' + r.comp.key)[0], nd = /No effect/.test(A.Flag_Reason || ''), fl = A.Flag_Reason || '';
+        const q = nd ? 'n.d.' : /EC50>range/.test(fl) ? '> ' : /EC50<range/.test(fl) ? '< ' : '';
+        const ci = !nd && A.CI_DC50_lower != null && A.CI_DC50_upper != null ? ' (95% CI ' + A.CI_DC50_lower + '\u2013' + A.CI_DC50_upper + ')' : '';
+        cards.push({ name: r.comp.compound + (r.comp.target ? ' \u00b7 ' + r.comp.target : ''), tag: fl ? 'FLAGGED' : 'OK', bad: !!fl,
+          stat: 'DC50 ' + (nd ? 'n.d.' : q + A.DC50_nM + ' nM' + ci), stat2: 'Dmax ' + A.Dmax_pct + '%    Hill ' + (nd ? 'n.d.' : A.HillSlope) + '    R\u00b2 ' + A.R2, note: fl,
+          scene: it ? C.build(Object.assign({}, doc, { items: [it], title: ['', '', ''] }), spec) : null });
+        if (i % 6 === 5) await new Promise(res => setTimeout(res, 0));
+      }
+      const blob = X.curvePDF({ cards, title: g.plate.name + ' \u00b7 Dose\u2013response (Dmax analysis)', right: cards.length + (cards.length === 1 ? ' compound' : ' compounds'), foot: 'dHUB Tempo \u00b7 ' + stamp });
+      files.push({ blob, name: g.plate.name.replace(/[^\w.-]+/g, '_') + '_curves.pdf' });
+    }
+    files.forEach((f, k) => setTimeout(() => X.save(f.blob, f.name), k * 350));
+    tpToast(files.length === 1 ? 'Curve PDF ready \u2014 ' + files[0].name : files.length + ' curve PDFs ready (one per plate).');
+  } catch (e) { tpToast('The curve PDFs could not be made: ' + (e && e.message || e), 'warn'); }
+  finally { _tpPdfBusy = false; }
+}
 function tpExportXLSX() {
   if (tpTC()) { tpExportXLSXTC(); return; }
   if (!window.XLSX) { tpToast('Excel export needs SheetJS, which did not load (offline?). Use the CSV exports.', 'warn'); return; }
@@ -5378,7 +5432,7 @@ function tpExportMenu(e) {
     [R('Excel workbook', 'tpExportXLSX', 'Results, mean and SD of every dose, every well, the method'), R('ProNect-compatible files (3)', 'tpExportProNect', 'raw_kinetic.csv · norm_kinetic.csv · normalized_data.json'), R('Raw data (.csv)', 'tpExportCSV', 'One row per well and read'), R('Prism tables', 'tpExportPrism', 'Mean, SD and n of every dose over time'), null,
      R('Plot as image (.png)', 'tpSavePNG', 'The chart on screen, white ground, 3×, method under it'), R('Plot as image (.svg)', 'tpSaveSVG', 'The chart on screen, as a vector'), R('Print summary', 'tpPrint', 'Results, charts, method and settings'), R('Method as text', 'tpSaveMethod', 'Normalisation, definitions, what was left out'), null,
      R('Save project', 'tpSaveProject', 'The plates, layout, left-out points and settings'), R('Open project…', 'tpOpenProjectDlg', 'A .tempo.json saved earlier')] :
-    [R('Excel workbook', 'tpExportXLSX', 'Results, both analyses, every trace, the method'), R('ProNect-compatible files (3)', 'tpExportProNect', 'raw_kinetic.csv · norm_kinetic.csv · normalized_data.json'), R('Raw data (.csv)', 'tpExportCSV', 'One row per well and read'), R('Prism tables', 'tpExportPrism', 'Traces, K and Dmax against concentration'), R('Screen table for Hit Finder', 'tpExportScreenCSV', 'One record per compound, Echo’s columns'), null,
+    [R('Excel workbook', 'tpExportXLSX', 'Results, both analyses, every trace, the method'), R('ProNect-compatible files (3)', 'tpExportProNect', 'raw_kinetic.csv · norm_kinetic.csv · normalized_data.json'), R('Raw data (.csv)', 'tpExportCSV', 'One row per well and read'), R('Prism tables', 'tpExportPrism', 'Traces, K and Dmax against concentration'), R('Curve PDFs', 'tpCurvePDFs', 'One PDF per plate, six dose–response curves to a page'), R('Screen table for Hit Finder', 'tpExportScreenCSV', 'One record per compound, Echo’s columns'), null,
      R('Plot as image (.png)', 'tpSavePNG', 'The chart on screen, white ground, 3×, method under it'), R('Plot as image (.svg)', 'tpSaveSVG', 'The chart on screen, as a vector'), R('Print summary', 'tpPrint', 'Results, charts, method and settings'), R('Method as text', 'tpSaveMethod', 'Normalisation, equations, what was left out'), null,
      R('Save project', 'tpSaveProject', 'The plates, layout, left-out points and settings'), R('Open project…', 'tpOpenProjectDlg', 'A .tempo.json saved earlier')]);
   MenuKit.toggle(e, 'tp-exp-menu');
@@ -7021,8 +7075,10 @@ var ChartKitExport = (function(){
     return '(' + out + ')';
   }
   function col(h){ var m = /^#?([0-9a-f]{6})$/i.exec(h || ''); if (!m) return '0 0 0'; var v = parseInt(m[1], 16); return [v >> 16 & 255, v >> 8 & 255, v & 255].map(function(x){ return n(x / 255); }).join(' '); }
-  function toPDF(scene){
-    var W = scene.W, H = scene.H, ops = [], fontOf = function(p){ return p.bold && p.italic ? 'F4' : p.bold ? 'F2' : p.italic ? 'F3' : 'F1'; };
+  // A PDF of one or more pages. A page is { W, H, parts: [{ scene, x, y, s }] }: each part is a scene drawn at (x, y) from the page's top-left
+  // at scale s (1 = its own size), so a page can hold six small figures and their captions. The figure's own PDF is the one-page, one-part case.
+  function pdfWrite(pages){
+    var scene = null, H = 0, ops = [], fontOf = function(p){ return p.bold && p.italic ? 'F4' : p.bold ? 'F2' : p.italic ? 'F3' : 'F1'; };
     function Y(y){ return n(H - y); }
     function stroke(p){ var s = n(p.sw || 1) + ' w ' + (p.cap === 'square' ? '2' : '1') + ' J 1 j ' + col(p.stroke) + ' RG ' + (p.dash ? '[' + p.dash + '] 0 d ' : '[] 0 d '); return s; }
     function paint(p, shape){
@@ -7060,14 +7116,25 @@ var ChartKitExport = (function(){
     }
     function measureStr(s, size, p){ return ChartKitCore.measure(s, size, p.bold, p.italic, 'Arial'); }
     function measureText(p){ return String(p.text).split(/\^(-?\d+)/).reduce(function(a, s, i){ return a + measureStr(s, i % 2 ? p.size * 0.7 : p.size, p); }, 0); }
-    scene.prims.forEach(draw);
-    var content = ops.join('\n');
+    var contents = pages.map(function(pg){
+      ops = [];
+      pg.parts.forEach(function(pt){
+        scene = pt.scene; H = scene.H;
+        var s = pt.s == null ? 1 : pt.s, moved = s !== 1 || pt.x || pt.y;
+        if (moved) ops.push('q ' + n(s) + ' 0 0 ' + n(s) + ' ' + n(pt.x || 0) + ' ' + n(pg.H - (pt.y || 0) - s * H) + ' cm');
+        scene.prims.forEach(draw);
+        if (moved) ops.push('Q');
+      });
+      return ops.join('\n');
+    });
     var objs = [];
     objs.push('<< /Type /Catalog /Pages 2 0 R >>');
-    objs.push('<< /Type /Pages /Kids [3 0 R] /Count 1 >>');
-    objs.push('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + n(W) + ' ' + n(H) + '] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R /F3 7 0 R /F4 8 0 R >> >> >>');
-    objs.push('<< /Length ' + content.length + ' >>\nstream\n' + content + '\nendstream');
+    objs.push('<< /Type /Pages /Kids [' + pages.map(function(_, k){ return (7 + 2 * k) + ' 0 R'; }).join(' ') + '] /Count ' + pages.length + ' >>');
     ['Helvetica', 'Helvetica-Bold', 'Helvetica-Oblique', 'Helvetica-BoldOblique'].forEach(function(f){ objs.push('<< /Type /Font /Subtype /Type1 /BaseFont /' + f + ' /Encoding /WinAnsiEncoding >>'); });
+    pages.forEach(function(pg, k){
+      objs.push('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + n(pg.W) + ' ' + n(pg.H) + '] /Contents ' + (8 + 2 * k) + ' 0 R /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R >> >> >>');
+      objs.push('<< /Length ' + contents[k].length + ' >>\nstream\n' + contents[k] + '\nendstream');
+    });
     var out = '%PDF-1.4\n', offs = [];
     objs.forEach(function(o, i){ offs.push(out.length); out += (i + 1) + ' 0 obj\n' + o + '\nendobj\n'; });
     var xref = out.length; out += 'xref\n0 ' + (objs.length + 1) + '\n0000000000 65535 f \n';
@@ -7076,13 +7143,64 @@ var ChartKitExport = (function(){
     var bytes = new Uint8Array(out.length); for (var i2 = 0; i2 < out.length; i2++) bytes[i2] = out.charCodeAt(i2) & 255;
     return new Blob([bytes], { type: 'application/pdf' });
   }
+  function toPDF(scene){ return pdfWrite([{ W: scene.W, H: scene.H, parts: [{ scene: scene, x: 0, y: 0, s: 1 }] }]); }
+  function toPDFPages(pages){ return pdfWrite(pages); }
+
+  // A PDF of small figures, six to an A4 page (2 × 3), each under its own name and numbers: the way a group of dose-response curves is looked at
+  // one by one. Every figure is a ChartKit scene (vector), so each keeps its own axes. o = { title, right, foot, cards: [{ name, tag, bad, stat, stat2, note, scene }], cols, rows }.
+  // A card's scene is drawn at the width of its cell; its height is whatever the scene gives, so the caller builds scenes of the cell's shape (cellSize()).
+  var A4 = { W: 595.28, H: 841.89, M: 34, GX: 18, GY: 14, HEAD: 30, FOOT: 24, TXT: 48 };
+  function cellSize(cols, rows){
+    cols = cols || 2; rows = rows || 3;
+    var w = (A4.W - 2 * A4.M - A4.GX * (cols - 1)) / cols, h = (A4.H - 2 * A4.M - A4.HEAD - A4.FOOT - A4.GY * (rows - 1)) / rows - A4.TXT;
+    return { w: w, h: h };
+  }
+  // The spec a small figure is drawn with: the cell's shape, fonts at their own size (not scaled to a page), no legend, no table.
+  function curveSpec(){
+    var c = cellSize(2, 3), spec = ChartKitCore.withDefaults(null);
+    spec.w = c.w / 72; spec.h = c.h / 72; spec.scale = false; spec.legend.show = false; spec.table.show = false;
+    spec.x.size = 7; spec.y.size = 7; spec.xTitle.size = 7.5; spec.yTitle.size = 7.5; spec.xy.msize = 2.2; spec.xy.lw = 1.1; spec.axisW = 0.8; spec.tick = 3; spec.margin.t = -8;
+    return spec;
+  }
+  function fitText(s, size, bold, maxW){
+    s = String(s == null ? '' : s);
+    if (ChartKitCore.measure(s, size, bold, false, 'Arial') <= maxW) return s;
+    while (s.length > 1 && ChartKitCore.measure(s + '…', size, bold, false, 'Arial') > maxW) s = s.slice(0, -1);
+    return s + '…';
+  }
+  function curvePDF(o){
+    var cols = o.cols || 2, rows = o.rows || 3, per = cols * rows, cards = o.cards || [], pages = [], c = cellSize(cols, rows), n = Math.max(1, Math.ceil(cards.length / per));
+    var cellH = c.h + A4.TXT;
+    for (var pg = 0; pg < n; pg++) {
+      var prims = [], parts = [];
+      var T = function(text, x, y, size, o2){ o2 = o2 || {}; prims.push({ t: 'text', text: text, x: x, y: y, size: size, bold: !!o2.bold, italic: !!o2.italic, anchor: o2.anchor || 'start', rot: 0, fill: o2.fill || '#1f2330', font: 'Arial' }); };
+      var right = o.right ? fitText(o.right, 8.5, false, 220) : '';
+      T(fitText(o.title || '', 12, true, A4.W - 2 * A4.M - (right ? 230 : 0)), A4.M, A4.M + 12, 12, { bold: true });
+      if (right) T(right, A4.W - A4.M, A4.M + 12, 8.5, { anchor: 'end', fill: '#5a5f73' });
+      prims.push({ t: 'line', x1: A4.M, y1: A4.M + 20, x2: A4.W - A4.M, y2: A4.M + 20, stroke: '#c8cbd6', sw: 0.6 });
+      T(fitText(o.foot || '', 7.5, false, A4.W - 2 * A4.M - 70), A4.M, A4.H - A4.M + 4, 7.5, { fill: '#8c90a0' });
+      T('Page ' + (pg + 1) + ' of ' + n, A4.W - A4.M, A4.H - A4.M + 4, 7.5, { anchor: 'end', fill: '#8c90a0' });
+      for (var i = 0; i < per; i++) {
+        var cd = cards[pg * per + i]; if (!cd) break;
+        var x = A4.M + (i % cols) * (c.w + A4.GX), y = A4.M + A4.HEAD + Math.floor(i / cols) * (cellH + A4.GY);
+        T(fitText(cd.name || '—', 9.5, true, c.w - (cd.tag ? 52 : 0)), x, y + 9, 9.5, { bold: true });
+        if (cd.tag) T(cd.tag, x + c.w, y + 9, 7.5, { anchor: 'end', fill: cd.bad ? '#c47818' : '#2d9462' });
+        if (cd.stat) T(fitText(cd.stat, 7.5, false, c.w), x, y + 20, 7.5, { fill: '#3d4254' });
+        if (cd.stat2) T(fitText(cd.stat2, 7.5, false, c.w), x, y + 30, 7.5, { fill: '#3d4254' });
+        if (cd.note) T(fitText(cd.note, 7, false, c.w), x, y + 40, 7, { fill: cd.bad ? '#a05a0a' : '#6e7387' });
+        if (cd.scene) parts.push({ scene: cd.scene, x: x, y: y + A4.TXT - 4, s: Math.min(1, c.w / cd.scene.W) });
+      }
+      pages.push({ W: A4.W, H: A4.H, parts: [{ scene: { W: A4.W, H: A4.H, prims: prims, clip: { x: 0, y: 0, w: 0, h: 0 } }, x: 0, y: 0, s: 1 }].concat(parts) });
+    }
+    return pdfWrite(pages);
+  }
 
   function save(blob, name){
     var a = document.createElement('a'), url = URL.createObjectURL(blob);
     a.href = url; a.download = name; document.body.appendChild(a); a.click();
     setTimeout(function(){ URL.revokeObjectURL(url); a.remove(); }, 4000);
   }
-  return { toSVG: toSVG, toPNG: toPNG, toPDF: toPDF, pngSize: pngSize, save: save, setPngDpi: setPngDpi, esc: esc };
+  return { toSVG: toSVG, toPNG: toPNG, toPDF: toPDF, toPDFPages: toPDFPages, curvePDF: curvePDF, curveCell: cellSize, curveSpec: curveSpec, pngSize: pngSize, save: save, setPngDpi: setPngDpi, esc: esc };
 })();
 /* ChartKit UI — the editor around the scene.
  *

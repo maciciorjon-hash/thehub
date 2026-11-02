@@ -11,6 +11,8 @@
      open     (data, rec) → puts the analysis back; returns false when it could not
      afterOpen (rec) → lands the person where the analysis is shown
      toast    (message, kind)
+     name     the Assay ID the person typed. Without one (empty), the entry is called <APP><YYYYMMDD>_<HHMM> after the moment it was first kept, so
+              two analyses are never told apart by "Untitled" — and the id stays the same on every later save. o.code sets the letters (default: the first three of app)
      current may also give x (small facts the app reads back from the list, kept as they are) and nameWins: true when the app
               has its own name field, so the entry follows it; otherwise a name a person gave in History is kept
      onRename (rec, isOpen) the app takes the new name when the entry is the one open
@@ -32,16 +34,26 @@ var HistoryKit = (function(){
     del: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg>'
   };
   // A small dialog of the kit's own, so a rename or a delete asks the same way in every app.
+  // o.choices: [{ label, note, on }] — a list of boxes to tick (All / None above it); the answer's third argument is the indices that are ticked.
+  function pickHtml(ch){
+    return '<div class="hk-pick"><div class="hk-pick-bar"><button type="button" class="btn" data-all="1">All</button><button type="button" class="btn" data-all="0">None</button></div><div class="hk-pick-list">' +
+      ch.map(function(c, i){ return '<label><input type="checkbox" data-i="' + i + '"' + (c.on === false ? '' : ' checked') + '><span>' + esc(c.label) + '</span>' + (c.note ? '<small>' + esc(c.note) + '</small>' : '') + '</label>'; }).join('') + '</div></div>';
+  }
   function ask(title, body, o, cb){
     var back = document.createElement('div'); back.className = 'hk-back';
-    back.innerHTML = '<div class="hk-dlg" role="dialog" aria-modal="true" aria-label="' + esc(title) + '"><h3>' + esc(title) + '</h3>' + (body ? '<p>' + esc(body) + '</p>' : '') + (o.input ? '<input type="text" maxlength="80" spellcheck="false" autocomplete="off" value="' + esc(o.value || '') + '">' : '') + '<div class="hk-btns"><button type="button" class="btn' + (o.sec ? ' ' + o.sec : '') + '" data-x="0">Cancel</button><button type="button" class="btn ' + (o.danger ? (o.dangerCls || 'danger') : (o.primary || 'primary')) + '" data-x="1">' + esc(o.ok || 'OK') + '</button></div></div>';
+    back.innerHTML = '<div class="hk-dlg" role="dialog" aria-modal="true" aria-label="' + esc(title) + '"><h3>' + esc(title) + '</h3>' + (body ? '<p>' + esc(body) + '</p>' : '') + (o.choices ? pickHtml(o.choices) : '') + (o.input ? '<input type="text" maxlength="80" spellcheck="false" autocomplete="off" value="' + esc(o.value || '') + '">' : '') + '<div class="hk-btns"><button type="button" class="btn' + (o.sec ? ' ' + o.sec : '') + '" data-x="0">Cancel</button><button type="button" class="btn ' + (o.danger ? (o.dangerCls || 'danger') : (o.primary || 'primary')) + '" data-x="1">' + esc(o.ok || 'OK') + '</button></div></div>';
     var prev = document.activeElement;
-    function done(ok){ var v = o.input ? back.querySelector('input').value : null; back.remove(); document.removeEventListener('keydown', key, true); if (prev && prev.focus) { try { prev.focus({ preventScroll: true }); } catch (e) {} } cb(ok, v); }
+    function done(ok){ var v = o.input ? back.querySelector('input').value : null; back.remove(); document.removeEventListener('keydown', key, true); if (prev && prev.focus) { try { prev.focus({ preventScroll: true }); } catch (e) {} } cb(ok, v, o.choices ? [].slice.call(back.querySelectorAll('.hk-pick input:checked')).map(function(c){ return +c.dataset.i; }) : null); }
     function key(e){ if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(false); } else if (e.key === 'Enter' && o.input) { e.preventDefault(); e.stopPropagation(); done(true); } }
-    back.addEventListener('click', function(e){ if (e.target === back) done(false); else { var b = e.target.closest('[data-x]'); if (b) done(b.dataset.x === '1'); } });
+    back.addEventListener('click', function(e){ var al = e.target.closest && e.target.closest('[data-all]'); if (al) { [].slice.call(back.querySelectorAll('.hk-pick input')).forEach(function(c){ c.checked = al.dataset.all === '1'; }); return; } if (e.target === back) done(false); else { var b = e.target.closest('[data-x]'); if (b) done(b.dataset.x === '1'); } });
     document.addEventListener('keydown', key, true);
     document.body.appendChild(back);
-    var f = back.querySelector('input') || back.querySelector('[data-x="1"]'); if (f) { f.focus(); if (f.select) f.select(); }
+    var f = (o.input && back.querySelector('input')) || back.querySelector('[data-x="1"]'); if (f) { f.focus(); if (f.select) f.select(); }
+  }
+  // The name of an analysis nobody named: its app and the moment it was first kept (LUM20261102_1432), the shape of an Assay ID.
+  function stampName(code, t){
+    var d = new Date(t), z = function(v){ return (v < 10 ? '0' : '') + v; };
+    return code + d.getFullYear() + z(d.getMonth() + 1) + z(d.getDate()) + '_' + z(d.getHours()) + z(d.getMinutes());
   }
   function create(o){
     var H = { dbp: null, broken: null, list: [], q: '', timer: 0, loaded: false, id: null, quiet: 0, sig: '', warned: false };
@@ -92,7 +104,7 @@ var HistoryKit = (function(){
       if (rec && H.id !== rec.id) { H.id = rec.id; H.sig = ''; }
       if (rec && sig === H.sig) return Promise.resolve();
       var now = Date.now();
-      var out = { id: rec ? rec.id : 'h' + now.toString(36) + Math.random().toString(36).slice(2, 6), dkey: cur.key || '', name: rec && rec.named && !cur.nameWins ? rec.name : (cur.name || 'Untitled ' + noun), named: !!(rec && rec.named),
+      var out = { id: rec ? rec.id : 'h' + now.toString(36) + Math.random().toString(36).slice(2, 6), dkey: cur.key || '', name: rec && rec.named && !cur.nameWins ? rec.name : (cur.name || stampName(o.code || String(o.app || noun).replace(/[^A-Za-z0-9]/g, '').slice(0, 3).toUpperCase(), rec ? rec.created : now)), named: !!(rec && rec.named),
         x: cur.x || null, bits: cur.bits || [], chips: cur.chips || [], files: cur.files || [], data: cur.data, created: rec ? rec.created : now, updated: now, pinned: rec ? !!rec.pinned : false };
       return req('readwrite', function(st){ return st.put(out); }).then(function(){
         H.id = out.id; H.sig = sig;

@@ -1434,11 +1434,17 @@ var SetupKit = (function(){
 .hk-dlg{width:min(420px,100%);box-sizing:border-box;padding:20px 22px;border-radius:var(--r-2);background:var(--surface);border:1px solid var(--border2);color:var(--text);box-shadow:0 12px 40px rgba(0,0,0,.28);}
 .hk-dlg h3{margin:0 0 6px;font-size:var(--fs-5);font-weight:600;}
 .hk-dlg p{margin:0 0 12px;font-size:var(--fs-3);color:var(--text2);line-height:1.45;}
-.hk-dlg input{width:100%;box-sizing:border-box;height:32px;padding:0 10px;margin-bottom:14px;border-radius:var(--r-1);border:1px solid var(--border2);background:var(--surface2);color:var(--text);font-family:var(--sans);font-size:var(--fs-3);outline:none;}
-.hk-dlg input:focus{border-color:var(--accent);}
+.hk-dlg input[type="text"]{width:100%;box-sizing:border-box;height:32px;padding:0 10px;margin-bottom:14px;border-radius:var(--r-1);border:1px solid var(--border2);background:var(--surface2);color:var(--text);font-family:var(--sans);font-size:var(--fs-3);outline:none;}
+.hk-dlg input[type="text"]:focus{border-color:var(--accent);}
 .hk-dlg .hk-btns{display:flex;justify-content:flex-end;gap:8px;}
 .hk-dlg .btn.danger,.hk-dlg .btn-danger{background:var(--danger);border-color:var(--danger);color:var(--on-accent);}
 @media (max-width:720px){.hk-row{grid-template-columns:minmax(0,1fr);}.hk-side{align-items:flex-start;flex-direction:row;justify-content:space-between;}}
+.hk-pick{margin:0 0 14px;}
+.hk-pick-bar{display:flex;gap:6px;margin-bottom:8px;}
+.hk-pick-list{display:flex;flex-direction:column;gap:5px;max-height:min(320px,50dvh);overflow-y:auto;}
+.hk-pick-list label{display:flex;align-items:center;gap:9px;padding:7px 11px;border:1px solid var(--border);border-radius:var(--r-1);background:var(--surface2);font-size:var(--fs-3);cursor:pointer;}
+.hk-pick-list label span{flex:1;min-width:0;overflow-wrap:anywhere;}
+.hk-pick-list label small{color:var(--text3);font-size:var(--fs-2);white-space:nowrap;}
 /* history-kit:end */
 </style>
 <script>
@@ -1456,6 +1462,8 @@ var SetupKit = (function(){
      open     (data, rec) → puts the analysis back; returns false when it could not
      afterOpen (rec) → lands the person where the analysis is shown
      toast    (message, kind)
+     name     the Assay ID the person typed. Without one (empty), the entry is called <APP><YYYYMMDD>_<HHMM> after the moment it was first kept, so
+              two analyses are never told apart by "Untitled" — and the id stays the same on every later save. o.code sets the letters (default: the first three of app)
      current may also give x (small facts the app reads back from the list, kept as they are) and nameWins: true when the app
               has its own name field, so the entry follows it; otherwise a name a person gave in History is kept
      onRename (rec, isOpen) the app takes the new name when the entry is the one open
@@ -1477,16 +1485,26 @@ var HistoryKit = (function(){
     del: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg>'
   };
   // A small dialog of the kit's own, so a rename or a delete asks the same way in every app.
+  // o.choices: [{ label, note, on }] — a list of boxes to tick (All / None above it); the answer's third argument is the indices that are ticked.
+  function pickHtml(ch){
+    return '<div class="hk-pick"><div class="hk-pick-bar"><button type="button" class="btn" data-all="1">All</button><button type="button" class="btn" data-all="0">None</button></div><div class="hk-pick-list">' +
+      ch.map(function(c, i){ return '<label><input type="checkbox" data-i="' + i + '"' + (c.on === false ? '' : ' checked') + '><span>' + esc(c.label) + '</span>' + (c.note ? '<small>' + esc(c.note) + '</small>' : '') + '</label>'; }).join('') + '</div></div>';
+  }
   function ask(title, body, o, cb){
     var back = document.createElement('div'); back.className = 'hk-back';
-    back.innerHTML = '<div class="hk-dlg" role="dialog" aria-modal="true" aria-label="' + esc(title) + '"><h3>' + esc(title) + '</h3>' + (body ? '<p>' + esc(body) + '</p>' : '') + (o.input ? '<input type="text" maxlength="80" spellcheck="false" autocomplete="off" value="' + esc(o.value || '') + '">' : '') + '<div class="hk-btns"><button type="button" class="btn' + (o.sec ? ' ' + o.sec : '') + '" data-x="0">Cancel</button><button type="button" class="btn ' + (o.danger ? (o.dangerCls || 'danger') : (o.primary || 'primary')) + '" data-x="1">' + esc(o.ok || 'OK') + '</button></div></div>';
+    back.innerHTML = '<div class="hk-dlg" role="dialog" aria-modal="true" aria-label="' + esc(title) + '"><h3>' + esc(title) + '</h3>' + (body ? '<p>' + esc(body) + '</p>' : '') + (o.choices ? pickHtml(o.choices) : '') + (o.input ? '<input type="text" maxlength="80" spellcheck="false" autocomplete="off" value="' + esc(o.value || '') + '">' : '') + '<div class="hk-btns"><button type="button" class="btn' + (o.sec ? ' ' + o.sec : '') + '" data-x="0">Cancel</button><button type="button" class="btn ' + (o.danger ? (o.dangerCls || 'danger') : (o.primary || 'primary')) + '" data-x="1">' + esc(o.ok || 'OK') + '</button></div></div>';
     var prev = document.activeElement;
-    function done(ok){ var v = o.input ? back.querySelector('input').value : null; back.remove(); document.removeEventListener('keydown', key, true); if (prev && prev.focus) { try { prev.focus({ preventScroll: true }); } catch (e) {} } cb(ok, v); }
+    function done(ok){ var v = o.input ? back.querySelector('input').value : null; back.remove(); document.removeEventListener('keydown', key, true); if (prev && prev.focus) { try { prev.focus({ preventScroll: true }); } catch (e) {} } cb(ok, v, o.choices ? [].slice.call(back.querySelectorAll('.hk-pick input:checked')).map(function(c){ return +c.dataset.i; }) : null); }
     function key(e){ if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(false); } else if (e.key === 'Enter' && o.input) { e.preventDefault(); e.stopPropagation(); done(true); } }
-    back.addEventListener('click', function(e){ if (e.target === back) done(false); else { var b = e.target.closest('[data-x]'); if (b) done(b.dataset.x === '1'); } });
+    back.addEventListener('click', function(e){ var al = e.target.closest && e.target.closest('[data-all]'); if (al) { [].slice.call(back.querySelectorAll('.hk-pick input')).forEach(function(c){ c.checked = al.dataset.all === '1'; }); return; } if (e.target === back) done(false); else { var b = e.target.closest('[data-x]'); if (b) done(b.dataset.x === '1'); } });
     document.addEventListener('keydown', key, true);
     document.body.appendChild(back);
-    var f = back.querySelector('input') || back.querySelector('[data-x="1"]'); if (f) { f.focus(); if (f.select) f.select(); }
+    var f = (o.input && back.querySelector('input')) || back.querySelector('[data-x="1"]'); if (f) { f.focus(); if (f.select) f.select(); }
+  }
+  // The name of an analysis nobody named: its app and the moment it was first kept (LUM20261102_1432), the shape of an Assay ID.
+  function stampName(code, t){
+    var d = new Date(t), z = function(v){ return (v < 10 ? '0' : '') + v; };
+    return code + d.getFullYear() + z(d.getMonth() + 1) + z(d.getDate()) + '_' + z(d.getHours()) + z(d.getMinutes());
   }
   function create(o){
     var H = { dbp: null, broken: null, list: [], q: '', timer: 0, loaded: false, id: null, quiet: 0, sig: '', warned: false };
@@ -1537,7 +1555,7 @@ var HistoryKit = (function(){
       if (rec && H.id !== rec.id) { H.id = rec.id; H.sig = ''; }
       if (rec && sig === H.sig) return Promise.resolve();
       var now = Date.now();
-      var out = { id: rec ? rec.id : 'h' + now.toString(36) + Math.random().toString(36).slice(2, 6), dkey: cur.key || '', name: rec && rec.named && !cur.nameWins ? rec.name : (cur.name || 'Untitled ' + noun), named: !!(rec && rec.named),
+      var out = { id: rec ? rec.id : 'h' + now.toString(36) + Math.random().toString(36).slice(2, 6), dkey: cur.key || '', name: rec && rec.named && !cur.nameWins ? rec.name : (cur.name || stampName(o.code || String(o.app || noun).replace(/[^A-Za-z0-9]/g, '').slice(0, 3).toUpperCase(), rec ? rec.created : now)), named: !!(rec && rec.named),
         x: cur.x || null, bits: cur.bits || [], chips: cur.chips || [], files: cur.files || [], data: cur.data, created: rec ? rec.created : now, updated: now, pinned: rec ? !!rec.pinned : false };
       return req('readwrite', function(st){ return st.put(out); }).then(function(){
         H.id = out.id; H.sig = sig;
@@ -2037,10 +2055,11 @@ function rsCloseExport(){ MenuKit.closeAll(); }
             <button class="btn" id="rs-exp-btn" onclick="rsTogglePop(event,'rs-exp')" aria-haspopup="true" aria-expanded="false">Export</button>
             <div class="rs-pop" id="rs-exp" role="menu">
               <div class="rs-pop-hd" id="rs-exp-units"></div>
-              <button role="menuitem" onclick="rsCloseExport();exportXLSX()"><b>Excel workbook</b><span>Results, raw data, Prism tables, the fit settings</span></button>
+              <button role="menuitem" onclick="rsCloseExport();exportXLSX()"><b>Excel workbook</b><span>Four sheets: Results, Raw Data, Prism, the protocol</span></button>
               <button role="menuitem" onclick="rsCloseExport();copyPrism()"><b>Copy for Prism</b><span>Concentration down one column, every compound’s replicates beside it — paste into a Prism XY table</span></button>
               <button role="menuitem" onclick="rsCloseExport();exportResultsCSV()"><b>Results (.csv)</b><span>The table as a plain file</span></button>
               <button role="menuitem" onclick="rsCloseExport();copyResultsTSV()"><b>Copy table</b><span>Paste into Excel, Prism or a notebook</span></button>
+              <button role="menuitem" onclick="rsCloseExport();lmCurvePDFs()"><b>Curve PDFs</b><span>One PDF per plate, six curves to a page, vector</span></button>
               <button role="menuitem" onclick="rsCloseExport();exportRawCSV()"><b>Raw data (.csv)</b><span>One row per well, normalised</span></button>
               <button role="menuitem" onclick="rsCloseExport();plotSavePNG()"><b>Plot as image (.png)</b><span>The Plot tab as it is drawn now</span></button>
             </div>
@@ -2114,6 +2133,7 @@ function rsCloseExport(){ MenuKit.closeAll(); }
 
   <div class="tabpane" id="pane-graph">
     <div class="card">
+      <div class="rs-head" id="lg-head" hidden><div class="rs-title">What the figure shows</div><div class="seg" id="lg-view" role="group" aria-label="What the figure shows"></div></div>
       <div class="lg-empty" id="lg-empty">Fit a plate first — the figure is made from the compounds in Results.</div>
       <div id="lg-root"></div>
     </div>
@@ -2290,10 +2310,8 @@ function lmLoadSession(sess, link){
 // History — every analysis, kept under its name (tools/historykit). What is kept is the session Labbook already takes
 // ("Edit in Lumina"): layout, every plate's readings, names, controls, what was left out and the fit settings.
 function lmHasReads(){ return state.plates.some(function(p){ return Object.keys(p.signal || {}).length; }); }
-function lmHistName(){
-  var names = state.plates.map(function(p){ return String(p.name || '').trim() || String(p.file || '').replace(/\.[A-Za-z0-9]+$/, ''); }).filter(Boolean);
-  return names.length ? names[0] + (names.length > 1 ? ' + ' + (names.length - 1) + ' more' : '') : 'Untitled plate';
-}
+// The Assay ID the person typed; without one the kit names the entry LUM<date>_<time> (the moment it was first kept).
+function lmHistName(){ return String(state.assayId || '').trim(); }
 var lmHist = HistoryKit.create({
   key: 'lumina', app: 'Lumina', noun: 'analysis', root: 'lh-root',
   shown: function(){ var el = document.getElementById('pane-history'); return !!(el && el.classList.contains('active')); },
@@ -2326,7 +2344,7 @@ function lgGraphDoc(){
     return { id: r.sampleId, name: r.sampleId, points: pts, fit: fnOf([r.bottom, r.logEC50, r.hill, r.top]), _p: [r.bottom, r.logEC50, r.hill, r.top], nd: !!r.noCurve };
   });
   return { sig: state.plates.map(function(p){ return (p.file || '') + ':' + Object.keys(p.signal).length + (lmViabOn() ? state.viabView + Object.keys(p.viab || {}).length : ''); }).join('|') + '|' + t + '|' + state.names.join(','),
-    title: [(lmViabOn() && state.viabView === 'viab' ? 'Viability' : ASSAY_NAMES[t]) || 'Dose\u2013response', '', ''], xTitle: '[compound] (' + u[0] + ')', xUnit: u[0], yTitle: lab.yAxis, refLine: state.normalised ? { y: 100 } : null, items: items,
+    title: [(lmViabOn() && state.viabView === 'viab' ? 'Viability' : (ASSAY_NAMES[t] || 'Dose\u2013response') + (lmViabOn() && state.viabView === 'rel' ? ', relative to viability' : '')), '', ''], xTitle: '[compound] (' + u[0] + ')', xUnit: u[0], yTitle: lab.yAxis, refLine: state.normalised ? { y: 100 } : null, items: items,
     table: ChartKitCore.fourPL({ potency: lab.ec50Name, effect: gain ? 'Emax' : (lab.dmaxName || 'Span'), pct: _lmNorm(), gain: gain, sig: 4, note: 'Four-parameter logistic fit of the replicates in the figure \u00b7 ' + (gain ? 'Emax = top' : (lab.dmaxName || 'Span') + ' = top \u2212 bottom' + (_lmNorm() ? ' (% of control)' : '')) + ' \u00b7 n.d. = no usable curve' }),
     refit: function(it, pts){
       var xs = [], ys = []; pts.forEach(function(p){ p.reps.forEach(function(v){ xs.push(Math.log10(p.x * u[1])); ys.push(v); }); });
@@ -2339,6 +2357,7 @@ function lgGraphDoc(){
     } };
 }
 function lgGraphShow(){
+  lmRenderViewSeg();
   var has = (state.fitResults || []).length > 0;
   document.getElementById('lg-empty').style.display = has ? 'none' : 'block';
   document.getElementById('lg-root').style.display = has ? '' : 'none';
@@ -2913,6 +2932,7 @@ function lmViewName(v){ for (var i = 0; i < LM_VIEWS.length; i++) if (LM_VIEWS[i
 function lmSetViabView(v){
   if (!lmViabOn() || !_lmViabViewOk(v) || v === state.viabView) return;
   state.viabView = v; lmAfterChange(); _lmEnsureFit(true);
+  lmRenderViewSeg(); if (document.getElementById('pane-graph').classList.contains('active')) lgGraphShow();
   var miss = lmViabMissing(); if (miss.length) toast('Left out — no viability reading: ' + miss.join(', ') + '.');
 }
 function lmMaterialize(){ state.wellData = lmPlateWellData(state.plate); }
@@ -5707,8 +5727,10 @@ function lmPlateQC(){
   host.innerHTML = h; host.hidden = false;
 }
 function lmRenderViewSeg(){
-  var vw = document.getElementById('rs-view'), on = lmViabOn();
-  if (vw) { vw.hidden = !on; vw.innerHTML = on ? LM_VIEWS.map(function(m){ return '<button data-v="' + m[0] + '" aria-pressed="' + (state.viabView === m[0]) + '" class="' + (state.viabView === m[0] ? 'active' : '') + '" onclick="lmSetViabView(\'' + m[0] + '\')">' + m[1] + '</button>'; }).join('') : ''; }
+  var on = lmViabOn(), h = on ? LM_VIEWS.map(function(m){ return '<button data-v="' + m[0] + '" aria-pressed="' + (state.viabView === m[0]) + '" class="' + (state.viabView === m[0] ? 'active' : '') + '" onclick="lmSetViabView(\'' + m[0] + '\')">' + m[1] + '</button>'; }).join('') : '';
+  // the same choice on Results and on Graph: it is one setting (state.viabView), not one per tab
+  ['rs-view', 'lg-view'].forEach(function(id){ var vw = document.getElementById(id); if (vw) { vw.hidden = !on; vw.innerHTML = h; } });
+  var hd = document.getElementById('lg-head'); if (hd) hd.hidden = !on;
 }
 function renderResults(){
   var R = state.fitResults, body = document.getElementById('rs-body'); if (!body) return;
@@ -5760,10 +5782,14 @@ function _buildLuminaPrismAOA(asFraction){
     if (!bySample[r.sampleId]) { bySample[r.sampleId] = []; order.push(r.sampleId); }
     bySample[r.sampleId].push(r);
   });
+  // The concentration column is the concentration that was set (r.conc), not 10^log10 of it: the log is rounded to find equal doses, and going back
+  // through it turned 20000 nM into 19998.6.
+  var concOf = {};
   var compData = order.map(function(sid){
     var byConc = {};
     bySample[sid].forEach(function(r){
       var k = r.log10Conc.toFixed(4);
+      if (concOf[k] === undefined) concOf[k] = r.conc;
       (byConc[k] = byConc[k] || []).push(r.measurement);
     });
     var maxReps = 0;
@@ -5781,7 +5807,7 @@ function _buildLuminaPrismAOA(asFraction){
   compData.forEach(function(c){ for (var i=0;i<c.nReps;i++) repRow.push(c.nReps>1 ? 'Rep '+(i+1) : ''); });
   aoa.push(repRow);
   concKeys.forEach(function(ck){
-    var row = [_concNum(Math.pow(10, parseFloat(ck)))];
+    var row = [_concNum(concOf[ck])];
     compData.forEach(function(c){
       var vals = c.byConc[ck] || [];
       for (var i=0;i<c.nReps;i++) row.push(vals[i] !== undefined ? (asFraction ? +(vals[i]/100).toFixed(6) : vals[i]) : '');
@@ -5811,15 +5837,15 @@ function _lmDownload(name, text, mime){
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(function(){ URL.revokeObjectURL(a.href); }, 4000);
 }
-// The Prism Copy sheet of the workbook, on the clipboard: paste into a Prism XY table (a reading left out of the fit is left out here too).
+// The Prism table of the view on screen (the workbook's Prism sheet has one per view), on the clipboard: paste into a Prism XY table (a reading left out of the fit is left out here too).
 function copyPrism(){
   if (!state.fitResults.length) { toast('Run an analysis first.'); return; }
   var aoa = _buildLuminaPrismAOA(false);
   if (aoa.length < 3) { toast('There are no readings to copy yet.'); return; }
   var txt = aoa.map(function(r){ return r.map(function(c){ return String(c).replace(/[\t\r\n]+/g, ' '); }).join('\t'); }).join('\n');
   var ok = function(){ toast('Copied for Prism — ' + aoa[1][0] + ' down one column, every compound’s replicates beside it. Paste it into a Prism XY table.'); };
-  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(ok).catch(function(){ toast('The browser did not allow writing to the clipboard — use the Excel workbook’s Prism Copy sheet.'); });
-  else toast('The browser has no clipboard here — use the Excel workbook’s Prism Copy sheet.');
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(ok).catch(function(){ toast('The browser did not allow writing to the clipboard — use the Excel workbook’s Prism sheet.'); });
+  else toast('The browser has no clipboard here — use the Excel workbook’s Prism sheet.');
 }
 function copyResultsTSV(){
   if (!state.fitResults.length) { toast('Run an analysis first.'); return; }
@@ -5893,17 +5919,86 @@ function exportXLSX(){
   ];
   if (state.rawViab) {
     protoAoA.splice(4, 0,
-      ['Viability', 'A double read, three views, each fitted on its own and on its own sheets (the sheet names end in the view): Luminescence = the signal as it is; Viability = the fluorescence of each well is what was read; Relative = each reading divided by the fluorescence of the same well. All three are then normalised to the controls. In Raw Data, Measurement_raw is the value that was read in that view, Signal the luminescence and Viability_Reading the fluorescence of the same well.']);
+      ['Viability', 'A double read, three views, each fitted on its own; Results, Raw Data (first column) and Prism (side by side) hold all three, named for the view: Luminescence = the signal as it is; Viability = the fluorescence of each well is what was read; Relative = each reading divided by the fluorescence of the same well. All three are then normalised to the controls. In Raw Data, Measurement_raw is the value that was read in that view, Signal the luminescence and Viability_Reading the fluorescence of the same well.']);
     if (views.failed && views.failed.length) protoAoA.splice(5, 0, ['Not fitted', views.failed.map(function(v){ return LM_VIEW_SHEET[v]; }).join(', ') + ' — see the Review step (a plate without viability, or no usable control).']);
   }
-  var wb = XLSX.utils.book_new(), tag = function(v){ return v.view ? ' (' + LM_VIEW_SHEET[v.view] + ')' : ''; };
-  views.forEach(function(v){ XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(v.results), 'Results' + tag(v)); });
-  views.forEach(function(v){ XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(v.raw), 'Raw Data' + tag(v)); });
-  views.forEach(function(v){ if (v.norm) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(v.norm), 'Normalisation' + tag(v)); });
-  views.forEach(function(v){ XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(v.prism), 'Prism Copy' + tag(v)); });
-  views.forEach(function(v){ XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(v.prismFrac), 'Prism Fraction' + tag(v)); });
+  // Four sheets, whatever the number of views: Results · Raw Data · Prism · Data Analysis Protocol (the normalisation is its last section).
+  // A double read puts its three views in the same sheet — one block each, named for the view — rather than three sheets of each kind.
+  var multi = views.length > 1 || !!views[0].view, vname = function(v){ return LM_VIEW_SHEET[v.view]; };
+  var resAoa = [], rawAoa = [], prismAoa = [];
+  views.forEach(function(v, i){
+    if (multi) { if (i) resAoa.push([]); resAoa.push([vname(v)]); }
+    v.results.forEach(function(r){ resAoa.push(r); });
+    v.raw.forEach(function(r, k){ if (k || !i) rawAoa.push(multi ? [k ? vname(v) : 'View'].concat(r) : r); });
+  });
+  // Prism: one table per view side by side, a blank column between; each starts at the top of the sheet so it is one drag to select and paste. In a
+  // double read the view's name sits in the corner of its table (the X column's title, empty otherwise).
+  var offset = 0;
+  views.forEach(function(v, i){
+    var w = v.prism.reduce(function(m, r){ return Math.max(m, r.length); }, 0);
+    v.prism.forEach(function(r, k){
+      while (prismAoa.length <= k) prismAoa.push([]);
+      while (prismAoa[k].length < offset) prismAoa[k].push('');
+      var row = r.slice(); while (row.length < w) row.push(''); if (multi && !k) row[0] = vname(v);
+      prismAoa[k] = prismAoa[k].concat(row);
+    });
+    offset += w + 1;
+  });
+  views.forEach(function(v, i){
+    if (!v.norm) return;
+    protoAoA.push([]);
+    v.norm.forEach(function(r, k){ protoAoA.push(multi && !k ? [r[0] + ' \u2014 ' + vname(v)].concat(r.slice(1)) : r); });
+  });
+  var wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(resAoa), 'Results');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rawAoa), 'Raw Data');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(prismAoa), 'Prism');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(protoAoA), 'Data Analysis Protocol');
   XLSX.writeFile(wb, _lmFileStem() + '_Results_' + new Date().toISOString().slice(0,10) + '.xlsx');
+}
+// ══════════════════════════════════════════════════════════════
+// Curve PDFs — what Echo's "Generate curve PDFs" does: one PDF per group (here the plate a compound sits on), A4, six curves to a page, each
+// under its name and numbers, every curve vector with its own axes. The curves are ChartKit's (the Graph tab's drawing, one compound each),
+// so they follow the view on screen (luminescence · viability · relative) and the leave-out choices.
+// ══════════════════════════════════════════════════════════════
+function lmCurvePDFs(){
+  if (!state.fitResults.length) { toast('Run an analysis first.'); return; }
+  var by = {}, ids = [];
+  state.fitResults.forEach(function(r){ var k = r.plateIdx || 0; if (!by[k]) { by[k] = []; ids.push(k); } by[k].push(r); });
+  ids.sort(function(a, b){ return a - b; });
+  if (ids.length < 2) { lmWriteCurvePDFs(ids.map(function(k){ return { plate: k, rs: by[k] }; })); return; }
+  HistoryKit.ask('Curve PDFs', 'One PDF per plate, six curves to a page. Pick the plates to make.', { ok: 'Make PDFs', choices: ids.map(function(k){ return { label: lmPlateName(k), note: by[k].length + (by[k].length === 1 ? ' compound' : ' compounds') }; }) }, function(ok, v, picked){
+    if (ok && picked && picked.length) lmWriteCurvePDFs(picked.map(function(i){ return { plate: ids[i], rs: by[ids[i]] }; }));
+  });
+}
+var _lmPdfBusy = false;
+async function lmWriteCurvePDFs(groups){
+  if (_lmPdfBusy) return;
+  _lmPdfBusy = true;
+  try {
+    var C = ChartKitCore, X = ChartKitExport, doc = lgGraphDoc(), L = assayFitLabels(state.assayType), stamp = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    var plain = function(h){ return String(h == null ? '' : h).replace(/<[^>]*>/g, ''); };
+    var spec = X.curveSpec();
+    var view = lmViabOn() ? ' \u00b7 ' + lmViewName(state.viabView) : '', id = state.assayId || '', files = [];
+    for (var g = 0; g < groups.length; g++) {
+      var cards = [];
+      for (var i = 0; i < groups[g].rs.length; i++) {
+        var r = groups[g].rs[i], it = doc.items.filter(function(q){ return q.id === r.sampleId; })[0], bad = !!_flagReason(r);
+        var ci = !r.noCurve && _lmCIwithUnit(r) ? ' (95% CI ' + plain(_lmCIwithUnit(r)) + ')' : '';
+        cards.push({ name: r.sampleId, tag: bad ? 'FLAGGED' : 'OK', bad: bad,
+          stat: L.ec50Name + ' ' + (r.noCurve ? 'n.d.' : plain(_potWithUnit(r.ec50M)) + ci),
+          stat2: (L.hasDmax ? (state.assayType === 'gain' ? 'Emax' : L.dmaxName) + ' ' + _lmEffText(r) + '    ' : '') + 'Hill ' + (r.noCurve ? 'n.d.' : r.hill.toFixed(2)) + '    R\u00b2 ' + r.r2.toFixed(3) + '    n ' + r.n,
+          note: bad ? _flagReason(r) : '',
+          scene: it ? C.build(Object.assign({}, doc, { items: [it], title: ['', '', ''] }), spec) : null });
+        if (i % 6 === 5) await new Promise(function(res){ setTimeout(res, 0); });
+      }
+      var pn = lmPlateName(groups[g].plate), blob = X.curvePDF({ cards: cards, title: pn + view, right: (id ? 'Assay ' + id + '   \u00b7   ' : '') + cards.length + (cards.length === 1 ? ' compound' : ' compounds'), foot: 'dHUB Lumina \u00b7 ' + stamp });
+      files.push({ blob: blob, name: _lmFileStem() + _lmViewStem() + '_Curves' + (state.plates.length > 1 ? '_' + String(pn).replace(/[\\/:*?"<>|\s]+/g, '_') : '') + '.pdf' });
+    }
+    files.forEach(function(f, k){ setTimeout(function(){ X.save(f.blob, f.name); }, k * 350); });
+    toast(files.length === 1 ? 'Curve PDF ready \u2014 ' + files[0].name : files.length + ' curve PDFs ready (one per plate).');
+  } catch (e) { toast('The curve PDFs could not be made: ' + (e && e.message || e), 'err'); }
+  finally { _lmPdfBusy = false; }
 }
 function exportRawCSV(){
   if (!state.rawRows || !state.rawRows.length) { toast('Run an analysis first.'); return; }
@@ -6504,6 +6599,7 @@ function _ctxGeneral(){
     has && { sep: true },
     has && { label: 'Copy the results table', act: copyResultsTSV },
     has && { label: 'Export to Excel…', act: exportXLSX },
+    has && { label: 'Curve PDFs…', act: lmCurvePDFs },
     { sep: true },
     { label: dark ? 'Light mode' : 'Dark mode', act: function(){ var c = document.getElementById('theme-chk'); if (c) { c.checked = !dark; toggleTheme(); } } }
   ];
@@ -8527,8 +8623,10 @@ var ChartKitExport = (function(){
     return '(' + out + ')';
   }
   function col(h){ var m = /^#?([0-9a-f]{6})$/i.exec(h || ''); if (!m) return '0 0 0'; var v = parseInt(m[1], 16); return [v >> 16 & 255, v >> 8 & 255, v & 255].map(function(x){ return n(x / 255); }).join(' '); }
-  function toPDF(scene){
-    var W = scene.W, H = scene.H, ops = [], fontOf = function(p){ return p.bold && p.italic ? 'F4' : p.bold ? 'F2' : p.italic ? 'F3' : 'F1'; };
+  // A PDF of one or more pages. A page is { W, H, parts: [{ scene, x, y, s }] }: each part is a scene drawn at (x, y) from the page's top-left
+  // at scale s (1 = its own size), so a page can hold six small figures and their captions. The figure's own PDF is the one-page, one-part case.
+  function pdfWrite(pages){
+    var scene = null, H = 0, ops = [], fontOf = function(p){ return p.bold && p.italic ? 'F4' : p.bold ? 'F2' : p.italic ? 'F3' : 'F1'; };
     function Y(y){ return n(H - y); }
     function stroke(p){ var s = n(p.sw || 1) + ' w ' + (p.cap === 'square' ? '2' : '1') + ' J 1 j ' + col(p.stroke) + ' RG ' + (p.dash ? '[' + p.dash + '] 0 d ' : '[] 0 d '); return s; }
     function paint(p, shape){
@@ -8566,14 +8664,25 @@ var ChartKitExport = (function(){
     }
     function measureStr(s, size, p){ return ChartKitCore.measure(s, size, p.bold, p.italic, 'Arial'); }
     function measureText(p){ return String(p.text).split(/\^(-?\d+)/).reduce(function(a, s, i){ return a + measureStr(s, i % 2 ? p.size * 0.7 : p.size, p); }, 0); }
-    scene.prims.forEach(draw);
-    var content = ops.join('\n');
+    var contents = pages.map(function(pg){
+      ops = [];
+      pg.parts.forEach(function(pt){
+        scene = pt.scene; H = scene.H;
+        var s = pt.s == null ? 1 : pt.s, moved = s !== 1 || pt.x || pt.y;
+        if (moved) ops.push('q ' + n(s) + ' 0 0 ' + n(s) + ' ' + n(pt.x || 0) + ' ' + n(pg.H - (pt.y || 0) - s * H) + ' cm');
+        scene.prims.forEach(draw);
+        if (moved) ops.push('Q');
+      });
+      return ops.join('\n');
+    });
     var objs = [];
     objs.push('<< /Type /Catalog /Pages 2 0 R >>');
-    objs.push('<< /Type /Pages /Kids [3 0 R] /Count 1 >>');
-    objs.push('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + n(W) + ' ' + n(H) + '] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R /F3 7 0 R /F4 8 0 R >> >> >>');
-    objs.push('<< /Length ' + content.length + ' >>\nstream\n' + content + '\nendstream');
+    objs.push('<< /Type /Pages /Kids [' + pages.map(function(_, k){ return (7 + 2 * k) + ' 0 R'; }).join(' ') + '] /Count ' + pages.length + ' >>');
     ['Helvetica', 'Helvetica-Bold', 'Helvetica-Oblique', 'Helvetica-BoldOblique'].forEach(function(f){ objs.push('<< /Type /Font /Subtype /Type1 /BaseFont /' + f + ' /Encoding /WinAnsiEncoding >>'); });
+    pages.forEach(function(pg, k){
+      objs.push('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + n(pg.W) + ' ' + n(pg.H) + '] /Contents ' + (8 + 2 * k) + ' 0 R /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R >> >> >>');
+      objs.push('<< /Length ' + contents[k].length + ' >>\nstream\n' + contents[k] + '\nendstream');
+    });
     var out = '%PDF-1.4\n', offs = [];
     objs.forEach(function(o, i){ offs.push(out.length); out += (i + 1) + ' 0 obj\n' + o + '\nendobj\n'; });
     var xref = out.length; out += 'xref\n0 ' + (objs.length + 1) + '\n0000000000 65535 f \n';
@@ -8582,13 +8691,64 @@ var ChartKitExport = (function(){
     var bytes = new Uint8Array(out.length); for (var i2 = 0; i2 < out.length; i2++) bytes[i2] = out.charCodeAt(i2) & 255;
     return new Blob([bytes], { type: 'application/pdf' });
   }
+  function toPDF(scene){ return pdfWrite([{ W: scene.W, H: scene.H, parts: [{ scene: scene, x: 0, y: 0, s: 1 }] }]); }
+  function toPDFPages(pages){ return pdfWrite(pages); }
+
+  // A PDF of small figures, six to an A4 page (2 × 3), each under its own name and numbers: the way a group of dose-response curves is looked at
+  // one by one. Every figure is a ChartKit scene (vector), so each keeps its own axes. o = { title, right, foot, cards: [{ name, tag, bad, stat, stat2, note, scene }], cols, rows }.
+  // A card's scene is drawn at the width of its cell; its height is whatever the scene gives, so the caller builds scenes of the cell's shape (cellSize()).
+  var A4 = { W: 595.28, H: 841.89, M: 34, GX: 18, GY: 14, HEAD: 30, FOOT: 24, TXT: 48 };
+  function cellSize(cols, rows){
+    cols = cols || 2; rows = rows || 3;
+    var w = (A4.W - 2 * A4.M - A4.GX * (cols - 1)) / cols, h = (A4.H - 2 * A4.M - A4.HEAD - A4.FOOT - A4.GY * (rows - 1)) / rows - A4.TXT;
+    return { w: w, h: h };
+  }
+  // The spec a small figure is drawn with: the cell's shape, fonts at their own size (not scaled to a page), no legend, no table.
+  function curveSpec(){
+    var c = cellSize(2, 3), spec = ChartKitCore.withDefaults(null);
+    spec.w = c.w / 72; spec.h = c.h / 72; spec.scale = false; spec.legend.show = false; spec.table.show = false;
+    spec.x.size = 7; spec.y.size = 7; spec.xTitle.size = 7.5; spec.yTitle.size = 7.5; spec.xy.msize = 2.2; spec.xy.lw = 1.1; spec.axisW = 0.8; spec.tick = 3; spec.margin.t = -8;
+    return spec;
+  }
+  function fitText(s, size, bold, maxW){
+    s = String(s == null ? '' : s);
+    if (ChartKitCore.measure(s, size, bold, false, 'Arial') <= maxW) return s;
+    while (s.length > 1 && ChartKitCore.measure(s + '…', size, bold, false, 'Arial') > maxW) s = s.slice(0, -1);
+    return s + '…';
+  }
+  function curvePDF(o){
+    var cols = o.cols || 2, rows = o.rows || 3, per = cols * rows, cards = o.cards || [], pages = [], c = cellSize(cols, rows), n = Math.max(1, Math.ceil(cards.length / per));
+    var cellH = c.h + A4.TXT;
+    for (var pg = 0; pg < n; pg++) {
+      var prims = [], parts = [];
+      var T = function(text, x, y, size, o2){ o2 = o2 || {}; prims.push({ t: 'text', text: text, x: x, y: y, size: size, bold: !!o2.bold, italic: !!o2.italic, anchor: o2.anchor || 'start', rot: 0, fill: o2.fill || '#1f2330', font: 'Arial' }); };
+      var right = o.right ? fitText(o.right, 8.5, false, 220) : '';
+      T(fitText(o.title || '', 12, true, A4.W - 2 * A4.M - (right ? 230 : 0)), A4.M, A4.M + 12, 12, { bold: true });
+      if (right) T(right, A4.W - A4.M, A4.M + 12, 8.5, { anchor: 'end', fill: '#5a5f73' });
+      prims.push({ t: 'line', x1: A4.M, y1: A4.M + 20, x2: A4.W - A4.M, y2: A4.M + 20, stroke: '#c8cbd6', sw: 0.6 });
+      T(fitText(o.foot || '', 7.5, false, A4.W - 2 * A4.M - 70), A4.M, A4.H - A4.M + 4, 7.5, { fill: '#8c90a0' });
+      T('Page ' + (pg + 1) + ' of ' + n, A4.W - A4.M, A4.H - A4.M + 4, 7.5, { anchor: 'end', fill: '#8c90a0' });
+      for (var i = 0; i < per; i++) {
+        var cd = cards[pg * per + i]; if (!cd) break;
+        var x = A4.M + (i % cols) * (c.w + A4.GX), y = A4.M + A4.HEAD + Math.floor(i / cols) * (cellH + A4.GY);
+        T(fitText(cd.name || '—', 9.5, true, c.w - (cd.tag ? 52 : 0)), x, y + 9, 9.5, { bold: true });
+        if (cd.tag) T(cd.tag, x + c.w, y + 9, 7.5, { anchor: 'end', fill: cd.bad ? '#c47818' : '#2d9462' });
+        if (cd.stat) T(fitText(cd.stat, 7.5, false, c.w), x, y + 20, 7.5, { fill: '#3d4254' });
+        if (cd.stat2) T(fitText(cd.stat2, 7.5, false, c.w), x, y + 30, 7.5, { fill: '#3d4254' });
+        if (cd.note) T(fitText(cd.note, 7, false, c.w), x, y + 40, 7, { fill: cd.bad ? '#a05a0a' : '#6e7387' });
+        if (cd.scene) parts.push({ scene: cd.scene, x: x, y: y + A4.TXT - 4, s: Math.min(1, c.w / cd.scene.W) });
+      }
+      pages.push({ W: A4.W, H: A4.H, parts: [{ scene: { W: A4.W, H: A4.H, prims: prims, clip: { x: 0, y: 0, w: 0, h: 0 } }, x: 0, y: 0, s: 1 }].concat(parts) });
+    }
+    return pdfWrite(pages);
+  }
 
   function save(blob, name){
     var a = document.createElement('a'), url = URL.createObjectURL(blob);
     a.href = url; a.download = name; document.body.appendChild(a); a.click();
     setTimeout(function(){ URL.revokeObjectURL(url); a.remove(); }, 4000);
   }
-  return { toSVG: toSVG, toPNG: toPNG, toPDF: toPDF, pngSize: pngSize, save: save, setPngDpi: setPngDpi, esc: esc };
+  return { toSVG: toSVG, toPNG: toPNG, toPDF: toPDF, toPDFPages: toPDFPages, curvePDF: curvePDF, curveCell: cellSize, curveSpec: curveSpec, pngSize: pngSize, save: save, setPngDpi: setPngDpi, esc: esc };
 })();
 /* ChartKit UI — the editor around the scene.
  *

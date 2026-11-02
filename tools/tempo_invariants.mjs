@@ -1259,6 +1259,26 @@ try {
   check('DR1 a real curve keeps its fit (30 of 30) and a compound maximal at every dose is not "no effect" (30 of 30)', r.real === 30 && r.potent === 30, JSON.stringify(r));
 } catch (e) { findings.push('✗ DR1 the checks ran to the end: ' + String(e && e.message || e).split('\n')[0]); }
 
+// K37 Curve PDFs: one PDF per plate of the dose–response curves (a degradation's), six to a page, every compound on it, drawn into the page as vectors; a time course has none.
+try {
+  await ev(async () => { await tpSetKind('degradation'); await tpLoadExample(); });
+  await page.waitForTimeout(1500);
+  const r = await ev(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms)), o = {}, got = [];
+    const rows = tgRows().filter(x => x.comp.A && !x.comp.A.fail && x.comp.A._reps && x.comp.A._reps.length >= 4);
+    o.n = rows.length; o.names = rows.map(x => x.comp.compound); o.plates = new Set(rows.map(x => x.plate.id)).size;
+    const was = ChartKitExport.save; ChartKitExport.save = (b, nm) => got.push({ b, nm });
+    tpCurvePDFs(); await wait(400);
+    if (document.querySelector('.hk-back')) { o.dlg = document.querySelectorAll('.hk-pick input').length; document.querySelector('.hk-back [data-x="1"]').click(); }
+    await wait(2500); ChartKitExport.save = was;
+    o.files = got.map(g => g.nm); const txts = []; for (const g of got) txts.push(await g.b.text());
+    o.head = txts.map(t => t.slice(0, 8)).join(); o.pages = txts.map(t => +(/\/Count (\d+)/.exec(t) || [])[1]).reduce((a, b) => a + b, 0);
+    o.has = o.names.every(nm => txts.some(t => t.indexOf('(' + nm.replace(/[()\\]/g, '\\$&')) >= 0)); o.cm = txts.reduce((a, t) => a + (t.match(/ cm\n/g) || []).length, 0);
+    return o;
+  });
+  check('K37 Curve PDFs: one PDF per plate (the list of plates when there are two), every compound with a curve on its plate\'s PDF, drawn into the pages as vectors', r.n > 0 && r.files.length === r.plates && r.head.split(',').every(h => h === '%PDF-1.4') && r.has && r.cm >= r.n, JSON.stringify(r));
+} catch (e) { findings.push('✗ K37 the checks ran to the end: ' + String(e && e.message || e).split('\n')[0]); }
+
 await browser.close();
 if (findings.length) { console.log('\n' + findings.length + ' finding(s), ' + passed + ' checks passed.'); process.exit(1); }
 console.log('Tempo invariants: ' + passed + ' checks passed.');
