@@ -648,6 +648,8 @@ try {
           const card = document.querySelector('#tps .setup-card').getBoundingClientRect(), bad = [];
           document.querySelectorAll('#tps .setup-pane.active *').forEach(e => { if (e.closest('svg,.sx-hand-wrap,.sx-mini')) return; const b = e.getBoundingClientRect(); if (b.width && (b.right > card.right + 1 || b.left < card.left - 1)) bad.push((e.id || e.className || e.tagName).toString().slice(0, 30)); });
           const sb = document.getElementById('tps-body'); if (sb.scrollWidth > sb.clientWidth + 1) bad.push('body scrolls sideways');
+          // a long plate name must wrap, never squeeze the “96-well · reads in a tint” note into a column of its own
+          document.querySelectorAll('#tps .sx-mini-t').forEach(t => { let sp = t.querySelector('span'); if (!sp) return; const was = t.innerHTML; t.innerHTML = 'TC20261020_OA_effect_over_time_tempo_timecourse_extra_long_name'.replace(/_/g, '_<wbr>') + sp.outerHTML; sp = t.querySelector('span'); const b = sp.getBoundingClientRect(), tb = t.getBoundingClientRect(), lh = parseFloat(getComputedStyle(sp).lineHeight) || b.height; if (b.height > lh * 1.5 || b.right > tb.right + 1 || b.left < tb.left - 1) bad.push('plate note squeezed by a long name'); t.innerHTML = was; });
           return bad;
         });
         o.forEach(x => over.push(w + 'px step ' + (i + 1) + ': ' + x));

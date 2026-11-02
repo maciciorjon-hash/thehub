@@ -50,7 +50,7 @@ var SetupKit = (function(){
         h += '<span class="w' + (x.rd ? ' rd' : '') + (x.cls ? ' ' + x.cls : '') + '" data-p="' + pos(r, c) + '"' + (x.bg ? ' style="background:' + x.bg + ';"' : '') + (x.t ? ' title="' + esc(x.t) + '"' : '') + '></span>';
       }
     }
-    return '<div class="sx-mini-t">' + esc(o.title || '') + '<span>' + esc(o.sub || '') + '</span></div>' + h + '</div>' + legend(o.legend || [], o.empty);
+    return '<div class="sx-mini-t">' + esc(o.title || '').replace(/_/g, '_<wbr>') + '<span>' + esc(o.sub || '') + '</span></div>' + h + '</div>' + legend(o.legend || [], o.empty);
   }
   // Drag a box over the plate drawn by mini(): o.has(id) → the well already holds what is being painted (a drag that starts on one erases),
   // o.apply(ids, add) takes the wells of the box when the button is let go. A row letter or a column number takes the whole row or column; Esc cancels.
