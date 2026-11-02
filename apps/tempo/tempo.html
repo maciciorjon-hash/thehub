@@ -5264,36 +5264,63 @@ async function tpWriteCurvePDFs(groups) {
   } catch (e) { tpToast('The curve PDFs could not be made: ' + (e && e.message || e), 'warn'); }
   finally { _tpPdfBusy = false; }
 }
+function tpWellRows(tc) {   // one row per well and read: the layout, the raw reads and the level, tidy
+  const anyRule = TP.plates.some(q => tpRules(q).length), by = (a, b) => { const x = tpWellRC(a), y = tpWellRC(b); return x.r - y.r || x.c - y.c; };
+  const out = [['Plate', 'Well', 'Role', tc ? 'Condition' : 'Compound', 'Target', tc ? 'Dose' : 'Concentration (nM)'].concat(tc ? ['Dose unit'] : [], ['Time (h)', 'Raw (RLU)', tc ? 'Level (x)' : 'Fractional', 'Left out (1 = yes)'], anyRule ? ['Normalised against'] : [])];
+  TP.plates.forEach(p => {
+    const res = tpRes(p); if (!res || (tc && res.kind !== 'timecourse')) return;
+    const ex = new Set(tpEx(p).wells), exp = tpEx(p).pts, ruleOfW = {};
+    tpRules(p).forEach((r, i) => r.x.forEach(q => { ruleOfW[q] = 'rule ' + (i + 1) + ': ' + SetupKit.rangeStr(r.y, tpsPos); }));
+    Object.keys(p.wells).sort(by).forEach(id => {
+      const w = p.wells[id], fr = res.nm.frac[id];
+      res.t.forEach((t, k) => out.push([p.name, id, TP_ROLE_L[tpRole(w)], w.compound, w.target, tc ? (w.conc == null ? null : tpSigF(w.conc, 6)) : tpNMConc(w.conc)].concat(tc ? [w.conc == null ? null : tpDoseUnitName(w.cu)] : [],
+        [tpSigF(t, 6), w.raw ? w.raw[res.nm.idx[k]] : null, fr ? tpSigF(fr[k], 6) : null, (ex.has(id) || (exp[id] || []).indexOf(k) >= 0) ? 1 : 0], anyRule ? [ruleOfW[id] || (tc ? '' : 'plate vehicle')] : [])));
+    });
+  });
+  return out;
+}
+// The method sheet: the method (Section · Item · What was done), then the settings and what was left out, in the same three columns.
+function tpMethodSheet() {
+  const o = tpMethodAoA().map(r => r.slice(0, 3)), st = [['Setting', 'Value']].concat(tpSettingsLines());
+  TP.plates.forEach(p => { const res = tpRes(p); if (res) { st.push(['Plate ' + p.name, p.source + ' · ' + Object.keys(p.wells).length + ' wells · ' + p.times.length + ' reads']); res.nm.notes.forEach(n => st.push(['  note', n])); const ex = tpEx(p); if (ex.wells.length) st.push(['  wells left out', ex.wells.join(', ')]); if (ex.masks.length) st.push(['  time ranges left out (h)', ex.masks.map(m => tpF(m[0], 3) + '–' + tpF(m[1], 3)).join('; ')]); } });
+  o.push(['', '', ''], ['SETTINGS', '', '']);
+  st.forEach(r => o.push([r[0], r[1], '']));
+  return o;
+}
+// The workbook is four sheets whatever the plates: Results (both analyses, one row per compound) · Details (per concentration, per well, DC50 over time) ·
+// Wells (every well and read, tidy: the layout, the raw reads and the fractional signal) · Method (the method and the settings).
 function tpExportXLSX() {
   if (tpTC()) { tpExportXLSXTC(); return; }
   if (!window.XLSX) { tpToast('Excel export needs SheetJS, which did not load (offline?). Use the CSV exports.', 'warn'); return; }
   const rows = tpRowsFlat(); if (!rows.length) { tpToast('Nothing to export yet', 'warn'); return; }
-  const wb = XLSX.utils.book_new(), add = (name, aoa) => { const ws = XLSX.utils.aoa_to_sheet(aoa.map(r => r.map(tpX))); XLSX.utils.book_append_sheet(wb, ws, name.slice(0, 31)); };
+  const wb = XLSX.utils.book_new(), add = (name, aoa) => { const ws = XLSX.utils.aoa_to_sheet(aoa.map(r => r.map(tpX))); XLSX.utils.book_append_sheet(wb, ws, name.slice(0, 31)); }, sh = {};
   const multi = TP.plates.length > 1;
   // Results
-  add('Results', [(multi ? ['Plate'] : []).concat(['Compound', 'Target', 'DC50 (Dmax50) (nM)', 'DC50 qualifier', 'DC50 CI low (nM)', 'DC50 CI high (nM)', 'Dmax (%)', 'Hill', 'R2', 'K at c_ref (h-1)', 'c_ref (nM)', 't1/2 (h)', 'Onset (h)', 'Recovery (%)', 'Time-averaged loss (%)', 'Class', 'Flags'])].concat(tpSortRows(rows, tpResultsCols(multi)).map(r => {
+  sh.Results = ([(multi ? ['Plate'] : []).concat(['Compound', 'Target', 'DC50 (Dmax50) (nM)', 'DC50 qualifier', 'DC50 CI low (nM)', 'DC50 CI high (nM)', 'Dmax (%)', 'Hill', 'R2', 'K at c_ref (h-1)', 'c_ref (nM)', 't1/2 (h)', 'Onset (h)', 'Recovery (%)', 'Time-averaged loss (%)', 'Class', 'Flags'])].concat(tpSortRows(rows, tpResultsCols(multi)).map(r => {
     const c = r.comp, A = c.A, ok = A && !A.fail, nd = ok && /No effect/.test(A.Flag_Reason), q = ok ? (nd ? 'n.d.' : /EC50>range/.test(A.Flag_Reason) ? '>' : /EC50<range/.test(A.Flag_Reason) ? '<' : '=') : null, f = c.ref;
     return (multi ? [r.plate.name] : []).concat([c.compound, c.target, ok && !nd ? A.DC50_nM : null, q, ok && !nd ? A.CI_DC50_lower : null, ok && !nd ? A.CI_DC50_upper : null, ok ? A.Dmax_pct : null, ok && !nd ? A.HillSlope : null, ok ? A.R2 : null, f ? tpSigF(f.K) : null, f ? c.cref : null, f ? tpSigF(f.t12) : null, f && (f.lag != null || f.onset != null) ? tpSigF(f.lag != null ? f.lag : f.onset) : null, f ? (f.rebound ? tpSigF(f.rebound.pct, 3) : 0) : null, f && f.auc ? tpSigF(f.auc.mean * 100, 4) : null, c.cls, tpFlagsOf(c)]);
   }).concat([[]], tpMethodShort().map(t => [t]), [['Every step, equation and setting: sheet “Method”.']])));
-  add('Method', tpMethodAoA());
   // The Michaelis–Menten sheet, with the headers exactly as the lab writes them
-  add('Michaelis-Menten', [(multi ? ['Plate'] : []).concat(['Compound', 'Target', 'KDegMax\n(h-1)', 'KDeg50\n(nM)', 'KDegMax/KDeg50\n(nM-1*h-1)', 'Log[KDegMax/KDeg50\n(nM-1*h-1)]', 'KDegMax CI low', 'KDegMax CI high', 'KDeg50 CI low', 'KDeg50 CI high', 'Efficiency CI low', 'Efficiency CI high', 'Valid K values (n)', 'R2', 'KDegMax is', 'KDeg50 is', 'Efficiency is', 'Concentrations left out', 'Hook handling', 'Note'])].concat(tpSortRows(rows, tpResultsCols(multi)).map(r => {
+  sh.MM = ([(multi ? ['Plate'] : []).concat(['Compound', 'Target', 'KDegMax\n(h-1)', 'KDeg50\n(nM)', 'KDegMax/KDeg50\n(nM-1*h-1)', 'Log[KDegMax/KDeg50\n(nM-1*h-1)]', 'KDegMax CI low', 'KDegMax CI high', 'KDeg50 CI low', 'KDeg50 CI high', 'Efficiency CI low', 'Efficiency CI high', 'Valid K values (n)', 'R2', 'KDegMax is', 'KDeg50 is', 'Efficiency is', 'Concentrations left out', 'Hook handling', 'Note'])].concat(tpSortRows(rows, tpResultsCols(multi)).map(r => {
     const B = r.comp.B, ok = B && B.ok; return (multi ? [r.plate.name] : []).concat([r.comp.compound, r.comp.target, ok ? tpSigF(B.Kmax) : null, ok ? tpSigF(B.K50) : null, ok ? tpSigF(B.Eff) : null, ok ? tpSigF(B.LogEff) : null, ok && B.KmaxCI ? tpSigF(B.KmaxCI[0]) : null, ok && B.KmaxCI ? tpSigF(B.KmaxCI[1]) : null, ok && B.K50CI ? tpSigF(B.K50CI[0]) : null, ok && B.K50CI ? tpSigF(B.K50CI[1]) : null, ok && B.EffCI ? tpSigF(B.EffCI[0]) : null, ok && B.EffCI ? tpSigF(B.EffCI[1]) : null, ok ? B.n : null, ok ? tpSigF(B.r2, 4) : null, ok ? (B.saturated ? 'a value' : 'a lower bound (K does not saturate)') : null, ok ? (B.K50q === '=' ? 'a value' : B.K50q === '<' ? 'an upper bound' : 'a lower bound') : null, ok ? (B.effq === '≥' ? 'a lower bound' : 'a value') : null, (B.rows || []).filter(x => !x.use).map(x => tpAxConc(x.c) + ' (' + x.reason + ')').join('; '), B.hookConcs && B.hookConcs.length ? (B.mode === 'si' ? 'modelled' : 'left out') : '', ok ? B.note || '' : B.why]);
   })));
   // per concentration
   const pc = [['Plate', 'Compound', 'Target', 'Concentration (nM)', 'Wells (n)', 'K (h-1)', 'K qualifier', 'K CI low', 'K CI high', 'Plateau', 'Plateau', 'Dmax (%)', 'Dmax is', 'R2', 'Delay (h)', 't1/2 (h)', 'Onset (h)', 'Class', 'Checks', 'Used in the K fit', 'Why not']];
   rows.forEach(r => r.comp.concs.forEach((cc, i) => { const f = cc.fit, b = r.comp.B.rows[i], ok = f && f.ok && f.degrading; pc.push([r.plate.name, r.comp.compound, r.comp.target, tpNMConc(cc.c), cc.live.length, ok ? tpSigF(f.K) : null, ok ? f.Kq : null, ok ? tpSigF(f.KLo) : null, ok ? tpSigF(f.KHi) : null, ok ? tpSigF(f.P) : f && f.ok ? tpSigF(f.level) : null, ok ? f.plateau : (f && f.ok ? 'no degradation resolved' : null), ok ? tpSigF(f.Dmax * 100, 4) : 0, ok ? (f.Dq === '=' ? 'a value' : 'a lower bound') : null, ok ? tpSigF(f.r2, 4) : null, ok && f.lag != null ? tpSigF(f.lag) : null, ok ? tpSigF(f.t12) : null, ok && (f.lag != null || f.onset != null) ? tpSigF(f.lag != null ? f.lag : f.onset) : null, f && f.ok ? f['class'] : null, ok ? (f.grade + '; CI ' + (f.ciOK ? 'ok' : 'wide') + '; residuals ' + (f.runs && f.runs.pattern ? 'patterned' : 'random')) : null, b ? (b.use ? 'yes' : 'no') : null, b && !b.use ? b.reason : null]); }));
-  add('Per concentration', pc);
+  sh.pc = pc;
   // dose-response points, one per well
   const dp = [['Plate', 'Compound', 'Target', 'Concentration (nM)', 'Well', 'Plateau (fraction)', 'Degradation (%)', 'Plateau reached', 'Left out of the Dmax fit (hook)']];
-  rows.forEach(r => { const hk = new Set(((r.comp.A && r.comp.A._hook_concs) || []).map(v => v.toFixed(3))); r.comp.concs.forEach(cc => cc.live.forEach(id => { const f = cc.wellFits[id]; if (!f || !f.ok) return; const v = f.degrading ? f.P : f.level; dp.push([r.plate.name, r.comp.compound, r.comp.target, tpNMConc(cc.c), id, tpSigF(v, 5), tpSigF((1 - v) * 100, 4), f.degrading ? (f.plateau === 'reached' ? 'yes' : 'no') : 'no degradation', hk.has(tpLog10M(cc.c).toFixed(3)) ? 'yes' : '']); })); }); add('Dmax-response points', dp);
+  rows.forEach(r => { const hk = new Set(((r.comp.A && r.comp.A._hook_concs) || []).map(v => v.toFixed(3))); r.comp.concs.forEach(cc => cc.live.forEach(id => { const f = cc.wellFits[id]; if (!f || !f.ok) return; const v = f.degrading ? f.P : f.level; dp.push([r.plate.name, r.comp.compound, r.comp.target, tpNMConc(cc.c), id, tpSigF(v, 5), tpSigF((1 - v) * 100, 4), f.degrading ? (f.plateau === 'reached' ? 'yes' : 'no') : 'no degradation', hk.has(tpLog10M(cc.c).toFixed(3)) ? 'yes' : '']); })); }); sh.dp = dp;
   // DC50 over time
-  const dt = [['Plate', 'Compound', 'Target', 'Time (h)', 'DC50 (nM)', 'Qualifier', 'Dmax (%)', 'Flags']]; rows.forEach(r => (r.comp.dc50t || []).forEach(d => dt.push([r.plate.name, r.comp.compound, r.comp.target, d.t, d.dc50, d.q, d.dmax, d.flags]))); add('DC50 over time', dt);
-  // the traces, in the shape ProNect writes them: one column per well
-  TP.plates.forEach(p => { const res = tpRes(p); if (!res) return; const ids = Object.keys(res.nm.frac).sort((a, b) => { const x = tpWellRC(a), y = tpWellRC(b); return x.r - y.r || x.c - y.c; }); const aoa = [['Wells', ''].concat(ids), ['Target', ''].concat(ids.map(i => p.wells[i].target)), ['Compound', ''].concat(ids.map(i => p.wells[i].compound)), ['Concentration (nM)', ''].concat(ids.map(i => p.wells[i].conc)), ['Time (min)', 'Time (h)']]; res.t.forEach((t, k) => aoa.push([tpSigF(t * 60, 6), tpSigF(t, 6)].concat(ids.map(i => tpSigF(res.nm.frac[i][k], 6))))); add((multi ? 'Fractional ' + (TP.plates.indexOf(p) + 1) : 'Fractional'), aoa); });
-  TP.plates.forEach(p => { const ids = Object.keys(p.wells).sort((a, b) => { const x = tpWellRC(a), y = tpWellRC(b); return x.r - y.r || x.c - y.c; }); const aoa = [['Wells', 'Time (min)'].concat(ids)]; p.times.forEach((t, k) => aoa.push(['', tpSigF(t, 8)].concat(ids.map(i => p.wells[i].raw ? p.wells[i].raw[k] : null)))); add(multi ? 'Raw ' + (TP.plates.indexOf(p) + 1) : 'Raw', aoa); });
-  TP.plates.forEach(p => { const lay = [['Plate', 'Well', 'Role', 'Compound', 'Target', 'Concentration (nM)', 'Left out'].concat(tpRules(p).length ? ['Normalised against'] : [])]; const ex = new Set(tpEx(p).wells), ruleOfW = {}; tpRules(p).forEach((r, i) => r.x.forEach(q => { ruleOfW[q] = 'rule ' + (i + 1) + ': ' + SetupKit.rangeStr(r.y, tpsPos); })); Object.keys(p.wells).sort((a, b) => { const x = tpWellRC(a), y = tpWellRC(b); return x.r - y.r || x.c - y.c; }).forEach(id => { const w = p.wells[id]; lay.push([p.name, id, TP_ROLE_L[tpRole(w)], w.compound, w.target, w.conc, ex.has(id) ? 'yes' : ''].concat(tpRules(p).length ? [ruleOfW[id] || 'plate vehicle'] : [])); }); if (!TP._layAcc) TP._layAcc = []; add(multi ? 'Layout ' + (TP.plates.indexOf(p) + 1) : 'Layout', lay); });
-  const st = [['Setting', 'Value']].concat(tpSettingsLines()); TP.plates.forEach(p => { const res = tpRes(p); if (res) { st.push(['Plate ' + p.name, p.source + ' · ' + Object.keys(p.wells).length + ' wells · ' + p.times.length + ' reads']); res.nm.notes.forEach(n => st.push(['  note', n])); const ex = tpEx(p); if (ex.wells.length) st.push(['  wells left out', ex.wells.join(', ')]); if (ex.masks.length) st.push(['  time ranges left out (h)', ex.masks.map(m => tpF(m[0], 3) + '–' + tpF(m[1], 3)).join('; ')]); } }); add('Settings', st);
+  const dt = [['Plate', 'Compound', 'Target', 'Time (h)', 'DC50 (nM)', 'Qualifier', 'Dmax (%)', 'Flags']]; rows.forEach(r => (r.comp.dc50t || []).forEach(d => dt.push([r.plate.name, r.comp.compound, r.comp.target, d.t, d.dc50, d.q, d.dmax, d.flags]))); sh.dt = dt;
+  // Analysis A and Analysis B side by side, one row per compound: the Michaelis–Menten columns go in before the flags
+  const nHead = 1 + rows.length, skip = multi ? 3 : 2, flagAt = sh.Results[0].length - 1;
+  const results = sh.Results.slice(0, nHead).map((r, i) => r.slice(0, flagAt).concat(sh.MM[i].slice(skip), r.slice(flagAt))).concat(sh.Results.slice(nHead));
+  add('Results', results);
+  const sec = (title, aoa) => [[title]].concat(aoa, [[], []]);
+  add('Details', sec('PER CONCENTRATION', sh.pc).concat(sec('PER WELL (Dmax-response points)', sh.dp), sec('DC50 OVER TIME', sh.dt)));
+  add('Wells', tpWellRows(false));
+  add('Method', tpMethodSheet());
   XLSX.writeFile(wb, tpBase() + '_tempo.xlsx'); tpToast('Workbook written');
 }
 function tpExportCSV() {
@@ -5373,17 +5400,23 @@ function tpExportXLSXTC() {
     const m = r.m, ok = m && m.ok;
     return (multi ? [r.plate.name] : []).concat([r.comp.compound, r.comp.target, r.cc.c == null ? null : tpSigF(r.cc.c, 6), r.cc.c == null ? null : tpDoseUnitName(r.cc.cu), r.cc.live.length, ok ? tpSigF(m.ext) : null, ok ? (m.extQ === '=' ? 'a value' : m.extQ === '≥' ? 'a lower bound (still rising)' : 'an upper bound (still falling)') : null, ok && m.cls !== 'tc-flat' ? tpSigF(m.tExt) : null, ok ? tpSigF(m.fin) : null, num(r, 't12'), num(r, 'onset'), ok && m.rate ? tpSigF(m.rate.v) : null, ok && m.rate ? tpSigF(m.rate.t) : null, num(r, 'mean'), num(r, 'auc')], fitCells(r), rt.map(T => num(r, 'at:' + T)), [ok ? TP_TC_CLS[m.cls] : null, tpFlagsOfTC(r)]);
   }).concat([[]], tpMethodShort().map(t => [t]), [['Every step, definition and setting: sheet “Method”.']])));
-  add('Method', tpMethodAoA());
+  // Prism: the mean level of every condition over time, then its SD, side by side from the first row of the sheet (a blank column between), one X column (h) each
+  const pa = [];
+  let off = 0;
   TP.plates.forEach(p => {
-    const res = tpRes(p); if (!res || res.kind !== 'timecourse') return; const cs = []; res.compounds.forEach(c => c.concs.forEach(cc => cs.push({ c: c, cc: cc }))), nm = x => x.c.compound + (x.cc.c != null ? ' · ' + tpAxConc(x.cc.c, x.cc.cu) : '');
-    const mean = [['Time (min)', 'Time (h)'].concat(cs.map(nm))], sd = [['Time (min)', 'Time (h)'].concat(cs.map(nm))]; res.t.forEach((t, k) => { mean.push([tpSigF(t * 60, 6), tpSigF(t, 6)].concat(cs.map(x => tpSigF(x.cc.mean[k], 6)))); sd.push([tpSigF(t * 60, 6), tpSigF(t, 6)].concat(cs.map(x => tpSigF(x.cc.sd[k], 6)))); });
-    add((multi ? 'Mean level ' + (TP.plates.indexOf(p) + 1) : 'Mean level'), mean); add((multi ? 'SD ' + (TP.plates.indexOf(p) + 1) : 'SD'), sd);
-    const ids = Object.keys(res.nm.frac).sort((a, b) => { const x = tpWellRC(a), y = tpWellRC(b); return x.r - y.r || x.c - y.c; }); const aoa = [['Wells', ''].concat(ids), ['Target', ''].concat(ids.map(i => p.wells[i].target)), ['Condition', ''].concat(ids.map(i => p.wells[i].compound)), ['Dose', ''].concat(ids.map(i => p.wells[i].conc)), ['Dose unit', ''].concat(ids.map(i => p.wells[i].conc == null ? '' : tpDoseUnitName(p.wells[i].cu))), ['Time (min)', 'Time (h)']];
-    res.t.forEach((t, k) => aoa.push([tpSigF(t * 60, 6), tpSigF(t, 6)].concat(ids.map(i => tpSigF(res.nm.frac[i][k], 6))))); add((multi ? 'Level per well ' + (TP.plates.indexOf(p) + 1) : 'Level per well'), aoa);
+    const res = tpRes(p); if (!res || res.kind !== 'timecourse') return;
+    const cs = []; res.compounds.forEach(c => c.concs.forEach(cc => cs.push({ c: c, cc: cc })));
+    const nm = x => x.c.compound + (x.cc.c != null ? ' · ' + tpAxConc(x.cc.c, x.cc.cu) : '');
+    [['mean', 'Mean level'], ['sd', 'SD']].forEach(kd => {
+      const blk = [[(multi ? p.name + ' · ' : '') + kd[1] + ' · time (h)'].concat(cs.map(nm))];
+      res.t.forEach((t, k) => blk.push([tpSigF(t, 6)].concat(cs.map(x => tpSigF(x.cc[kd[0]][k], 6)))));
+      blk.forEach((r, i) => { while (pa.length <= i) pa.push([]); while (pa[i].length < off) pa[i].push(''); pa[i] = pa[i].concat(r); });
+      off += cs.length + 2;
+    });
   });
-  TP.plates.forEach(p => { const ids = Object.keys(p.wells).sort((a, b) => { const x = tpWellRC(a), y = tpWellRC(b); return x.r - y.r || x.c - y.c; }); const aoa = [['Wells', 'Time (min)'].concat(ids)]; p.times.forEach((t, k) => aoa.push(['', tpSigF(t, 8)].concat(ids.map(i => p.wells[i].raw ? p.wells[i].raw[k] : null)))); add(multi ? 'Raw ' + (TP.plates.indexOf(p) + 1) : 'Raw', aoa); });
-  TP.plates.forEach(p => { const lay = [['Plate', 'Well', 'Role', 'Condition', 'Target', 'Dose', 'Dose unit', 'Left out'].concat(tpRules(p).length ? ['Normalised against'] : [])]; const ex = new Set(tpEx(p).wells), ruleOfW = {}; tpRules(p).forEach((r, i) => r.x.forEach(q => { ruleOfW[q] = 'rule ' + (i + 1) + ': ' + SetupKit.rangeStr(r.y, tpsPos); })); Object.keys(p.wells).sort((a, b) => { const x = tpWellRC(a), y = tpWellRC(b); return x.r - y.r || x.c - y.c; }).forEach(id => { const w = p.wells[id]; lay.push([p.name, id, TP_ROLE_L[tpRole(w)], w.compound, w.target, w.conc, w.conc == null ? '' : tpDoseUnitName(w.cu), ex.has(id) ? 'yes' : ''].concat(tpRules(p).length ? [ruleOfW[id] || ''] : [])); }); add(multi ? 'Layout ' + (TP.plates.indexOf(p) + 1) : 'Layout', lay); });
-  const st = [['Setting', 'Value']].concat(tpSettingsLines()); TP.plates.forEach(p => { const res = tpRes(p); if (res) { st.push(['Plate ' + p.name, p.source + ' · ' + Object.keys(p.wells).length + ' wells · ' + p.times.length + ' reads']); res.nm.notes.forEach(n => st.push(['  note', n])); const ex = tpEx(p); if (ex.wells.length) st.push(['  wells left out', ex.wells.join(', ')]); if (ex.masks.length) st.push(['  time ranges left out (h)', ex.masks.map(m => tpF(m[0], 3) + '–' + tpF(m[1], 3)).join('; ')]); } }); add('Settings', st);
+  add('Prism', pa.length ? pa : [['No time course to put in a Prism table']]);
+  add('Wells', tpWellRows(true));
+  add('Method', tpMethodSheet());
   XLSX.writeFile(wb, tpBase() + '_tempo_timecourse.xlsx'); tpToast('Workbook written');
 }
 function tpExportCSVTC() {
