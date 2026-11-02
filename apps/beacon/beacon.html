@@ -3097,7 +3097,8 @@ function bParseTableRows(rows){
     for (var c = 2; c < header.length; c++) {
       var t = String(header[c] == null ? '' : header[c]);
       if (!t.trim()) continue;
-      if (/LP/i.test(t)) aCol = c; else dCol = c;
+      // A long-pass column is the acceptor; without one, the wavelength says (6xx nm is the acceptor, 460 nm the donor); a header that says neither is the donor.
+      if (/LP/i.test(t) || bChannelOf(t) === 'acceptor') aCol = c; else dCol = c;
     }
     if (dCol < 0 || aCol < 0) return;
     var cur = null;
@@ -5258,7 +5259,7 @@ function generateOutputXLSX(){
 // a person would. A demo that bypassed the reader would prove nothing about it.
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 function _buildTestRows(mode, plateNo){
-  var ROWS = 'ABCDEFGH', rows = [['Well', 'Type', '665 (LUM)', '620 (LUM) LP']];
+  var ROWS = 'ABCDEFGH', rows = [['Well', 'Type', '460-80 (LUM)', '610 (LUM) LP']];   // NanoLuc band-pass first, the HaloTag ligand's long-pass second: what the PHERAstar NanoBRET module writes
   // Real replicates scatter; a plate of identical wells gives SD 0 and Z' = n/a, which taught the opposite of what a demo is for. 3 % CV, deterministic so the demo is the same twice.
   var _seed = 7 + plateNo * 31; function noise(){ _seed = (_seed * 9301 + 49297) % 233280; return 1 + ((_seed / 233280) - 0.5) * 0.06; }
   function put(r, c, mbu, donor){ donor = donor || 5000; rows.push([ROWS[r] + (c < 10 ? '0' + c : c), 'Sample', donor, mbu * donor / 1000 * noise()]); }
@@ -6434,7 +6435,7 @@ var tourRegister, appTour, tourEnd, tourGuideRefresh, tourOffer;
         do: ['Drop the **PHERAstar `.xlsx`** on the card, or click the box. Beacon reads the “Table End point” sheet; the “Protocol Information” sheet fills the run details.',
           'Several files, or one file with several plates, make several plates — the second file becomes Plate 2, and so on. Dropping the same file again replaces rather than duplicates.',
           'Or copy in Excel and press **⌘V**: a donor grid, an acceptor grid, both together, or a PHERAstar-style *Well* table. The strip above the plate says which channel a lone grid goes to — click **Donor** or **Acceptor** to look at that channel’s counts on the plate and aim ⌘V at it.'],
-        watch: [{ k: 'tip', t: 'A long-pass filter column is the acceptor, a band-pass column the donor. For another reader, copy its donor grid and its acceptor grid into Excel and paste them.' }],
+        watch: [{ k: 'tip', t: 'In a reader table a long-pass (LP) or 6xx nm column is the acceptor and a 460 nm column the donor, in either order; a column that says neither is read as the donor. For another reader, copy its donor grid and its acceptor grid into Excel and paste them.' }],
         steps: [{ sel: '#lm-read', t: 'Which channels are read', place: 'bottom', miss: MISS,
           b: 'One chip per channel, with how many wells it holds. A plate waiting for a channel says so; **Replace** reads a new file into this plate, **Paste values** takes the clipboard.' }] },
 

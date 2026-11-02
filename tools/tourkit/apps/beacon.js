@@ -55,7 +55,7 @@
         do: ['Drop the **PHERAstar `.xlsx`** on the card, or click the box. Beacon reads the “Table End point” sheet; the “Protocol Information” sheet fills the run details.',
           'Several files, or one file with several plates, make several plates — the second file becomes Plate 2, and so on. Dropping the same file again replaces rather than duplicates.',
           'Or copy in Excel and press **⌘V**: a donor grid, an acceptor grid, both together, or a PHERAstar-style *Well* table. The strip above the plate says which channel a lone grid goes to — click **Donor** or **Acceptor** to look at that channel’s counts on the plate and aim ⌘V at it.'],
-        watch: [{ k: 'tip', t: 'A long-pass filter column is the acceptor, a band-pass column the donor. For another reader, copy its donor grid and its acceptor grid into Excel and paste them.' }],
+        watch: [{ k: 'tip', t: 'In a reader table a long-pass (LP) or 6xx nm column is the acceptor and a 460 nm column the donor, in either order; a column that says neither is read as the donor. For another reader, copy its donor grid and its acceptor grid into Excel and paste them.' }],
         steps: [{ sel: '#lm-read', t: 'Which channels are read', place: 'bottom', miss: MISS,
           b: 'One chip per channel, with how many wells it holds. A plate waiting for a channel says so; **Replace** reads a new file into this plate, **Paste values** takes the clipboard.' }] },
 

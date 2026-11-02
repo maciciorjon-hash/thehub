@@ -164,7 +164,7 @@ if (run('B1')) await guard('B1', async () => {
 if (run('B2')) await guard('B2', async () => {
   const { ctx, pg } = await open('/apps/beacon/beacon.html');
   const r = await pg.evaluate(() => {
-    const hdr = ['Well', 'Type', '665 (LUM)', '620 (LUM) LP'], L = 'AB';
+    const hdr = ['Well', 'Type', '460-80 (LUM)', '610 (LUM) LP'], L = 'AB';
     const plate = k => { const rows = [hdr.slice()]; for (const l of L) for (let c = 1; c <= 3; c++) rows.push([l + '0' + c, 'Sample', 1000 * k + c, 100 * k + c]); return rows; };
     // A: the header repeated. B: no second header, the wells simply come round again. C: a hole (no reading) must stay a hole.
     const A = bParseTableRows(plate(1).concat(plate(2))), B = bParseTableRows(plate(1).concat(plate(2).slice(1)));
@@ -195,7 +195,7 @@ if (run('B3')) await guard('B3', async () => {
     reset(); bPasteText(g((r, c) => 5000 + r) + '\n\n' + g((r, c) => 100 + c)); out.blank = state.plates.map(p => [Object.keys(p.donor).length, Object.keys(p.acceptor).length, p.donor.A1, p.acceptor.A1]);
     reset(); bPasteText(g((r, c) => 5000 + r) + '\n' + g((r, c) => 100 + c)); out.stacked = state.plates.map(p => [Object.keys(p.donor).length, Object.keys(p.acceptor).length, p.donor.H12, p.acceptor.H12]);
     reset(); bPasteText(L.split('').map((l, r) => l + '\t' + [...Array(12)].map((_, c) => 5000 + r * 10 + c).join('\t')).join('\n')); out.lettered = state.plates.map(p => [Object.keys(p.donor).length, p.donor.C4]);
-    reset(); const rows = ['Well\tType\t665 (LUM)\t620 (LUM) LP']; for (let c = 1; c <= 12; c++) rows.push('A' + (c < 10 ? '0' + c : c) + '\tSample\t5000\t' + (100 + c)); bPasteText(rows.join('\n')); out.table = state.plates.map(p => [Object.keys(p.donor).length, Object.keys(p.acceptor).length, p.acceptor.A12]);
+    reset(); const rows = ['Well\tType\t460-80 (LUM)\t610 (LUM) LP']; for (let c = 1; c <= 12; c++) rows.push('A' + (c < 10 ? '0' + c : c) + '\tSample\t5000\t' + (100 + c)); bPasteText(rows.join('\n')); out.table = state.plates.map(p => [Object.keys(p.donor).length, Object.keys(p.acceptor).length, p.acceptor.A12]);
     reset(); bPasteText(g((r, c) => 5000 + r)); bPasteText(g((r, c) => 100 + c)); out.third = bPasteText(g((r, c) => 7)); out.third2 = state.plates.length;
     reset(); out.junk = bPasteText('hello world\nnot numbers'); out.junkPlates = state.plates.length;
     reset(); bPasteText(g((r, c) => (r === 0 && c === 0) ? '' : 5000 + r)); out.hole = [Object.keys(state.plates[0].donor).length, 'A1' in state.plates[0].donor];

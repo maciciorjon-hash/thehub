@@ -329,6 +329,12 @@ if (run('BA11')) await guard('BA11', async () => {
   check('BA11', 'the Donor chip shows the donor counts on the plate (and in the tooltip), the Acceptor chip the acceptor view, a second click goes back', r.viewD === 'donor' && /^100(000|k)$/.test(r.cell) && /donor 100000 counts/.test(r.tipD) && r.viewA === 'acceptor' && /Acceptor/.test(r.tgt) && r.back !== 'acceptor', r);
   check('BA11', 'the view switch under the plate offers Donor and Acceptor once the channel is read', r.segBtns.includes('donor') && r.segBtns.includes('acceptor'), r.segBtns);
   check('BA11', 'a plate whose acceptor outshines its donor is flagged', r.swapped > 1000, r.swapped);
+  const h = await pg.evaluate(W(`(() => {
+    const row = (a, b) => [['Well', 'Type', a, b], ['A01', 'Sample', 5000, 400], ['A02', 'Sample', 5000, 500]];
+    const one = rows => { const p = bParseTableRows(rows)[0]; return p ? [p.donor.A1, p.acceptor.A1] : null; };
+    return { lp: one(row('460-80 (LUM)', '610 (LUM) LP')), flipped: one(row('610 (LUM) LP', '460-80 (LUM)')), noLP: one(row('620 (LUM)', '460 (LUM)')), demo: _buildTestRows('gain', 0)[0].slice(2) };
+  })()`));
+  check('BA11', 'a table header says which column is which: long-pass or 6xx nm = acceptor, 460 = donor, whichever order; the demo is written 460 / 610 LP', h.lp && h.lp[0] === 5000 && h.lp[1] === 400 && h.flipped && h.flipped[0] === 400 && h.flipped[1] === 5000 && h.noLP && h.noLP[0] === 400 && h.noLP[1] === 5000 && h.demo.join('|') === '460-80 (LUM)|610 (LUM) LP', h);
   await ctx.close();
 });
 
