@@ -2058,6 +2058,8 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
       <div class="seg" id="lm-view" role="group" aria-label="What the wells show">
         <button data-v="corr" onclick="bSetView('corr')" title="Corrected mBRET: each well minus the mean of the no-ligand wells on its plate">Corrected</button>
         <button data-v="raw" onclick="bSetView('raw')" title="Raw mBRET: acceptor / donor &times; 1000, uncorrected">Raw</button>
+        <button data-v="donor" onclick="bSetView('donor')" title="The donor channel alone (460 nm, NanoLuc): the counts the reader gave, before any ratio">Donor</button>
+        <button data-v="acceptor" onclick="bSetView('acceptor')" title="The acceptor channel alone (610 nm, HaloTag ligand): the counts the reader gave, before any ratio">Acceptor</button>
         <button data-v="layout" onclick="bSetView('layout')" title="What each well is: concentrations, controls, compound names">Layout</button>
       </div>
       <span class="lm-ready" id="lm-ready"></span>
@@ -2702,15 +2704,27 @@ function bRaw(pl, pos){
   if (!_bretUsable(d) || !_bretUsable(a)) return null;
   return mBU(rawRatio(d, a));
 }
+// NanoLuc's own light is mostly 460 nm: with a working pair the acceptor channel is a fraction of the donor's (tens to hundreds of mBU). A plate whose
+// median ratio is above 1000 has more light at 610 than at 460 — the two grids were most likely read into the wrong channels.
+function bSwapped(pl){
+  var v = []; Object.keys(pl.donor).forEach(function(p){ var x = bRaw(pl, p); if (x !== null) v.push(x); });
+  if (v.length < 8) return null;
+  v.sort(function(a, b){ return a - b; });
+  var m = v[Math.floor(v.length / 2)];
+  return m > 1000 ? m : null;
+}
 // A reading can be left out of its compound's curve (Results › Data). The well stays on the plate and in every export, marked; only the
 // fit, the Prism copy and the Graph stop using it. It lives on the plate (pl.excl = {pos:1}), so Undo and History carry it.
 function bEx(pl, pos){ return !!(pl && pl.excl && pl.excl[pos]); }
-// The correction: the mean raw mBRET of the plate's own no-ligand wells (cached per revision).
+// The correction: the mean raw mBRET of the plate's own no-acceptor wells (cached per revision). Per-well ratios are averaged, then
+// subtracted (Promega NanoBRET: sample ratio − no-tracer/no-ligand ratio; Pfleger & Eidne: net BRET = BRET − donor-only BRET). The
+// no-ligand wells are the baseline; with none usable the donor-only wells stand in (the same bleed-through, measured without the acceptor).
 function bBase(pl){
   if (pl._bb && pl._bb.rev === state.rev) return pl._bb.v;
-  var vals = [];
-  Object.keys(pl.map).forEach(function(p){ if (pl.map[p].k === 'noLigand') { var x = bRaw(pl, p); if (x !== null) vals.push(x); } });
-  var v = vals.length ? { mean: meanOf(vals), sd: vals.length > 1 ? sdOf(vals) : null, n: vals.length } : null;
+  function pick(k){ var vals = []; Object.keys(pl.map).forEach(function(p){ if (pl.map[p].k === k) { var x = bRaw(pl, p); if (x !== null) vals.push(x); } }); return vals; }
+  var src = 'noLigand', vals = pick(src);
+  if (!vals.length) { src = 'donorOnly'; vals = pick(src); }
+  var v = vals.length ? { mean: meanOf(vals), sd: vals.length > 1 ? sdOf(vals) : null, n: vals.length, src: src } : null;
   pl._bb = { rev: state.rev, v: v };
   return v;
 }
@@ -2734,6 +2748,7 @@ function bViewNow(){
   var anyBase = bPl() && !!bBase(bPl());
   var v = state.view;
   if (v === 'corr' && !anyBase) v = null;
+  if ((v === 'donor' || v === 'acceptor') && !(bPl() && Object.keys(bPl()[v]).length)) v = null;
   return v || (anyBase ? 'corr' : 'raw');
 }
 
@@ -3437,7 +3452,12 @@ function bPasteButton(){
   }).catch(function(){ beaconToast('The browser did not allow reading the clipboard — click the plate and press ⌘V (Ctrl+V).', 'err'); });
 }
 var BM_CH = null;   // the channel ⌘V is aimed at when the plate has both; null = the one still missing
-function bSetCh(ch){ BM_CH = BM_CH === ch ? null : ch; bRenderRead(); }
+function bSetCh(ch){
+  var pl = bPl();
+  if (BM_CH === ch) { BM_CH = null; if (state.view === ch) state.view = null; }
+  else { BM_CH = ch; if (pl && Object.keys(pl[ch]).length) state.view = ch; else if (state.view === 'donor' || state.view === 'acceptor') state.view = null; }
+  bRenderGrid(); bRenderToolbar(); bRenderRead();
+}
 
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
@@ -3873,7 +3893,8 @@ function bSetAssay(v){
   }
   go();
 }
-function bSetView(v){ state.view = v; bRenderGrid(); bRenderToolbar(); }
+// A channel is a view of the plate (its own counts, one hue over its own range) and the aim of ⌘V at the same time: look at the donor, paste a new one over it.
+function bSetView(v){ state.view = v; if (v === 'donor' || v === 'acceptor') BM_CH = v; else BM_CH = null; bRenderGrid(); bRenderToolbar(); bRenderRead(); }
 
 // ── The head: plates, steps ──────────────────────────────────
 function bRenderPlates(){
@@ -4009,7 +4030,7 @@ function bIdleHtml(){
   if (!bHasReads(pl)) t = '<b>Copy the donor grid in Excel and press ⌘V.</b>The wells above are this plate — 96 or 384, it takes the size of what you paste. Then the acceptor. Or drop the PHERAstar export.';
   else if (!bComplete(pl)) t = '<b>This plate needs its ' + (Object.keys(pl.donor).length ? 'acceptor' : 'donor') + ' channel.</b>Paste the grid or drop the file — the strip above the plate says which channel ⌘V goes to.';
   else if (!kd.flat && !kd.cpd && !kd.trc) t = '<b>Drag across wells to say what they are.</b>A column of controls, a block of dose series — the panel asks only what it needs. The numbers are already here.';
-  else if (!base) t = '<b>Mark the ' + (disp ? 'no-tracer' : 'no-ligand') + ' wells.</b>That is what the corrected mBRET subtracts. Until then the plate shows raw mBRET.';
+  else if (!base) t = '<b>Mark the ' + (disp ? 'no-tracer' : 'no-ligand') + ' wells.</b>That is what the corrected mBRET subtracts (the donor-only wells do when there are none). Until then the plate shows raw mBRET.';
   else if (disp && !kd.trc) t = '<b>Mark the tracer titration.</b>A series of tracer concentrations gives its Kd, and from it the Ki of each compound.';
   else if (!ser.length) t = '<b>Add a dose series if this plate has one.</b>Drag across it and give its top concentration and dilution — or leave the plate as it is and read it from Results.';
   else t = '<b>Ready.</b>Results are up to date. Drag across any wells to change what they are.';
@@ -4036,6 +4057,7 @@ function bRenderToolbar(){
   if (seg) {
     seg.style.display = pl && bHasReads(pl) ? '' : 'none';
     seg.querySelector('[data-v="corr"]').style.display = base ? '' : 'none';
+    ['donor', 'acceptor'].forEach(function(k){ seg.querySelector('[data-v="' + k + '"]').style.display = pl && Object.keys(pl[k]).length ? '' : 'none'; });
     seg.querySelectorAll('button').forEach(function(b){ b.classList.toggle('active', b.dataset.v === v); });
   }
   var why = !bReadyPlates().length ? 'Add the readings to see results' : '';
@@ -4122,6 +4144,12 @@ function _bCellPx(cols, rows){
   window.addEventListener('resize', soon);
   if (window.ResizeObserver) { var b = document.getElementById('lm-platewrap'); if (b) new ResizeObserver(soon).observe(b); }
 })();
+// A channel's counts are big (123456): 123k, 1.2M when the well is too small to hold them whole.
+function _bCountFmt(v, fit){
+  var s = String(Math.round(v));
+  if (s.length > fit) s = v >= 1e6 ? (v / 1e6).toFixed(1) + 'M' : v >= 1e3 ? Math.round(v / 1e3) + 'k' : s;
+  return s.length > fit ? '' : s;
+}
 function _bReadFmt(v, fit){
   var s = Math.abs(v) >= 1000 ? String(Math.round(v)) : v.toFixed(1);
   if (s.length > fit) s = String(Math.round(v));
@@ -4155,11 +4183,11 @@ function bRenderGrid(){
   document.getElementById('lm-body').classList.toggle('x384', !!pl && pl.cols > 12);
   if (none) { grid.innerHTML = ''; grid.dataset.cols = ''; return; }
   var rows = pl.rows, cols = pl.cols, cellPx = _bCellPx(cols, rows), view = bViewNow(), layout = view === 'layout';
-  var corr = view === 'corr';
+  var corr = view === 'corr', chan = view === 'donor' || view === 'acceptor' ? view : null;
   var rfont = Math.min(15, Math.max(10, cellPx * .24)), rfit = Math.max(2, Math.floor((cellPx - 10) / (rfont * .68)));
   // The colour of a well with no role is its reading — one hue over this plate's range — which is what makes a dead column or an edge effect obvious.
   var vals = {}, vs = [];
-  for (var r0 = 0; r0 < rows; r0++) for (var c0 = 0; c0 < cols; c0++) { var p0 = bPos(r0, c0), v0 = bVal(pl, p0, corr); vals[p0] = v0; if (v0 !== null) vs.push(v0); }
+  for (var r0 = 0; r0 < rows; r0++) for (var c0 = 0; c0 < cols; c0++) { var p0 = bPos(r0, c0), v0 = chan ? (_bretUsable(pl[chan][p0]) ? pl[chan][p0] : null) : bVal(pl, p0, corr); vals[p0] = v0; if (v0 !== null) vs.push(v0); }
   var vLo = vs.length ? Math.min.apply(null, vs) : 0, vHi = vs.length ? Math.max.apply(null, vs) : 1;
   // A header carries a concentration when every well under it shares one.
   var colC = {}, rowC = {};
@@ -4212,10 +4240,11 @@ function bRenderGrid(){
         var shown = colHdr[c2] !== undefined || rowHdr[r] !== undefined, pc = cellPx < 30;
         if (m && bIsFlat(m.k)) cell = pc ? '' : '<div class="w-ctl">' + esc(bRole(m.k).tag) + '</div>';
         else if (m && m.c !== undefined && !shown) cell = '<div class="w-conc">' + bFmtConc(m.c).replace(' ', '<br>') + '</div>';
-      } else if (v !== null) cell = '<div class="w-val">' + esc(_bReadFmt(v, rfit)) + '</div>';
+      } else if (v !== null) cell = '<div class="w-val">' + esc(chan ? _bCountFmt(v, rfit) : _bReadFmt(v, rfit)) + '</div>';
       var tip = pos + (m ? (m.k === 'cpd' ? ' · ' + (bSeriesById(m.s) || { name: '' }).name : m.k === 'trc' ? ' · tracer' : ' · ' + bRoleLabel(m.k)) + (m.c !== undefined ? ' · ' + bFmtConc(m.c) : '') : '');
       var raw = bRaw(pl, pos);
-      tip += raw === null ? ' · no reading' : ' · donor ' + Math.round(pl.donor[pos]) + ' · acceptor ' + Math.round(pl.acceptor[pos]) + ' · ' + (corr && v !== null ? 'corrected ' + v.toFixed(1) + ' mBU' : 'raw ' + raw.toFixed(1) + ' mBU');
+      if (chan) tip += v === null ? ' · no ' + chan + ' reading' : ' · ' + chan + ' ' + Math.round(v) + ' counts' + (raw === null ? '' : ' · raw ' + raw.toFixed(1) + ' mBU');
+      else tip += raw === null ? ' · no reading' : ' · donor ' + Math.round(pl.donor[pos]) + ' · acceptor ' + Math.round(pl.acceptor[pos]) + ' · ' + (corr && v !== null ? 'corrected ' + v.toFixed(1) + ' mBU' : 'raw ' + raw.toFixed(1) + ' mBU');
       html += '<div class="well' + (fx ? ' fx' : '') + (BM_SEL.has(pos) ? ' sel' : '') + '" data-pos="' + pos + '" title="' + esc(tip) + '" style="' + at(r + 2, c2 + 2) + 'width:' + cellPx + 'px;height:' + cellPx + 'px;' + bg + '">' + cell + '</div>';
     }
   }
@@ -4721,7 +4750,7 @@ function renderResults(){
       var q = x.q, zc = q.z === null ? 'badge-neutral' : q.z >= 0.5 ? 'badge-good' : q.z >= 0 ? 'badge-mid' : 'badge-poor';
       var zt = q.z !== null ? q.z.toFixed(2) : (q.base && q.veh ? 'n/a' : '–');
       var why = q.z === null && q.base && q.veh ? ' title="Z′ needs at least two wells of each control"' : '';
-      cQ += '<tr><td><b>' + rsPlateName(state.plates.indexOf(x.pl)) + '</b></td><td class="num">' + (q.base ? bFmtNum(q.base.mean) + (q.base.sd !== null ? ' <span class="ci">± ' + bFmtNum(q.base.sd) + '</span>' : '') + ' <span class="ci">(' + q.base.n + ')</span>' : '<span class="ci">not marked</span>') +
+      cQ += '<tr><td><b>' + rsPlateName(state.plates.indexOf(x.pl)) + '</b></td><td class="num">' + (q.base ? bFmtNum(q.base.mean) + (q.base.sd !== null ? ' <span class="ci">± ' + bFmtNum(q.base.sd) + '</span>' : '') + ' <span class="ci">(' + q.base.n + (q.base.src === 'donorOnly' ? ', donor only' : '') + ')</span>' : '<span class="ci">not marked</span>') +
         '</td><td class="num">' + (q.veh ? bFmtNum(q.veh.mean) + (q.veh.sd !== null ? ' <span class="ci">± ' + bFmtNum(q.veh.sd) + '</span>' : '') + ' <span class="ci">(' + q.veh.n + ')</span>' : '<span class="ci">not marked</span>') +
         '</td><td class="num">' + (q.window !== null ? bFmtNum(q.window) : '–') + '</td><td class="num">' + (q.sb !== null ? q.sb.toFixed(1) + '×' : '–') + '</td><td class="num"><span class="badge ' + zc + '"' + why + '>' + zt + '</span></td></tr>';
     });
@@ -4752,7 +4781,8 @@ function renderResults(){
   if (fits.length) {
     var sel = fits.filter(function(f){ return f.key === RS_SEL; })[0], pn = bPotencyName(), unc = _bUniq(fits.reduce(function(a, f){ return a.concat(f.unc); }, [])), hasKi = disp && fits.some(function(f){ return f.ki; });
     cD += '<div class="card rs-card"><div class="card-hdr">Dose–response<span class="sub">' + bPlural(fits.length, 'compound') + '</span></div>';
-    if (unc.length) cD += '<div class="rs-note"><span><b>' + unc.map(function(i){ return rsPlateName(i); }).join(', ') + '</b> ' + (unc.length === 1 ? 'has' : 'have') + ' no ' + (disp ? 'no-tracer' : 'no-ligand') + ' wells marked, so ' + (unc.length === 1 ? 'its' : 'their') + ' values are raw mBRET, not corrected.</span></div>';
+    plates.forEach(function(pl){ var sw = bSwapped(pl); if (sw !== null) cD += '<div class="rs-note"><span><b>' + rsPlateName(state.plates.indexOf(pl)) + '</b>: the acceptor is brighter than the donor in most wells (median ' + Math.round(sw) + ' mBU). Are the two channels the wrong way round? Click Donor or Acceptor above the plate to look at each.</span></div>'; });
+    if (unc.length) cD += '<div class="rs-note"><span><b>' + unc.map(function(i){ return rsPlateName(i); }).join(', ') + '</b> ' + (unc.length === 1 ? 'has' : 'have') + ' no ' + (disp ? 'no-tracer' : 'no-ligand') + ' or donor-only wells marked, so ' + (unc.length === 1 ? 'its' : 'their') + ' values are raw mBRET, not corrected.</span></div>';
     cD += '<div class="rs-tbl"><table class="rk" data-density="standard" style="--rk-px:7px"><thead><tr><th>Compound</th><th class="num">' + pn + '</th><th class="num">95% CI</th>' + (hasKi ? '<th class="num">Ki</th>' : '') + '<th class="num">Hill</th><th class="num">Bottom → top<span class="hu"> mBU</span></th><th class="num">R²</th><th class="num">Points</th><th>Plates</th></tr></thead><tbody>';
     fits.forEach(function(f){
       var r2c = !f.fit ? '' : f.r2 >= B_MIN_R2 ? 'badge-good' : f.r2 >= 0.7 ? 'badge-mid' : 'badge-poor';
@@ -5123,7 +5153,7 @@ function exportPlateMBretXLSX(){
   var wb = XLSX.utils.book_new(), used = {};
   state.plates.forEach(function(pl, pi){
     if (!bComplete(pl)) return;
-    var base = bBase(pl), aoa = [['mBRET ' + (base ? '(corrected: raw − ' + base.mean.toFixed(2) + ', the mean of the no-ligand wells)' : '(raw — no baseline marked)')], [''].concat(Array.from({ length: pl.cols }, function(_, c){ return c + 1; }))];
+    var base = bBase(pl), aoa = [['mBRET ' + (base ? '(corrected: raw − ' + base.mean.toFixed(2) + ', the mean of the ' + (base.src === 'donorOnly' ? 'donor-only' : 'no-ligand') + ' wells)' : '(raw — no baseline marked)')], [''].concat(Array.from({ length: pl.cols }, function(_, c){ return c + 1; }))];
     for (var r = 0; r < pl.rows; r++) { var row = [String.fromCharCode(65 + r)]; for (var c = 0; c < pl.cols; c++) { var v = bVal(pl, bPos(r, c), true); row.push(v === null ? '' : +v.toFixed(2)); } aoa.push(row); }
     var nm = bPlateName(pi).replace(/[\\\/?*\[\]:]/g, '_').slice(0, 28) || 'Plate'; var k = nm, i = 2; while (used[k]) k = nm.slice(0, 26) + ' ' + (i++); used[k] = 1;
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(_sanitizeAoa(aoa)), k);
@@ -5135,7 +5165,7 @@ function _bProtocolAoa(){
   var _tz = Intl.DateTimeFormat().resolvedOptions().timeZone, now = new Date().toLocaleString('en-GB', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).replace(',', '') + ' (' + _tz + ')', disp = state.assayMode === 'displacement';
   var rows = [['BEACON ASSAY PROTOCOL'], ['Generated', now], [], ['--- ASSAY ---'], ['Assay mode', disp ? 'Tracer displacement' : 'Protein–protein (gain of signal)'],
     ['Plates', state.plates.filter(bComplete).map(function(pl){ return bPlateName(state.plates.indexOf(pl)) + ' (' + (pl.rows * pl.cols) + '-well' + (pl.file ? ', ' + pl.file : '') + ')'; }).join('; ')], [],
-    ['--- FORMULAS ---'], ['Raw mBRET (mBU)', '(acceptor / donor) x 1000'], ['Corrected mBU', 'raw mBU − mean raw mBU of that plate’s own no-ligand wells (raw when none are marked)'],
+    ['--- FORMULAS ---'], ['Raw mBRET (mBU)', '(acceptor / donor) x 1000'], ['Corrected mBU', 'raw mBU − mean raw mBU of that plate’s own no-ligand wells (its donor-only wells when it has none; raw when neither is marked). Each well’s ratio is made first, then the ratios are averaged'],
     ["Z' factor", '1 - [3xSD(vehicle) + 3xSD(no ligand)] / |Mean(vehicle) - Mean(no ligand)|, raw mBU, needs 2+ wells of each'], [],
     ['--- DOSE-RESPONSE FITTING ---'], ['Model', state.assayMode === 'gain' ? 'Y = Bottom + (Top-Bottom) / (1 + 10^(Hill*(LogEC50-X)))  [gain: increasing]' : 'Y = Bottom + (Top-Bottom) / (1 + 10^(Hill*(X-LogEC50)))'],
     ['X variable', 'log10(concentration in nM)'], ['Fitted to', 'the mean of each concentration; the same compound name on several plates is pooled, each plate corrected against its own baseline'],
@@ -5691,7 +5721,8 @@ function bsReview(){
     if (!nd && !na) issues.push([warn, '<b>' + esc(nm) + '</b> has no readings yet.', 1]);
     else if (!nd || !na) issues.push([warn, '<b>' + esc(nm) + '</b> still needs its ' + (nd ? 'acceptor' : 'donor') + ' channel.', 1]);
     if (nd && na) {
-      if (!bBase(pl)) issues.push([warn, '<b>' + esc(nm) + '</b> has no ' + (disp ? 'no-tracer' : 'no-ligand') + ' wells, so its values stay raw mBRET (Results say so).', 2]);
+      if (!bBase(pl)) issues.push([warn, '<b>' + esc(nm) + '</b> has no ' + (disp ? 'no-tracer' : 'no-ligand') + ' or donor-only wells, so its values stay raw mBRET (Results say so).', 2]);
+      if (bSwapped(pl) !== null) issues.push([warn, '<b>' + esc(nm) + '</b>: the acceptor is brighter than the donor in most wells — are the two channels the wrong way round?', 1]);
       if (!Object.keys(pl.map).some(function(p){ return pl.map[p].k === 'veh'; })) issues.push([warn, '<b>' + esc(nm) + '</b> has no vehicle wells: no Z′, and the figure cannot be relative to the vehicle.', 2]);
       if (!ser.length) issues.push([warn, '<b>' + esc(nm) + '</b> has no compounds — Results will show the plate and its controls only.', 2]);
     }
@@ -6374,9 +6405,9 @@ var tourRegister, appTour, tourEnd, tourGuideRefresh, tourOffer;
         do: ['**Paste the plate** — copy its donor grid in Excel and press `⌘V`, then the acceptor — or **drop the PHERAstar export** anywhere on the card. The donor and acceptor channels are found for you, and a file holding several plates becomes several. The dropdown above the plate is **96 or 384 wells**; a paste or a file sets it by itself.',
           '**Drag across wells** to select them: a rectangle, **Shift** to extend, `⌘` / `Ctrl` to add, a row or column label for a whole line, the corner for the plate — or type a range such as `B2:C11`.',
           'The panel asks only what it needs: a **compound** dose series, a **tracer** series, or a **control**. Press **Enter** to apply, **Delete** to clear, `⌘Z` to undo.',
-          'The **Corrected / Raw / Layout** switch under the plate changes what the wells show: the mBRET numbers, or what each well is.'],
+          'The **Corrected / Raw / Donor / Acceptor / Layout** switch under the plate changes what the wells show: the mBRET numbers, each channel’s own counts, or what each well is. The **Donor** and **Acceptor** chips above the plate do the same.'],
         ref: [['Plates', 'Tabs along the top. A plate added after another starts with its layout, so the same name is the same compound and its replicates pool in Results. **Layout → all plates** copies this plate’s layout onto the rest. Double-click a tab to rename it.'],
-          ['Corrected mBRET', 'Each well minus the mean of the no-ligand wells **on its own plate**. With none marked it shows raw and says so.'],
+          ['Corrected mBRET', 'Each well minus the mean of the no-ligand wells **on its own plate** (the donor-only wells when there are none). With neither marked it shows raw and says so. The full recipe is in **How the numbers are made**.'],
           ['mBRET (mBU)', '(acceptor ÷ donor) × 1000. A well whose donor or acceptor is missing, zero or negative has no ratio — it is blank, never 0.']],
         steps: [
           { sel: '.bn-top', t: 'The analysis', place: 'bottom',
@@ -6402,17 +6433,17 @@ var tourRegister, appTour, tourEnd, tourGuideRefresh, tourOffer;
         lead: 'Where the numbers come from: a PHERAstar export, several, or values pasted from Excel.',
         do: ['Drop the **PHERAstar `.xlsx`** on the card, or click the box. Beacon reads the “Table End point” sheet; the “Protocol Information” sheet fills the run details.',
           'Several files, or one file with several plates, make several plates — the second file becomes Plate 2, and so on. Dropping the same file again replaces rather than duplicates.',
-          'Or copy in Excel and press **⌘V**: a donor grid, an acceptor grid, both together, or a PHERAstar-style *Well* table. The strip above the plate says which channel a lone grid goes to — click **Donor** or **Acceptor** to aim it.'],
+          'Or copy in Excel and press **⌘V**: a donor grid, an acceptor grid, both together, or a PHERAstar-style *Well* table. The strip above the plate says which channel a lone grid goes to — click **Donor** or **Acceptor** to look at that channel’s counts on the plate and aim ⌘V at it.'],
         watch: [{ k: 'tip', t: 'A long-pass filter column is the acceptor, a band-pass column the donor. For another reader, copy its donor grid and its acceptor grid into Excel and paste them.' }],
         steps: [{ sel: '#lm-read', t: 'Which channels are read', place: 'bottom', miss: MISS,
           b: 'One chip per channel, with how many wells it holds. A plate waiting for a channel says so; **Replace** reads a new file into this plate, **Paste values** takes the clipboard.' }] },
 
       { id: 'controls', label: 'Plate › 2 Controls', tag: 'Plate', sel: stepBtn(2), go: step(2), head: false,
         lead: 'Select the wells of a control and click what they are. Every one is optional; each unlocks something.',
-        do: ['**No HaloTag ligand** (the same cells with the ligand left out) is what the corrected mBRET subtracts, and the baseline of Z′.',
+        do: ['**No HaloTag ligand** (the same cells with the ligand left out) is what the corrected mBRET subtracts, and the baseline of Z′. With none marked, the **donor-only** wells take that place.',
           '**Vehicle (DMSO)** is the top of the window for Z′ and the zero-dose point of every curve.',
           '**Normalise** (next to Control) divides some wells by other wells instead of the vehicle — a second control for another set of compounds, a positive control: drag the wells to normalise, press **Normalise these wells…**, then drag the wells they are divided by. A **Normalisation** tab lists the rules.',
-          '**Donor only**, **acceptor only**, **no substrate** and **mock** are judged on the Results tab, in raw counts.'],
+          '**Donor only** (when no-ligand wells exist), **acceptor only**, **no substrate** and **mock** are judged on the Results tab, in raw counts — they are checks, never subtracted.'],
         ref: [['Z′', '1 − [3×SD(vehicle) + 3×SD(no ligand)] ÷ |mean(vehicle) − mean(no ligand)|. ≥ 0.5 is excellent; 0 – 0.5 marginal; below 0 the two overlap. It needs two or more wells of each.'],
           ['Why raw counts', 'A ratio hides what you check: whether the donor fired at all (no substrate, mock should be near zero) and whether the acceptor channel is clean (donor only).']],
         steps: [{ sel: '#lm-sel', t: 'Say what the wells are', place: 'left', miss: MISS,
@@ -6437,6 +6468,24 @@ var tourRegister, appTour, tourEnd, tourGuideRefresh, tourOffer;
         ref: [['Why tracer ≤ Kd', 'At [T] = Kd the measured IC50 is exactly 2 × Ki. A tracer at 4 × Kd inflates the IC50 about five-fold and makes compounds look weaker than they are.']],
         steps: [{ sel: '#lm-sel', t: 'The tracer titration', place: 'left', miss: 'This opens when the assay is tracer displacement and a plate is loaded.',
           b: 'Choose **Tracer displacement** at the top, select the tracer series and set it. Its binding curve and Kd appear on Results.' }] },
+
+      { id: 'calc', label: 'How the numbers are made', tag: 'Plate', sel: '#lm-read', go: plate, head: false,
+        lead: 'Every number in Beacon comes from the two grids the reader gave, in this order, and nothing else is done to them. This is exactly what Beacon does — and what it does not.',
+        do: ['**1 · Two channels, as read.** Donor = the NanoLuc light, about 460 nm. Acceptor = the HaloTag ligand’s light, about 610–618 nm (a long-pass filter on the PHERAstar). The counts are used as the reader reports them: no background is taken off a channel, nothing is normalised before the ratio. Click **Donor** or **Acceptor** above the plate to see one channel alone.',
+          '**2 · Raw mBRET** of a well = (acceptor ÷ donor) × 1000, made well by well. A well whose donor or acceptor is missing, zero or negative has no ratio — it is blank, never 0.',
+          '**3 · Baseline** = the mean of the raw mBRET of the plate’s own **no-ligand** wells (**no-tracer** wells in displacement). That control carries the same donor but no acceptor signal, so what it reads is the NanoLuc light that leaks into the acceptor channel, which every well carries. The ratio is made in each well first and the ratios are averaged, as the NanoBRET protocol does — not the mean counts divided. With no usable no-ligand wells, the **donor-only** wells stand in (net BRET). With neither, nothing is subtracted and every screen says “raw”.',
+          '**4 · Corrected mBRET** = raw − baseline, well by well, each plate against its own baseline. The fits, the Graph and the Prism tables use it.',
+          '**5 · Vehicle and relative.** The vehicle wells are corrected the same way. “Relative to the vehicle” = a well’s corrected value ÷ the mean corrected vehicle (or the wells a Normalise rule names). It is drawn only when the vehicle is above the baseline; otherwise the axis is corrected mBU and says so.',
+          '**6 · Curve.** A four-parameter logistic on the corrected values of every replicate, pooled across plates by compound name; a midpoint outside the doses tested is a bound (> or <), and a series no better than a flat line is “n.d.”. In displacement, Ki = IC50 ÷ (1 + [tracer] ÷ Kd) (Cheng–Prusoff).',
+          '**7 · Plate quality**, from the raw mBRET: window = mean vehicle − mean baseline; S/B = mean vehicle ÷ mean baseline; Z′ = 1 − 3(SD vehicle + SD baseline) ÷ |mean vehicle − mean baseline|, with at least two wells of each.',
+          '**8 · The other controls are checks, not corrections:** **donor only** — is the acceptor channel clean (its raw mBRET is the bleed-through); **acceptor only** — there should be no light in either channel without NanoLuc; **no substrate** — the instrument floor; **mock** — the cells’ own light. They are shown in raw counts on Results › Controls and are never subtracted.',
+          '**Not done, on purpose:** no-substrate or mock counts are not taken off the channels before the ratio (NanoLuc is far above that floor and the protocol does not), and no spectral unmixing. If acceptor is brighter than donor in most wells Beacon warns that the channels may be the wrong way round.'],
+        ref: [['Raw ratio, mBU, corrected ratio', 'Promega NanoBRET protocols (TM439 for protein–protein, TM498 for target engagement): raw BRET ratio = acceptor emission (610/618 nm) ÷ donor emission (460 nm); mBU = ratio × 1000; corrected = sample ratio − the ratio of the no-acceptor / no-tracer control. Machleidt et al., ACS Chem Biol 2015, 10:1797; Vasta et al., Cell Chem Biol 2018, 25:206.'],
+          ['Net BRET, donor-only control', 'Pfleger & Eidne, Nat Methods 2006, 3:165: net BRET = the BRET ratio of the pair − the ratio of the donor expressed alone, which measures the donor’s bleed-through into the acceptor channel.'],
+          ['Z′', 'Zhang, Chung & Oldenburg, J Biomol Screen 1999, 4:67.'],
+          ['Ki', 'Cheng & Prusoff, Biochem Pharmacol 1973, 22:3099.']],
+        steps: [{ sel: '#lm-read', t: 'Each channel on its own', place: 'bottom', miss: MISS,
+          b: 'Click **Donor** or **Acceptor** to see that channel’s counts on the plate — one colour over its own range, so a dead column or an edge effect shows. Click it again to go back to the ratio.' }] },
 
       { id: 'results', label: 'Results', sel: '.tab[data-tab="results"]', go: function(){ switchTab('results'); }, needs: 'data',
         lead: 'Read from the layout, and shown for what it makes possible. Nothing to press: it refits whenever anything on the plate changes.',
@@ -6473,13 +6522,13 @@ var tourRegister, appTour, tourEnd, tourGuideRefresh, tourOffer;
     words: [
       ['mBRET (mBU)', 'milliBRET units: (acceptor ÷ donor) × 1000 — the raw ratio on a more convenient scale.'],
       ['NanoBRET', 'Energy transfer between a NanoLuc donor (about 460 nm) and a HaloTag acceptor labelled with a fluorescent ligand (about 610–618 nm). Interaction raises the acceptor : donor ratio.'],
-      ['Corrected mBRET', 'The ratio minus the donor bleed-through measured in the no-ligand wells of the same plate.'],
+      ['Corrected mBRET', 'The ratio minus the donor bleed-through measured in the no-ligand wells of the same plate (donor-only wells when it has none).'],
       ['Z′', 'Assay quality from the spread of two controls. ≥ 0.5 is excellent.'],
       ['Protein–protein', 'The signal rises with the interaction (two proteins of interest).'],
       ['Tracer displacement', 'A compound displaces a fluorescent tracer and the signal falls.'],
       ['Kd · Ki', 'The tracer’s dissociation constant, and the compound’s binding constant after the Cheng–Prusoff correction.']],
     faq: [
-      ['“Corrected” is missing', 'It appears once wells are marked no HaloTag ligand (no tracer, in displacement): that is what is subtracted. Until then the plate shows raw mBRET.'],
+      ['“Corrected” is missing', 'It appears once wells are marked no HaloTag ligand (no tracer, in displacement) or donor only: that is what is subtracted. Until then the plate shows raw mBRET.'],
       ['A second file made a second plate', 'That is intended: one file, one plate (a file holding several plates makes several). Dropping a file again replaces its plate. To put two channels from two CSVs on one plate, drop the donor first and the acceptor next — a plate waiting for a channel takes it.'],
       ['No curve for a compound', 'It needs at least four different concentrations. The row says how many it has.'],
       ['R² is red', 'The fit is unreliable. Check for a missing well, a plate without its baseline, or too few points around the inflection.'],

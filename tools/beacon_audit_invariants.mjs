@@ -17,6 +17,9 @@
 //   BA10 a curve must be better than a line  The 4PL returns a sigmoid for any series, so a flat one of noise got a cliff at the edge of the doses and a potency nobody
 //                                measured. A fit is tested against the mean of its own points (F test, p < 0.05, the engine's _curveVsFlat): a flat series is "n.d.", a real
 //                                curve keeps its fit, and a plateau that rests on its limit (a curve cut off before its midpoint) makes the potency a bound, not a value.
+//   BA11 the ratio is the literature's  Raw mBRET = acceptor ÷ donor × 1000 per well; the baseline is the mean of the plate's own no-ligand ratios (donor-only wells stand in when it has none —
+//                                Promega NanoBRET, Pfleger & Eidne net BRET), corrected = raw − baseline; the Donor / Acceptor chips and buttons show each channel's own counts on the plate (they used
+//                                only aimed ⌘V), and a plate whose acceptor outshines its donor is flagged as channels the wrong way round.
 //   BA7  a reload is not a loss  An empty plate after a reload says which analysis it was on and opens it in one click.
 //
 // Usage (repo root, serve it first: python3 -m http.server 8791):  node tools/beacon_audit_invariants.mjs [--only=BA1,BA2] [--file=path] [--verbose]
@@ -291,6 +294,41 @@ if (run('BA10')) await guard('BA10', async () => {
   })()`));
   check('BA10', 'at least 36 of 40 flat series of noise are n.d. ("the series is flat"), none draws a cliff', r.flat >= 36, r);
   check('BA10', 'a real curve (IC50 inside the doses, 4 % noise) keeps its fit in every one of 20 runs', r.real === 20, r);
+  await ctx.close();
+});
+
+if (run('BA11')) await guard('BA11', async () => {
+  const { ctx, pg } = await open();
+  const r = await pg.evaluate(W(`(() => {
+    const o = {};
+    __reset(); const pl = state.plates[0];
+    __fill(pl, (r, c) => [100000 + 1000 * c, c === 0 ? 5000 : c === 1 ? 5000 : c === 2 ? 20000 : 40000]);
+    for (let r = 0; r < 8; r++) pl.map[bPos(r, 0)] = { k: 'noLigand' };
+    bAfterChange();
+    o.raw = bRaw(pl, 'B3');                       // 20000 / 102000 × 1000
+    o.base = bBase(pl); o.corr = bVal(pl, 'B3', true);
+    // no no-ligand wells: the donor-only wells are the baseline
+    for (let r = 0; r < 8; r++) { delete pl.map[bPos(r, 0)]; pl.map[bPos(r, 1)] = { k: 'donorOnly' }; } bAfterChange();
+    o.src = (bBase(pl) || {}).src;
+    // nothing marked: raw
+    for (let r = 0; r < 8; r++) delete pl.map[bPos(r, 1)]; bAfterChange();
+    o.none = bBase(pl);
+    // the channel buttons look at a channel
+    bSetCh('donor'); o.viewD = bViewNow(); o.cell = document.querySelector('.well[data-pos="A1"] .w-val'); o.cell = o.cell ? o.cell.textContent : null;
+    o.tipD = document.querySelector('.well[data-pos="A1"]').title;
+    bSetCh('acceptor'); o.viewA = bViewNow(); o.tgt = document.querySelector('.bc-ch.tgt') ? document.querySelector('.bc-ch.tgt').textContent : '';
+    bSetCh('acceptor'); o.back = bViewNow();
+    o.segBtns = [...document.querySelectorAll('#lm-view button')].filter(b => b.style.display !== 'none').map(b => b.dataset.v);
+    // swapped channels
+    const t = pl.donor; pl.donor = pl.acceptor; pl.acceptor = t; bAfterChange(); o.swapped = bSwapped(pl);
+    return o;
+  })()`));
+  check('BA11', 'raw mBRET = acceptor ÷ donor × 1000', Math.abs(r.raw - 20000 / 102000 * 1000) < 1e-9, r.raw);
+  check('BA11', 'the baseline is the mean of the no-ligand wells\' own ratios and corrected = raw − baseline', r.base && r.base.src === 'noLigand' && r.base.n === 8 && Math.abs(r.corr - (r.raw - r.base.mean)) < 1e-9, [r.base, r.corr]);
+  check('BA11', 'with no no-ligand wells the donor-only wells are the baseline; with neither nothing is subtracted', r.src === 'donorOnly' && r.none === null, [r.src, r.none]);
+  check('BA11', 'the Donor chip shows the donor counts on the plate (and in the tooltip), the Acceptor chip the acceptor view, a second click goes back', r.viewD === 'donor' && /^100(000|k)$/.test(r.cell) && /donor 100000 counts/.test(r.tipD) && r.viewA === 'acceptor' && /Acceptor/.test(r.tgt) && r.back !== 'acceptor', r);
+  check('BA11', 'the view switch under the plate offers Donor and Acceptor once the channel is read', r.segBtns.includes('donor') && r.segBtns.includes('acceptor'), r.segBtns);
+  check('BA11', 'a plate whose acceptor outshines its donor is flagged', r.swapped > 1000, r.swapped);
   await ctx.close();
 });
 
