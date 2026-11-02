@@ -945,11 +945,11 @@ try {
       o.xNote = res.slice(-4).map(r => r[0]).join(' | '); o.xMethod = !!met && met[1].every(r => r.length === 3) && met[1].length > 25 && met[1][0][0] === 'Section';
       // Prism, the figure, the printed report, the JSON, the text file
       const got = {}; window.tpDownload = (n, b) => { got[n] = b; }; tpExportPrism(); tpTab('curves'); tpSub('kin'); tpSaveSVG(); window.print = () => {}; tpPrint();
-      const names = Object.keys(got); const prism = got[names.find(n => /prism/.test(n))], svg = got[names.find(n => /\.svg$/.test(n))];
+      const names = Object.keys(got); const prism = got[names.find(n => /_Tempo_Prism_/.test(n))], svg = got[names.find(n => /\.svg$/.test(n))];
       o.prism = (await prism.text()).replace(/^﻿/, '').split('\r\n').slice(0, 3).join(' | '); const st = await svg.text(); o.svg = { foot: /Normalised: background/.test(st), grew: (() => { const m = /viewBox="0 0 (\d+) (\d+)"/.exec(st); return m && +m[2] > 560; })(), rect: (() => { const m = /viewBox="0 0 (\d+) (\d+)"/.exec(st), q = /<rect width="(\d+)" height="(\d+)"/.exec(st); return m && q && m[1] === q[1] && m[2] === q[2]; })() };
       const pr = document.querySelector('#tp-print').innerHTML; o.print = /How this was calculated/.test(pr) && /y\(w,t\) = u\(w,t\)/.test(pr);
       const js = tpResultsJSON(tpPlate()); o.json = Array.isArray(js.method) && js.method.length > 20 && /NORMALISATION/.test(js.method.join('\n'));
-      tpSaveMethod(); o.txt = names.concat(Object.keys(got)).some(n => /_tempo_method\.txt$/.test(n));
+      tpSaveMethod(); o.txt = names.concat(Object.keys(got)).some(n => /_Tempo_Method_\d{4}-\d\d-\d\d\.txt$/.test(n));
       o.menu = (tpExportMenu(document.body), !!document.querySelector('#tp-exp-menu') && /Method as text/.test(document.querySelector('#tp-exp-menu').textContent));
       return o;
     });
@@ -1137,11 +1137,11 @@ try {
       const wb = { sheets: [] }; window.XLSX = { utils: { book_new: () => wb, aoa_to_sheet: a => a, book_append_sheet: (b, ws, n) => b.sheets.push([n, ws]) }, writeFile: () => {} }; tpExportXLSX();
       o.sheets = wb.sheets.map(s => s[0]).join(); const res = wb.sheets.find(s => s[0] === 'Results')[1]; const ti = res.findIndex(r => /^RESULTS/.test(r[0])); o.xHead = res[ti + 1].join('|'); const mean = wb.sheets.find(s => s[0] === 'Prism')[1], mi = mean.findIndex(r => /^PRISM . MEAN/.test(r[0])), me = mean.findIndex((r, i) => i > mi + 2 && !r.length); o.meanCols = mean[mi + 2].length; o.meanRows = (me < 0 ? mean.length : me) - (mi + 2); o.meanSd = mean.some(r => /^PRISM . SD/.test(r[0])); o.lateral = mean.every(r => r.length <= o.meanCols);
       tpExportCSV(); tpExportPrism(); tpExportProNect(); await wait(1200);
-      const csv = (await got[Object.keys(got).find(n => /_tidy\.csv$/.test(n))].text()).replace(/^﻿/, '').split('\r\n'); o.csvHead = csv[0]; o.csvDox = csv.find(l => /Doxycycline/.test(l) && /ug\/mL/.test(l)) ? 'mass' : 'none'; o.csvHeat = csv.find(l => /Heat shock/.test(l)).split(',').slice(2, 6).join(',');
-      const pr = (await got[Object.keys(got).find(n => /prism/.test(n))].text()).replace(/^﻿/, ''); o.prism = [/^Method/.test(pr), /Condition,Doxycycline/.test(pr), /Largest change against dose/.test(pr)].join();
+      const csv = (await got[Object.keys(got).find(n => /_Tempo_RawData_[\d-]+\.csv$/.test(n))].text()).replace(/^﻿/, '').split('\r\n'); o.csvHead = csv[0]; o.csvDox = csv.find(l => /Doxycycline/.test(l) && /ug\/mL/.test(l)) ? 'mass' : 'none'; o.csvHeat = csv.find(l => /Heat shock/.test(l)).split(',').slice(2, 6).join(',');
+      const pr = (await got[Object.keys(got).find(n => /_Tempo_Prism_/.test(n))].text()).replace(/^﻿/, ''); o.prism = [/^Method/.test(pr), /Condition,Doxycycline/.test(pr), /Largest change against dose/.test(pr)].join();
       const js = JSON.parse(await got[Object.keys(got).find(n => /normalized_data\.json$/.test(n))].text()); o.json = [js.Results.experiment, js.Results.conditions.length, js.Results.conditions[0].doses[0].largestChange != null].join();
       const raw = (await got[Object.keys(got).find(n => /raw_kinetic\.csv$/.test(n))].text()).replace(/^﻿/, '').split('\r\n'); o.rawUnit = raw.find(l => /^Unit/.test(l)).split(',').filter(x => x).join('|').slice(0, 60);
-      tpTab('curves'); tpSub('tc'); tpSaveSVG(); await wait(100); const svg = await got[Object.keys(got).find(n => /_chart\.svg$/.test(n))].text(); o.svg = /Time course: the mean of the replicate wells/.test(svg) && /Largest change/.test(svg);
+      tpTab('curves'); tpSub('tc'); tpSaveSVG(); await wait(100); const svg = await got[Object.keys(got).find(n => /_Tempo_Curve_.*\.svg$/.test(n))].text(); o.svg = /Time course: the mean of the replicate wells/.test(svg) && /Largest change/.test(svg);
       tpPrint(); await wait(150); const pr2 = document.querySelector('#tp-print').innerHTML; o.print = /Time course/.test(pr2) && /Largest change/.test(pr2) && /How this was calculated/.test(pr2);
       tpExportMenu(document.body); const menu = document.querySelector('#tp-exp-menu').textContent; o.menu = [/Screen table/.test(menu), /Prism tables/.test(menu)].join(); document.querySelector('#tp-exp-menu').remove();
       let toast = ''; window.tpToast = m => { toast = m; }; await tpSendToLabbook(); o.lb = /no DC50/.test(toast); tpSendToHitFinder(); o.hf = /Hit Finder/.test(toast);

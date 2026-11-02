@@ -1500,7 +1500,8 @@ html{scroll-padding-top:calc(var(--mk-stick,0px) + 12px);}
    MenuKit.tabs({ bar, select, pane })  the tab row as one component: roving tabindex (the open tab is the one stop), ← → Home End move along it and wrap, the tab that gets the focus opens
                                  (select(name) is the app's own switch), aria-controls and role=tabpanel on the panes (pane(name) → the pane's id); [ and ] open the previous and the
                                  next tab from anywhere outside a field, a menu or a dialog
-   Pinned chrome                 the header and the tab row stay at the top while the page scrolls (menu.css); --mk-top and --mk-stick are measured here */
+   Pinned chrome                 the header and the tab row stay at the top while the page scrolls (menu.css); --mk-top and --mk-stick are measured here
+   MenuKit.fileName(app, name, what, ext)  every file the three apps write: <name>_<App>_<What>_<YYYY-MM-DD>.<ext> (CTG20261022_Lumina_Results_2026-11-02.xlsx); no name → <App>_<What>_<date> */
 var MenuKit = (function(){
   var root = document.documentElement, redrawFn = null, pend = 0;
   function byId(i){ return document.getElementById(i); }
@@ -1592,6 +1593,13 @@ var MenuKit = (function(){
     var hh = h && getComputedStyle(h).display !== 'none' ? h.offsetHeight : 0;
     root.style.setProperty('--mk-top', hh + 'px'); root.style.setProperty('--mk-stick', (hh + bar.offsetHeight) + 'px');
   }
+  /* ── file names: one scheme in the three apps (they had Lumina_Results_<date>.xlsx, beacon-<file>.xlsx and <plate>_tempo.xlsx) ── */
+  function fileName(app, name, what, ext){
+    var clean = function(s){ return String(s == null ? '' : s).trim().replace(/[^\w.\-]+/g, '_').replace(/_?-_?/g, '-').replace(/_+/g, '_').replace(/^[_.\-]+|[_.\-]+$/g, ''); };
+    var d = new Date(), day = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+    var stem = [clean(name).slice(0, 60), app, clean(what), day].filter(Boolean).join('_');
+    return ext ? stem + '.' + ext : stem;
+  }
   function init(o){
     pin(); window.addEventListener('resize', pin);
     if (window.ResizeObserver) { var ro = new ResizeObserver(pin); [document.querySelector('body > header'), document.querySelector('.tabbar')].forEach(function(x){ if (x) ro.observe(x); }); }
@@ -1635,7 +1643,7 @@ var MenuKit = (function(){
     var j = k === 'Home' ? 0 : k === 'End' ? list.length - 1 : k === 'ArrowDown' ? (i + 1) % list.length : (i <= 0 ? list.length - 1 : i - 1);
     e.preventDefault(); e.stopPropagation(); if (list[j]) list[j].focus();
   }, true);
-  return { init: init, tabs: tabs, items: items, closeAll: closeAll, toggle: toggle, toggleOpts: toggleOpts, toggleTheme: toggleTheme };
+  return { init: init, tabs: tabs, items: items, closeAll: closeAll, toggle: toggle, toggleOpts: toggleOpts, toggleTheme: toggleTheme, fileName: fileName };
 })();
 function toggleOpts(f){ MenuKit.toggleOpts(f); }
 function toggleTheme(){ MenuKit.toggleTheme(); }
@@ -5377,6 +5385,8 @@ function tpNMConc(v, d) { return v == null ? null : tpSigF(v, d || 6); }
 function tpBlob(text, mime) { return new Blob(['﻿' + text], { type: (mime || 'text/csv') + ';charset=utf-8' }); }
 function tpCSV(aoa) { return aoa.map(r => r.map(csvCell).join(',')).join('\r\n'); }
 function tpBase() { const p = tpPlate(); return (p ? p.name : 'tempo').replace(/[^\w.-]+/g, '_'); }
+// Every file Tempo writes: <plate>_Tempo_<what>_<date>.<ext>, the scheme of Lumina and Beacon (MenuKit.fileName); the ProNect files keep ProNect's own endings
+function tpFile(what, ext) { const p = tpPlate(); return MenuKit.fileName('Tempo', p ? p.name : '', what, ext); }
 function tpSettingsLines() {
   const S = TP.S, N = S.norm, F = S.fit, D = S.dr, M = S.mm, L = [];
   if (tpTC()) {
@@ -5539,7 +5549,7 @@ function tpMethodShort() {
 function tpMethodHTML(sec) {
   return (sec || tpMethod()).map(s => '<div class="mth-s"><h4>' + esc(s.h) + '</h4>' + s.lines.map(l => l[0] === 't' ? '<p class="mth-t">' + esc(l[1]) + '</p>' : '<div class="mth-r"><div class="mth-k">' + esc(l[1]) + '</div>' + (l[0] === 'eq' ? '<code class="mth-eq">' + esc(l[2]) + '</code>' : '<div class="mth-v">' + esc(l[2]) + '</div>') + '</div>').join('') + '</div>').join('');
 }
-function tpSaveMethod() { const t = tpMethodText(); if (!TP.plates.some(p => tpRes(p))) { tpToast('Nothing to describe yet', 'warn'); return; } tpDownload(tpBase() + '_tempo_method.txt', tpBlob('Tempo · how this analysis was calculated\r\n' + t.join('\r\n'), 'text/plain')); tpToast('Method written'); }
+function tpSaveMethod() { const t = tpMethodText(); if (!TP.plates.some(p => tpRes(p))) { tpToast('Nothing to describe yet', 'warn'); return; } tpDownload(tpFile('Method', 'txt'), tpBlob('Tempo · how this analysis was calculated\r\n' + t.join('\r\n'), 'text/plain')); tpToast('Method written'); }
 function tpCopyMethod() { const t = tpMethodText().join('\n'); (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(() => tpToast('Method copied'), () => tpToast('Copy was blocked', 'warn')); }
 // a note under a saved figure: the SVG grows by the lines it needs
 function tpFootSvg(svg, lines) {
@@ -5577,7 +5587,7 @@ async function tpWriteCurvePDFs(groups) {
         if (i % 6 === 5) await new Promise(res => setTimeout(res, 0));
       }
       const blob = X.curvePDF({ cards, title: g.plate.name + ' \u00b7 Dose\u2013response (Dmax analysis)', right: cards.length + (cards.length === 1 ? ' compound' : ' compounds'), foot: 'dHUB Tempo \u00b7 ' + stamp });
-      files.push({ blob, name: g.plate.name.replace(/[^\w.-]+/g, '_') + '_curves.pdf' });
+      files.push({ blob, name: MenuKit.fileName('Tempo', g.plate.name, 'Curves', 'pdf') });
     }
     files.forEach((f, k) => setTimeout(() => X.save(f.blob, f.name), k * 350));
     tpToast(files.length === 1 ? 'Curve PDF ready \u2014 ' + files[0].name : files.length + ' curve PDFs ready (one per plate).');
@@ -5640,14 +5650,14 @@ function tpExportXLSX() {
   stack([{ title: 'PER CONCENTRATION', aoa: sh.pc }, { title: 'PER WELL (Dmax-response points)', aoa: sh.dp }, { title: 'DC50 OVER TIME', aoa: sh.dt }], 'Details');
   stack([{ title: 'WELLS \u2014 one row per well and read', aoa: tpWellRows(false) }], 'Wells');
   stack([{ aoa: tpMethodSheet() }], 'Method');
-  XLSX.writeFile(wb, tpBase() + '_tempo.xlsx'); tpToast('Workbook written');
+  XLSX.writeFile(wb, tpFile('Results', 'xlsx')); tpToast('Workbook written');
 }
 function tpExportCSV() {
   if (tpTC()) { tpExportCSVTC(); return; }
   const rows = tpRowsFlat(); if (!rows.length) { tpToast('Nothing to export yet', 'warn'); return; }
   const anyRule = TP.plates.some(q => tpRules(q).length), out = [['Plate', 'Well', 'Compound', 'Target', 'Concentration_nM', 'Time_h', 'RLU_raw', 'Fractional', 'Left_out'].concat(anyRule ? ['Normalised_against'] : [])];
   TP.plates.forEach(p => { const res = tpRes(p); if (!res) return; const ex = new Set(tpEx(p).wells), exp = tpEx(p).pts; Object.keys(res.nm.frac).sort(tpNatCmp).forEach(id => { const w = p.wells[id]; res.t.forEach((t, k) => out.push([p.name, id, w.compound, w.target, tpNMConc(w.conc), tpSigF(t, 6), w.raw ? w.raw[res.nm.idx[k]] : null, tpSigF(res.nm.frac[id][k], 6), (ex.has(id) || (exp[id] || []).indexOf(k) >= 0) ? 1 : 0].concat(anyRule ? [res.nm.ruleOf && res.nm.ruleOf[id] !== undefined ? 'rule ' + (res.nm.ruleOf[id] + 1) : 'plate vehicle'] : []))); }); });
-  tpDownload(tpBase() + '_tempo_tidy.csv', tpBlob(tpCSV(out))); tpToast('Tidy CSV written (one row per well and read)');
+  tpDownload(tpFile('RawData', 'csv'), tpBlob(tpCSV(out))); tpToast('Tidy CSV written (one row per well and read)');
 }
 // Prism: a table per compound — time down, one column per concentration (mean), then the same for SD and N
 function tpExportPrism() {
@@ -5657,7 +5667,7 @@ function tpExportPrism() {
   rows.forEach(r => { const c = r.comp, cs = c.concs; out.push(['Compound', c.compound, 'Target', c.target, 'Plate', r.plate.name]); out.push(['Fractional signal (mean)', 'Time (h)'].concat(cs.map(x => tpNMConc(x.c)))); r.res.t.forEach((t, k) => out.push(['', tpSigF(t, 6)].concat(cs.map(x => tpSigF(x.mean[k], 6))))); out.push([]); out.push(['SD', 'Time (h)'].concat(cs.map(x => tpNMConc(x.c)))); r.res.t.forEach((t, k) => out.push(['', tpSigF(t, 6)].concat(cs.map(x => tpSigF(x.sd[k], 6))))); out.push([]);
     out.push(['K against concentration', 'Concentration (nM)', 'K (h-1)', 'Used in the fit']); c.concs.forEach((cc, i) => { const f = cc.fit, b = c.B.rows[i]; out.push(['', tpNMConc(cc.c), f && f.degrading ? tpSigF(f.K) : null, b ? (b.use ? 'yes' : 'no') : '']); }); out.push([]);
     out.push(['Dmax against concentration', 'Concentration (nM)', 'Dmax (%)']); c.concs.forEach(cc => out.push(['', tpNMConc(cc.c), cc.fit && cc.fit.degrading ? tpSigF(cc.fit.Dmax * 100, 4) : (cc.fit && cc.fit.ok ? 0 : null)])); out.push([], []); });
-  tpDownload(tpBase() + '_tempo_prism.csv', tpBlob(tpCSV(out))); tpToast('Prism tables written');
+  tpDownload(tpFile('Prism', 'csv'), tpBlob(tpCSV(out))); tpToast('Prism tables written');
 }
 /* the three files ProNect writes — so the rest of the lab's workflow keeps working */
 function tpPNMeta(p, ids) {
@@ -5690,10 +5700,10 @@ function tpChartSVGLight() {
 function tpSavePNG() {
   const svg0 = tpChartSVGLight(), svg = svg0 && tpFootFor(svg0); if (!svg) { tpToast('Nothing to save yet', 'warn'); return; }
   const m = /viewBox="0 0 (\d+(?:\.\d+)?) (\d+(?:\.\d+)?)"/.exec(svg), W = +m[1], H = +m[2], img = new Image(), url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }));
-  img.onload = () => { const c = document.createElement('canvas'); c.width = W * 3; c.height = H * 3; const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url); c.toBlob(b => { tpDownload(tpBase() + '_' + (TP.ui.tab === 'compare' ? 'compare' : (tpCurComp(tpRes()).compound + '_' + TP.sel.sub)).replace(/[^\w.-]+/g, '_') + '.png', b); tpToast('PNG saved'); }, 'image/png'); };
+  img.onload = () => { const c = document.createElement('canvas'); c.width = W * 3; c.height = H * 3; const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url); c.toBlob(b => { tpDownload(tpFile(TP.ui.tab === 'compare' ? 'Figure' : 'Curve_' + tpCurComp(tpRes()).compound + '_' + TP.sel.sub, 'png'), b); tpToast('PNG saved'); }, 'image/png'); };
   img.onerror = () => { URL.revokeObjectURL(url); tpToast('The picture could not be made', 'err'); }; img.src = url;
 }
-function tpSaveSVG() { const svg0 = tpChartSVGLight(); if (!svg0) return; tpDownload(tpBase() + '_' + (TP.ui.tab === 'compare' ? 'compare' : 'chart') + '.svg', new Blob([tpFootFor(svg0)], { type: 'image/svg+xml' })); }
+function tpSaveSVG() { const svg0 = tpChartSVGLight(); if (!svg0) return; tpDownload(tpFile(TP.ui.tab === 'compare' ? 'Figure' : 'Curve_' + tpCurComp(tpRes()).compound + '_' + TP.sel.sub, 'svg'), new Blob([tpFootFor(svg0)], { type: 'image/svg+xml' })); }
 function tpPrint() {
   if (tpTC()) { tpPrintTC(); return; }
   const p = tpPlate(), res = tpRes(p); if (!res) { tpToast('Nothing to print yet', 'warn'); return; }
@@ -5743,13 +5753,13 @@ function tpExportXLSXTC() {
   stack(pb.length ? pb : [{ aoa: [['No time course to put in a Prism table']] }], 'Prism');
   stack([{ title: 'WELLS \u2014 one row per well and read', aoa: tpWellRows(true) }], 'Wells');
   stack([{ aoa: tpMethodSheet() }], 'Method');
-  XLSX.writeFile(wb, tpBase() + '_tempo_timecourse.xlsx'); tpToast('Workbook written');
+  XLSX.writeFile(wb, tpFile('Results', 'xlsx')); tpToast('Workbook written');
 }
 function tpExportCSVTC() {
   const rows = tpAllRows(); if (!rows.length) { tpToast('Nothing to export yet', 'warn'); return; }
   const anyRule = TP.plates.some(q => tpRules(q).length), out = [['Plate', 'Well', 'Condition', 'Target', 'Dose', 'Dose_unit', 'Time_h', 'RLU_raw', 'Level', 'Left_out'].concat(anyRule ? ['Normalised_against'] : [])];
   TP.plates.forEach(p => { const res = tpRes(p); if (!res || res.kind !== 'timecourse') return; const ex = new Set(tpEx(p).wells), exp = tpEx(p).pts; Object.keys(res.nm.frac).sort(tpNatCmp).forEach(id => { const w = p.wells[id]; res.t.forEach((t, k) => out.push([p.name, id, w.compound, w.target, w.conc == null ? null : tpSigF(w.conc, 6), w.conc == null ? null : tpDoseUnitName(w.cu), tpSigF(t, 6), w.raw ? w.raw[res.nm.idx[k]] : null, tpSigF(res.nm.frac[id][k], 6), (ex.has(id) || (exp[id] || []).indexOf(k) >= 0) ? 1 : 0].concat(anyRule ? [res.nm.ruleOf && res.nm.ruleOf[id] !== undefined ? 'rule ' + (res.nm.ruleOf[id] + 1) : 'plate control'] : []))); }); });
-  tpDownload(tpBase() + '_tempo_tidy.csv', tpBlob(tpCSV(out))); tpToast('Tidy CSV written (one row per well and read)');
+  tpDownload(tpFile('RawData', 'csv'), tpBlob(tpCSV(out))); tpToast('Tidy CSV written (one row per well and read)');
 }
 function tpExportPrismTC() {
   const rows = tpAllRows(); if (!rows.length) { tpToast('Nothing to export yet', 'warn'); return; }
@@ -5760,7 +5770,7 @@ function tpExportPrismTC() {
     out.push(['SD', 'Time (h)'].concat(cs.map(d))); r.res.t.forEach((t, j) => out.push(['', tpSigF(t, 6)].concat(cs.map(x => tpSigF(x.sd[j], 6))))); out.push([]);
     out.push(['Wells (n)', ''].concat(cs.map(x => x.live.length))); out.push([]);
     out.push(['Largest change against dose', 'Dose', 'Largest change (x)', 'at (h)', 'Level at the end (x)'].concat(TP.S.tc.fit ? ['k (h-1)', 'Plateau (x)', 'Delay (h)'] : [])); cs.forEach(x => { const f = x.m && x.m.fit && x.m.fit.ok ? x.m.fit : null; out.push(['', d(x), x.m && x.m.ok ? tpSigF(x.m.ext) : null, x.m && x.m.ok && x.m.cls !== 'tc-flat' ? tpSigF(x.m.tExt) : null, x.m && x.m.ok ? tpSigF(x.m.fin) : null].concat(TP.S.tc.fit ? [f ? tpSigF(f.k) : null, f ? tpSigF(f.plat) : null, f && f.lag != null ? tpSigF(f.lag) : null] : [])); }); out.push([], []); });
-  tpDownload(tpBase() + '_tempo_prism.csv', tpBlob(tpCSV(out))); tpToast('Prism tables written');
+  tpDownload(tpFile('Prism', 'csv'), tpBlob(tpCSV(out))); tpToast('Prism tables written');
 }
 function tpResultsJSONTC(p) {
   const res = tpRes(p); return { app: TP_ABOUT.ver, experiment: 'timecourse', settings: TP.S, method: tpMethodText(), conditions: res.compounds.map(c => ({ condition: c.compound, target: c.target, class: c.cls, doseUnit: c.cu === 'mass' ? 'ug/mL' : 'nM', doses: c.concs.map(cc => ({ dose: cc.c, n: cc.live.length, largestChange: cc.m.ok ? cc.m.ext : null, largestChangeIs: cc.m.ok ? cc.m.extQ : null, atH: cc.m.ok ? cc.m.tExt : null, endLevel: cc.m.ok ? cc.m.fin : null, t12H: cc.m.ok ? cc.m.t12 : null, onsetH: cc.m.ok ? cc.m.onset : null, fastestPerH: cc.m.ok && cc.m.rate ? cc.m.rate.v : null, meanChangePct: cc.m.ok && cc.m.auc && cc.m.auc.mean != null ? cc.m.auc.mean * 100 : null, class: cc.m.ok ? cc.m.cls : null, fit: cc.m.fit && cc.m.fit.ok ? { kPerH: cc.m.fit.k, kCI: [cc.m.fit.kLo, cc.m.fit.kHi], kIs: cc.m.fit.kq, plateau: cc.m.fit.plat, plateauCI: [cc.m.fit.platLo, cc.m.fit.platHi], plateauIs: cc.m.fit.platq, delayH: cc.m.fit.lag, t12FitH: cc.m.fit.t12, initialRatePerH: cc.m.fit.v0, R2: cc.m.fit.r2 } : (cc.m.fit ? { notFitted: cc.m.fit.why } : null) })) })) };
@@ -5995,7 +6005,7 @@ function tpScreenTable(plates) {
   (plates || TP.plates).forEach(p => { const res = tpRes(p); if (res) res.compounds.forEach(c => kin.push(tpKinCells(c))); });
   return [SCR_COLS.concat(TP_KIN_COLS)].concat(recs.map((r, i) => SCR_COLS.map(k => r[k] === undefined ? null : r[k]).concat(kin[i] || TP_KIN_COLS.map(() => null))));
 }
-function tpExportScreenCSV() { if (tpTC()) { tpToast('A time course has no screen table: it has no DC50 or Dmax.', 'warn'); return; } const t = tpScreenTable(); if (t.length < 2) { tpToast('Nothing to export yet', 'warn'); return; } tpDownload(tpBase() + '_tempo_screen.csv', tpBlob(tpCSV(t))); tpToast('Screen table written: drop it on Hit Finder'); }
+function tpExportScreenCSV() { if (tpTC()) { tpToast('A time course has no screen table: it has no DC50 or Dmax.', 'warn'); return; } const t = tpScreenTable(); if (t.length < 2) { tpToast('Nothing to export yet', 'warn'); return; } tpDownload(tpFile('Screen', 'csv'), tpBlob(tpCSV(t))); tpToast('Screen table written: drop it on Hit Finder'); }
 function tpSendToHitFinder() {
   if (tpTC()) { tpToast('Hit Finder takes degradation screens (DC50, Dmax): a time course has none.', 'warn'); return; }
   const t = tpScreenTable(); if (t.length < 2) { tpToast('Nothing to send yet', 'warn'); return; }

@@ -717,9 +717,9 @@ try {
   check('L21 the Assay ID typed in Setup is the run\'s name, in the file stem and in the session', a.id === 'CTG20261022_72h' && a.stem === 'CTG20261022_72h' && a.sess === 'CTG20261022_72h', JSON.stringify(a));
   await ev(() => lsClose());
   const c1 = await capture(() => exportResultsCSV()), c2 = await capture(() => exportRawCSV());
-  check('L21 the results CSV and the raw CSV are named after the Assay ID', /^CTG20261022_72h_Results_/.test(c1.name) && /^CTG20261022_72h_RawData_/.test(c2.name), c1.name + ' | ' + c2.name);
+  check('L21 the results CSV and the raw CSV are named after the Assay ID', /^CTG20261022_72h_Lumina_Results_\d{4}-\d\d-\d\d\.csv$/.test(c1.name) && /^CTG20261022_72h_Lumina_RawData_\d{4}-\d\d-\d\d\.csv$/.test(c2.name), c1.name + ' | ' + c2.name);
   const xl = await ev(() => { var nm = null, was = XLSX.writeFile, ws = XLSX.utils.aoa_to_sheet; XLSX.writeFile = function(wb, n){ nm = n; XLSX.writeFile = was; window.__wb = wb; }; exportXLSX(); XLSX.writeFile = was; var p = window.__wb && window.__wb.Sheets['Data Analysis Protocol']; return { name: nm, id: p ? XLSX.utils.sheet_to_json(p, { header: 1 }).filter(function(r){ return r[0] === 'Assay ID'; }).map(function(r){ return r[1]; })[0] : null }; });
-  check('L21 the workbook is named after the Assay ID and its Methods sheet says it', xl.name && /^CTG20261022_72h_Results_.*\.xlsx$/.test(xl.name) && xl.id === 'CTG20261022_72h', JSON.stringify(xl));
+  check('L21 the workbook is named after the Assay ID and its Methods sheet says it', xl.name && /^CTG20261022_72h_Lumina_Results_\d{4}-\d\d-\d\d\.xlsx$/.test(xl.name) && xl.id === 'CTG20261022_72h', JSON.stringify(xl));
   const lbl = await ev(() => { var got = null; var par = window.parent, was = par.openApp; par.openApp = function(a, b, c, ctx){ got = ctx; }; try { sendResultsToLabbook(); } finally { par.openApp = was; } return got && got.results[0] && { id: got.results[0].assayId, label: got.results[0].label, sess: got.results[0].session.assayId }; });
   check('L21 the result set sent to Labbook carries the Assay ID in its label and its session', lbl === null ? true : (lbl && lbl.id === 'CTG20261022_72h' && lbl.label.indexOf('CTG20261022_72h') === 0 && lbl.sess === 'CTG20261022_72h'), JSON.stringify(lbl));
   const saved = await ev(() => lmSession());
@@ -949,7 +949,7 @@ try {
     o.curves = txts.map(t => (t.match(/ c\n| c /g) || []).length > 20).join();
     return o;
   });
-  check('L35 Curve PDFs: with two plates a list of plates to tick (all ticked), one PDF per ticked plate, named for the Assay ID and the plate', r.dlg && r.boxes === 2 && r.ticked === 2 && r.one.join() === 'PDF1_Curves_Plate_1.pdf' && r.files.join() === 'PDF1_Curves_Plate_1.pdf,PDF1_Curves_Plate_2.pdf', JSON.stringify([r.dlg, r.boxes, r.ticked, r.one, r.files]));
+  check('L35 Curve PDFs: with two plates a list of plates to tick (all ticked), one PDF per ticked plate, named for the Assay ID and the plate', r.dlg && r.boxes === 2 && r.ticked === 2 && r.one.join().replace(/_\d{4}-\d\d-\d\d/g, '') === 'PDF1_Lumina_Curves_Plate_1.pdf' && r.files.join().replace(/_\d{4}-\d\d-\d\d/g, '') === 'PDF1_Lumina_Curves_Plate_1.pdf,PDF1_Lumina_Curves_Plate_2.pdf', JSON.stringify([r.dlg, r.boxes, r.ticked, r.one, r.files]));
   check('L35 each PDF is a real PDF with a page per six curves, the figures drawn inside it as vectors, and holds its own plate\'s compounds only', r.head === '%PDF-1.4,%PDF-1.4' && r.pages === '1,1' && r.hasNames && r.cm.split(',').every((c, i) => +c >= (i ? 2 : 4)) && r.curves === 'true,true', JSON.stringify([r.head, r.pages, r.hasNames, r.cm, r.curves]));
 } catch (err) { check('L35 the checks ran to the end', false, String(err && err.message || err).split('\n')[0]); }
 

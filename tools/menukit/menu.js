@@ -12,7 +12,8 @@
    MenuKit.tabs({ bar, select, pane })  the tab row as one component: roving tabindex (the open tab is the one stop), ← → Home End move along it and wrap, the tab that gets the focus opens
                                  (select(name) is the app's own switch), aria-controls and role=tabpanel on the panes (pane(name) → the pane's id); [ and ] open the previous and the
                                  next tab from anywhere outside a field, a menu or a dialog
-   Pinned chrome                 the header and the tab row stay at the top while the page scrolls (menu.css); --mk-top and --mk-stick are measured here */
+   Pinned chrome                 the header and the tab row stay at the top while the page scrolls (menu.css); --mk-top and --mk-stick are measured here
+   MenuKit.fileName(app, name, what, ext)  every file the three apps write: <name>_<App>_<What>_<YYYY-MM-DD>.<ext> (CTG20261022_Lumina_Results_2026-11-02.xlsx); no name → <App>_<What>_<date> */
 var MenuKit = (function(){
   var root = document.documentElement, redrawFn = null, pend = 0;
   function byId(i){ return document.getElementById(i); }
@@ -104,6 +105,13 @@ var MenuKit = (function(){
     var hh = h && getComputedStyle(h).display !== 'none' ? h.offsetHeight : 0;
     root.style.setProperty('--mk-top', hh + 'px'); root.style.setProperty('--mk-stick', (hh + bar.offsetHeight) + 'px');
   }
+  /* ── file names: one scheme in the three apps (they had Lumina_Results_<date>.xlsx, beacon-<file>.xlsx and <plate>_tempo.xlsx) ── */
+  function fileName(app, name, what, ext){
+    var clean = function(s){ return String(s == null ? '' : s).trim().replace(/[^\w.\-]+/g, '_').replace(/_?-_?/g, '-').replace(/_+/g, '_').replace(/^[_.\-]+|[_.\-]+$/g, ''); };
+    var d = new Date(), day = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+    var stem = [clean(name).slice(0, 60), app, clean(what), day].filter(Boolean).join('_');
+    return ext ? stem + '.' + ext : stem;
+  }
   function init(o){
     pin(); window.addEventListener('resize', pin);
     if (window.ResizeObserver) { var ro = new ResizeObserver(pin); [document.querySelector('body > header'), document.querySelector('.tabbar')].forEach(function(x){ if (x) ro.observe(x); }); }
@@ -147,7 +155,7 @@ var MenuKit = (function(){
     var j = k === 'Home' ? 0 : k === 'End' ? list.length - 1 : k === 'ArrowDown' ? (i + 1) % list.length : (i <= 0 ? list.length - 1 : i - 1);
     e.preventDefault(); e.stopPropagation(); if (list[j]) list[j].focus();
   }, true);
-  return { init: init, tabs: tabs, items: items, closeAll: closeAll, toggle: toggle, toggleOpts: toggleOpts, toggleTheme: toggleTheme };
+  return { init: init, tabs: tabs, items: items, closeAll: closeAll, toggle: toggle, toggleOpts: toggleOpts, toggleTheme: toggleTheme, fileName: fileName };
 })();
 function toggleOpts(f){ MenuKit.toggleOpts(f); }
 function toggleTheme(){ MenuKit.toggleTheme(); }

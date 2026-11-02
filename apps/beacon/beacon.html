@@ -1751,7 +1751,8 @@ html{scroll-padding-top:calc(var(--mk-stick,0px) + 12px);}
    MenuKit.tabs({ bar, select, pane })  the tab row as one component: roving tabindex (the open tab is the one stop), ← → Home End move along it and wrap, the tab that gets the focus opens
                                  (select(name) is the app's own switch), aria-controls and role=tabpanel on the panes (pane(name) → the pane's id); [ and ] open the previous and the
                                  next tab from anywhere outside a field, a menu or a dialog
-   Pinned chrome                 the header and the tab row stay at the top while the page scrolls (menu.css); --mk-top and --mk-stick are measured here */
+   Pinned chrome                 the header and the tab row stay at the top while the page scrolls (menu.css); --mk-top and --mk-stick are measured here
+   MenuKit.fileName(app, name, what, ext)  every file the three apps write: <name>_<App>_<What>_<YYYY-MM-DD>.<ext> (CTG20261022_Lumina_Results_2026-11-02.xlsx); no name → <App>_<What>_<date> */
 var MenuKit = (function(){
   var root = document.documentElement, redrawFn = null, pend = 0;
   function byId(i){ return document.getElementById(i); }
@@ -1843,6 +1844,13 @@ var MenuKit = (function(){
     var hh = h && getComputedStyle(h).display !== 'none' ? h.offsetHeight : 0;
     root.style.setProperty('--mk-top', hh + 'px'); root.style.setProperty('--mk-stick', (hh + bar.offsetHeight) + 'px');
   }
+  /* ── file names: one scheme in the three apps (they had Lumina_Results_<date>.xlsx, beacon-<file>.xlsx and <plate>_tempo.xlsx) ── */
+  function fileName(app, name, what, ext){
+    var clean = function(s){ return String(s == null ? '' : s).trim().replace(/[^\w.\-]+/g, '_').replace(/_?-_?/g, '-').replace(/_+/g, '_').replace(/^[_.\-]+|[_.\-]+$/g, ''); };
+    var d = new Date(), day = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+    var stem = [clean(name).slice(0, 60), app, clean(what), day].filter(Boolean).join('_');
+    return ext ? stem + '.' + ext : stem;
+  }
   function init(o){
     pin(); window.addEventListener('resize', pin);
     if (window.ResizeObserver) { var ro = new ResizeObserver(pin); [document.querySelector('body > header'), document.querySelector('.tabbar')].forEach(function(x){ if (x) ro.observe(x); }); }
@@ -1886,7 +1894,7 @@ var MenuKit = (function(){
     var j = k === 'Home' ? 0 : k === 'End' ? list.length - 1 : k === 'ArrowDown' ? (i + 1) % list.length : (i <= 0 ? list.length - 1 : i - 1);
     e.preventDefault(); e.stopPropagation(); if (list[j]) list[j].focus();
   }, true);
-  return { init: init, tabs: tabs, items: items, closeAll: closeAll, toggle: toggle, toggleOpts: toggleOpts, toggleTheme: toggleTheme };
+  return { init: init, tabs: tabs, items: items, closeAll: closeAll, toggle: toggle, toggleOpts: toggleOpts, toggleTheme: toggleTheme, fileName: fileName };
 })();
 function toggleOpts(f){ MenuKit.toggleOpts(f); }
 function toggleTheme(){ MenuKit.toggleTheme(); }
@@ -4475,7 +4483,7 @@ function bGraphShow(){
     : bEmpty('graph', 'Nothing to draw yet', 'Read a plate first, then mark its compounds: the figure — bars or dose–response curves, with error bars, PNG at 1200 dpi and PDF — is made from them.', 'Go to the plate', "switchTab('plate')", '<button class="lm-link bn-empty-alt" onclick="bsOpen()">Open Setup</button>'));
   root.style.display = has ? '' : 'none';
   if (!has) return;
-  if (!_bgKit) _bgKit = ChartKit.mount(root, { key: 'beacon', doc: bGraphDoc, slot: bGraphSlot, filename: function(){ return 'beacon-' + (bAnalysisName() ? bAnalysisName().replace(/\s+/g, '_') : (bReadyPlates().length ? bBaseName(bReadyPlates()[0].file) || 'figure' : 'figure')); }, toast: beaconToast });
+  if (!_bgKit) _bgKit = ChartKit.mount(root, { key: 'beacon', doc: bGraphDoc, slot: bGraphSlot, filename: function(){ return _bFile('Figure'); }, toast: beaconToast });
   else _bgKit.refresh();
   _bgRev = state.rev;
 }
@@ -5155,7 +5163,8 @@ function bResultsTable(){
   });
   return { head: head, rows: rows };
 }
-function _bFileStem(){ var n = state.plates.filter(bComplete).map(function(pl){ return bBaseName(pl.file); }).filter(Boolean)[0]; return 'beacon-' + (n || 'results').replace(/[^\w.\-]+/g, '_').slice(0, 40); }
+// Every file Beacon writes: <analysis name or reader file>_Beacon_<what>_<date>.<ext>, the scheme of Lumina and Tempo (MenuKit.fileName)
+function _bFile(what, ext){ var n = bAnalysisName() || state.plates.filter(bComplete).map(function(pl){ return bBaseName(pl.file); }).filter(Boolean)[0] || ''; return MenuKit.fileName('Beacon', n, what, ext); }
 function _bDownload(name, text, mime){
   var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: mime || 'text/plain' })); a.download = name;
   document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 1500);
@@ -5164,7 +5173,7 @@ function _bCsvCell(v){ var s = v === null || v === undefined ? '' : String(v); s
 function exportResultsCSV(){
   if (!bReadyPlates().length) { beaconToast('Nothing to export yet — add the readings first.', 'err'); return; }
   var t = bResultsTable();
-  _bDownload(_bFileStem() + '-results.csv', [t.head].concat(t.rows).map(function(r){ return r.map(_bCsvCell).join(','); }).join('\r\n'), 'text/csv');
+  _bDownload(_bFile('Results', 'csv'), [t.head].concat(t.rows).map(function(r){ return r.map(_bCsvCell).join(','); }).join('\r\n'), 'text/csv');
 }
 function copyResultsTSV(){
   var t = bResultsTable(); if (!t.rows.length) { beaconToast('No dose–response to copy yet.', 'err'); return; }
@@ -5174,7 +5183,7 @@ function copyResultsTSV(){
 }
 function rsSavePNG(){
   var c = document.getElementById('rs-curve'); if (!c || !bFits().some(function(f){ return f.fit; })) { beaconToast('There is no curve to save yet.', 'err'); return; }
-  var a = document.createElement('a'); a.href = c.toDataURL('image/png'); a.download = _bFileStem() + '-curves.png'; document.body.appendChild(a); a.click(); a.remove();
+  var a = document.createElement('a'); a.href = c.toDataURL('image/png'); a.download = _bFile('Curves', 'png'); document.body.appendChild(a); a.click(); a.remove();
 }
 function bPlateLongRows(){
   var rows = [['Plate', 'Well', 'Role', 'Compound', 'Concentration (nM)', 'Donor', 'Acceptor', 'Raw mBRET', 'Corrected mBRET', 'Excluded_from_fit']];
@@ -5201,7 +5210,7 @@ function exportPlateMBretXLSX(){
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(_sanitizeAoa(aoa)), k);
   });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(_sanitizeAoa(bPlateLongRows())), 'All wells');
-  XLSX.writeFile(wb, _bFileStem() + '-mbret.xlsx');
+  XLSX.writeFile(wb, _bFile('mBRET', 'xlsx'));
 }
 function _bProtocolAoa(){
   var _tz = Intl.DateTimeFormat().resolvedOptions().timeZone, now = new Date().toLocaleString('en-GB', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).replace(',', '') + ' (' + _tz + ')', disp = state.assayMode === 'displacement';
@@ -5258,7 +5267,7 @@ async function bWriteCurvePDFs(groups){
         if (i % 6 === 5) await new Promise(function(res){ setTimeout(res, 0); });
       }
       var pl = bPlateName(groups[g].plate), blob = X.curvePDF({ cards: cards, title: pl + ' \u00b7 ' + mode, right: (name ? name + '   \u00b7   ' : '') + cards.length + (cards.length === 1 ? ' compound' : ' compounds'), foot: 'dHUB Beacon \u00b7 ' + stamp });
-      files.push({ blob: blob, name: _bFileStem() + '-curves' + (state.plates.filter(bComplete).length > 1 ? '-' + String(pl).replace(/[\\/:*?"<>|\s]+/g, '_') : '') + '.pdf' });
+      files.push({ blob: blob, name: _bFile('Curves' + (state.plates.filter(bComplete).length > 1 ? '_' + String(pl) : ''), 'pdf') });
     }
     files.forEach(function(f, k){ setTimeout(function(){ X.save(f.blob, f.name); }, k * 350); });
     beaconToast(files.length === 1 ? 'Curve PDF ready \u2014 ' + files[0].name : files.length + ' curve PDFs ready (one per plate).');
@@ -5288,7 +5297,7 @@ function generateOutputXLSX(){
   var seen = {};
   state.plates.forEach(function(pl){ if (pl.metaRows && pl.metaRows.length && !seen[pl.file]) { seen[pl.file] = 1; pbk.push({ title: 'PHERAstar PROTOCOL' + (pl.file ? ' (' + pl.file + ')' : ''), aoa: _sanitizeAoa(pl.metaRows) }); } });
   XLSX.utils.book_append_sheet(wb, SheetKit.sheet(pbk), 'Assay Protocol');
-  XLSX.writeFile(wb, _bFileStem() + '.xlsx');
+  XLSX.writeFile(wb, _bFile('Results', 'xlsx'));
 }
 
 

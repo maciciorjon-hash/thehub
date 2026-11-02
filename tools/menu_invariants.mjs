@@ -27,6 +27,8 @@
 //     concentrations (1 nM, 10 nM) like Beacon's and Tempo's, not log₁₀ M; Tempo's flags on screen are words (R² 0.53, DC50 above the doses, hook at 2 doses), the files keep the codes
 // M15 every workbook the three apps write is clean and alike: no NaN / undefined / Infinity / [object in a cell, and no number with the float's tail (Lumina and Beacon wrote
 //     103.87337551440858 and 3333.3333333333335; SheetKit now writes six significant figures, as Tempo did)
+// M16 every file the three apps write is named one way: <name>_<App>_<What>_<YYYY-MM-DD>.<ext> (MenuKit.fileName) — they were Lumina_Results_<date>.xlsx,
+//     beacon-<file>.xlsx and <plate>_tempo.xlsx, with -results / _Results / _tempo_tidy for the same kinds of file
 import { chromium } from 'playwright';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -302,6 +304,37 @@ for (const id of ['lumina', 'beacon', 'tempo']) {   // M10 · M11 · M13
     check(`M15 ${id} ${fn}: the workbook has no NaN / undefined / [object and no float tail in a number`, !r.err && !r.bad.length && !r.n, r);
     await ctx.close();
   }
+}
+
+{   // M16 — one way to name a file
+  const VENDOR = (await import('fs')).readFileSync(path.join(ROOT, 'vendor/xlsx.full.min.js'), 'utf8');
+  const J = { lumina: [`loadLuminaTestData(); switchTab('results')`, ['exportXLSX()', 'exportResultsCSV()', 'exportRawCSV()'], 'Lumina'],
+    beacon: [`loadTestData('gain'); switchTab('results')`, ['generateOutputXLSX()', 'exportPlateMBretXLSX()', 'exportResultsCSV()', 'rsSavePNG()'], 'Beacon'],
+    tempo: [`await tpLoadExample('degradation'); tpTab('results')`, ['tpExportXLSX()', 'tpExportCSV()', 'tpExportPrism()', 'tpExportScreenCSV()', 'tpSaveMethod()'], 'Tempo'] };
+  const names = {};
+  for (const id in J) {
+    const [seed, fns, App] = J[id];
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, acceptDownloads: true }), pg = await ctx.newPage();
+    await pg.route('**/xlsx.full.min.js', r => r.fulfill({ contentType: 'application/javascript', body: VENDOR }));
+    await pg.route(/^https?:(?!.*xlsx\.full\.min\.js)/, r => r.abort());
+    await pg.addInitScript(() => { try { localStorage.setItem('assist_seen', '1'); } catch (e) {} });
+    await pg.goto('file://' + path.join(ROOT, `apps/${id}/${id}.html`)); await pg.waitForFunction(() => window.XLSX, null, { timeout: 10000 }).catch(() => {}); await pg.waitForTimeout(500);
+    await run(pg, seed); await pg.waitForTimeout(2200);
+    names[id] = await pg.evaluate(async fns => {
+      const got = [], ow = XLSX.writeFile, oc = HTMLAnchorElement.prototype.click;
+      XLSX.writeFile = (wb, n) => got.push(n); HTMLAnchorElement.prototype.click = function () { if (this.download) got.push(this.download); else oc.call(this); };
+      try { for (const f of fns) { try { await eval(f); } catch (e) { got.push('threw ' + f + ': ' + e); } await new Promise(r => setTimeout(r, 900)); } } finally { XLSX.writeFile = ow; HTMLAnchorElement.prototype.click = oc; }
+      return got;
+    }, fns);
+    names[id].push(await pg.evaluate(App => MenuKit.fileName(App, '', 'Figure', 'png'), App));
+    await ctx.close();
+    const re = new RegExp('^([A-Za-z0-9][\\w.\\-]*_)?' + App + '_[A-Za-z][\\w.\\-]*_\\d{4}-\\d\\d-\\d\\d\\.(xlsx|csv|pdf|png|svg|txt)$');
+    const bad = names[id].filter(n => !re.test(n));
+    check(`M16 ${id}: every file is <name>_${App}_<What>_<date>.<ext> (${names[id].length} files)`, names[id].length >= fns.length + 1 && bad.length === 0, bad.length ? bad : names[id]);
+  }
+  const kinds = id => names[id].map(n => n.replace(/^(.*?_)?(Lumina|Beacon|Tempo)_/, '').replace(/_\d{4}.*$/, ''));
+  check('M16 the same kind of file has the same word in the three apps: Results (workbook and table)', ['lumina', 'beacon', 'tempo'].every(id => kinds(id).includes('Results')), { lumina: kinds('lumina'), beacon: kinds('beacon'), tempo: kinds('tempo') });
+  check('M16 a name with spaces and symbols is written plainly', await (async () => { const { ctx, pg } = await boot('lumina'); const n = await pg.evaluate(() => MenuKit.fileName('Lumina', ' Demo - protein/protein (2) ', 'Results', 'xlsx')); await ctx.close(); return /^Demo-protein_protein_2_Lumina_Results_\d{4}-\d\d-\d\d\.xlsx$/.test(n) || n; })());
 }
 await browser.close();
 console.log(findings.length ? `\n${findings.length} finding(s), ${passed} checks passed.` : `\nAll ${passed} menu invariants hold.`);
