@@ -683,7 +683,7 @@ if (run('AR19')) await guard('AR19', 'alphalisa', async () => {
   let t = await stepsOf(p, 'alphalisa', { 'al-wells': 40, 'al-cpw': 12000, 'al-vpw': 40, 'al-count': 2, 'al-excess': 1.2,
     'al-twells': 30, 'al-tvol': 40, 'al-tex': 1.1, 'al-cqstock': 20, 'al-cqtarget': 50, 'al-echonl': 80,
     'al-lwells': 24, 'al-lvol': 12, 'al-lex': 1.25, 'al-lbx': 5, 'al-pix': 20, 'al-phix': 20,
-    'al-awells': 24, 'al-avol': 5, 'al-aex': 1.25, 'al-dwells': 24, 'al-dvol': 5, 'al-dex': 1.25, 'al-dbeads': 6 });
+    'al-awells': 24, 'al-avol': 5, 'al-aex': 1.25, 'al-dwells': 24, 'al-dvol': 5, 'al-dex': 1.25, 'al-dfold': 51 });
   N('suspension mL (40 wells x 40 uL x 1.2)', t, /Prepare ([\d.]+) mL of suspension/, 1.92, 0.006);
   N('cells uL (12,000 x 40 x 1.2 / 2,000 per uL)', t, /: ([\d.]+) µL of your/, 288, 0.6);
   N('DMEM mL (1920 - 288 uL)', t, /\+ ([\d.]+) mL DMEM/, 1.63, 0.006);
@@ -702,10 +702,37 @@ if (run('AR19')) await guard('AR19', 'alphalisa', async () => {
   N('Revvity example, Reaction Buffer 1', t, /Reaction Buffer 1 ([\d.]+) µL/, 141, 0);
   N('Revvity example, Activation Buffer', t, /Activation Buffer ([\d.]+) µL/, 12, 0);
   N('Revvity example, Acceptor Beads', t, /Acceptor Beads ([\d.]+) µL/, 6, 0);
+  // the Revvity tab: its own defaults load into the boxes (22.5 uL inhibitor, 25 uL lysis, no inhibitors, Donor beads 50-fold) and the arithmetic follows
+  const RV = "setMethodBranch('alphalisa','revvity')";
+  t = await stepsOf(p, 'alphalisa', { 'al-wells': 40, 'al-vpw': 50, 'al-twells': 40, 'al-tex': 1, 'al-lwells': 24, 'al-lex': 1.25, 'al-awells': 24, 'al-aex': 1.25, 'al-dwells': 24, 'al-dex': 1.25 }, RV);
+  N('Revvity inhibitor mL (40 x 22.5 uL)', t, /Replace the culture medium with 22\.5 µL of inhibitor in serum-free medium; prepare ([\d.]+) µL/, 900, 0.6);
+  N('Revvity 5X lysis buffer uL (24 x 25 x 1.25 / 5)', t, /: ([\d.]+) µL of 5X lysis buffer/, 150, 0.6);
+  N('Revvity lysis water uL (750 - 150)', t, /and ([\d.]+) µL of water/, 600, 0.6);
+  if (/protease|phosphatase/i.test(t.split('Day 1, part 2 — Lysis buffer')[1].split('Acceptor mix')[0])) bad('AR19', 'the Revvity lysis buffer lists an inhibitor it does not have'); else ok();
+  N('Revvity Acceptor Beads uL (150 / 50)', t, /Acceptor Beads ([\d.]+) µL/, 3, 0.06);
+  N('Revvity Donor beads uL (150 / 50)', t, /Donor beads ([\d.]+) µL/, 3, 0.06);
+  N('Revvity dilution buffer uL (150 - 3)', t, /dilution buffer ([\d.]+) µL/, 147, 0.6);
   const d = await p.evaluate(() => { const D = PROTOCOL_DATA.alphalisa, c = PROTOCOLS.find(x => x.id === 'alphalisa');
-    return { days: (D.stages || []).map(s => s.day), cat: c && c.category, boxes: document.querySelectorAll('#detail-alphalisa .calc-box').length,
-             tokens: JSON.stringify(D).match(/\{\{[^}]*\}\}/g).length > 0 }; });
-  if (d.days.join() !== '0,1,1,1') bad('AR19', 'the stages fall on days ' + d.days.join() + ', not 0,1,1,1'); else ok();
+    const val = (id) => parseFloat(document.getElementById(id).value);
+    const par = (k) => { let v = null; (D.stages || []).forEach(st => (st.body || []).forEach(b => { if (b.t === 'steps') b.items.forEach(it => { if (it.params && it.params[k]) v = it.params[k].value; }); })); return v; };
+    const tab = (m) => { setMethodBranch('alphalisa', m); showDTab('alphalisa', 'protocol'); const w = document.getElementById('detail-alphalisa');
+      return { names: [...w.querySelectorAll('.proto-day-label, .proto-section')].map(x => x.textContent), on: [...w.querySelectorAll('.vtab-btn.active')].map(x => x.textContent) }; };
+    const rv = tab('revvity');
+    const rvBoxes = { seed: [par('rvSeedVol'), val('al-vpw')], treat: [par('rvTreatVol'), val('al-tvol')], lysis: [par('rvLysisVol'), val('al-lvol')], acc: [par('rvAcceptorVol'), val('al-avol')], don: [par('rvDonorVol'), val('al-dvol')], fold: [50, val('al-dfold')], pi: [0, val('al-pix')], phi: [0, val('al-phix')] };
+    const ih = tab('inhouse');
+    const ihBoxes = { treat: [par('treatVol'), val('al-tvol')], lysis: [par('lysisVol'), val('al-lvol')], fold: [51, val('al-dfold')], pi: [20, val('al-pix')], phi: [20, val('al-phix')] };
+    const days = (v) => (D.stages || []).filter(s => s.variant === v).map(s => s.day);
+    return { inDays: days('inhouse'), rvDays: days('revvity'), cat: c && c.category, boxes: document.querySelectorAll('#detail-alphalisa .calc-box').length,
+             tokens: JSON.stringify(D).match(/\{\{[^}]*\}\}/g).length > 0, rv, ih, rvBoxes, ihBoxes, tabs: document.querySelectorAll('#detail-alphalisa .vtab-btn').length,
+             variants: (D.variants || []).map(x => x.label), untagged: (D.stages || []).filter(s => !s.variant).length }; });
+  if (d.inDays.join() !== '0,1,1,1') bad('AR19', 'the in-house stages fall on days ' + d.inDays.join() + ', not 0,1,1,1'); else ok();
+  if (d.rvDays.join() !== '0,1,1,1,1') bad('AR19', 'the Revvity stages fall on days ' + d.rvDays.join() + ', not 0,1,1,1,1'); else ok();
+  if (d.untagged) bad('AR19', d.untagged + ' stage(s) belong to neither tab'); else ok();
+  if (d.tabs !== 2 || d.variants.join('|') !== 'In house protocol (Zher Yin)|Revvity') bad('AR19', 'the tabs are ' + d.variants.join('|') + ' (' + d.tabs + ' buttons)'); else ok();
+  if (d.rv.on.join() !== 'Revvity' || d.ih.on.join() !== 'In house protocol (Zher Yin)') bad('AR19', 'the active tab is not the one picked: ' + d.rv.on + ' / ' + d.ih.on); else ok();
+  if (d.rv.names.some(n => /MEF|chloroquine/i.test(n)) || !d.rv.names.some(n => /Acceptor beads/.test(n)) || d.rv.names.length !== 5) bad('AR19', 'the Revvity tab shows ' + d.rv.names.join(' | ')); else ok();
+  if (d.ih.names.length !== 4 || d.ih.names.some(n => /^Assay/.test(n))) bad('AR19', 'the in-house tab shows ' + d.ih.names.join(' | ')); else ok();
+  Object.entries(d.rvBoxes).concat(Object.entries(d.ihBoxes)).forEach(([k, [step, box]]) => { if (step !== box) bad('AR19', 'a step says ' + step + ' but its calculator box holds ' + box + ' (' + k + ')'); else ok(); });
   if (d.cat !== 'cellbio') bad('AR19', 'the card is under ' + d.cat); else ok();
   if (d.boxes !== 5) bad('AR19', d.boxes + ' calculator boxes, not 5'); else ok();
   await p.context().close();

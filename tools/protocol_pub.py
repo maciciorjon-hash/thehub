@@ -76,6 +76,12 @@ PUB = {
    'The medium was replaced with {{treatVol}} of DMEM containing the compound, with chloroquine at {{cq}} final, and the cells were treated for {{treatTime}} at {{treatTemp}}.',
    'The cells were washed once with PBS and lysed in {{lysisVol}} of lysis buffer containing protease and phosphatase inhibitors, shaking at {{shakeRpm}} at room temperature for {{shakeTime}}. {{acceptorVol}} of AlphaLISA SureFire Ultra Acceptor bead mix was added in the dark and incubated for {{acceptorTime}} at room temperature.',
    '{{donorVol}} of Donor bead mix was added in the dark and the plate incubated for at least {{donorTime}} at room temperature before reading on an AlphaScreen/AlphaLISA-compatible plate reader.',
+   # the Revvity tab (stages 5-9), as in the SureFire Ultra manual's 2-plate protocol for adherent cells
+   'Cells were seeded in {{rvSeedVol}} per well of a 384-well tissue-culture plate and incubated at {{rvSeedTemp}} overnight in serum-containing growth medium.',
+   'The culture medium was replaced with {{rvTreatVol}} of inhibitor prepared in serum-free medium, the cells were incubated at {{rvTreatTemp}} for {{rvTreatTime}}, and {{rvAgonistVol}} of 10X agonist in serum-free medium was added.',
+   'The cells were lysed in {{rvLysisVol}} of freshly prepared 1X AlphaLISA SureFire Ultra lysis buffer on a plate shaker at about {{rvShakeRpm}} for {{rvShakeTime}} at room temperature, and {{rvTransferVol}} of lysate was transferred to a 384-well white OptiPlate.',
+   '{{rvAcceptorVol}} of Acceptor mix was added, the plate sealed with TopSeal-A, covered with foil and incubated for {{rvAcceptorTime}} at room temperature.',
+   '{{rvDonorVol}} of Donor mix was added under subdued light, the plate sealed, covered with foil and incubated for {{rvDonorTime}} at room temperature in the dark, and read on an Alpha Technology-compatible plate reader with the standard AlphaLISA settings.',
  ],
  'ctg2': [
    '',   # reagent thawing
