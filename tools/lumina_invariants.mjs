@@ -290,7 +290,7 @@ try { if (hasX) {
     texts.raw = csv((await capture(() => exportRawCSV())).text)[0].join(' ');
     texts.copy = await ev(async () => { let t = ''; Object.defineProperty(navigator, 'clipboard', { value: { writeText: x => { t = x; return Promise.resolve(); } }, configurable: true }); copyResultsTSV(); await new Promise(r => setTimeout(r, 50)); return t.split('\n')[0]; });
     await ev(() => exportXLSX()); const wb = await ev(() => window.__wb);
-    texts.xlsxResults = wb ? wb.sheets[0].rows[0].join(' ') : '';
+    texts.xlsxResults = wb ? wb.sheets[0].rows.map(r => r.join(' ')).join(' ') : '';
     texts.xlsxProtocol = wb ? wb.sheets.find(x => /Protocol/.test(x.n)).rows.slice(0, 3).map(r => r.join(' ')).join(' ') : '';
     texts.labbook = await ev(() => { const r = luminaResultRows()[0]; return r.potencyLabel + ' ' + r.effectLabel; });
     const fname = (await download(() => plotSavePNG())).name; texts.pngName = fname;
@@ -508,17 +508,20 @@ try {
     o.sheets = wb ? wb.SheetNames : [];
     const aoa = n => XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, defval: '' });
     // one Results sheet, a block for each view (its name, then its header and rows)
-    const res = aoa('Results'), at = v => res.findIndex(x => x[0] === v), ia = at('Luminescence'), ib = at('Viability'), ic = at('Relative');
-    o.hdrL = (res[ia + 1] || []).join(','); o.hdrV = (res[ib + 1] || []).join(',');
+    const res = aoa('Results'), at = v => res.findIndex(x => x[0] === v + ' \u2014 RESULTS'), ia = at('Luminescence'), ib = at('Viability'), ic = at('Relative');
+    o.hdrL = (res[ia + 2] || []).join(','); o.hdrV = (res[ib + 2] || []).join(',');
     o.nRes = [ib - ia - 1, ic - ib - 1, res.length - ic].join();
-    // one Prism sheet: the three tables side by side from the top of the sheet, a blank column between, the view's name in each table's corner
-    const pr = aoa('Prism'), c0 = pr[0].indexOf('Luminescence'), c1 = pr[0].indexOf('Viability'), c2 = pr[0].indexOf('Relative'), w = c1 - c0 - 1;
-    const blk = k => pr.slice(2, 4).map(row => row.slice(k, k + w).join('|')).join('/');
-    o.prism = [c0, c1, c2].join() + ':' + w + ':' + (c2 - c1 - 1) + ':' + pr.length;
-    o.prismOk = c0 === 0 && w > 1 && c2 - c1 - 1 === w && pr[0][c1 - 1] === '' && pr[1][0] !== '';
-    o.prismDiffer = blk(c0) !== blk(c1) && blk(c1) !== blk(c2);
-    o.rawViews = [...new Set(aoa('Raw Data').slice(1).map(x => x[0]))].join();
-    o.rawHdr = (aoa('Raw Data')[0] || []).join(',');
+    // one Prism sheet, read from the top down: for every view the percentage table and, under it, the fraction table (a title row, a note row, then the table)
+    const pr = aoa('Prism'), tt = (v, k) => pr.findIndex(x => x[0] === v + ' \u2014 PRISM \u2014 ' + k + ' OF CONTROL');
+    const P = ['Luminescence', 'Viability', 'Relative'].map(v => ({ p: tt(v, 'PERCENT'), f: tt(v, 'FRACTION') }));
+    const cell = (i, r, c) => pr[i + 3 + r][c];
+    o.prism = JSON.stringify(P) + ':' + pr.length;
+    o.prismOk = P.every((q, k) => q.p >= 0 && q.f > q.p && (k ? q.p > P[k - 1].f : true)) && pr.filter(x => /PRISM/.test(x[0])).every(x => x.slice(1).every(v => v === ''));
+    o.prismFrac = P.every(q => { let ok = true; for (let r = 1; r <= 3; r++) for (let c = 1; c <= 3; c++) { const a = cell(q.p, r, c), f = cell(q.f, r, c); if (a !== '' && Math.abs(a / 100 - f) > 1e-5) ok = false; } return ok && typeof cell(q.p, 1, 1) === 'number'; });
+    o.prismDiffer = cell(P[0].p, 1, 1) !== cell(P[1].p, 1, 1) && cell(P[1].p, 1, 1) !== cell(P[2].p, 1, 1);
+    o.prismWide = XLSX.utils.decode_range(wb.Sheets['Prism']['!ref']).e.c + 1;
+    const rw = aoa('Raw Data'); o.rawViews = rw.map(x => x[0]).filter(t => / \u2014 RAW DATA$/.test(t)).map(t => t.replace(' \u2014 RAW DATA', '')).join();
+    o.rawHdr = (rw[rw.findIndex(x => x[0] === 'Luminescence \u2014 RAW DATA') + 2] || []).join(',');
     o.proto = JSON.stringify(aoa('Data Analysis Protocol')).indexOf('three views') >= 0;
     o.afterView = state.viabView; o.afterSnap = JSON.stringify(Object.fromEntries((state.fitResults || []).map(x => [x.sampleId, q3(x.logEC50) + '|' + q3(x.hill) + '|' + q3(x.top)])));
     // the reference: a plain run on the distorted values themselves
@@ -535,9 +538,10 @@ try {
   check('L14b the viability view is exactly a plain run on the fluorescence values, named as a viability curve (IC50)', r.alone.snap === r.ref.snap && r.alone.L === 'IC50' && /IC50/.test(r.hdr) && r.sig.L === 'DC50', { a: r.alone.snap.slice(0, 80), ref: r.ref.snap.slice(0, 80), L: [r.alone.L, r.sig.L] });
   check('L14b the three views are three different sets of curves', r.sig.snap !== r.alone.snap && r.sig.snap !== r.rel.snap && r.alone.snap !== r.rel.snap, {});
   check('L14b the session keeps the view', r.sessView === 'viab', r.sessView);
-  check('L14b the Excel workbook is four sheets whatever the views — Results, Raw Data, Prism, the protocol — each holding all three views', r.sheets.join() === 'Results,Raw Data,Prism,Data Analysis Protocol' && r.rawViews === 'Luminescence,Viability,Relative', [r.sheets, r.rawViews]);
+  check('L14b the Excel workbook is the same sheets whatever the views — Results, Raw Data, Prism, the protocol — each holding all three views, one under the other', r.sheets.join() === 'Results,Raw Data,Prism,Data Analysis Protocol' && r.rawViews === 'Luminescence,Viability,Relative', [r.sheets, r.rawViews]);
   check('L14b each view has its own potency name in its Results block (DC50 for the luminescence, IC50 for the viability) and the same compounds', /DC50/.test(r.hdrL) && /IC50/.test(r.hdrV) && new Set(r.nRes.split(',')).size === 1, [r.hdrL, r.hdrV, r.nRes]);
-  check('L14b the Prism sheet holds one table per view side by side, each from the top of the sheet (a row per dose, a column per replicate) with different numbers', r.prismOk && r.prismDiffer, r.prism);
+  check('L14b the Prism sheet reads top to bottom: for every view the percentage table, then the fraction table, titles in column A, nothing beside anything, different numbers per view', r.prismOk && r.prismDiffer, r.prism);
+  check('L14b the Prism fraction table is the percentage table divided by 100, number for number', r.prismFrac, r.prism);
   check('L14b the raw sheet of a view carries both readings, the protocol explains the three views', /Signal,Viability_Reading/.test(r.rawHdr) && r.proto, [r.rawHdr, r.proto]);
   check('L14b exporting leaves the view and the curves on screen as they were', r.afterView === 'viab' && r.afterSnap === r.alone.snap, [r.afterView]);
   check('L14b with the option off the sheet names carry no view', r.offSheets.indexOf('(') < 0 && /Results,Raw Data/.test(r.offSheets), r.offSheets);
@@ -877,7 +881,7 @@ try {
     // a typed top of 20000 nM comes out as 20000 in the Prism sheet
     let wb = null; const wf = XLSX.writeFile; XLSX.writeFile = w => { wb = w; }; exportXLSX(); XLSX.writeFile = wf;
     o.sheets = wb.SheetNames.join();
-    const first = XLSX.utils.sheet_to_json(wb.Sheets['Prism'], { header: 1, defval: '' }).slice(2).map(x => x[0]);
+    const pa = XLSX.utils.sheet_to_json(wb.Sheets['Prism'], { header: 1, defval: '' }), pi = pa.findIndex(x => /PERCENT OF CONTROL$/.test(x[0])), first = pa.slice(pi + 4, pi + 4 + o.prism.length).map(x => x[0]);
     o.firstPrism = first.join();
     // Graph: the three views
     o.offHead = document.getElementById('lg-head').hidden;
@@ -894,10 +898,22 @@ try {
     return o;
   });
   check('L31 the Prism concentration column is the concentration that was set (every value is one in the raw data)', r.stray.length === 0 && r.prism.length > 3, JSON.stringify({ stray: r.stray, prism: r.prism }));
-  check('L32 the workbook is four sheets: Results, Raw Data, Prism, Data Analysis Protocol', r.sheets === 'Results,Raw Data,Prism,Data Analysis Protocol', r.sheets);
+  check('L32 the workbook is Results, Raw Data, Prism, Data Analysis Protocol (and Normalisation when there are rules)', r.sheets === 'Results,Raw Data,Prism,Data Analysis Protocol', r.sheets);
   check('L33 Graph offers Luminescence · Viability · Relative to viability with a double read, and nothing without one', r.offHead === true && r.head === false && /Luminescence:false\|Viability:false\|Relative to viability:true/.test(r.btns) && r.hiddenAgain === true, JSON.stringify([r.offHead, r.head, r.btns, r.hiddenAgain]));
   check('L33 choosing a view on Graph is the same choice as on Results, and the figure follows it (title and curves)', r.view === 'viab' && r.resBtn === 'true' && r.title === 'Viability' && r.title2 !== 'Viability', JSON.stringify([r.view, r.resBtn, r.title, r.title2]));
 } catch (err) { check('L31–L33 the checks ran to the end', false, String(err && err.message || err).split('\n')[0]); }
+// L36 Copy for Prism (fraction): the same table as Copy for Prism, every number divided by 100 — the fraction table must not be lost from the clipboard either.
+try {
+  const r = await ev(async () => {
+    state.assayId = ''; loadLuminaTestData(); await new Promise(r => setTimeout(r, 300)); _lmEnsureFit(true); await new Promise(r => setTimeout(r, 300));
+    const grab = async frac => { let t = ''; Object.defineProperty(navigator, 'clipboard', { value: { writeText: x => { t = x; return Promise.resolve(); } }, configurable: true }); copyPrism(frac); await new Promise(r => setTimeout(r, 60)); return t.split('\n').map(l => l.split('\t')); };
+    const p = await grab(false), f = await grab(true);
+    let ok = p.length === f.length && p.length > 3;
+    for (let i = 2; i < p.length && ok; i++) for (let c = 1; c < p[i].length; c++) if (p[i][c] !== '' && Math.abs(p[i][c] / 100 - f[i][c]) > 1e-5) ok = false;
+    return { ok, head: f[1] && f[1][0], first: [p[2] && p[2][1], f[2] && f[2][1]] };
+  });
+  check('L36 Copy for Prism (fraction) is the Copy for Prism table divided by 100', r.ok, JSON.stringify(r));
+} catch (err) { check('L36 the check ran to the end', false, String(err && err.message || err).split('\n')[0]); }
 try {
   const r = await ev(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms));

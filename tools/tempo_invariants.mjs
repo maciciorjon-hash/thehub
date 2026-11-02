@@ -272,12 +272,12 @@ try {
     const o = {}, sheets = {}; const got = [];
     window.XLSX = { utils: { book_new: () => ({ s: [] }), aoa_to_sheet: a => a, book_append_sheet: (wb, ws, n) => { sheets[n] = ws; } }, writeFile: () => { } };
     const plate = tpPlate(); plate.wells['A1'].compound = '=1+1'; await tpRunPlate(plate); tpExportXLSX();
-    const head = sheets['Results'][0];   // Analysis B's columns sit beside Analysis A's, one row per compound
-    o.heads = ['KDegMax\n(h-1)', 'KDeg50\n(nM)', 'KDegMax/KDeg50\n(nM-1*h-1)', 'Log[KDegMax/KDeg50\n(nM-1*h-1)]'].map(h => head.indexOf(h) >= 0);
+    const hasH = h => sheets['Results'].some(r => r.indexOf(h) >= 0);   // Analysis B is the table under Analysis A, one row per compound
+    o.heads = ['KDegMax\n(h-1)', 'KDeg50\n(nM)', 'KDegMax/KDeg50\n(nM-1*h-1)', 'Log[KDegMax/KDeg50\n(nM-1*h-1)]'].map(hasH);
     const flat = [].concat.apply([], Object.values(sheets).map(s => [].concat.apply([], s)));
     o.nanText = flat.some(v => typeof v === 'string' && /^(NaN|Infinity|undefined|-Infinity)$/.test(v)); o.formula = flat.some(v => v === '=1+1'); o.safe = flat.some(v => v === "'=1+1");
     o.sheetNames = Object.keys(sheets).join('|');
-    const res = sheets['Results']; o.dc50Numeric = res.slice(1).every(r => { const v = r[res[0].indexOf('DC50 (Dmax50) (nM)')]; return v == null || typeof v === 'number'; });
+    const res = sheets['Results'], hi = res.findIndex(r => r.indexOf('DC50 (Dmax50) (nM)') >= 0), hd = res[hi], ie = res.findIndex((r, i) => i > hi && !r.length); o.dc50Numeric = res.slice(hi + 1, ie).every(r => { const v = r[hd.indexOf('DC50 (Dmax50) (nM)')]; return v == null || typeof v === 'number'; });
     // the ProNect-compatible trio read back
     tpDownload = (n, b) => got.push([n, b]); tpExportProNect(); await new Promise(r => setTimeout(r, 1200));
     const txt = async b => await b.text(); const raw = got.find(g => /raw_kinetic/.test(g[0])), nrm = got.find(g => /norm_kinetic/.test(g[0])), js = got.find(g => /normalized_data/.test(g[0]));
@@ -1134,7 +1134,7 @@ try {
       const txt = () => tpMethodText().join('\n'); o.method = txt(); const T = TP.S.tc; T.smooth = 7; T.minChange = 0.25; T.finalN = 5; o.method2 = txt(); T.smooth = 3; T.minChange = 0.10; T.finalN = 3;
       TP.S.norm.veh = 'none'; o.methodNone = txt(); o.shortNone = tpMethodShort().join(' '); TP.S.norm.veh = 'ratioOfMeans';
       const wb = { sheets: [] }; window.XLSX = { utils: { book_new: () => wb, aoa_to_sheet: a => a, book_append_sheet: (b, ws, n) => b.sheets.push([n, ws]) }, writeFile: () => {} }; tpExportXLSX();
-      o.sheets = wb.sheets.map(s => s[0]).join(); const res = wb.sheets.find(s => s[0] === 'Results')[1]; o.xHead = res[0].join('|'); const mean = wb.sheets.find(s => s[0] === 'Prism')[1]; o.meanCols = mean[0].indexOf('', 1) > 0 ? mean[0].indexOf('', 1) : mean[0].length; o.meanRows = mean.length;
+      o.sheets = wb.sheets.map(s => s[0]).join(); const res = wb.sheets.find(s => s[0] === 'Results')[1]; const ti = res.findIndex(r => /^RESULTS/.test(r[0])); o.xHead = res[ti + 1].join('|'); const mean = wb.sheets.find(s => s[0] === 'Prism')[1], mi = mean.findIndex(r => /^PRISM . MEAN/.test(r[0])), me = mean.findIndex((r, i) => i > mi + 2 && !r.length); o.meanCols = mean[mi + 2].length; o.meanRows = (me < 0 ? mean.length : me) - (mi + 2); o.meanSd = mean.some(r => /^PRISM . SD/.test(r[0])); o.lateral = mean.every(r => r.length <= o.meanCols);
       tpExportCSV(); tpExportPrism(); tpExportProNect(); await wait(1200);
       const csv = (await got[Object.keys(got).find(n => /_tidy\.csv$/.test(n))].text()).replace(/^﻿/, '').split('\r\n'); o.csvHead = csv[0]; o.csvDox = csv.find(l => /Doxycycline/.test(l) && /ug\/mL/.test(l)) ? 'mass' : 'none'; o.csvHeat = csv.find(l => /Heat shock/.test(l)).split(',').slice(2, 6).join(',');
       const pr = (await got[Object.keys(got).find(n => /prism/.test(n))].text()).replace(/^﻿/, ''); o.prism = [/^Method/.test(pr), /Condition,Doxycycline/.test(pr), /Largest change against dose/.test(pr)].join();
@@ -1149,7 +1149,7 @@ try {
     });
     check('K34 Results: Condition · Dose · n · Largest change · at · End · t½ · Onset · Fastest · Mean change · a column per reporting time · Class — no DC50, Dmax or KDeg; no Labbook or Hit Finder button', /^Condition\|Target \/ cell line\|Dose\|n\|Largest change \(×\)\|at\|End \(×\)\|t½\|Onset\|Fastest/.test(r.head) && /Level at 2 h/.test(r.head) && /Class\|Flags$/.test(r.head) && !/DC50|Dmax|KDeg/.test(r.head) && r.rows === 11 && r.noBtn, JSON.stringify([r.head, r.rows, r.noBtn]));
     check('K34 the Method says no degradation is modelled, defines every measure, never mentions a Michaelis–Menten or a 4PL, and follows the settings (smoothing 7, smallest change 0.25, end = last 5 reads, no control step)', /No degradation is modelled/.test(r.method) && /Largest change/.test(r.method) && /t½ of the change/.test(r.method) && !/Michaelis|4PL|KDeg|Dmax/.test(r.method.replace(/no DC50, Dmax or KDeg/, '')) && /running median of 7 reads/.test(r.method2) && /max\(0\.25, 3σ\)/.test(r.method2) && /last 5 reads/.test(r.method2) && /no control step|NOT corrected/.test(r.methodNone) && /no control step/.test(r.shortNone), JSON.stringify([r.method.slice(0, 160), r.shortNone.slice(0, 120)]));
-    check('K34 the workbook is four sheets: Results (with the bound written out), Prism (the mean and the SD of every dose side by side, one column per condition and dose), Wells (tidy), Method', r.sheets === 'Results,Prism,Wells,Method' && /Largest change \(x over start\)\|Largest change is\|at \(h\)/.test(r.xHead) && r.meanCols === 12 && r.meanRows === 145, JSON.stringify([r.sheets, r.xHead.slice(0, 120), r.meanCols, r.meanRows]));
+    check('K34 the workbook is four sheets: Results (with the bound written out), Prism (the mean table, then the SD table under it, one column per condition and dose), Wells (tidy), Method', r.sheets === 'Results,Prism,Wells,Method' && /Largest change \(x over start\)\|Largest change is\|at \(h\)/.test(r.xHead) && r.meanCols === 12 && r.meanRows === 145 && r.meanSd && r.lateral, JSON.stringify([r.sheets, r.xHead.slice(0, 120), r.meanCols, r.meanRows]));
     check('K34 tidy CSV (Dose and Dose_unit, ug/mL for doxycycline, nothing for an untreated condition), Prism tables (Method first, a table per condition), ProNect-compatible JSON (the time-course results, ProNect’s unit for a mass dose)', /^Plate,Well,Condition,Target,Dose,Dose_unit,Time_h,RLU_raw,Level,Left_out/.test(r.csvHead) && r.csvDox === 'mass' && r.prism === 'true,true,true' && r.json === 'timecourse,5,true' && /µg\/mL/.test(r.rawUnit), JSON.stringify([r.csvHead, r.csvDox, r.prism, r.json, r.rawUnit]));
     check('K34 the saved figure and the printed summary carry the method; the export menu drops the Screen table and keeps Prism; Send to Labbook and Hit Finder say why they do not apply; Compare draws and saves', r.svg && r.print && r.menu === 'false,true' && r.lb && r.hf && /Ranking\|Two measures against each other\|Traces/.test(r.cmp) && r.cmpSvg, JSON.stringify([r.svg, r.print, r.menu, r.lb, r.hf, r.cmp, r.cmpSvg]));
     check('K34 no page error', errs.length === 0, errs.slice(0, 2).join(' | '));
@@ -1204,7 +1204,7 @@ try {
       o.dash = document.querySelectorAll('#tp-chart path[stroke-dasharray="3 3"]').length; o.stats = /One-phase fit/.test(document.querySelector('.cv-main').textContent) && /Rate constant k/.test(document.querySelector('.cv-main').textContent);
       TP.sel.comp = tpRes().compounds.find(c => c.compound === 'Heat shock').key; tpRenderCurves(); o.why = /does not settle into a plateau/.test(document.querySelector('.cv-main').textContent);
       o.method = tpMethodText().join('\n'); const got = {}; window.tpDownload = (n, bl) => { got[n] = bl; }; const wb = { sheets: [] }; window.XLSX = { utils: { book_new: () => wb, aoa_to_sheet: x => x, book_append_sheet: (b, w, n) => b.sheets.push([n, w]) }, writeFile: () => {} }; tpExportXLSX();
-      const rs = wb.sheets.find(s => s[0] === 'Results')[1]; o.xh = rs[0].filter(h => /^Fit/.test(h)).length; o.xlen = [rs[0].length, rs[1].length]; o.xrow = rs.slice(1).find(r => r[0] === 'Doxycycline' && r[2] === 0.1); o.json = JSON.stringify(tpResultsJSON(tpPlate()).conditions.find(c => c.condition === 'Doxycycline').doses[2].fit).slice(0, 80);
+      const rs = wb.sheets.find(s => s[0] === 'Results')[1], fi = rs.findIndex(r => r[0] === 'EXPONENTIAL FIT') + 2; o.xh = rs[fi].filter(h => /^Fit/.test(h)).length; o.xlen = [rs[fi].length, rs[fi + 1].length]; o.xrow = rs.slice(fi + 1).find(r => r[0] === 'Doxycycline' && r[2] === 0.1); o.json = JSON.stringify(tpResultsJSON(tpPlate()).conditions.find(c => c.condition === 'Doxycycline').doses[2].fit).slice(0, 80);
       await tpSetKind('timecourse'); TP.S.tc.fit = false; await tpRunAll(); tpTab('results'); await wait(200); o.headOff = [...document.querySelectorAll('#tp-restbl th')].map(t => t.textContent).join('|'); o.methodOff = !/one-phase fit/i.test(tpMethodText().join('\n')); TP.S.tc.fit = true;
       return o;
     });
@@ -1216,7 +1216,7 @@ try {
     check('K36 with noise the 95 % intervals cover the truth (k and the plateau, at least 50 of 60 each) and the median error of k is under 6 %', r.cov[0] >= 58 && r.cov[1] >= 50 && r.cov[2] >= 50 && r.cov[3] < 0.06, JSON.stringify(r.cov));
     check('K36 switched off, no fit; with no delay allowed, none is fitted; a trace twice as slow has half the rate', r.off === 'off' && r.nolag[0] == null && r.nolag[1] === true && nr(r.half, 2, 0.05), JSON.stringify([r.off, r.nolag, r.half]));
     check('K36 Results gains k · Plateau · Delay (and loses them when the fit is off), Curves draws the dashed fit and the card with k, the plateau and the reason a peak is not fitted, the Method has its section', /Mean change %\|k \(h⁻¹\)\|Plateau \(×\)\|Delay\|Level at 2 h/.test(r.head) && !/Plateau \(×\)/.test(r.headOff) && r.dash >= 1 && r.stats && r.why && /one-phase fit of a rise or a fall/i.test(r.method) && /Plateau not reached/.test(r.method) && r.methodOff, JSON.stringify([r.head, r.headOff, r.dash, r.stats, r.why, r.methodOff]));
-    check('K36 the workbook carries the fit (value, bound, interval, delay, t½, initial rate, R², the reason when there is none) and the JSON the same', r.xh === 7 && r.xlen[0] === r.xlen[1] && r.xrow && typeof r.xrow[15] === 'number' && /kPerH/.test(r.json), JSON.stringify([r.xh, r.xrow && r.xrow.slice(14, 22), r.json]));
+    check('K36 the workbook carries the fit (value, bound, interval, delay, t½, initial rate, R², the reason when there is none) and the JSON the same', r.xh === 7 && r.xlen[0] === r.xlen[1] && r.xrow && typeof r.xrow[4] === 'number' && /kPerH/.test(r.json), JSON.stringify([r.xh, r.xrow && r.xrow.slice(14, 22), r.json]));
     check('K36 no page error', errs.length === 0, errs.slice(0, 2).join(' | '));
     await c.close();
   }
@@ -1287,15 +1287,16 @@ try {
     const wb = { sheets: [] }; window.XLSX = { utils: { book_new: () => wb, aoa_to_sheet: a => a, book_append_sheet: (b, ws, n) => b.sheets.push([n, ws]) }, writeFile: () => {} };
     tpExportXLSX();
     const sh = n => wb.sheets.find(s => s[0] === n)[1], o = { names: wb.sheets.map(s => s[0]).join() }, res = sh('Results'), rows = tpRowsFlat();
-    o.head = res[0]; o.nData = res.slice(1).filter(r => r.length > 3 && r[0] !== undefined).length; o.rows = rows.length;
-    o.both = ['DC50 (Dmax50) (nM)', 'KDegMax\n(h-1)', 'KDeg50\n(nM)'].map(h => res[0].indexOf(h) >= 0).join() + ',' + (res[0][res[0].length - 1] === 'Flags') + ',' + res[0].filter(h => h === 'Compound').length;
+    const ia = res.findIndex(r => /^ANALYSIS A/.test(r[0])), ib = res.findIndex(r => /^ANALYSIS B/.test(r[0])), hA = res[ia + 1], hB = res[ib + 2];
+    o.nData = ib - ia - 3; o.rows = rows.length;
+    o.both = (hA.indexOf('DC50 (Dmax50) (nM)') >= 0) + ',' + (hB.indexOf('KDegMax\n(h-1)') >= 0 && hB.indexOf('KDeg50\n(nM)') >= 0) + ',' + (hA[hA.length - 1] === 'Flags') + ',' + (ia < ib && res.slice(ia, ib).every(r => r.length <= hA.length));
     const det = sh('Details').map(r => r[0]); o.det = ['PER CONCENTRATION', 'PER WELL (Dmax-response points)', 'DC50 OVER TIME'].map(t => det.indexOf(t) >= 0).join();
     const w = sh('Wells'); let reads = 0, wells = 0; TP.plates.forEach(p => { const rs = tpRes(p); if (rs) { reads += Object.keys(p.wells).length * rs.t.length; wells += Object.keys(p.wells).length; } });
-    o.wells = [w.length - 1, reads]; o.wHead = w[0].join('|');
+    o.wells = [w.length - 2, reads]; o.wHead = w[1].join('|');
     const m = sh('Method'); o.method = m.every(r => r.length === 3) && m.some(r => r[0] === 'SETTINGS') && m[0][0] === 'Section';
     return o;
   });
-  check('K38 Results carries Analysis A and Analysis B side by side, one row per compound, Flags last', r.both === 'true,true,true,true,1' && r.nData >= r.rows, JSON.stringify([r.both, r.nData, r.rows]));
+  check('K38 Results reads top to bottom: Analysis A (one row per compound, Flags last) and, under it, Analysis B; nothing beside anything', r.both === 'true,true,true,true' && r.nData === r.rows, JSON.stringify([r.both, r.nData, r.rows]));
   check('K38 Details holds per concentration, per well and DC50 over time; Wells is one row per well and read with its role and left-out flag; Method ends with the settings', r.det === 'true,true,true' && r.wells[0] === r.wells[1] && /^Plate\|Well\|Role\|Compound\|Target\|Concentration \(nM\)\|Time \(h\)\|Raw \(RLU\)\|Fractional\|Left out/.test(r.wHead) && r.method, JSON.stringify([r.det, r.wells, r.wHead, r.method]));
 } catch (e) { findings.push('✗ K38 the checks ran to the end: ' + String(e && e.message || e).split('\n')[0]); }
 

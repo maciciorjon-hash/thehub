@@ -738,7 +738,7 @@ if (run('B22')) await guard('B22', async () => {
   await ctx.close();
 });
 
-// B24 — the workbook is four sheets (Results · Plates · Prism · Assay Protocol): the Prism tables sit side by side from the top of their sheet, the normalisation
+// B24 — the workbook is four sheets (Results · Plates · Prism · Assay Protocol): the Prism tables sit one under the other, the normalisation
 // and each reader file's protocol are sections of the protocol; Curve PDFs: one PDF per plate group, six curves to a page, every compound on it.
 if (run('B24')) await guard('B24', async () => {
   const { ctx, pg } = await open('/apps/beacon/beacon.html');
@@ -748,9 +748,13 @@ if (run('B24')) await guard('B24', async () => {
     let wb = null; const wf = XLSX.writeFile; XLSX.writeFile = w => { wb = w; }; generateOutputXLSX(); XLSX.writeFile = wf;
     o.sheets = wb.SheetNames.join();
     const pr = XLSX.utils.sheet_to_json(wb.Sheets['Prism'], { header: 1, defval: '' });
-    o.heads = pr[1].map((v, i) => v === 'Concentration (nM)' ? i : -1).filter(i => i >= 0).join();
-    o.corner = [pr[0][0], pr[0][pr[1].indexOf('Concentration (nM)', 1)]].join('|');
-    o.merges = (wb.Sheets['Prism']['!merges'] || []).map(m => m.s.c + '-' + m.e.c).join();
+    // read down the sheet: a title row, a note row, then each table's X column header in column A; the merged names stay inside their own table's rows
+    const ti = pr.map((r, i) => /^PRISM/.test(r[0]) ? i : -1).filter(i => i >= 0);
+    o.titles = ti.map(i => pr[i][0]).join('|');
+    o.heads = ti.map(i => pr[i + 3][0]).join('|');
+    o.wide = XLSX.utils.decode_range(wb.Sheets['Prism']['!ref']).e.c + 1; o.widest = Math.max(...pr.filter((r, i) => i && !/^PRISM/.test(r[0]) && r.length).map(r => r.length));
+    o.merges = (wb.Sheets['Prism']['!merges'] || []).map(m => m.s.r + ':' + m.s.c + '-' + m.e.c).join();
+    o.mergeRowsOk = (wb.Sheets['Prism']['!merges'] || []).every(m => ti.some(i => m.s.r === i + 2 || m.s.r === i + 3));
     o.proto = XLSX.utils.sheet_to_json(wb.Sheets['Assay Protocol'], { header: 1, defval: '' }).length;
     const names = state.series.map(s => s.name), got = [];
     const was = ChartKitExport.save; ChartKitExport.save = (b, nm) => got.push({ b, nm });
@@ -763,7 +767,7 @@ if (run('B24')) await guard('B24', async () => {
     return o;
   });
   check('B24', 'the workbook is four sheets: Results, Plates, Prism, Assay Protocol', r.sheets === 'Results,Plates,Prism,Assay Protocol', r.sheets);
-  check('B24', 'the Prism sheet holds the tables side by side from its first row (relative to the vehicle, then corrected mBU), each with its own X column and its merged names shifted with it', r.heads.split(',').length === 2 && r.heads.split(',')[0] === '0' && /^BRET relative to the vehicle\|Corrected mBU$/.test(r.corner) && r.merges.split(',').length === 8, r);
+  check('B24', 'the Prism sheet reads top to bottom: relative to the vehicle, then corrected mBU, each under its own title with its X column in column A and its merged names on its own rows', r.titles === 'PRISM \u2014 BRET RELATIVE TO THE VEHICLE|PRISM \u2014 CORRECTED mBU' && r.heads === 'Concentration (nM)|Concentration (nM)' && r.mergeRowsOk && r.merges.split(',').length === 8 && r.wide <= r.widest, r);
   check('B24', 'Curve PDFs: one PDF, a page per six curves, every compound named on it, the figures drawn into it', r.files.length >= 1 && r.head === '%PDF-1.4' && r.pages === Math.ceil(r.names.length / 6) && r.has && r.cm >= r.names.length, r);
   await ctx.close();
 });
