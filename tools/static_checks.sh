@@ -37,6 +37,7 @@ run "Menu kit"                         "$PY" tools/sync_menukit.py --check
 run "History kit"                      "$PY" tools/sync_historykit.py --check
 run "Sheet kit"                        "$PY" tools/sync_sheetkit.py --check
 run "Statistics kit"                   "$PY" tools/sync_statskit.py --check
+run "Pattern kit"                      "$PY" tools/sync_patternkit.py --check
 run "Results table kit"                "$PY" tools/sync_resultskit.py --check
 run "Bench calculator kit"             "$PY" tools/sync_calckit.py --check
 run "Help assistant"                   "$PY" tools/sync_assist.py --check
