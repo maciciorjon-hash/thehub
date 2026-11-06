@@ -654,8 +654,16 @@ try {
     loadLuminaTestData(); state.ctrlWells = new Set(); lmAfterChange(); runLuminaAnalysis({ quiet: true });
     return { names, big, noteShown: !note.hidden || true, skipped: (state.fitSkipped || []).length, allRaw: state.fitResults.length, normalised: state.normalised };
   });
-  check('L17 a plate with no readings in its control wells is left out (not fitted in counts and printed as %), and the note says so', l15.names.join() === 'Cpd-08,Cpd-17,Cpd-42,Ref-A' && !l15.big, JSON.stringify(l15));
+  check('L17 a plate with no readings in its control wells is left out (not fitted in counts and printed as %), and the note says so', l15.names.join() === 'Cpd-17,Ref-A,Cpd-42,Cpd-08' && !l15.big, JSON.stringify(l15));
   check('L17 with no control on any plate nothing is dropped: raw counts, as before', l15.allRaw === 6 && l15.normalised === false && l15.skipped === 0, JSON.stringify(l15));
+  // L37 the results keep the order the data were entered — plate by plate, compound by compound — never alphabetical
+  const l37 = await ev(() => {
+    loadLuminaTestData(); lmAfterChange(); state.fitSig = null; runLuminaAnalysis({ quiet: true }); renderResults();
+    const entered = state.names.slice(), tbl = Array.from(document.querySelectorAll('#results-table-wrap tbody tr b')).map(b => b.textContent);
+    state.names = ['Zeta', 'Alpha', 'Mu', 'Beta', 'Omega', 'Cpd-10']; lmAfterChange(); state.fitSig = null; runLuminaAnalysis({ quiet: true }); renderResults();
+    return { entered, tbl, fit: state.fitResults.map(r => r.sampleId), rev: Array.from(document.querySelectorAll('#results-table-wrap tbody tr b')).map(b => b.textContent), want: state.names.slice() };
+  });
+  check('L37 results are in the order the data were entered (plate, then compound), not sorted by name', l37.tbl.join() === l37.entered.join() && l37.fit.join() === l37.want.join() && l37.rev.join() === l37.want.join(), JSON.stringify(l37));
   const l15b = await ev(() => {
     loadLuminaTestData(); state.ctrlWells.forEach(pos => { Object.keys(state.plates[1].signal).length; state.plates[1].signal[pos] = 0; });
     lmAfterChange(); runLuminaAnalysis({ quiet: true });
