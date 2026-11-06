@@ -196,6 +196,14 @@ var PatternKit = (function () {
         return inside && (x.T.kind === 'bin' || py.size > px.size);
       });
     });
+    // two halves (two plates) split the compounds in two, so "higher on the left" and "lower on the right" are one finding: keep the clearer
+    keep = keep.filter(function (x) {
+      return !keep.some(function (y) {
+        if (y === x || y.T.key !== x.T.key || y.G.F.key !== x.G.F.key || y.dir === x.dir || y.G.scope.length !== x.G.scope.length || y.G.scope[0] !== x.G.scope[0] || y.gi.length + x.gi.length !== x.G.scope.filter(function (c) { return x.T.get(c) != null; }).length) return false;
+        var s = new Set(y.gi), disjoint = true; x.gi.forEach(function (c) { if (s.has(c)) disjoint = false; });
+        return disjoint && (y.q < x.q || (y.q === x.q && y.G.label < x.G.label));
+      });
+    });
     var seen = {}, out = [];
     keep.forEach(function (x) {
       var sig = x.T.key + '|' + x.dir + '|' + x.gi.map(function (c) { return c.id; }).sort().join(',');

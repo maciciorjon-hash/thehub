@@ -85,9 +85,8 @@ if (run('P3')) {
   check('P3', 'a hook in the GX family is found by name, with no source position', ff && ff.label === 'GX compounds' && ff.k === 30 && ff.side === 'name' && ff.verdict === 'compound', ff && [ff.label, ff.k, ff.verdict]);
   seed = 9;
   const dm = findings(plate96({ mod: (_b, r) => r < 4 ? { dmax: 85 + 10 * (rnd() - 0.5) } : { dmax: 35 + 10 * (rnd() - 0.5) } })).filter(x => x.trait === 'dmax');
-  const hi = dm.find(x => x.dir === 'higher'), lo = dm.find(x => x.dir === 'lower');
-  check('P3', 'Dmax high in rows A-D, low in E-H: the two halves, higher and lower, and no single row', hi && lo && /rows A–D/.test(hi.label) && /rows E–H/.test(lo.label) && dm.every(x => x.factor !== 'srcRow'), dm.map(x => [x.label, x.dir]));
-  check('P3', 'and says the median in the group and elsewhere', hi && hi.med > 75 && hi.restMed < 50, hi && [hi.med, hi.restMed]);
+  check('P3', 'Dmax high in rows A-D, low in E-H: one finding for the split (the halves are mirror images), never a single row', dm.length === 1 && dm[0].factor === 'srcHalfR' && /rows (A–D|E–H)/.test(dm[0].label), dm.map(x => [x.label, x.dir]));
+  check('P3', 'and says the median in the group and elsewhere', dm[0] && Math.abs(dm[0].med - dm[0].restMed) > 40, dm[0] && [dm[0].med, dm[0].restMed]);
   seed = 10;
   const rowC = findings(plate96({ mod: b => b.dRow === 'C' ? { hook: true } : {} }), { dmso: [] }).find(x => x.trait === 'hook' && x.factor === 'dRow');
   check('P3', 'a hook on one assay row is found as an assay-plate pattern', rowC && rowC.side === 'destination' && rowC.level === 'C', rowC && [rowC.label, rowC.q]);
@@ -181,6 +180,10 @@ if (run('P8')) {
   const rowA = findings(plate96({ base: 0, mod: (_b, r) => ({ hook: r === 0 }) })).filter(f => f.trait === 'hook');
   check('P8', 'hooks only in row A: the edge wells that carry the same hooks are not a second finding', rowA.length === 1 && rowA[0].factor === 'srcRow', rowA.map(f => [f.factor, f.level, f.q]));
   check('P8', 'the sentence gives the DMSO numbers it relied on', (() => { const f = findings(plate96({ mod: b => b.dRow === 'C' ? { hook: true } : {} }), { dmso: Array.from({ length: 40 }, (_, i) => ({ plate: 'P1', row: L[i % 8], col: 1 + i % 12, dev: 0 })) }).find(x => x.factor === 'dRow'); return f && /\d+ wells, [+-]?\d/.test(f.why); })());
+  seed = 53;
+  const mir = findings(plate96({ mod: (_b, r) => r < 4 ? { dmax: 90 + 4 * (rnd() - 0.5) } : { dmax: 30 + 4 * (rnd() - 0.5) } })).filter(f => f.trait === 'dmax' && f.factor === 'srcHalfR');
+  check('P8', 'top half higher and bottom half lower is ONE finding, not two mirror images', mir.length === 1, mir.map(f => [f.label, f.dir]));
+  check('P8', 'the survivor is the clearer side and says so in numbers', mir.length === 1 && mir[0].restMed != null && Math.abs(mir[0].med - mir[0].restMed) > 40, mir.map(f => [f.med, f.restMed]));
   check('P8', 'every member of a "more" finding really has the trait', hooks.every(f => f.members.every(id => items.find(c => c.id === id).hook === true)));
 }
 
