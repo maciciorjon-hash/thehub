@@ -4358,7 +4358,10 @@ var ChartKitCore = (function(){
         xPx = function(x){ return plot.x + (x - la) / (lb - la) * plot.w; };
         linTicks(la, lb, 0, 6).ticks.forEach(function(v){ xTickList.push({ x: xPx(v), label: fmt(v), major: true }); });
       } else {
-      var d0 = fin(spec.x.min) && +spec.x.min > 0 ? Math.log10(+spec.x.min) : Math.floor(Math.log10(xlo) - 0.35), d1 = fin(spec.x.max) && +spec.x.max > 0 ? Math.log10(+spec.x.max) : Math.ceil(Math.log10(xhi) + 0.35);
+      // Automatic range: a tenth of a decade of air round the data, then out to the next 1-2-5 value (0.1, 0.2, 0.5, 1, 2, 5, 10 ...), so the curves fill the plot instead of sitting in the middle of seven decades.
+      var L125 = [0, Math.LOG10E * Math.log(2), Math.LOG10E * Math.log(5)];
+      function snap125(v, up){ var f = Math.floor(v + 1e-9), r = v - f, k, c = [L125[0], L125[1], L125[2], 1]; if (up) { for (k = 0; k < 4; k++) if (c[k] >= r - 1e-9) return f + c[k]; } for (k = 3; k >= 0; k--) if (c[k] <= r + 1e-9) return f + c[k]; return f; }
+      var d0 = fin(spec.x.min) && +spec.x.min > 0 ? Math.log10(+spec.x.min) : snap125(Math.log10(xlo) - 0.1, false), d1 = fin(spec.x.max) && +spec.x.max > 0 ? Math.log10(+spec.x.max) : snap125(Math.log10(xhi) + 0.1, true);
       if (d1 <= d0) d1 = d0 + 1;
       xPx = function(x){ return plot.x + (Math.log10(Math.max(x, 1e-30)) - d0) / (d1 - d0) * plot.w; };
       var exps = []; for (var e0 = Math.ceil(d0 - 1e-9); e0 <= d1 + 1e-9; e0++) exps.push(e0);

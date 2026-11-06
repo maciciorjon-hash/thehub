@@ -8738,3 +8738,12 @@ Jon said yes to unifying the export names left open in the pass above. Every fil
 ## Lumina Results keep the entered order (2026-11-06, L37)
 
 `runLuminaAnalysis` ended with `summary.sort(sampleId.localeCompare …)`, so the Results table, Plot and every export listed compounds alphabetically (natural-number order) instead of as entered. Removed: `state.fitResults = summary` keeps the `Map` first-appearance order, which is plate by plate, then the layout's compound number (zone order). Never sort `fitResults` by name. L37 renames the six compounds Zeta…Cpd-10 and checks the table and `fitResults` follow `state.names`; L17's expected list changed to entry order. Bug put back: L37 and L17 fail.
+
+## Graph: the axis fits the data, the title is the analysis name (2026-11-06, K40, K41)
+
+Jon (Spanish, with an Echo Viability figure): curves in the graphs do not get the right range automatically; the title should by default be the analysis name typed in Setup.
+
+- **Range.** The log x axis auto range was `floor(log10(xlo) − 0.35) … ceil(log10(xhi) + 0.35)`: whole decades plus a third of one, so 0.17–10000 nM drew 0.01–100000 (seven decades round four). Now a tenth of a decade of air, then out to the next 1-2-5 value (`snap125` in `ck-core.js`): 0.1–20000 for the same data. Ticks stay on decades; a typed Minimum/Maximum still wins. Applies to every ChartKit host (Echo, Lumina, Beacon, Tempo, Dora, Hit Finder, BCA's log case).
+- **Title.** Echo `_egTitle` (Assay ID, `window._lastAssayId`, not an unnamed run: `_hxUnnamed`), Lumina `lmHistName()` (Assay ID), Beacon `bAnalysisName()` as line 1 with the kind of assay under it (it was line 3). No name → the kind of assay, as before. Tempo, Dora, Hit Finder, BCA keep their fixed titles (no analysis name in their setup).
+- **K40** (five data ranges: every marker inside the plot, under a decade of air); **K41** (each app's title follows the name, falls back without it). Both proven by putting the old range and the old titles back.
+- Not done: the other session's Lumina `K19/K26/K9-K15` failures seen mid-session came from its unsorted `fitResults` (fixed in 462d56c's tests, not in these).

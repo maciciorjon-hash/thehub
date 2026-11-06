@@ -2432,7 +2432,7 @@ function lgGraphDoc(){
     return { id: r.sampleId, name: r.sampleId, points: pts, fit: fnOf([r.bottom, r.logEC50, r.hill, r.top]), _p: [r.bottom, r.logEC50, r.hill, r.top], nd: !!r.noCurve };
   });
   return { sig: state.plates.map(function(p){ return (p.file || '') + ':' + Object.keys(p.signal).length + (lmViabOn() ? state.viabView + Object.keys(p.viab || {}).length : ''); }).join('|') + '|' + t + '|' + state.names.join(','),
-    title: [(lmViabOn() && state.viabView === 'viab' ? 'Viability' : (ASSAY_NAMES[t] || 'Dose\u2013response') + (lmViabOn() && state.viabView === 'rel' ? ', relative to viability' : '')), '', ''], xTitle: '[compound] (' + u[0] + ')', xUnit: u[0], yTitle: lab.yAxis, refLine: state.normalised ? { y: 100 } : null, items: items,
+    title: [lmHistName() || (lmViabOn() && state.viabView === 'viab' ? 'Viability' : (ASSAY_NAMES[t] || 'Dose\u2013response') + (lmViabOn() && state.viabView === 'rel' ? ', relative to viability' : '')), '', ''],   // the Assay ID typed in Setup names the figure; without one, the kind of assay does xTitle: '[compound] (' + u[0] + ')', xUnit: u[0], yTitle: lab.yAxis, refLine: state.normalised ? { y: 100 } : null, items: items,
     table: ChartKitCore.fourPL({ potency: lab.ec50Name, effect: gain ? 'Emax' : (lab.dmaxName || 'Span'), pct: _lmNorm(), gain: gain, sig: 4, note: 'Four-parameter logistic fit of the replicates in the figure \u00b7 ' + (gain ? 'Emax = top' : (lab.dmaxName || 'Span') + ' = top \u2212 bottom' + (_lmNorm() ? ' (% of control)' : '')) + ' \u00b7 n.d. = no usable curve' }),
     refit: function(it, pts){
       var xs = [], ys = []; pts.forEach(function(p){ p.reps.forEach(function(v){ xs.push(Math.log10(p.x * u[1])); ys.push(v); }); });
@@ -8538,7 +8538,10 @@ var ChartKitCore = (function(){
         xPx = function(x){ return plot.x + (x - la) / (lb - la) * plot.w; };
         linTicks(la, lb, 0, 6).ticks.forEach(function(v){ xTickList.push({ x: xPx(v), label: fmt(v), major: true }); });
       } else {
-      var d0 = fin(spec.x.min) && +spec.x.min > 0 ? Math.log10(+spec.x.min) : Math.floor(Math.log10(xlo) - 0.35), d1 = fin(spec.x.max) && +spec.x.max > 0 ? Math.log10(+spec.x.max) : Math.ceil(Math.log10(xhi) + 0.35);
+      // Automatic range: a tenth of a decade of air round the data, then out to the next 1-2-5 value (0.1, 0.2, 0.5, 1, 2, 5, 10 ...), so the curves fill the plot instead of sitting in the middle of seven decades.
+      var L125 = [0, Math.LOG10E * Math.log(2), Math.LOG10E * Math.log(5)];
+      function snap125(v, up){ var f = Math.floor(v + 1e-9), r = v - f, k, c = [L125[0], L125[1], L125[2], 1]; if (up) { for (k = 0; k < 4; k++) if (c[k] >= r - 1e-9) return f + c[k]; } for (k = 3; k >= 0; k--) if (c[k] <= r + 1e-9) return f + c[k]; return f; }
+      var d0 = fin(spec.x.min) && +spec.x.min > 0 ? Math.log10(+spec.x.min) : snap125(Math.log10(xlo) - 0.1, false), d1 = fin(spec.x.max) && +spec.x.max > 0 ? Math.log10(+spec.x.max) : snap125(Math.log10(xhi) + 0.1, true);
       if (d1 <= d0) d1 = d0 + 1;
       xPx = function(x){ return plot.x + (Math.log10(Math.max(x, 1e-30)) - d0) / (d1 - d0) * plot.w; };
       var exps = []; for (var e0 = Math.ceil(d0 - 1e-9); e0 <= d1 + 1e-9; e0++) exps.push(e0);

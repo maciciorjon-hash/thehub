@@ -356,6 +356,23 @@ await open('xy');
 const k14 = await ev(() => { const C = ChartKitCore, out = {}; [[-4, 2], [-6, 1], [-2, 2], [0, 3], [-8, -4]].forEach(r => { const e = []; for (let x = r[0]; x <= r[1]; x++) e.push(x); out[r.join('..')] = C.decadeLabels(e); }); return out; });
 check('K14 a run of decades is all powers of ten or all plain numbers', Object.values(k14).every(l => l.every(x => /^10\^/.test(x)) || l.every(x => !/^10\^/.test(x))), JSON.stringify(k14));
 
+// K40 — the automatic x range hugs the data: every point is inside the plot and there is under a decade of air in all, never seven decades round four of data
+const k40 = await ev(() => { const C = ChartKitCore, out = [];
+  [[0.169, 10000], [0.3, 30], [2, 2000000], [1e-3, 1], [10000, 270000]].forEach(r => {
+    const xs = []; for (let x = r[1]; x >= r[0] * 0.999; x /= 3) xs.push(x);
+    const fit = { fn: x => 100 / (1 + x / Math.sqrt(r[0] * r[1])) };
+    const doc = { title: ['T', '', ''], xTitle: '[c] (nM)', xUnit: 'nM', yTitle: 'y', items: ['a', 'b'].map((id, i) => ({ id, name: id, fit, points: xs.map(x => ({ x, label: '' + x, reps: [{ id: '1', v: 90 / (1 + x / 5) + i }, { id: '2', v: 91 / (1 + x / 5) }] })) })) };
+    const sc = C.build(doc, C.withDefaults({})), pl = sc.plot, mk = sc.prims.filter(p => p.t === 'marker');
+    const inside = mk.length > 0 && mk.every(m => m.cx >= pl.x - 0.01 && m.cx <= pl.x + pl.w + 0.01);
+    const xlo = Math.min(...xs), xhi = Math.max(...xs);
+    const maj = sc.prims.filter(p => p.t === 'text' && /^xTick/.test(p.el) && p.text).map(p => p.x).sort((a, b) => a - b);
+    const per = maj.length > 1 ? (maj[maj.length - 1] - maj[0]) / (maj.length - 1) : null;   // one decade, in points
+    const span = per ? pl.w / per : null, dataSpan = Math.log10(xhi / xlo);
+    out.push({ r: r.join('..'), inside, span: span && +span.toFixed(2), dataSpan: +dataSpan.toFixed(2), n: mk.length });
+  });
+  return out; });
+check('K40 the automatic x range keeps every point inside the plot and leaves under a decade of air in all (five data ranges)', k40.every(o => o.inside && (o.span === null || o.span - o.dataSpan < 1)), JSON.stringify(k40));
+
 // K30 — the Y axis on auto never leaves data outside it (the editor's own core, a few thousand random figures of every size of number)
 await open('xy');
 const k30 = await ev(() => { const C = ChartKitCore; let s = 7; const R = () => (s = (s * 1664525 + 1013904223) % 4294967296) / 4294967296, bad = [];
@@ -549,6 +566,11 @@ for (const name of Object.keys(APPS)) {
     check('K13 echo: other results with the same count and first compound start with the default choice and nothing left out', k13.reset[0] === 6 && k13.reset[1] === 0, JSON.stringify(k13.reset));
   }
   // K26 — each app's own columns, and the numbers its Results table has
+  // K41 — the figure is titled what the analysis was called in Setup (Echo and Lumina's Assay ID, Beacon's analysis name); with no name the kind of assay stands in
+  { const r = await E(k => { const kit = window[k], t = () => { kit.refresh(); const p = kit.scene().prims.find(q => q.el === 'title0'); return p ? p.text : ''; };
+      const set = v => { if (k === '_egKit') window._lastAssayId = v; else if (k === '_lgKit') state.assayId = v; else { state.name = v; state.nameAuto = false; } };
+      set('VIAB20261105_72h'); const named = t(); set(''); const bare = t(); return { named, bare }; }, a.kit);
+    check('K41 ' + name + ': the title is the name typed in Setup, and the kind of assay when there is none', r.named === 'VIAB20261105_72h' && r.bare !== '' && r.bare.indexOf('VIAB') < 0, JSON.stringify(r)); }
   const k26a = await E(k => { const kit = window[k], sp = kit.spec(); sp.hidden = {}; sp.table.show = false; kit.refresh(); const off = kit.scene().H - kit.scene().figH; sp.table.show = true; kit.refresh();
     const sc = kit.scene(), tx = sc.prims.filter(p => p.t === 'text' && p.y > sc.figH).map(p => p.text), hdr = tx.slice(0, 5);
     const first = kit.scene().items[0], cell = tx[5 + 1];
