@@ -29,6 +29,9 @@
 //                                 hundreds of per cent and a potency nobody measured. A fit is tested against the mean of its own readings (F test, p < 0.05):
 //                                 a flat series is the flat line (span 0, "n.d.", out of the Plot, no potency to Labbook), a real curve and a series already maximal
 //                                 at the lowest dose keep their fits, and no free plateau leaves the readings by more than a quarter of their range.
+//   L38 edge effect              Optional. A planted edge distortion is undone from the plate's own vehicle wells (every well back within 3 points of the plate
+//                                 without it), a clean plate is not touched, Jon's layout (vehicle only on column 12) changes nothing and says why, the outer
+//                                 ring can be left out instead, and the mode travels with the session, ⌘Z and the export.
 //   L10 the potency and the effect are called what the selected assay calls them — DC50/Dmax, IC50/Span,
 //       IC50, EC50/Emax — in the table, the curve, the Plot, every export and what goes to Labbook
 //
@@ -960,6 +963,96 @@ try {
   check('L35 Curve PDFs: with two plates a list of plates to tick (all ticked), one PDF per ticked plate, named for the Assay ID and the plate', r.dlg && r.boxes === 2 && r.ticked === 2 && r.one.join().replace(/_\d{4}-\d\d-\d\d/g, '') === 'PDF1_Lumina_Curves_Plate_1.pdf' && r.files.join().replace(/_\d{4}-\d\d-\d\d/g, '') === 'PDF1_Lumina_Curves_Plate_1.pdf,PDF1_Lumina_Curves_Plate_2.pdf', JSON.stringify([r.dlg, r.boxes, r.ticked, r.one, r.files]));
   check('L35 each PDF is a real PDF with a page per six curves, the figures drawn inside it as vectors, and holds its own plate\'s compounds only', r.head === '%PDF-1.4,%PDF-1.4' && r.pages === '1,1' && r.hasNames && r.cm.split(',').every((c, i) => +c >= (i ? 2 : 4)) && r.curves === 'true,true', JSON.stringify([r.head, r.pages, r.hasNames, r.cm, r.curves]));
 } catch (err) { check('L35 the checks ran to the end', false, String(err && err.message || err).split('\n')[0]); }
+
+
+// L38 — Edge effect (optional). Long assays read low on the outer wells; the vehicle wells of the plate say by how much, and nothing is invented.
+try {
+  const r = await ev(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms)), LET = 'ABCDEFGH', pos = (r, c) => LET[r] + (c + 1);
+    const eff = { top: -0.10, bottom: -0.06, left: -0.12, right: -0.18 };
+    const F = (r, c, on) => !on ? 1 : (1 + (r === 0 ? eff.top : 0)) * (1 + (r === 7 ? eff.bottom : 0)) * (1 + (c === 0 ? eff.left : 0)) * (1 + (c === 11 ? eff.right : 0));
+    // four compounds in duplicate rows on columns 2–10 (so rows A and H are edge wells), vehicle on columns 1, 11 and 12
+    const build = (on, ctrlCols) => {
+      lmMark(); state.format = 96; state.rows = 8; state.cols = 12; document.getElementById('assay-type').value = 'hibit'; onAssayTypeChange(); state.viabNorm = false;
+      const idx = {}; for (let r = 0; r < 8; r++) for (let c = 1; c <= 9; c++) idx[pos(r, c)] = c - 1;
+      state.layout = { grads: [{ id: 'g', top: 1000, unitMul: 1e-9, fac: 3, dir: 'right', idx }], zones: [] };
+      for (let z = 0; z < 4; z++) { const w = []; [2 * z, 2 * z + 1].forEach(r => { for (let c = 1; c <= 9; c++) w.push(pos(r, c)); }); state.layout.zones.push(w); }
+      state.ctrlWells = new Set(); state.zeroCtrlWells = new Set(); state.excluded = new Set(); state.names = ['Cpd-17', 'Ref-A', 'Cpd-42', 'Cpd-08'];
+      ctrlCols.forEach(c => { for (let r = 0; r < 8; r++) state.ctrlWells.add(pos(r, c)); });
+      const curves = [{ ec50: 5e-8, top: 98, bot: 2 }, { ec50: 2e-7, top: 95, bot: 5 }, { ec50: 8e-7, top: 90, bot: 8 }, { ec50: 3e-6, top: 96, bot: 3 }];
+      state.plates = [_lmNewPlate()]; state.plate = 0; state.assayId = '';
+      const sig = state.plates[0].signal, wob = (r, c) => 1 + 0.02 * Math.sin(7 * r + 3 * c);
+      state.layout.zones.forEach((zw, zi) => zw.forEach(p => { const q = [LET.indexOf(p[0]), +p.slice(1) - 1]; sig[p] = 1000 * _4plVal4(Math.log10(lmConcAt(p)), curves[zi].bot, Math.log10(curves[zi].ec50), 1, curves[zi].top) * F(q[0], q[1], on) * wob(q[0], q[1]); }));
+      state.ctrlWells.forEach(p => { const q = [LET.indexOf(p[0]), +p.slice(1) - 1]; sig[p] = 100000 * F(q[0], q[1], on) * wob(q[0], q[1]); });
+      lmAfterChange();
+    };
+    const run = () => { state.fitSig = null; const ok = runLuminaAnalysis({ quiet: true }); const m = {}; (state.rawRows || []).forEach(r => { m[r.well] = r.measurement; }); return { ok, m, rows: (state.rawRows || []).slice(), info: (state.edgeInfo || []).slice() }; };
+    const maxDiff = (a, b, only) => Math.max(...Object.keys(a).filter(k => b[k] !== undefined && (!only || only(k))).map(k => Math.abs(a[k] - b[k])));
+    const ring = k => /^[AH]/.test(k) || /^\D(1|12)$/.test(k);
+    const o = {};
+    // the truth: the same plate with no edge effect at all
+    build(false, [0, 10, 11]); state.edgeMode = 'off'; o.truth = run();
+    // the distorted plate, edge off
+    build(true, [0, 10, 11]); state.edgeMode = 'off'; o.off = run();
+    o.offErr = maxDiff(o.off.m, o.truth.m);
+    // corrected from the vehicle wells
+    lmSetEdge('correct'); o.on = run();
+    o.onErr = maxDiff(o.on.m, o.truth.m, k => !!o.truth.m[k]);
+    o.onErrRing = maxDiff(o.on.m, o.truth.m, k => /^[AH]/.test(k));
+    o.fit = o.on.info[0] && o.on.info[0].fit; o.applied = o.fit && o.fit.applied; o.sides = o.fit ? o.fit.terms.filter(t => t.applied).map(t => t.side).sort().join() : '';
+    o.pcts = o.fit ? Object.fromEntries(o.fit.terms.map(t => [t.side, +t.pct.toFixed(1)])) : {};
+    o.edgeF = o.on.rows.filter(r => /^A/.test(r.well) && !r.isCtrl).map(r => r.edgeF);
+    o.hdrOn = _rawHeader(); o.proto = lmEdgeProtocolText(); o.note = lmEdgeResultsNote(); o.dataIdOn = lmDataId();
+    const sess = JSON.parse(JSON.stringify(lmSession())); o.sess = sess.edge;
+    lmSetEdge('off'); o.dataIdOff = lmDataId(); o.hdrOff = (state.rawEdge = false, _rawHeader()); lmUndo(); o.undone = state.edgeMode;
+    lmSetEdge('correct'); lmLoadSession(sess); o.loaded = state.edgeMode;
+    // a clean plate (no edge effect): nothing is applied and every well is exactly what it is without the option
+    build(false, [0, 10, 11]); state.edgeMode = 'off'; const cleanOff = run(); state.edgeMode = 'correct'; const cleanOn = run();
+    o.cleanApplied = cleanOn.info[0] && cleanOn.info[0].fit.applied; o.cleanSame = JSON.stringify(cleanOff.m) === JSON.stringify(cleanOn.m); o.cleanWords = lmEdgeWords(cleanOn.info[0]);
+    // Jon's layout: the vehicle only on column 12 — the edge cannot be told from the vehicle level, so nothing may change and the page says why
+    build(true, [11]); state.edgeMode = 'off'; const colOff = run(); state.edgeMode = 'correct'; const colOn = run();
+    o.colOk = colOn.info[0] && colOn.info[0].fit.ok; o.colSame = JSON.stringify(colOff.m) === JSON.stringify(colOn.m); o.colWhy = colOn.info[0] ? colOn.info[0].fit.why : '';
+    o.colNote = lmEdgeResultsNote(); o.colPreview = lmEdgePreviewHtml(); document.getElementById('assay-type').value = 'hibit';
+    // leave the outer ring out
+    build(true, [0, 10, 11]); lmSetEdge('omit'); const om = run(); o.omitOut = om.rows.filter(r => r.edgeOut).length; o.omitExcl = om.rows.filter(r => r.edgeOut).every(r => r.excl);
+    o.omitInner = om.rows.filter(r => !r.edgeOut).every(r => !r.excl); o.omitAT = om.rows.filter(r => /^A/.test(r.well) && !r.isCtrl).every(r => r.edgeOut);
+    o.omitErr = maxDiff(om.m, o.truth.m, k => !ring(k)); o.omitNote = lmEdgeResultsNote(); o.omitHdr = _rawHeader();
+    state.ctrlWells = new Set(Array.from(state.ctrlWells).filter(p => ring(p))); const noCtl = run(); o.omitNoCtl = { ok: noCtl.ok, why: state.fitMsg, n: (state.fitResults || []).length };
+    // an additive baseline has no multiplicative edge to divide out
+    build(true, [0, 10, 11]); lmSetEdge('correct'); document.getElementById('assay-type').value = 'gain'; onAssayTypeChange(); o.gainEff = lmEdgeEff();
+    document.getElementById('assay-type').value = 'hibit'; onAssayTypeChange(); o.hibitEff = lmEdgeEff();
+    // the Setup walk: the control the person sees
+    lsOpen(2); await wait(250); state.edgeMode = 'off'; lsK.render(); await wait(100);
+    document.querySelector('#ls-edge [data-v="correct"]').click(); await wait(150);
+    o.ui = { mode: state.edgeMode, active: document.querySelector('#ls-edge .active').dataset.v, note: document.getElementById('ls-edge-note').textContent };
+    document.querySelector('#ls-edge [data-v="off"]').click(); await wait(100); o.uiOff = { mode: state.edgeMode, note: document.getElementById('ls-edge-note').textContent };
+    lsClose();
+    // toggling with a fit on screen refits by itself (the signature of the fit carries the mode)
+    build(true, [0, 10, 11]); state.edgeMode = 'off'; state.fitSig = null; _lmEnsureFit(true); const sOff = _lmFitSig(), a0 = JSON.stringify(state.fitResults.map(x => +x.logEC50.toFixed(4)));
+    lmSetEdge('correct'); o.stale = { sigMoved: _lmFitSig() !== sOff }; _lmEnsureFit(true); o.stale.refit = JSON.stringify(state.fitResults.map(x => +x.logEC50.toFixed(4))) !== a0;
+    // displacement: whatever makes an edge well read low scales its background too, so the 0 % control scales with the well's reference
+    { const BG = 30000, FULL = 100000, mkd = on => { build(on, [0, 10, 11]); document.getElementById('assay-type').value = 'displacement'; onAssayTypeChange(); state.ctrlWells = new Set(Array.from(state.ctrlWells).filter(p => p !== 'C11' && p !== 'F11')); state.zeroCtrlWells = new Set(['C11', 'F11']);
+        const sg = state.plates[0].signal, rc = p => [LET.indexOf(p[0]), +p.slice(1) - 1];
+        state.layout.zones.forEach((zw, zi) => zw.forEach(p => { const [r, c] = rc(p), fr = _4plVal4(Math.log10(lmConcAt(p)), 2, Math.log10([5e-8, 2e-7, 8e-7, 3e-6][zi]), 1, 98) / 100; sg[p] = (BG + (FULL - BG) * fr) * F(r, c, on) * (1 + 0.02 * Math.sin(7 * r + 3 * c)); }));
+        state.ctrlWells.forEach(p => { const [r, c] = rc(p); sg[p] = FULL * F(r, c, on) * (1 + 0.02 * Math.sin(7 * r + 3 * c)); }); state.zeroCtrlWells.forEach(p => { sg[p] = BG; }); lmAfterChange(); };
+      mkd(false); state.edgeMode = 'off'; const dT = run(); mkd(true); state.edgeMode = 'off'; const dO = run(); lmSetEdge('correct'); const dC = run();
+      o.disp = { off: maxDiff(dO.m, dT.m), on: maxDiff(dC.m, dT.m), applied: !!(dC.info[0] && dC.info[0].fit.applied) }; document.getElementById('assay-type').value = 'hibit'; onAssayTypeChange(); }
+    return o;
+  });
+  check('L38 toggling the mode with a fit on screen changes the fit signature and remakes the curves by itself', r.stale.sigMoved && r.stale.refit, JSON.stringify(r.stale));
+  check('L38 displacement: the 0 % control scales with the edge factor, so the corrected plate is back within 3 points of the truth (and was not without it)', r.disp.applied && r.disp.on < 3 && r.disp.off > 4, JSON.stringify(r.disp));
+  check('L38 without the option the plate is off: a vehicle on the edge is a low 100 %, so the whole plate reads high and the edge rows read low', r.offErr > 4, r.offErr);
+  check('L38 corrected from the vehicle wells, every well is back within 3 points of the plate without the edge effect', r.on.ok && r.onErr < 3 && r.onErrRing < 3, { all: r.onErr, ring: r.onErrRing, pcts: r.pcts });
+  check('L38 all four sides were found, with effects near the planted ones (−10, −6, −12, −18 %)', r.sides === 'bottom,left,right,top' && Math.abs(r.pcts.top + 10) < 3 && Math.abs(r.pcts.bottom + 6) < 3 && Math.abs(r.pcts.left + 12) < 3 && Math.abs(r.pcts.right + 18) < 3, { sides: r.sides, pcts: r.pcts });
+  check('L38 an edge well carries its own factor in the raw export, the header names it, the protocol and the note say what was done and what it cannot fix', r.edgeF.length > 0 && r.edgeF.every(f => f > 0.8 && f < 0.97) && r.hdrOn.includes('Edge_factor') && /vehicle wells/.test(r.proto) && /does not undo the higher compound concentration/.test(r.proto) && /Edge effect/.test(r.note), { f: r.edgeF.slice(0, 2), h: r.hdrOn.slice(-6) });
+  check('L38 off puts no edge column in the export; the mode is a different analysis (data id), travels with the session, and ⌘Z / reload restore it', !r.hdrOff.includes('Edge_factor') && r.dataIdOn !== r.dataIdOff && r.sess === 'correct' && r.undone === 'correct' && r.loaded === 'correct', { sess: r.sess, undone: r.undone, loaded: r.loaded });
+  check('L38 a plate with no edge effect is not touched: nothing applied, every well identical to the option off', r.cleanApplied === false && r.cleanSame === true, { a: r.cleanApplied, same: r.cleanSame, w: r.cleanWords });
+  check('L38 Jon\'s layout (vehicle only on column 12): it cannot be told from the edge, so NOTHING changes and Results and Setup say why', r.colOk === false && r.colSame === true && /outer ring/.test(r.colWhy) && /Edge effect/.test(r.colNote) && /cannot measure|outer ring/i.test(r.colPreview), { ok: r.colOk, same: r.colSame, why: r.colWhy.slice(0, 60), prev: r.colPreview.slice(0, 80) });
+  check('L38 leave out the outer ring: exactly the ring is out of the fit (all of row A), none of the inside is, the inside is back to the truth, the export says which', r.omitOut === 18 && r.omitExcl && r.omitInner && r.omitAT && r.omitErr < 3 && /outer ring/.test(r.omitNote) && r.omitHdr.includes('Edge'), JSON.stringify({ out: r.omitOut, excl: r.omitExcl, inner: r.omitInner, at: r.omitAT, err: r.omitErr, note: r.omitNote.slice(0, 90), hdr: r.omitHdr.slice(-5) }));
+  check('L38 leave out the outer ring with every vehicle well on the ring: no 100 % is invented, the plate is left out and says why', r.omitNoCtl.ok === false && r.omitNoCtl.n === 0 && /outer ring/.test(r.omitNoCtl.why), JSON.stringify(r.omitNoCtl));
+  check('L38 an additive baseline (gain) is not divided by an edge factor; a multiplicative assay is', r.gainEff === 'off' && r.hibitEff === 'correct', { gain: r.gainEff, hibit: r.hibitEff });
+  check('L38 Setup › Controls: the segmented choice sets the mode and shows the finding; Off clears it', r.ui.mode === 'correct' && r.ui.active === 'correct' && r.ui.note.length > 20 && r.uiOff.mode === 'off' && r.uiOff.note === '', { ui: r.ui, off: r.uiOff });
+} catch (err) { check('L38 the checks ran to the end', false, String(err && err.message || err).split('\n')[0]); }
 
 check('no page or console errors', errs.length === 0, errs.slice(0, 3).join(' | '));
 await browser.close();
