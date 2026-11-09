@@ -62,6 +62,8 @@
 //                            carries a Paste the read button; the grid lands on the plate (96 values, A1 first), the card colours by it and its
 //                            Layout / Values toggle works, a second paste asks before replacing a recorded read, and a grid bigger than the plate
 //                            says how many numbers it left out. (the read had to be pasted from three clicks inside the plate editor: 0 reads in 24 runs)
+//   I32 the read in print     An experiment with reader values prints them: the Report/PDF and the lab sheet carry a Reader values grid (the number in
+//                             every well that has one); Methods do not; no read, no grid; a plate wider than 12 columns prints the tint and says so
 //   I30 the live Methods     A live paragraph is built when it is read and never stored: a new experiment, Refresh, a toggled option and a
 //       is not stored        load-time pass leave no pubReady / pubSrcSig on it; only wording a person wrote (pubEdited) is kept. (a stored copy was
 //                            a third of every experiment, went to the cloud, and said '0 of 3 steps done' on a finished run)
@@ -1316,6 +1318,51 @@ async function suite(opts) {
         } finally { cleanup(e); }
       });
     } finally { window.lbPromptBig = prompt0; window.lbConfirm = confirm0; window.toast = toast0; }
+  }
+
+  // ── I32 The read in print: reader values reach the Report and the lab sheet, not Methods ──
+  if (run('I32')) {
+    const confirm0 = window.lbConfirm; window.lbConfirm = () => Promise.resolve(true);
+    try {
+      for (const key of KEYS.slice(0, 3)) await guard('I32', key, async () => {
+        openQuick(key, {}); const e = await created(() => createExperiment()); closeNew(); if (!e || !e.plate) { cleanup(e); return; }
+        try {
+          const p = e.plate, d = plateDims(p), o = Object.assign({}, pdfOpts(), { plate: 1 });
+          // put a layout on it when the design left the map empty, so there is something to print
+          if (!Object.keys(p.wells || {}).some(k => p.wells[k] && p.wells[k].typeId && p.wells[k].typeId !== 'blank')) { p.wells = p.wells || {}; p.wells.A1 = { typeId: PLATE_TYPES[1] ? PLATE_TYPES[1].id : 'cpd', conc: '1 uM' }; }
+          const before = pdPlate(p, o) + _labPlateHtml(p, 'x');
+          tick('I32');
+          if (/pk-rv|Reader values/.test(before)) bad('I32', key, 'a plate with no read prints a Reader values grid');
+          const V = {}; for (let r = 0; r < d.r; r++) for (let c = 0; c < d.c; c++) V[PLATE_ROWS.charAt(r) + (c + 1)] = 1000 + r * d.c + c;
+          p.values = { data: V, min: 1000, max: 1000 + d.r * d.c - 1, added: Date.now() };
+          for (const [where, html] of [['the Report / PDF', pdPlate(p, o)], ['the lab sheet', _labPlateHtml(p, 'x')], ['the record PDF', _pdExpHtml(e, Object.assign({}, o))]]) {
+            tick('I32');
+            const t = html.replace(/<[^>]+>/g, ' ');
+            if (!/pk-rv/.test(html) || !/Reader values/.test(t)) bad('I32', key, where + ' does not print the reader values');
+            else {
+              const grid = html.slice(Math.max(0, html.indexOf('class="pk-rv"')));
+              const cells = (grid.match(/<span class="pk-v">/g) || []).length;
+              if (d.c <= 12 && cells !== d.r * d.c) bad('I32', key, where + ' prints ' + cells + ' numbers for ' + d.r * d.c + ' wells');
+              if (d.c <= 12 && !/>1000</.test(grid)) bad('I32', key, where + ' does not print the value of A1');
+              if (!/background:rgb\(/.test(grid) && !/background:#/.test(grid)) bad('I32', key, where + ' does not tint the read');
+              const dark = (grid.match(/background:rgb\((\d+),(\d+),(\d+)\)/g) || []).filter(m => Math.min(...m.match(/\d+/g).map(Number)) < 150).length;
+              if (dark) bad('I32', key, where + ': ' + dark + ' wells are on the screen\'s saturated colour, the ink on them does not read on paper');
+              if (d.c > 12 && cells) bad('I32', key, where + ' prints numbers in cells too small for them');
+            }
+          }
+          const meth = pdPlate(p, null, true) + buildMethodsDoc(e);
+          if (/class="pk-rv"/.test(meth)) bad('I32', key, 'Methods print the reader values: a Methods section says how it was done, not what it read');
+          // a wider plate prints the tint and says so
+          const wide = Object.assign({}, p, { format: '384' }), dw = plateDims(wide), W = {};
+          for (let r = 0; r < dw.r; r++) for (let c = 0; c < dw.c; c++) W[PLATE_ROWS.charAt(r) + (c + 1)] = r * dw.c + c;
+          wide.values = { data: W, min: 0, max: dw.r * dw.c - 1 };
+          const wh = printPlateHtml(wide, 'wide', { values: true }); tick('I32');
+          if (!/pk-rv/.test(wh)) bad('I32', key, 'a 384 plate printed no reader grid');
+          if (!/shaded blue/.test(wh)) bad('I32', key, 'a 384 plate printed tint without saying that the numbers are not in the cells');
+          delete p.values;
+        } finally { cleanup(e); }
+      });
+    } finally { window.lbConfirm = confirm0; }
   }
 
   // ── I18 no box anywhere loses the caret ──

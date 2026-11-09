@@ -22932,6 +22932,7 @@ var PLATE_PRINT_CSS=
  +'.pk-vt{writing-mode:vertical-rl;margin:0 auto;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font:600 7pt/1.15 sans-serif;color:#222}.pk-vt-l{transform:rotate(180deg)}'
  +'#print-root .pk-g td.pk-nt,#print-root .pk-vt{font-size:7pt}'
  +'.pk-leg{margin-top:7px;font:400 8.5pt/1.6 sans-serif;color:#111}'
+ +'.pk-rv{margin-top:12px;break-inside:avoid;page-break-inside:avoid}.pk-rv .pk-t{font-size:9pt;font-weight:600;color:#333}'
  +'.pk-leg i{display:inline-block;width:9px;height:9px;border:.5pt solid #555;margin-right:4px;vertical-align:-1px}'
  +'.pk-leg span{display:inline-block;margin-right:14px;white-space:nowrap}'
  +'.pk-sumt{border-collapse:collapse;width:100%;margin-top:8px;font:400 9pt/1.5 sans-serif}'
@@ -22998,6 +22999,7 @@ var PRINT_CSS='<style>@page{size:A4;margin:16mm 15mm 17mm}'
  +'#print-root .pk-g td.pk-no{font-size:12pt}#print-root .pk-g td.pk-no1{font-size:8.5pt}'
  +'#print-root .pk-gl{font-size:8pt}'
  +'#print-root .pk-t{font:700 10pt/1.3 sans-serif;margin-bottom:3px;break-after:avoid}#print-root .pk-n{font-size:8.5pt;margin:0 0 5px}#print-root .pk-leg{font-size:8pt;margin-top:5px;line-height:1.5}'
+ +'#print-root .pk-rv{margin-top:9px;break-inside:avoid;page-break-inside:avoid}#print-root .pk-rv .pk-t{font-size:9pt;font-weight:600}'
  +'#print-root .pk-sumt{margin-top:5px}#print-root .pk-sumt td{font-size:8.5pt;padding:2px 6px 2px 0;border-bottom:.5pt solid #ccc}'
  // Header: where it is filed, the code, the title, then one line of facts. Pills are a screen idiom.
  +'#print-root .pd-head{border-bottom:1.5pt solid #111;padding:0 0 9px;margin-bottom:12px}'
@@ -23064,8 +23066,8 @@ function pdRecipe(b){ var r=expCalcRecipe(b); if(!r||_recipeRedundant(b,r)) retu
 // Static plate grid for the PDF — same colours, no interaction.
 // An empty map is a grid of 96 empty boxes saying "nothing here"; it does not print. The
 // well-by-well list under the map is off by default — a legible map says it already.
-function pdPlate(p,o){ o=o||pdfOpts(); if(!p||!Object.keys(p.wells||{}).some(function(k){ var w=p.wells[k]; return w&&w.typeId&&w.typeId!=='blank'; })) return '';
-  return printPlateHtml(p,(p&&p.title)||'Plate map',{summary:!!o.plateText, note:!!o.plateNote}); }
+function pdPlate(p,o,noValues){ o=o||pdfOpts(); if(!p||!Object.keys(p.wells||{}).some(function(k){ var w=p.wells[k]; return w&&w.typeId&&w.typeId!=='blank'; })) return '';
+  return printPlateHtml(p,(p&&p.title)||'Plate map',{summary:!!o.plateText, note:!!o.plateNote, values:!noValues}); }
 function printExpByDay(e,o){ o=o||pdfOpts(); var groups=dayGroups(e); if(!groups.length) return '';
   var no=0;
   return groups.map(function(g){
@@ -23710,6 +23712,32 @@ function _pkSideCells(NG,side,r){
     else { t='<td class="pk-nv" rowspan="'+span+'"><div class="pk-vt pk-vt-'+side+'" style="max-height:'+(span*22-4)+'px">'+esc(n.text)+'</div></td>';
       br='<td class="pk-bk pk-bk-'+side+(span>1?'':' pk-bk-1')+'" rowspan="'+span+'"></td>'; }
     return side==='l'?(t+br):(br+t); }).join(''); }
+// The plate reader's numbers, printed under the map: same rows and columns, the value in every
+// well that has one, tinted on the same blue-to-red scale as the screen. A reader value is a result;
+// a Report that shows the layout and not the read has left the result out. Wider than 12 columns the
+// numbers do not fit a cell, so a 384 plate prints the tint and the legend line says so.
+function _pkVal(v){ v=+v; if(!isFinite(v)) return ''; if(v===0) return '0'; var a=Math.abs(v);
+  if(a>=10000||a<0.01) return v.toExponential(1).replace('e+','e');
+  return String(a>=100?Math.round(v):a>=10?Math.round(v*10)/10:Math.round(v*100)/100); }
+// plValueColor answers rgb(), which _mixWhite (hex only) passes through unchanged: the number would sit on the screen's
+// saturated blue. Paper gets the same hue paled towards white so the ink on it reads.
+function _pkValTint(col){ var m=/^rgb\((\d+),\s*(\d+),\s*(\d+)\)$/.exec(col||''); if(!m) return col;
+  function f(x){ return Math.round(+x+(255-x)*0.62); } return 'rgb('+f(m[1])+','+f(m[2])+','+f(m[3])+')'; }
+function _pkValuesHtml(p){
+  var V=p&&p.values&&p.values.data; if(!V) return ''; var ids=Object.keys(V); if(!ids.length) return '';
+  var d=plateDims(p); if(!d) return '';
+  var withNum=(d.c<=12), head='<tr><th class="pk-rh"></th>';
+  for(var c0=0;c0<d.c;c0++) head+='<th>'+(c0+1)+'</th>';
+  head+='</tr>';
+  var rows='';
+  for(var r=0;r<d.r;r++){ var tds='';
+    for(var c=0;c<d.c;c++){ var id=wellIdOf(r,c), has=V[id]!=null, col=has?_pkValTint(plValueColor(p,id)):null;
+      tds+='<td'+(col?' style="background:'+col+'"':'')+'>'+(has&&withNum?'<span class="pk-v">'+esc(_pkVal(V[id]))+'</span>':'')+'</td>'; }
+    rows+='<tr><th class="pk-rh">'+PLATE_ROWS.charAt(r)+'</th>'+tds+'</tr>'; }
+  return '<div class="pk-rv"><div class="pk-t">Reader values</div>'
+    +'<table class="pk-g">'+head+rows+'</table>'
+    +'<div class="pk-leg">'+esc(_plTrim(p.values.min))+' \u2013 '+esc(_plTrim(p.values.max))+' &middot; '+ids.length+' well'+(ids.length===1?'':'s')
+    +(withNum?'':' &middot; shaded blue (low) to red (high)')+'</div></div>'; }
 function printPlateHtml(p,title,opts){
   if(!p) return ''; p=plateView(p);
   opts=opts||{};
@@ -23806,7 +23834,7 @@ function printPlateHtml(p,title,opts){
   return '<div class="pk-p"><div class="pk-t">'+esc(ttl)+fmtTxt+'</div>'
     +((opts.note&&p.note)?('<div class="pk-n">'+esc(p.note)+'</div>'):'')
     +'<table class="pk-g">'+cg+topRows+head+rows+botRows+'</table>'
-    +(leg?('<div class="pk-leg">'+leg+'</div>'):'')+sum+'</div>';
+    +(leg?('<div class="pk-leg">'+leg+'</div>'):'')+sum+(opts.values===false?'':_pkValuesHtml(p))+'</div>';
 }
 // The stored title of a layout said what the layout was asked for ("11 compounds × 4 pts"); the
 // plate underneath had 3 points per compound because that is what fit. The numbers in the title
@@ -24361,8 +24389,8 @@ function buildMethodsDoc(e){
     +'<div class="pd-crumb">'+esc(projCrumb(e))+(e.startDate?(' · '+esc(fmtDate(e.startDate))):'')+'</div></div>';
   var body=(e.pubEdited&&e.pubReady)?e.pubReady:buildPubReadyFromExp(e,METHODS_ONLY);
   h+='<div class="pd-body">'+body+'</div>';
-  expPlateList(e).forEach(function(x,i){ h+=(i?'':'<div class="pd-sec-hd">Plate layout</div>')+pdPlate(x.p); });
-  (e.blocks||[]).forEach(function(b){ if(b.plate) h+=pdPlate(b.plate); });
+  expPlateList(e).forEach(function(x,i){ h+=(i?'':'<div class="pd-sec-hd">Plate layout</div>')+pdPlate(x.p,null,true); });   // Methods say how it was done, not what it read
+  (e.blocks||[]).forEach(function(b){ if(b.plate) h+=pdPlate(b.plate,null,true); });
   var res=pdResults(e); if(res) h+=res;
   return h+foot();
 }
