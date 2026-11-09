@@ -58,6 +58,10 @@
 //       every step           from — in the Review and in the created record alike, for a step
 //                            with no volume calculator that says what it adds too. (a step that
 //                            added liquid was invisible; the read started from 111, not 123)
+//   I31 paste the read       Every read step (NanoBRET read, CTG / HiBiT readout; not a pre-read or a kinetic run) of an experiment with a plate
+//                            carries a Paste the read button; the grid lands on the plate (96 values, A1 first), the card colours by it and its
+//                            Layout / Values toggle works, a second paste asks before replacing a recorded read, and a grid bigger than the plate
+//                            says how many numbers it left out. (the read had to be pasted from three clicks inside the plate editor: 0 reads in 24 runs)
 //   I30 the live Methods     A live paragraph is built when it is read and never stored: a new experiment, Refresh, a toggled option and a
 //       is not stored        load-time pass leave no pubReady / pubSrcSig on it; only wording a person wrote (pubEdited) is kept. (a stored copy was
 //                            a third of every experiment, went to the cloud, and said '0 of 3 steps done' on a finished run)
@@ -1256,6 +1260,62 @@ async function suite(opts) {
         if (e.pubEdited || e.pubReady != null) bad('I30', key, 'toggling an option left the old wording stored');
       } finally { cleanup(e); }
     });
+  }
+
+  // ── I31 Paste the read: a button on the read step, the grid on the plate, the card in colour ──
+  if (run('I31')) {
+    const grid = (R, C) => Array.from({ length: R }, (_, r) => Array.from({ length: C }, (_, c) => r * C + c + 1).join('\t')).join('\n');
+    const prompt0 = window.lbPromptBig, confirm0 = window.lbConfirm, toast0 = window.toast;
+    let said = '', asked = 0, text = '', yes = true;
+    window.lbPromptBig = () => Promise.resolve(text);
+    window.lbConfirm = () => { asked++; return Promise.resolve(yes); };
+    window.toast = m => { said = String(m); };
+    let readSteps = 0;
+    try {
+      for (const key of KEYS) await guard('I31', key, async () => {
+        openQuick(key, {}); const e = await created(() => createExperiment()); closeNew(); if (!e) return;
+        try {
+          for (const b of e.blocks || []) {
+            const html = benchRowHtml(e, b, {}), has = /pasteTheRead\(/.test(html), want = isReadStep(b) && expPlateList(e).length > 0;
+            tick('I31');
+            if (has !== want) bad('I31', key, `"${b.title}" ${want ? 'is a read step and has no Paste the read' : 'is not a read step and offers Paste the read'}`);
+            if (want) readSteps++;
+          }
+        } finally { cleanup(e); }
+      });
+      if (!readSteps) bad('I31', 'designs', 'no design has a read step with a plate: the check saw nothing');
+      for (const key of KEYS.slice(0, 2)) await guard('I31', 'paste ' + key, async () => {
+        openQuick(key, {}); const e = await created(() => createExperiment()); closeNew(); if (!e || !e.plate) { cleanup(e); return; }
+        try {
+          const pk = 'exp:' + e.id, p = e.plate, d = plateDims(p); said = ''; asked = 0; yes = true;
+          text = grid(d.r, d.c); plPasteValues(pk); await sleep(200); tick('I31');
+          const v = p.values && p.values.data;
+          if (!v || Object.keys(v).length !== d.r * d.c) bad('I31', key, 'the grid did not land on the plate: ' + (v ? Object.keys(v).length : 0) + ' values of ' + d.r * d.c);
+          else if (v.A1 !== 1 || v.A2 !== 2 || v[PLATE_ROWS.charAt(d.r - 1) + d.c] !== d.r * d.c) bad('I31', key, 'values are in the wrong wells (A1=' + v.A1 + ', A2=' + v.A2 + ')');
+          if (asked) bad('I31', key, 'a first paste asked to replace something');
+          const card = platePreviewHtml(p, pk);
+          if (!/plate-vals/.test(card) || !/pl-vals/.test(card)) bad('I31', key, 'the card shows no Layout/Values toggle or legend once a read is pasted');
+          if (!/background:rgb\(/.test(card)) bad('I31', key, 'the card is not coloured by the reader values');
+          plvToggle(pk); tick('I31');
+          if (/pl-vals-sc/.test(platePreviewHtml(p, pk)) || /background:rgb\(/.test(platePreviewHtml(p, pk))) bad('I31', key, 'Layout still shows the reader values');
+          plvToggle(pk);
+          // a recorded read is not replaced unless asked
+          yes = false; asked = 0; text = grid(d.r, d.c).replace(/\d+/g, '999'); plPasteValues(pk); await sleep(200);
+          if (!asked) bad('I31', key, 'a second paste did not ask before replacing a recorded read');
+          if (p.values.data.A1 !== 1) bad('I31', key, 'a declined replace changed the recorded values');
+          // Clear on the card acts on this card's plate, asks first, and a No keeps the read
+          if (!card.includes("plClearValues('" + pk + "')")) bad('I31', key, 'the card legend\'s Clear is not tied to this plate');
+          yes = false; plClearValues(pk); await sleep(150); tick('I31');
+          if (!p.values) bad('I31', key, 'Clear removed a recorded read after the answer was No');
+          yes = true; plClearValues(pk); await sleep(150);
+          if (p.values) bad('I31', key, 'Clear did not remove the read after Yes');
+          // a bigger grid than the plate says so
+          delete p.values; yes = true; said = ''; text = grid(d.r * 2, d.c * 2); plPasteValues(pk); await sleep(200); tick('I31');
+          if (!/outside/.test(said)) bad('I31', key, 'a grid bigger than the plate did not say it left numbers out: "' + said + '"');
+          if (Object.keys((p.values || {}).data || {}).length !== d.r * d.c) bad('I31', key, 'a bigger grid filled the wrong number of wells');
+        } finally { cleanup(e); }
+      });
+    } finally { window.lbPromptBig = prompt0; window.lbConfirm = confirm0; window.toast = toast0; }
   }
 
   // ── I18 no box anywhere loses the caret ──

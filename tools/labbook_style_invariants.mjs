@@ -151,8 +151,8 @@ const CHECKS = [
   ['T7', ['exp_planned', 'exp_running', 'exp_done'], `(function(){ var S=__st, bad=[];
     S.all('.lean-tog').forEach(function(b){ var c=getComputedStyle(b,'::before').content; if(c&&c!=='none'&&c!=='normal'&&c!=='""') bad.push(S.cls(b)+' "'+b.textContent.trim()+'" has a glyph '+c+' in front of it'); }); return bad; })()`],
   ['T8', ['exp_planned', 'exp_running', 'exp_done', 'journal_day', 'week', 'exps'], `(function(){ var S=__st, bad=[];
-    var H={'.lean-tog':24,'.dfx-open':24,'.dfx-snooze:not(.bench-photo):not(.bench-more)':24,'.jr-today':24,'.xv-add':24,
-           '.exh-act':28,'.bench-photo':28,'.bench-more':28,'.blk-wait':28,'.rep-x':28,'.pub-btn':28,
+    var H={'.lean-tog':24,'.dfx-open':24,'.dfx-snooze:not(.bench-photo):not(.bench-more):not(.bench-read)':24,'.jr-today':24,'.xv-add':24,
+           '.exh-act':28,'.bench-photo':28,'.bench-more':28,'.bench-hd .bench-read':28,'.due-hd .bench-read':24,'.blk-wait':28,'.rep-x':28,'.pub-btn':28,
            '.xv-q':32,'.xv-filters':32,'.xv-top > .xv-f':32,'.xv-new':32,'.wk-nav > button':32,'.wk-nav .jr-seg':32};
     Object.keys(H).forEach(function(s){ S.all(s).forEach(function(e){ var h=e.getBoundingClientRect().height; if(Math.abs(h-H[s])>1.2) bad.push(S.cls(e)+' "'+(e.textContent||'').trim().slice(0,14)+'" is '+Math.round(h)+'px high, '+s+' is '+H[s]); }); });
     return bad.slice(0,8); })()`],

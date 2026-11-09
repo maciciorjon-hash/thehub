@@ -2105,6 +2105,8 @@ details.pl-sec>*:not(summary):last-child{padding-bottom:11px;}
 .bench-hd .bench-photo,.bench-hd .bench-more{margin-left:0;padding:0;width:28px;justify-content:center;background:none;border-color:transparent;}
 .bench-hd .bench-photo:hover,.bench-hd .bench-more:hover{background:var(--surface2);}
 .bench-hd .blk-wait{margin-left:auto;}
+.bench-hd .bench-read{height:28px;margin-left:auto;}   /* the wait chip beside it is 28 */
+.bench-hd .bench-read+.blk-wait{margin-left:0;}
 .bench-hd .blk-wait+.bench-photo,.bench-hd .blk-wait.timer+.bench-photo{margin-left:0;}
 /* One line: grip · tick · name (ellipsis) · wait · camera · ⋯, all one height. */
 .bench-hd{flex-wrap:nowrap;}
@@ -8495,6 +8497,7 @@ function ckRender(keepScroll){
 // Paste the reader's grid and see the numbers in their wells. An edge effect or a dead column
 // is obvious here and invisible in a fitted curve, so this belongs before analysis, not after.
 // The grid parser is Blueprint's pdParseValues, ported rather than reinvented.
+var _plParseOut=0;   // numbers in the last parsed text that lie outside the plate
 function plParseValues(text,fmt){
   // Labbook's formats are {r,c}, not Blueprint's {rows,cols} — the port has to translate.
   var d=PLATE_FORMATS[String(fmt)]||PLATE_FORMATS['96'], cols=d.c, rl=PLATE_ROWS.slice(0,d.r);
@@ -8534,30 +8537,59 @@ function plParseValues(text,fmt){
   var _hdr = isColHeader(_g0) ? (grid.length !== d.r)
                               : (_f0!==''&&isNaN(parseFloat(_f0))&&!/^[A-P]$/i.test(_f0));
   if(grid.length && _hdr) grid=grid.slice(1);
-  var vals={}, n=0;
+  var vals={}, n=0; _plParseOut=0;
   grid.forEach(function(c,ri){
     var start=/^[A-P]$/i.test(c[0]||'')?1:0;
     var letter=start===1?c[0].toUpperCase():rl[ri];
-    if(!letter||rl.indexOf(letter)<0) return;
+    // A grid bigger than the plate (a 384 read pasted on a 96) must not be taken for a small one:
+    // what falls outside is counted so the paste can say so.
+    if(!letter||rl.indexOf(letter)<0){ c.slice(start).forEach(function(x){ if(x!==''&&!isNaN(parseFloat(x))) _plParseOut++; }); return; }
     for(var i=0;i<cols;i++){ var raw=c[start+i], v=parseFloat(raw);
       if(raw!=null&&raw!==''&&!isNaN(v)){ vals[letter+(i+1)]=v; n++; } }
+    c.slice(start+cols).forEach(function(x){ if(x!==''&&!isNaN(parseFloat(x))) _plParseOut++; });
   });
   return n?vals:null;
 }
-function plPasteValues(){
-  var p=plCur(); if(!p) return;
-  lbPromptBig('Paste the plate-reader grid (rows × columns, tab/comma separated). Row letters and a header row are both optional.','')
+function plPasteValues(key){
+  key=(typeof key==='string'&&key)?key:PL.key; var p=plateOf(key); if(!p) return;
+  var old=p.values&&p.values.data, lbl=plateLabel(key,p);
+  function ask(){
+    lbPromptBig('Paste the plate-reader grid for '+lbl+' (rows \u00d7 columns, tab/comma separated). Row letters and a header row are both optional.','')
     .then(function(t){
       if(t==null) return;
-      var v=plParseValues(t,p.format);
+      var v=plParseValues(t,p.format), out=_plParseOut;
       if(!v){ lbAlert('Could not read a value grid from that. Expected one row per plate row.',{title:'Plate values'}); return; }
       var ks=Object.keys(v).map(function(k){ return v[k]; });
+      var o=_plateOwner(key); if(o&&o.exp) undoMark('Paste the read',['experiments.'+o.exp.id]);
       p.values={data:v, min:Math.min.apply(null,ks), max:Math.max.apply(null,ks), added:Date.now()};
-      platePersist(PL.key); plRender();
-      toast(ks.length+' values read · '+_plTrim(p.values.min)+' – '+_plTrim(p.values.max));
+      platePersist(key);
+      if(PL.key===key&&el('plate-modal').classList.contains('open')) plRender();
+      try{ renderAll(); }catch(_e){}
+      toast(ks.length+' values read into '+lbl+' \u00b7 '+_plTrim(p.values.min)+' \u2013 '+_plTrim(p.values.max)
+        +(out?(' \u00b7 '+out+' number'+(out===1?'':'s')+' outside this '+(PLATE_FORMATS[String(p.format)]||{r:8,c:12}).r*(PLATE_FORMATS[String(p.format)]||{r:8,c:12}).c+'-well plate left out'):''));
     });
+  }
+  // A recorded reading is never rewritten without asking.
+  if(old) lbConfirm(lbl+' already has '+Object.keys(old).length+' reader values ('+_plTrim(p.values.min)+' \u2013 '+_plTrim(p.values.max)+'). Replace them with a new read? Undo brings them back.',
+    {title:'Replace the reader values',ok:'Replace'}).then(function(ok){ if(ok) ask(); });
+  else ask();
 }
-function plClearValues(){ var p=plCur(); if(!p) return; delete p.values; platePersist(PL.key); plRender(); }
+// The read steps of the notebook (NanoBRET read, CTG readout, HiBiT lytic + read…) — a pre-read or a kinetic
+// run is not one grid, so they do not offer the paste.
+function isReadStep(b){ var t=String((b&&b.title)||''); return /\bread(?:out)?\b/i.test(t) && !/pre-?read|kinetic/i.test(t); }
+// The button on the step: straight to the grid box, on the experiment's plate (asks which when there are several).
+function pasteTheRead(expId){ var e=LB.data.experiments[expId]; if(!e) return; var L=expPlateList(e);
+  if(!L.length){ toast('This experiment has no plate map yet'); return; }
+  if(L.length===1){ plPasteValues(L[0].key); return; }
+  lbChoose('Which plate was read?',{title:'Paste the read',answers:L.map(function(x){ return {id:x.key,label:plateLabel(x.key,x.p),sub:(x.p.values&&x.p.values.data)?'has reader values':'',primary:x.no===1}; }).concat([{id:null,label:'Cancel',safe:true}])})
+    .then(function(k){ if(k) plPasteValues(k); }); }
+function plClearValues(key){ key=(typeof key==='string'&&key)?key:PL.key; var p=plateOf(key); if(!p||!(p.values&&p.values.data)) return;
+  // A recorded read is not thrown away by one click.
+  lbConfirm('Remove the '+Object.keys(p.values.data).length+' reader values from '+plateLabel(key,p)+'? Undo brings them back.',{title:'Remove the reader values',ok:'Remove',danger:true}).then(function(ok){ if(!ok) return;
+    var o=_plateOwner(key); if(o&&o.exp) undoMark('Remove the reader values',['experiments.'+o.exp.id]);
+    delete p.values; platePersist(key);
+    if(PL.key===key&&el('plate-modal').classList.contains('open')) plRender();
+    try{ renderAll(); }catch(_e){} }); }
 // Blue → red across the range actually present, so the spread is visible rather than absolute.
 function plValueColor(p,id){
   if(!p.values||!p.values.data) return null;
@@ -8566,14 +8598,14 @@ function plValueColor(p,id){
   var r=Math.round(40+215*t), b=Math.round(200-150*t), g=Math.round(90+60*(1-Math.abs(t-0.5)*2));
   return 'rgb('+r+','+g+','+b+')';
 }
-function plValuesLegend(p){
+function plValuesLegend(p,key){
   if(!p.values||!p.values.data) return '';
   var n=Object.keys(p.values.data).length;
   return '<div class="pl-vals"><span class="pl-vals-t">Reader values</span>'
     +'<span class="pl-vals-sc"><i class="lo"></i><i class="mid"></i><i class="hi"></i></span>'
     +'<span class="pl-vals-r">'+_plTrim(p.values.min)+' – '+_plTrim(p.values.max)+'</span>'
     +'<span class="pl-vals-n">'+n+' wells</span>'
-    +'<button class="pl-btn" onclick="plClearValues()">Clear</button></div>';
+    +'<button class="pl-btn" onclick="plClearValues('+(key?("'"+esc(key)+"'"):'')+')">Clear</button></div>';
 }
 function plImportEcho(){
   var inp=document.createElement('input'); inp.type='file'; inp.accept='.csv,text/csv,text/plain';
@@ -8630,7 +8662,11 @@ function _plHdrCell(ca, ncols, stag, rowBase){
   if(end>ncols) end=ncols; if(start<0) start=0;
   return {row:rowBase+(even?0:1), col:(start+1)+' / '+(end+1), cls:even?' l':' r'};
 }
+// What the reader said colours the card once a read is pasted; "Layout" puts the conditions back (this session only).
+var PLV_LAYOUT={};
+function plvToggle(key){ PLV_LAYOUT[key]=!PLV_LAYOUT[key]; renderAll(); }
 function platePreviewHtml(p,key,readonly){ if(!p) return ''; p=plateView(p);
+  var _hasV=!!(p.values&&p.values.data), _hv=_hasV&&!PLV_LAYOUT[key];
   var d=plateDims(p), n=plateCount(p), wpx=PLATE_PREV_WPX[String(p.format)]||21, grid='';
   var showText=wpx>=26, boxes=plateGroupBoxes(p), grouped={};
   boxes.forEach(function(b){ grouped[b.gid]=1; });
@@ -8658,7 +8694,7 @@ function platePreviewHtml(p,key,readonly){ if(!p) return ''; p=plateView(p);
   if(hasCL){ for(var ca=0;ca<d.c;ca++){ var hc=_plHdrCell(ca,d.c,stag,1+RO);
     grid+='<div class="pp-cl'+hc.cls+'" style="grid-row:'+hc.row+';grid-column:'+_plColShift(hc.col,CO)+'">'+esc(stag?_plHdrCompact((p.colLabels||{})[ca]):((p.colLabels||{})[ca]||''))+'</div>'; } }
   for(var r=0;r<d.r;r++) for(var c=0;c<d.c;c++){ var id=wellIdOf(r,c), w=(p.wells||{})[id];
-    var col=plateWellColor(p,w);
+    var col=(_hv&&plValueColor(p,id))||plateWellColor(p,w);
     var inner=(function(){
       if(_nos){ // one number per block; a well of its own still gets one, centred in it
         if(w&&w.conc) return (wpx>=18)?('<span class="pp-conc">'+esc(_plHdrCompact(w.conc))+'</span>'):'';
@@ -8667,7 +8703,7 @@ function platePreviewHtml(p,key,readonly){ if(!p) return ''; p=plateView(p);
       if(w&&w.groupId&&grouped[w.groupId]) return '';
       return showText?('<span>'+esc(plateWellShort(w))+'</span>'):''; })();
     var wfl=plateWellFlags(w);
-    grid+='<div class="pp-w'+(w?'':' empty')+(_nos?' pp-wn':'')+(wfl?(' '+wfl):'')+'" style="grid-row:'+(r+glOff+RO)+';grid-column:'+(c+1+CO)+';'+(col?'background:'+col:'')+'" title="'+esc(plateWellTip(p,id,w))+'">'
+    grid+='<div class="pp-w'+(w?'':' empty')+(_nos?' pp-wn':'')+(wfl?(' '+wfl):'')+'" style="grid-row:'+(r+glOff+RO)+';grid-column:'+(c+1+CO)+';'+(col?'background:'+col:'')+'" title="'+esc(plateWellTip(p,id,w)+((_hasV&&p.values.data[id]!=null)?(' \u00b7 read '+_plTrim(p.values.data[id])):''))+'">'
       +inner+'</div>'; }
   // One number, once, over the wells that hold it.
   nboxes.forEach(function(b){ if(b.n<=1) return;
@@ -8695,9 +8731,11 @@ function platePreviewHtml(p,key,readonly){ if(!p) return ''; p=plateView(p);
   // rest — Summary, Rebuild, Copy, CSV, PNG, Remove. On a desktop both fade in on hover.
   var _ex=(_ow&&_ow.exp&&/^exp:[^:]+$/.test(String(key))&&_ow.exp.echoRun&&_ow.exp.echoRun.plates)?_ow.exp:null;
   var acts=(_ex&&!readonly?('<button class="cc-x plate-chk" title="See every plate in the picklist" onclick="openCheckPlates(\''+_ex.id+'\')">Check plates</button>'):'')
+    +(_hasV?('<button class="cc-x plate-vals" title="'+(_hv?'Show the layout (conditions) instead of the reader values':'Colour the wells by what the reader said')+'" onclick="plvToggle(\''+key+'\')">'+(_hv?'Layout':'Values')+'</button>'):'')
     +(readonly?'':('<button class="cc-x plate-act" title="Edit this plate map" onclick="openPlateEditor(\''+key+'\')">Edit</button>'
     +'<button class="cc-x plate-more" title="More" onclick="plateMenu(event,\''+key+'\')">'+ICON_MORE_H+'</button>'));
   var sum=plateSummaryHtml(p);
+  if(_hv) leg=plValuesLegend(p,key)+leg;
   // The card's room on the page: it takes ~260px (a 96 is then ~21px a well), never more than the
   // format's cap, and .exp-plates lays the cards of a run side by side until the row is full.
   var _ppMax=d.c*(PLATE_CARD_WPX_MAX[String(p.format)]||wpx*2)+d.c, _ppW=showText?Math.max(240,d.c*wpx+d.c+24):260;
@@ -8709,7 +8747,7 @@ function platePreviewHtml(p,key,readonly){ if(!p) return ''; p=plateView(p);
     // boxes, 29 KB of markup, saying exactly what the header already says. The card and its
     // Edit button stay — that is the entry point, and it is what you actually want in front
     // of you on a map you have not laid out yet.
-    +(n===0 ? '<div class="pp-empty">Nothing laid out yet &mdash; <b>Edit</b> to fill it in.</div>'
+    +((n===0&&!_hasV) ? '<div class="pp-empty">Nothing laid out yet &mdash; <b>Edit</b> to fill it in.</div>'
       : '<div class="pp-two">'
       // A map with dose blocks has a concentration to print in every well, so its wells grow
       // with the room they are given (up to 2× the base size); a plain map keeps its fixed pitch.
@@ -17260,7 +17298,8 @@ function benchRowHtml(exp,b,opts){ opts=opts||{}; var eid=exp.id, rc=expCalcReci
   var title=b.title?('<span class="dfx-blk-t"'+(opts.fold?(' data-due="tog" title="'+(fopen?'Hide the step':'Show the recipe and the text here')+'"'):(opts.jump?(' onclick="openBlk(\''+eid+'\',\''+b.id+'\')" title="Jump to this step in the experiment"'):''))+'>'+esc(b.title)
                     +(opts.fold?(' <a class="dfx-blk-link" onclick="event.stopPropagation();openBlk(\''+eid+'\',\''+b.id+'\')" title="Open it in the experiment">&#8599;</a>'):(opts.jump?' <span class="dfx-blk-link">&#8599;</span>':''))+'</span>')
                     :'<span class="dfx-blk-t dim"'+(opts.fold?' data-due="tog"':'')+'>Step</span>';
-  var acts=(opts.wait?blkWaitHtml(b,eid):'')
+  var acts=(isReadStep(b)&&expPlateList(exp).length?('<button class="dfx-snooze bench-read" title="Paste the plate reader\'s grid onto this experiment\'s plate map" onclick="event.stopPropagation();pasteTheRead(\''+eid+'\')">'+tbIco(P_PASTEPROTO,13)+'Paste the read</button>'):'')
+    +(opts.wait?blkWaitHtml(b,eid):'')
     +(opts.photo?('<button class="dfx-snooze bench-photo" title="Photo of this step — filed under the experiment" onclick="benchPhoto(\''+eid+'\',\''+b.id+'\')">'+ICON_CAMERA+'</button>'):'')
     +(opts.more?('<button class="dfx-snooze bench-more" title="Step actions" onclick="ctxBlock(event,\''+b.id+'\')">'+ICON_MORE_H+'</button>'):'')
     +(opts.snooze?('<button class="dfx-snooze" title="Snooze a day — later steps move too" onclick="snoozeBlock(\''+eid+'\',\''+b.id+'\',1)">'+ICON_SNOOZE+'Snooze</button>'):'');
