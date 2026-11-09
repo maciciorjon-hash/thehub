@@ -85,6 +85,25 @@ def _duplicate_functions(html):
     return dups
 
 
+SWALLOW_RE = re.compile(r"""[\]})'"]\s*,[ \t]+//[^\n]{20,}[ \t]([A-Za-z_$][\w$]*):[ \t][^\n]*,[ \t]*$""", re.M)
+
+
+def _swallowed_keys(html):
+    """A `// note` typed after a comma in the middle of an object literal comments out the rest of that line:
+    `title: [...],   // the Assay ID names it  xTitle: ..., items: items,` left Lumina's graph with no compounds and
+    no unit (7adb25a) and still parsed. The signature is a comment that goes on to say `key: value,` and ends in a
+    comma. Put the note on its own line."""
+    out = []
+    for line, code in _blocks(html):
+        for m in SWALLOW_RE.finditer(code):
+            row = code[code.rfind('\n', 0, m.start()) + 1:code.find('\n', m.start())]
+            if len(row) > 2000:
+                continue
+            out.append((line + code.count('\n', 0, m.start()),
+                        'a // comment mid-line seems to swallow `%s:` and the keys after it — move the comment to its own line' % m.group(1)))
+    return out
+
+
 def _node_check(code, tmpdir, tag):
     """Parse as script, then as module. Returns node's message, or None if clean."""
     err = None
@@ -163,7 +182,7 @@ def main():
                 if err:
                     bad += 1
                     failures.append((rel, line, err))
-            for ln, msg in _duplicate_functions(html):
+            for ln, msg in list(_duplicate_functions(html)) + list(_swallowed_keys(html)):
                 bad += 1
                 failures.append((rel, ln, msg))
             if not quiet or bad:
