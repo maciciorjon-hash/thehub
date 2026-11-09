@@ -58,6 +58,9 @@
 //       every step           from — in the Review and in the created record alike, for a step
 //                            with no volume calculator that says what it adds too. (a step that
 //                            added liquid was invisible; the read started from 111, not 123)
+//   I30 the live Methods     A live paragraph is built when it is read and never stored: a new experiment, Refresh, a toggled option and a
+//       is not stored        load-time pass leave no pubReady / pubSrcSig on it; only wording a person wrote (pubEdited) is kept. (a stored copy was
+//                            a third of every experiment, went to the cloud, and said '0 of 3 steps done' on a finished run)
 //   I29 the volume table     Every row of the Review's "What is in the well", read off the DOM, adds up to the total above it — a step that
 //       adds up              replaces the medium says so and gives its total, one that starts from a volume of its own says so, a read on its own
 //                            copy says so — for every design and every ordered pair of volume-changing library modules. (the Endurazine step that
@@ -1225,6 +1228,33 @@ async function suite(opts) {
         if (off.length) bad('I28', L.id, `${J(o)} draws ${off.length} wells that are not on the plate (${off.slice(0, 3).join(', ')})`);
         try { plateSummary(p); } catch (e) { bad('I28', L.id, 'the summary threw for ' + J(o) + ': ' + e.message); }
       }
+    });
+  }
+
+  // ── I30 a live paragraph is built when read, never stored ──
+  if (run('I30')) {
+    for (const key of KEYS.slice(0, 3)) await guard('I30', key, async () => {
+      openQuick(key, {}); const e = await created(() => createExperiment()); closeNew(); if (!e) { bad('I30', key, 'no experiment was made'); return; }
+      try {
+        tick('I30');
+        if (e.pubEdited !== false) bad('I30', key, 'a new experiment is not live (pubEdited=' + J(e.pubEdited) + ')');
+        if ('pubReady' in e || 'pubSrcSig' in e) bad('I30', key, 'a new experiment stores a copy of the paragraph it builds when read');
+        if (!/Methods|Run/.test(pubText(e))) bad('I30', key, 'a live experiment has no paragraph to read');
+        // Refresh hands a live one back live
+        e.pubReady = '<p>old copy</p>'; e.pubSrcSig = 'x'; refreshMethods(e.id); tick('I30');
+        if (e.pubReady != null || e.pubSrcSig != null) bad('I30', key, 'Refresh left a stored copy on a live experiment');
+        // the load-time pass strips the copies already in a notebook, and only those
+        e.pubEdited = false; e.pubReady = '<p>stale</p>'; e.pubSrcSig = 'x'; _pubMigrate(); tick('I30');
+        if (e.pubReady != null || e.pubSrcSig != null) bad('I30', key, 'the load-time pass left a stored copy on a live experiment');
+        delete e.pubEdited; e.pubReady = '<p>stale</p>'; _pubMigrate();
+        if (e.pubEdited !== false || e.pubReady != null) bad('I30', key, 'an experiment from before the live paragraph keeps its stale copy');
+        e.pubEdited = true; e.pubReady = '<p>my own wording</p>'; e.pubSrcSig = _pubSourceSig(e); _pubMigrate(); tick('I30');
+        if (e.pubReady !== '<p>my own wording</p>' || !e.pubSrcSig) bad('I30', key, 'wording a person wrote was dropped by the load-time pass');
+        if (pubText(e) !== '<p>my own wording</p>') bad('I30', key, 'a hand-written paragraph is not what is read');
+        // a toggled option drops the wording and the copy together
+        pubToggle(e.id, 'methods'); tick('I30');
+        if (e.pubEdited || e.pubReady != null) bad('I30', key, 'toggling an option left the old wording stored');
+      } finally { cleanup(e); }
     });
   }
 

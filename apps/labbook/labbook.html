@@ -236,8 +236,6 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
    another point on the planned->done track. */
 .pg-status.paused{background:rgba(201,154,78,.16);color:#a3762f;}
 .pg-status.abandoned{background:var(--surface3);color:var(--text3);text-decoration:line-through;}
-.exh-arch{margin-left:8px;padding:1px 7px;border-radius:var(--r-2);background:var(--surface3);color:var(--text3);
-  font-size:var(--fs-3);font-weight:600;align-self:center;}
 .pages-empty{padding:36px 20px;text-align:center;color:var(--text3);font-size:var(--fs-3);line-height:1.6;}
 /* ── The Notebook ──────────────────────────────────────────────────────────────────────────
    Two workspaces in one file. The Planner keeps the app's look; the Notebook is columns on the
@@ -9884,11 +9882,6 @@ function plClearSel(){ PL.sel={}; PL.anchor=null; plRender(); }
 // Which way a dose series could run through the selection. A single row or column has one
 // answer; a block has both, and that is the ordinary case rather than an ambiguity to refuse —
 // three rows of four wells is a four-point series in triplicate, which is how anyone runs one.
-function plSelAxis(){ var ids=plSelIds(); if(ids.length<2) return null;
-  var rs={}, cs={}; ids.forEach(function(id){ var x=wellRC(id); if(x){ rs[x.r]=1; cs[x.c]=1; } });
-  if(Object.keys(rs).length===1) return 'row';
-  if(Object.keys(cs).length===1) return 'col';
-  return 'block'; }
 
 // Writing into wells
 function _plWell(p,id){ if(!p.wells) p.wells={}; if(!p.wells[id]) p.wells[id]={typeId:PL.type}; return p.wells[id]; }
@@ -14069,8 +14062,7 @@ function _refreshMethodsGo(e,dropWording){
   if(fromPlate) notes.push(fromPlate.join(', ').toLowerCase()+' from the plate');
   try{ if(typeof syncChainedInputs==='function' && syncChainedInputs(e)) notes.push('well volumes re-chained'); }catch(_e){}
   if(dropWording && e.pubEdited){ e.pubEdited=false; delete e.pubSrcSig; notes.push('rebuilt from the record'); }
-  e.pubReady=buildPubReadyFromExp(e);
-  if(!e.pubEdited) e.pubSrcSig=_pubSourceSig(e);
+  delete e.pubReady; delete e.pubSrcSig;   // live again: rebuilt on every read, nothing stored (pubEdited is false here)
   e.updated=Date.now(); save(); renderEditor();
   toast(notes.length ? ('Report refreshed \u2014 '+notes.join(' \u00b7 '))
                      : 'Report refreshed \u2014 everything already matched.');
@@ -14078,15 +14070,21 @@ function _refreshMethodsGo(e,dropWording){
 function pubBackToLive(id){ var e=LB.data.experiments[id]; if(!e) return;
   lbConfirm('Go back to the paragraph built live from the steps, calculators and plate? Your wording is replaced (⌘Z brings it back).',{title:'Back to the live text',ok:'Back to live'}).then(function(ok){ if(!ok) return;
     undoMark('Back to the live Methods text',['experiments.'+e.id]);
-    e.pubEdited=false; delete e.pubSrcSig; e.updated=Date.now(); save(); renderEditor(); }); }
+    e.pubEdited=false; delete e.pubSrcSig; delete e.pubReady; e.updated=Date.now(); save(); renderEditor(); }); }
 // Experiments from before the live paragraph: one whose stored text is what the build gives
 // today, or whose source has moved since it was built, is live; one whose source is unchanged
 // but whose text differs was written in by hand and is kept as such.
 function _pubMigrate(){ var n=0; Object.keys((LB.data&&LB.data.experiments)||{}).forEach(function(k){ var e=LB.data.experiments[k];
-  if(!e||e.pubEdited!=null) return;
-  var edited=false;
-  try{ if(e.pubReady && e.pubSrcSig && _sigSame(e.pubSrcSig,_pubSourceSig(e)) && _plain(e.pubReady)!==_plain(buildPubReadyFromExp(e))) edited=true; }catch(_e){}
-  e.pubEdited=edited; n++; }); return n; }
+  if(!e) return;
+  if(e.pubEdited==null){
+    var edited=false;
+    try{ if(e.pubReady && e.pubSrcSig && _sigSame(e.pubSrcSig,_pubSourceSig(e)) && _plain(e.pubReady)!==_plain(buildPubReadyFromExp(e))) edited=true; }catch(_e){}
+    e.pubEdited=edited; n++; }
+  // A live paragraph is built when it is read; the copy kept beside it was a third of every experiment, went
+  // to the cloud, and went out of date (it still said '0 of 3 steps done' on a finished run). Only wording a
+  // person wrote (pubEdited) is stored.
+  if(!e.pubEdited && (e.pubReady!=null || e.pubSrcSig!=null)){ delete e.pubReady; delete e.pubSrcSig; n++; }
+}); return n; }
 function buildPubReadyFromExp(e,only){
   var o=pubOpts(e,only), out=[];
   function H(t){ out.push('<h4 class="pub-h">'+esc(t)+'</h4>'); }
@@ -14157,7 +14155,7 @@ function reportExportsHtml(e){
 function pubToggle(id,k){
   var e=LB.data.experiments[id]; if(!e) return;
   var o=pubOpts(e); o[k]=!o[k]; e.pubOpts=o;
-  e.pubEdited=false; delete e.pubSrcSig; e.updated=Date.now(); save(); renderEditor();
+  e.pubEdited=false; delete e.pubSrcSig; delete e.pubReady; e.updated=Date.now(); save(); renderEditor();
 }
 // Copy helpers
 function _copyFallback(str){ try{ var ta=document.createElement('textarea'); ta.value=str; ta.style.cssText='position:fixed;left:-9999px'; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); toast('Copied'); }catch(e){ toast('Copy failed'); } }
@@ -14661,7 +14659,7 @@ function buildExperimentFrom(sp){
       plasmids:setupPlasmids(setup).join(', '),
       cellLines:(setup.cellLine?((cellLineDef(setup.cellLine)||{}).label||String(setup.cellLine)):''),
       setup:setup,
-      protocols:protoList||[], pubReady:buildPubReadyFromExp({blocks:all, startDate:startDate, setup:setup, type:type, protocols:protoList||[]}),
+      protocols:protoList||[],
       blocks:all, created:Date.now(), updated:Date.now() };
     // An empty aim is deleted rather than stored, so "has an aim" stays a real question — the
     // same rule the preset editor's Methods box follows.
@@ -14699,7 +14697,7 @@ function buildExperimentFrom(sp){
     // The plate, the header and the steps agree from the first draw, not from the first time
     // somebody touches the map.
     try{ syncExpDerived(e); syncChainedInputs(e); }catch(_e){}
-    e.pubReady=buildPubReadyFromExp(e); e.pubEdited=false;   // live from the start
+    e.pubEdited=false;   // live from the start: the paragraph is built when read, never stored
     LB.data.experiments[e.id]=e;
     if(_echo&&_echo.file&&e.echoRun&&e.echoRun.plates) addFileTo('exp:'+e.id,_echo.file,'Echo picklist').then(function(ok){
       var f=ok&&(e.files||[])[(e.files||[]).length-1]; if(f&&e.echoRun){ e.echoRun.fileId=f.id; save(); } });
@@ -15134,7 +15132,7 @@ function xvMatch(e,q){
   if(!q) return true;
   if(q.charAt(0)==='#'){ var tg=q.slice(1); if(!tg) return true;
     var hit=function(h){ return entryMatchesTag(h,tg); };
-    if(hit(e.html)||hit(e.pubReady)) return true;
+    if(hit(e.html)||(e.pubEdited&&hit(e.pubReady))) return true;
     return (e.blocks||[]).some(function(b){ return hit(b.html)||hit(b.note)||Object.keys(b.stepNotes||{}).some(function(k){ return hit(b.stepNotes[k]); }); }); }
   return ((e.code||'')+' '+(e.title||'')+' '+(e.type||'')).toLowerCase().indexOf(q)>=0;
 }
@@ -15297,7 +15295,6 @@ function _edScreenKey(){
   return k+':'+(n.projectId||'')+':'+(n.sectionId||'');
 }
 var _edKey=null, _edScroll={}, _edAnimT=null;
-function _reducedMotion(){ try{ return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(e){ return false; } }
 function renderEditor(){
   var host=el('pane-ed'), key=_edScreenKey(), moved=(key!==_edKey);
   if(host && _edKey!==null && moved) _edScroll[_edKey]=host.scrollTop;
@@ -16855,7 +16852,7 @@ function repeatExperiment(id){
     c.repGroup=e.repGroup;
     c.repIndex=(repSiblings(e).reduce(function(m,x){ return Math.max(m,x.repIndex||1); },1))+1;
     c.status='planned'; c.startDate=start;
-    c.pubReady=e.pubReady; c.pubEdited=false; delete c.pubSrcSig;   // a replicate's paragraph is live
+    c.pubEdited=false; delete c.pubReady; delete c.pubSrcSig;   // a replicate's paragraph is live: built when read
     // What belongs to the run that happened stays with it: its verdict, its results, its
     // files and its observations are not this replicate's. Steps, params and step notes are.
     _freshRecord(c);
@@ -21820,7 +21817,6 @@ function dsPlateOptsHtml(D,hasFmt){
 }
 // ── Your own parameters ─────────────────────────────────────────────────────────────────────
 var DS_PARAM_KINDS=[['num','Number'],['txt','Text'],['check','Yes / no'],['select','Choice from a list'],['list','A list — one per line']];
-function _dsParamKey(lbl,skip){ return _paramKey(qCtx('ds'),lbl,skip); }
 function _paramKey(Q,lbl,skip){
   var w=String(lbl||'').replace(/\([^)]*\)/g,' ').trim().split(/[^A-Za-z0-9]+/).filter(Boolean);
   var k=w.map(function(x,i){ x=x.toLowerCase(); return i?x.charAt(0).toUpperCase()+x.slice(1):x; }).join('').slice(0,28)||'param';
@@ -21885,7 +21881,6 @@ function qParamDlg(h,idx){
     toast(cur?'Parameter updated':'Added — quote it in any step as {{'+f.f+'}}');
   };
 }
-function dsDelParam(idx){ var Q=qCtx('ds'), f=Q&&Q.add[idx]; if(f) qDel('ds',f.f); }
 // ── Taking a question out, putting it back ──────────────────────────────────────────────────
 // A setup was a form you could answer and not change: a copy of a run that used OA still asked for OA, and the
 // only way to stop was to leave the answers empty. Every question — the type's own and the ones a design added —
