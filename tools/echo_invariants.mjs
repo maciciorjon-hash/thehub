@@ -54,6 +54,10 @@
 //   E23 the results table      A confidence limit is never printed as a long run of digits (three significant figures, a power of ten outside
 //                              0.01–99,999, ∞ for an unbounded limit), and column widths follow the content: Flag and the numbers take what
 //                              they need, Reason is the widest and wraps. The app is called Echo Dose Response in the setup header.
+//   E82 edge effect          Optional (Setup › Analysis). The plate's own vehicle wells, inside and on each side, say how much the edge reads off (EdgeKit): corrected, the
+//                            curves are those of the undistorted plates (with the Smart DMSO control too, without counting the edge twice); a plate with no edge effect
+//                            or a layout that cannot tell edge from vehicle level is left exactly as it was and the Console says why; Leave out the outer ring does not
+//                            use the ring; the audit, the method of each curve and the bias check carry it.
 //   E81 a curve must be      The 4PL returns a sigmoid for any series, so a flat one of noise got a cliff at the edge of the doses, a Dmax of 90 %
 //       better than a line     and a potency outside the range. A fit is tested against the mean of its own readings (F test, p < 0.05): 99 % of flat
 //                              series are reported as the flat line with "No effect (no dose-response…)", a real curve is never taken for one, a series
@@ -3020,6 +3024,82 @@ if (run('E81')) await guard('E81', async () => {
   });
   check('E81', 'free top: Top never exceeds the cap on a series with no top plateau', f.worst <= 0.011, f);
   await runWith({});
+});
+
+// E82 — Edge effect (optional, Setup › Analysis). Long assays read low on the outer wells; the plate's own vehicle wells say by how much (EdgeKit), nothing is invented.
+// The six bundled plates are moved up one row (compounds A–N, so row A is on the top edge), six wells of row A are freed for vehicle, and vehicle sits on every
+// side and inside; the readings are distorted by the planted edge factors. Corrected, the curves are those of the undistorted plates; off, they are not.
+if (run('E82')) await guard('E82', async () => {
+  const c = await browser.newContext({ viewport: { width: 1440, height: 900 } }); const q = await c.newPage(); const errs = []; q.on('pageerror', e => errs.push(e.message));
+  await q.goto('file://' + FILE); await q.waitForTimeout(1200);
+  await q.evaluate(() => { loadTestData(); }); await q.waitForTimeout(900);
+  const R = await q.evaluate(async () => {
+    const mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', LET = 'ABCDEFGHIJKLMNOP';
+    const eff = { top: -0.10, bottom: -0.06, left: -0.12, right: -0.18 };
+    const F = (r, c, on) => !on ? 1 : (1 + (r === 0 ? eff.top : 0)) * (1 + (r === 15 ? eff.bottom : 0)) * (1 + (c === 0 ? eff.left : 0)) * (1 + (c === 23 ? eff.right : 0));
+    const wob = (r, c) => 1 + 0.02 * Math.sin(7 * r + 3 * c);
+    const CTRL = 'A2:A7, P5:P20, B1:O1, B24:O24, O5:O20';
+    const inCtrl = (r, c) => (r === 0 && c >= 1 && c <= 6) || (r === 15 && c >= 4 && c <= 19) || (c === 0 && r >= 1 && r <= 14) || (c === 23 && r >= 1 && r <= 14) || (r === 14 && c >= 4 && c <= 19);
+    // the Echo file with every destination moved up one row; the six wells A2:A7 hold no compound
+    const raw = Uint8Array.from(atob(_TEST_ECHO_B64), ch => ch.charCodeAt(0)), txt = new TextDecoder().decode(raw), lines = txt.split(/\r?\n/);
+    const hi = lines.findIndex(l => /Destination Well/.test(l)), cols = lines[hi].split(','), iw = cols.findIndex(x => /Destination Well/.test(x));
+    let bad = 0; const badL = []; const outL = lines.slice(0, hi + 1);
+    // the intermediate plate's row A has nowhere to go up to: its transfers are not part of the test
+    lines.slice(hi + 1).forEach(l => { if (!l) return; const f = l.split(','); const m = /^([A-P])(\d+)$/.exec(f[iw] || ''); if (!m) { bad++; badL.push(l.slice(0, 80)); outL.push(l); return; }
+      const nr = LET.indexOf(m[1]) - 1, nw = LET[nr] + m[2]; if (nr < 0) return; if (nr === 0 && +m[2] >= 2 && +m[2] <= 7) return; f[iw] = nw; outL.push(f.join(',')); });
+    const echoShift = new File([outL.join('\r\n')], 'E5XX-1409_Transfer_1777972507.csv', { type: 'text/csv' });
+    const plates = _TEST_READERS.map(r => { const bc = r.name.replace(/\.[^.]+$/, ''); return { bc, w: _parsePHERAstarXLS(Uint8Array.from(atob(r.b64), ch => ch.charCodeAt(0)).buffer, bc, '') }; });
+    const grid = (pl, on) => {   // compounds one row up; vehicle wells from the plate's own B12 level
+      const base = (() => { let s = 0, n = 0; for (let r = 1; r < 15; r++) { const v = pl.w[r * 24 + 11].measurement; if (v !== null) { s += v; n++; } } return s / n; })();
+      const aoa = [['', ...Array.from({ length: 24 }, (_, i) => i + 1)]];
+      for (let r = 0; r < 16; r++) aoa.push([LET[r], ...Array.from({ length: 24 }, (_, cc) => {
+        if (inCtrl(r, cc)) return Math.round(base * F(r, cc, on) * wob(r, cc));
+        const v = r < 14 ? pl.w[(r + 1) * 24 + cc].measurement : null; return v === null ? '' : Math.round(v * F(r, cc, on)); }) ]);
+      const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Data');
+      return new File([XLSX.write(wb, { type: 'array', bookType: 'xlsx' })], pl.bc + '.xlsx', { type: mime });
+    };
+    const files = on => { const o = {}; plates.forEach(p => { o[p.bc + '.xlsx'] = grid(p, on); }); return o; };
+    const snap = () => Object.fromEntries((_lastResultsData || []).map(r => [r.Protein + '|' + r.Sample_ID, [+r.DC50_nM, +r.Dmax_pct]]));
+    const run1 = async (on, edge, smart, ctrl, name) => {
+      echoFiles = [echoShift]; readerFiles = files(on); window._plateAssign = {};
+      document.getElementById('p-viab').checked = false; document.getElementById('p-assay').value = name; document.getElementById('p-ctrl').value = ctrl || CTRL;
+      document.getElementById('p-row-norm').checked = !!smart; document.getElementById('p-edge').value = edge;
+      document.getElementById('log-panel').innerHTML = ''; _lastResultsData = null; window._normAudits = [];
+      try { await runPipeline(); } catch (e) {}
+      const raw = downloadBlobs.find(b => /Raw_Data/.test(b.name));
+      return { snap: snap(), n: (_lastResultsData || []).length, log: document.getElementById('log-panel').innerText, p: window._lastAnalysisParams, aud: (window._normAudits || [])[0] || null,
+        sent: (window._normAudits || [])[0] ? _normAuditSentence((window._normAudits || [])[0]) : '', meth: [...new Set((_lastResultsData || []).map(r => r.Norm_Method))].join('|'), cols: Object.keys((_lastResultsData || [])[0] || {}), rawHdr: raw ? new TextDecoder().decode(raw.bytes).split(/\r?\n/)[0] : '' };
+    };
+    const worst = (a, b) => { const k = Object.keys(a).filter(x => b[x] && isFinite(a[x][0]) && isFinite(b[x][0]) && a[x][0] > 0 && b[x][0] > 0); const fold = k.map(x => Math.max(a[x][0] / b[x][0], b[x][0] / a[x][0])).sort((x, y) => x - y), dm = k.map(x => Math.abs(a[x][1] - b[x][1])).sort((x, y) => x - y);
+      return { n: k.length, foldMed: fold[fold.length >> 1], fold95: fold[Math.floor(fold.length * 0.95)], dmMed: dm[dm.length >> 1], dm95: dm[Math.floor(dm.length * 0.95)], dmMax: dm[dm.length - 1] }; };
+    const out = {}; out.bad = bad; out.badL = badL;
+    out.truth = await run1(false, 'off', false, '', 'E82-truth');
+    out.off = await run1(true, 'off', false, '', 'E82-off');
+    out.on = await run1(true, 'correct', false, '', 'E82-on');
+    out.smart = await run1(true, 'correct', true, '', 'E82-smart');
+    out.cleanOff = await run1(false, 'off', false, '', 'E82-cleanoff'); out.cleanOn = await run1(false, 'correct', false, '', 'E82-cleanon');
+    out.omit = await run1(true, 'omit', false, '', 'E82-omit');
+    out.col = await run1(true, 'off', false, 'B12-O12', 'E82-coloff'); out.colOn = await run1(true, 'correct', false, 'B12-O12', 'E82-colon');
+    out.dOff = worst(out.off.snap, out.truth.snap); out.dOn = worst(out.on.snap, out.truth.snap); out.dSmart = worst(out.smart.snap, out.truth.snap); out.dOmit = worst(out.omit.snap, out.truth.snap);
+    out.cleanSame = JSON.stringify(out.cleanOff.snap) === JSON.stringify(out.cleanOn.snap); out.colSame = JSON.stringify(out.col.snap) === JSON.stringify(out.colOn.snap);
+    out.ui = { sel: !!document.getElementById('p-edge'), opts: [...document.getElementById('p-edge').options].map(o => o.value).join(), plain: HX_PLAIN.some(x => x[0] === 'edgeMode') };
+    document.getElementById('p-skip-norm').checked = true; document.getElementById('p-skip-norm').dispatchEvent(new Event('change')); out.skipDisabled = document.getElementById('p-edge').disabled; document.getElementById('p-skip-norm').checked = false; document.getElementById('p-skip-norm').dispatchEvent(new Event('change'));
+    return out;
+  });
+  if (process.env.E82_TRACE) console.error('E82', JSON.stringify({ off: R.dOff, on: R.dOn, smart: R.dSmart, omit: R.dOmit }));
+  check('E82', 'the shifted Echo file is read cleanly (every destination moved, none unreadable)', R.badL.every(l => /^Instrument /.test(l)) && R.truth.n > 20, { bad: R.bad, n: R.truth.n, badL: R.badL });
+  check('E82', 'without the option the plate is off: curves differ from the undistorted ones (a vehicle on the edge is a low 100 %)', R.dOff.dmMax > 4 || R.dOff.fold95 > 1.15, R.dOff);
+  check('E82', 'corrected from the vehicle wells, the curves are the undistorted ones: median potency within ×1.02, 95 % within ×1.05, effect within 2 points', R.dOn.foldMed < 1.02 && R.dOn.fold95 < 1.05 && R.dOn.dm95 < 2, R.dOn);
+  check('E82', 'correcting moved the curves towards the truth, not away (95 % fold and effect error smaller than off)', R.dOn.fold95 <= R.dOff.fold95 && R.dOn.dmMed < R.dOff.dmMed, { on: R.dOn, off: R.dOff });
+  check('E82', 'with the Smart DMSO control on too, the edge is not counted twice: still the undistorted curves', R.dSmart.n > 20 && R.dSmart.foldMed < 1.05 && R.dSmart.dm95 < 4, R.dSmart);
+  check('E82', 'the Console says what was found on each plate, and the run records the mode', /edge effect edge wells read/.test(R.on.log) && R.on.p.edgeMode === 'correct' && R.off.p.edgeMode === 'off', { log: R.on.log.split('\n').filter(l => /edge/i.test(l)).slice(0, 2), m: R.on.p.edgeMode });
+  check('E82', 'the audit and every curve carry it: method names the edge, the audit lists it with the caveat, the bias check against the plain mean ran', /edge/.test(R.on.meth) && R.on.aud && R.on.aud.edge === 'correct' && R.on.aud.plates.some(p => p.edge && p.edge.applied) && R.on.cols.includes('Plain_DC50_nM') && R.on.aud.compared > 10 && /rescales the signal/.test(R.on.sent), { meth: R.on.meth, aud: R.on.aud && R.on.aud.edge, cmp: R.on.aud && R.on.aud.compared });
+  check('E82', 'a plate with no edge effect is not touched: nothing applied, every curve exactly what it is with the option off', R.cleanSame === true && !(R.cleanOn.aud && R.cleanOn.aud.plates.some(p => p.edge && p.edge.applied)), { same: R.cleanSame });
+  check('E82', 'a layout that cannot tell edge from vehicle level (vehicle only inside) changes nothing and the Console says why', R.colSame === true && /could not be assessed|no control well sits on the edge/i.test(R.colOn.log), { same: R.colSame, log: R.colOn.log.split('\n').filter(l => /edge/i.test(l)).slice(0, 2) });
+  check('E82', 'leave out the outer ring: the ring vehicle wells and ring compounds are not used, and the curves are the undistorted ones', /outer ring is left out/.test(R.omit.log) && R.dOmit.n > 20 && R.dOmit.foldMed < 1.02 && R.dOmit.fold95 < 1.1 && R.dOmit.dm95 < 4, { d: R.dOmit });
+  check('E82', 'Setup has the choice (Off, Correct, Leave out), History describes it, and "No normalisation" switches it off', R.ui.sel && R.ui.opts === 'off,correct,omit' && R.ui.plain && R.skipDisabled === true, R.ui);
+  check('E82', 'no page errors', !errs.length, errs);
+  await c.close();
 });
 
 await browser.close();
