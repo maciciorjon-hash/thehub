@@ -289,12 +289,14 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 .nb-meta-link:hover{text-decoration:underline;}
 .nb-rule{height:3px;width:56px;border-radius:var(--r-1);background:var(--nb-c);margin:14px 0 18px;}
 /* ── The Journal column: days, then notes ── */
-.jr-lbl{display:flex;align-items:center;gap:6px;}
+.jr-lbl{display:flex;align-items:center;gap:6px;flex:none;}
 .jr-lbl span{flex:1;}
 .jr-today{display:inline-flex;align-items:center;height:24px;background:none;border:1px solid var(--border2);color:var(--text2);border-radius:var(--r-1);font-family:var(--sans);font-size:var(--fs-2);font-weight:600;letter-spacing:0;text-transform:none;padding:0 9px;cursor:pointer;white-space:nowrap;}
 .jr-today:hover{color:var(--accent-ink);border-color:var(--accent);}
 .jr-days,.jr-notes{display:flex;flex-direction:column;gap:1px;padding:0 4px;}
-.jr-days{max-height:52vh;max-height:52dvh;overflow-y:auto;overscroll-behavior-y:contain;}
+/* The days take what the column has and scroll inside it; Notes keep their own corner below, never more than a third. (It was a fixed 52% of the window, so a long list of days was a scroll inside a scroll.) */
+.jr-days{flex:1 1 0;min-height:140px;overflow-y:auto;overscroll-behavior-y:contain;}
+.jr-notes{flex:0 1 auto;max-height:34%;overflow-y:auto;overscroll-behavior-y:contain;padding-bottom:10px;}
 .jr-month{font-size:var(--fs-3);font-weight:600;color:var(--text3);padding:10px 8px 3px;}
 .jr-day{display:flex;flex-direction:column;gap:1px;padding:6px 8px;border-radius:var(--r-1);cursor:pointer;min-width:0;}
 .jr-day:hover{background:var(--surface2);}
@@ -325,15 +327,90 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 .blk-log{display:flex;align-items:center;gap:8px;padding:0 0 6px 36px;font-size:var(--fs-2);color:var(--text2);}
 .blk-log input{flex:1;min-width:0;background:none;border:none;border-bottom:1px dashed var(--border);color:var(--text2);font-family:var(--sans);font-size:var(--fs-2);padding:2px 2px;outline:none;}
 .blk-log input:focus{border-bottom-color:var(--accent);border-bottom-style:solid;color:var(--text);}
-@media (max-width:640px){ .jr-row{flex-wrap:wrap;} .jr-step{max-width:none;} .jr-log{flex-basis:100%;} .jr-days{max-height:none;} }
+@media (max-width:640px){ .jr-row{flex-wrap:wrap;} .jr-step{max-width:none;} .jr-log{flex-basis:100%;} .jr-days{max-height:none;flex:0 0 auto;} .jr-notes{max-height:none;} }
 .nb-page .exh-fields{margin-top:10px;}
-/* The sheet is white and the desk around it is not, so the writing area is obvious without a
-   second tint inside it. The field keeps a hairline so you can see where it begins. */
-.nb-page .rt.pg-body,.nb-page .rt.nb-body{background:transparent;border:1px solid var(--border);
-  box-shadow:none;border-radius:var(--r-2);padding:16px 18px;min-height:340px;
-  transition:border-color var(--dur-1) var(--ease),background var(--dur-1) var(--ease);}
-.nb-page .rt.pg-body:hover,.nb-page .rt.nb-body:hover{border-color:var(--border2);}
-.nb-page .rt.pg-body:focus,.nb-page .rt.nb-body:focus{border-color:var(--accent);background:var(--surface);outline:none;}
+/* ── The Journal's writing page: a toolbar across the top, a sheet with no box inside it (2026-11-10) ──────────
+   Jon: "como OneNote o Word, profesional, sencilla, útil, con barra de herramientas completa y robusta". The bar is
+   sticky over the pane (the page scrolls under it), 32px controls, one lit state per toggle, menus that take the
+   mousedown so the caret stays where it was. The text is the sheet: no hairline box, the whole sheet below the last
+   line is still the page. */
+.jr-desk{position:relative;}
+.jr-bar{position:sticky;top:0;z-index:30;--tb-h:32px;container:jrbar / inline-size;background:var(--surface);border-bottom:1px solid var(--border);padding:6px clamp(16px,2vw,32px);}
+.jr-bar-in{width:min(1080px,100%);margin:0 auto;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;}
+.jr-bar-l{display:flex;flex-wrap:wrap;align-items:center;gap:2px;min-width:0;flex:1 1 auto;}
+.jr-foot{flex:none;display:flex;justify-content:flex-end;min-height:18px;margin-top:6px;font-size:var(--fs-2);color:var(--text3);}
+.jr-ml{display:inline-flex;align-items:center;gap:10px;}
+.jr-b{height:var(--tb-h);min-width:30px;flex:none;display:inline-flex;align-items:center;justify-content:center;gap:2px;padding:0 3px;border:0;background:none;color:var(--text2);border-radius:var(--r-1);cursor:pointer;font-family:var(--sans);}
+.jr-b:hover{background:var(--surface2);color:var(--text);}
+.jr-b.on,.jr-b[aria-expanded="true"]{background:var(--accent-soft);color:var(--accent-ink);}
+.jr-b:disabled{opacity:.35;cursor:default;background:none;color:var(--text2);}
+.jr-b:focus-visible,.jr-pill:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;}
+.jr-b svg{width:17px;height:17px;flex:none;}
+/* The B I U S X₂ X² glyphs share the bubble's drawings (.bub-t) but not its off-scale 14px / .62em: on the type scale. */
+.jr-b .bub-t{font-size:var(--fs-4);}
+.jr-b .bub-t sub,.jr-b .bub-t sup{font-size:var(--fs-1);}
+.jr-wide svg:last-child{width:12px;height:12px;opacity:.7;}
+.jr-wide{padding:0 5px;}
+/* A caret that opens the colours of the button before it. */
+.jr-cb{min-width:18px;width:18px;padding:0;margin-left:-3px;}
+.jr-cb svg{width:12px;height:12px;opacity:.7;}
+.jr-pill{height:var(--tb-h);flex:none;display:inline-flex;align-items:center;justify-content:space-between;gap:4px;padding:0 6px 0 9px;border:0;border-radius:var(--r-1);background:none;color:var(--text2);font:500 var(--fs-2)/1 var(--sans);cursor:pointer;white-space:nowrap;}
+.jr-pill:hover,.jr-pill[aria-expanded="true"]{background:var(--surface2);color:var(--text);}
+.jr-pill svg{width:12px;height:12px;opacity:.7;flex:none;}
+.jr-pl{overflow:hidden;text-overflow:ellipsis;min-width:0;line-height:1.35;}
+.jr-p-style{width:98px;}.jr-p-font{width:86px;}.jr-p-size{width:46px;}
+/* A group never breaks across lines: when the bar wraps it wraps between groups, and the hairline is the end of one. */
+.jr-g{display:inline-flex;align-items:center;gap:2px;flex:none;}
+.jr-g:not(:last-child)::after{content:'';width:1px;height:18px;background:var(--border2);margin:0 5px 0 4px;flex:none;}
+.jr-menu{position:fixed;z-index:970;min-width:176px;max-height:70vh;overflow:auto;padding:4px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-3);box-shadow:var(--shadow-md);font-family:var(--sans);}
+.jr-mi{display:flex;width:100%;align-items:center;justify-content:space-between;gap:14px;min-height:30px;padding:0 10px;border:0;background:none;border-radius:var(--r-1);color:var(--text);font:400 var(--fs-3)/1.25 var(--sans);cursor:pointer;text-align:left;white-space:nowrap;}
+.jr-mi:hover,.jr-mi.kb{background:var(--surface2);}
+.jr-c.kb,.jr-nob.kb{outline:2px solid var(--accent);outline-offset:2px;}
+.jr-mi.on{color:var(--accent-ink);}
+.jr-mi svg{width:14px;height:14px;flex:none;}
+.jr-mst-h1{font-size:var(--fs-6);font-weight:700;min-height:38px;}
+.jr-mst-h2{font-size:var(--fs-5);font-weight:700;min-height:34px;}
+.jr-mst-h3{font-size:var(--fs-4);font-weight:700;}
+.jr-mst-blockquote{color:var(--text2);font-style:italic;}
+.jr-mst-pre{font-family:var(--mono);font-size:var(--fs-3);}
+.jr-grid{display:grid;gap:2px;padding:6px;}
+.jr-sizes{grid-template-columns:repeat(4,44px);}
+.jr-syms{grid-template-columns:repeat(6,36px);}
+.jr-grid .jr-mi{justify-content:center;padding:0;min-height:32px;}
+.jr-sw{display:flex;flex-wrap:wrap;align-items:center;gap:8px;max-width:232px;padding:10px;}
+.jr-c{width:22px;height:22px;flex:none;padding:0;border-radius:50%;border:1px solid var(--border2);cursor:pointer;}
+.jr-c.on{outline:2px solid var(--accent);outline-offset:2px;}
+.jr-nob{height:24px;padding:0 9px;border:1px solid var(--border2);background:none;border-radius:var(--r-1);color:var(--text2);font:500 var(--fs-2)/1 var(--sans);cursor:pointer;}
+.jr-nob:hover{color:var(--accent-ink);border-color:var(--accent);}
+.jr-msep{height:1px;background:var(--border);margin:4px 2px;}
+/* The sheet is a column so the text can take whatever is left of it: a click under the last line is a click on the page. */
+.jr-sheet{display:flex;flex-direction:column;}
+.nb-page .rt.jr-ed{flex:1 1 auto;min-height:340px;padding:2px 2px 28px;border:0;border-radius:0;background:transparent;box-shadow:none;outline:none;position:relative;font-size:var(--fs-5);line-height:1.65;overflow-wrap:anywhere;}
+.nb-page .rt.jr-ed:focus,.nb-page .rt.jr-ed:hover{border:0;background:transparent;}
+.jr-ed.jr-empty::before{content:attr(data-ph);position:absolute;left:2px;top:2px;color:var(--text3);pointer-events:none;}
+.jr-ed div,.jr-ed p{margin:0 0 .4em;}
+.jr-ed li div,.jr-ed li p,.jr-ed td div,.jr-ed th div{margin:0;}
+.jr-ed blockquote.webkit-indent-blockquote{color:inherit;}
+.jr-ed ul,.jr-ed ol{margin-bottom:.55em;}
+.jr-ed ul.lb-check{margin-left:2px;}
+.jr-ed hr{margin:16px 0;}
+.jr-ed .lb-table{width:auto;max-width:100%;}
+.jr-ed td,.jr-ed th{min-width:60px;}
+/* The date jump beside the arrows: a button that opens the browser's own date picker. */
+.jr-pick{position:relative;display:inline-flex;}
+.jr-pick input{position:absolute;left:0;bottom:0;width:1px;height:1px;opacity:0;pointer-events:none;border:0;padding:0;}
+.jr-todaybtn{width:auto;padding:0 9px;font-family:var(--sans);font-size:var(--fs-2);font-weight:600;}
+/* A pane too narrow for two rows (a laptop with both columns open, a phone) gets one row that scrolls inside itself, with its
+   right edge faded to say so — three rows of controls over a page would be most of the page. */
+@container jrbar (max-width:640px){
+  .jr-bar-l{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 28px),transparent);mask-image:linear-gradient(to right,#000 calc(100% - 28px),transparent);}
+  .jr-bar-l::-webkit-scrollbar{display:none;}
+}
+@media (max-width:640px){
+  .jr-bar{padding:4px 8px;}
+  .nb-page .rt.jr-ed{min-height:260px;}
+}
+@media print{ .jr-bar,.jr-menu{display:none!important;} }
 /* Today's link to the day's page in the Notebook — what it says, and a way in. */
 .day-jr-card{display:flex;align-items:flex-start;gap:14px;background:var(--paper);border:1px solid var(--border);border-radius:var(--r-3);padding:14px 16px;cursor:pointer;box-shadow:var(--shadow-xs);transition:border-color var(--dur-1) var(--ease);}
 .day-jr-card:hover{border-color:var(--border2);}
@@ -10445,13 +10522,36 @@ if(_pubMigrate()) setTimeout(function(){ try{ save(); }catch(e){} },0);
 // The flat list, newest edit first.
 function notesList(){ return Object.keys(LB.data.pages||{}).map(function(k){ return LB.data.pages[k]; }).filter(Boolean)
   .sort(function(a,b){ return (b.updated||b.created||0)-(a.updated||a.created||0); }); }
-// Days worth listing: any day with a note, any day a step was ticked on, and today.
+// Does a note hold anything? Words, or a picture, a table, a rule. A cleared editor leaves `<br>` or an
+// empty paragraph behind, and that is nothing: it neither lists a day nor is worth keeping.
+function _noteHasContent(html){
+  if(!html) return false;
+  if(/<(img|table|hr|video|iframe)\b/i.test(html)) return true;
+  return !!_plain(html).trim();
+}
+// What the Planner and the notes say about each day, in one pass: steps ticked, steps planned (not archived),
+// planner tasks. The list shows them and decides from them which days exist, so a day with a plan and no
+// words is a page like any other (Jon, 2026-11-10: pages of days that did not appear).
+function _jrStats(){
+  var st={}; function g(D){ return st[D]||(st[D]={done:0,plan:0,tasks:0}); }
+  var ex=LB.data.experiments||{};
+  Object.keys(ex).forEach(function(k){ var e=ex[k]; if(!e) return;
+    (e.blocks||[]).forEach(function(b){
+      if(isCoded(e) && b.done && b.completedAt) g(_dateKey(b.completedAt)).done++;
+      if(b.date && !expArchived(e)) g(b.date).plan++; }); });
+  var t=plannerTasks(); Object.keys(t).forEach(function(k){ var x=t[k]; if(x&&x.date) g(x.date).tasks++; });
+  return st;
+}
+// Days worth listing, newest first: today, the day that is open (so the list always says where you are, even on a
+// day you reached with the arrows and have not written on), any day with a note, and any day up to today on
+// which a step was ticked or planned or a task was set. A day that is still to come is listed only if it has a note.
 function journalDays(){
-  var seen={}, out=[];
-  function add(D){ if(D && /^\d{4}-\d{2}-\d{2}$/.test(D) && !seen[D]){ seen[D]=1; out.push(D); } }
-  add(todayStr());
-  Object.keys(LB.data.notebook||{}).forEach(function(D){ if(_plain((LB.data.notebook[D]||{}).html||'').trim()) add(D); });
-  Object.keys(LB.data.experiments||{}).forEach(function(k){ (LB.data.experiments[k].blocks||[]).forEach(function(b){ if(b.done&&b.completedAt) add(_dateKey(b.completedAt)); }); });
+  var seen={}, out=[], T=todayStr(), st=_jrStats();
+  function add(D){ if(D && _isDateKey(D) && !seen[D]){ seen[D]=1; out.push(D); } }
+  add(T);
+  if(SEL && SEL.node && SEL.node.kind==='nb' && _isDateKey(SEL.page)) add(SEL.page);
+  Object.keys(LB.data.notebook||{}).forEach(function(D){ if(_noteHasContent((LB.data.notebook[D]||{}).html)) add(D); });
+  Object.keys(st).forEach(function(D){ if(D<=T && (st[D].done||st[D].plan||st[D].tasks)) add(D); });
   return out.sort().reverse();
 }
 // What was done on a day: every step ticked that day, grouped by project then experiment, in
@@ -12314,7 +12414,8 @@ function _isDateKey(x){ return /^\d{4}-\d{2}-\d{2}$/.test(String(x||'')); }
 function openPage(id){ var pg=LB.data.pages[id]; if(!pg) return;
   SEL.node=_jrNode(); TAGFILTER=null;
   if(id!==SEL.page) EXP_TAB=_defaultExpTab(); SEL.page=id; renderAll(); }
-function openDayPage(D){ D=D||todayStr();
+var _jrJump=false;   // the next list paint centres the open day (set by the arrows, Today and the date jump, not by a click on the list)
+function openDayPage(D,jump){ D=D||todayStr(); _jrJump=!!jump;
   SEL.node=_jrNode(); TAGFILTER=null; SEL.page=D; renderAll(); }
 // Old callers (spotlight rows, saved state, the shell) asked for a notebook and a section;
 // every answer is the Journal now.
@@ -12415,16 +12516,17 @@ function renderSections(){
 // is the workspace, the way a folder's experiments are when a folder is.
 function _journalListHtml(){
   var h='';
-  var days=journalDays(), T=todayStr(), lastM=null;
+  var days=journalDays(), T=todayStr(), lastM=null, st=_jrStats();
   h+='<div class="pane-lbl jr-lbl"><span>Journal</span><button class="jr-today" onclick="openDayPage(\''+T+'\')" title="Open today">Today</button></div>';
-  h+='<div class="jr-days">';
+  h+='<div class="jr-days" id="jr-days">';
   days.forEach(function(D){
     var m=D.slice(0,7);
     if(m!==lastM){ lastM=m; h+='<div class="jr-month">'+esc(_monthLabel(m))+'</div>'; }
-    var pg=LB.data.notebook[D], n=doneOnDay(D).reduce(function(a,g){ return a+g.rows.length; },0);
-    var prev=pg?_plain(pg.html||'').slice(0,44):'';
-    var meta=(n?(n+' step'+(n===1?'':'s')+' done'):'')+(prev?((n?' · ':'')+prev):'');
-    h+='<div class="jr-day'+(SEL.page===D?' active':'')+(D===T?' today':'')+'" onclick="openDayPage(\''+D+'\')" oncontextmenu="ctxDay(event,\''+D+'\')">'
+    var pg=LB.data.notebook[D], s=st[D]||{done:0,plan:0,tasks:0};
+    var prev=(pg&&_noteHasContent(pg.html))?(_plain(pg.html||'').slice(0,44)||'Picture or table'):'';
+    var n=s.done?(s.done+' step'+(s.done===1?'':'s')+' done'):s.plan?(s.plan+' step'+(s.plan===1?'':'s')+' planned'):s.tasks?(s.tasks+' task'+(s.tasks===1?'':'s')):'';
+    var meta=n+(prev?((n?' · ':'')+prev):'');
+    h+='<div class="jr-day'+(SEL.page===D?' active':'')+(D===T?' today':'')+'" data-day="'+D+'" onclick="openDayPage(\''+D+'\')" oncontextmenu="ctxDay(event,\''+D+'\')">'
       +'<span class="jr-d">'+esc(_dayLbl(D))+(D===T?' <i>today</i>':'')+'</span>'+(meta?('<span class="jr-m">'+esc(meta)+'</span>'):'')+'</div>';
   });
   h+='</div>';
@@ -12435,6 +12537,25 @@ function _journalListHtml(){
       +'<span class="jr-d">'+esc(pgTitle(pg))+'</span><span class="jr-m">'+esc(_homeAgo(pg.updated||pg.created||0))+'</span></div>'; }).join('')
     :'<div class="pane-note">For what has no date — an idea, a method, a reference.</div>')+'</div>';
   return h;
+}
+// The list is rebuilt wholesale, so its scroll went back to the top on every click: a day well down the list was
+// opened and then was nowhere on screen. The scroll is kept across the rebuild, and the open day is brought into
+// view only when it is out of it. `top` = a rebuild that should also centre the open day (arrows, Today, jump).
+function _jrListPaint(host,top){
+  var d0=host.querySelector('.jr-days'), keep=d0?d0.scrollTop:0, n0=host.scrollTop;
+  host.innerHTML=_journalListHtml();
+  var d=host.querySelector('.jr-days'); if(!d) return;
+  d.scrollTop=keep; host.scrollTop=n0;
+  var on=d.querySelector('.jr-day.active'); if(!on) return;
+  var r=on.getBoundingClientRect(), q=d.getBoundingClientRect();
+  if(top || r.top<q.top || r.bottom>q.bottom) d.scrollTop=Math.max(0,on.offsetTop-d.offsetTop-Math.round(q.height/3));
+}
+// A first line written on a day the list did not hold (a day reached with the arrows, a picture pasted on an empty
+// one) puts the day in the list now, not at the next navigation.
+function _jrListSync(){
+  var h=el('pane-pages'); if(!h||h._stale||!(SEL.node&&SEL.node.kind==='nb')) return;
+  var days=h.querySelectorAll('.jr-days .jr-day'), have=Array.prototype.map.call(days,function(x){ return x.getAttribute('data-day'); }).join(',');
+  if(have!==journalDays().join(',')) _jrListPaint(h,false);
 }
 // ── The project prefix ─────────────────────────────────────────────────────────────────────
 // An experiment code says what it is and when (NB20260824); the prefix says whose work it is
@@ -13322,7 +13443,7 @@ function renderPages(){
   host._stale=0; _renderPagesList(host,node);
 }
 function _renderPagesList(host,node){
-  if(node.kind==='nb'){ host.innerHTML=_journalListHtml(); return; }
+  if(node.kind==='nb'){ _jrListPaint(host,_jrJump); _jrJump=false; return; }
   if(node.kind==='expsec'){
     var p=projById(node.projectId);
     var sec2=p?(p.sections||[]).filter(function(s){return s.id===node.sectionId;})[0]:null;
@@ -17700,10 +17821,475 @@ function _nbPageHead(pg,opts){ opts=opts||{};
 function _dateKey(ms){ var d=new Date(ms); return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2); }
 function _nbFocusBody(){ var b=document.querySelector('.nb-page .rt[contenteditable]'); if(b){ b.focus(); try{ var r=document.createRange(); r.selectNodeContents(b.firstElementChild||b); r.collapse(true); var sl=getSelection(); sl.removeAllRanges(); sl.addRange(r); }catch(e){} } }
 function _nbPageColor(pg){ var sec=genSecById(pg.sectionId); return nbColor(sec&&sec.color); }
+// ── The Journal's writing page (Jon, 2026-11-10) ─────────────────────────────────────────────────────────
+// "La página de escritura la quiero como OneNote o Word: profesional, sencilla, útil, con barra de herramientas completa
+// y robusta." The Journal day's notes and a dateless Note are one editor, `.jr-ed`, on a sheet with no box inside it:
+//   · a toolbar across the top (sticky, so it is there while you write down a long page) that holds every verb. It is
+//     markup with no state of its own: a button never takes the focus (mousedown is prevented), so it never costs the
+//     selection, and a button reached from the keyboard puts the caret back where it was before it acts;
+//   · the keys a word processor taught everyone. Tab indents (a list item, a paragraph) or puts a tab in the line,
+//     moves to the next table cell, Shift+Tab undoes each; Esc and then Tab leaves the page (WCAG 2.1.2 — a text that
+//     owns Tab must give it back). `- ` `1. ` `[] ` `# ` `> ` start a list, a checklist, a heading, a quote; `---` and Enter
+//     draw a rule; Backspace at the start of a heading or an indented paragraph undoes it first, as Word does;
+//   · a paste that arrives clean: what Word, Docs or a web page wears (mso classes, fonts, spans) is taken off, what
+//     says something (bold, lists, tables, links, a colour) stays, and a copy from another Labbook page is kept whole;
+//   · a page that is whole: an empty editor says so (`jr-empty`) whatever `<br>` it holds, a table or a rule at the
+//     foot always has a line after it, and a day written on enters the list the moment it has anything in it.
+// The bubble that floated over a selection is not drawn here: the toolbar has everything it had, always in view.
+// A line is a <div> (the browser's own choice, and what every older note holds): a <p> cannot hold a list or a table, and
+// the browser puts one inside it all the same, which comes back from a reload as empty lines.
+var JR_NORMAL='DIV';
+var JR_BLOCKS=[['P','Normal text'],['H1','Heading 1'],['H2','Heading 2'],['H3','Heading 3'],['BLOCKQUOTE','Quote'],['PRE','Code']];
+var JR_SYMS=['µ','°','±','×','÷','≤','≥','≈','≠','→','←','↔','↑','↓','α','β','γ','δ','Δ','λ','π','σ','Ω','‰','²','³','¹','⁻','⁺','½'];
+var _jrRange=null, _jrMenuFor=null, _jrRaf=0, _jrListT=0;
+function jrEd(){ return document.querySelector('#pane-ed .jr-ed'); }
+// The editor with the caret in it, and the caret where it was. A toolbar button reached by Tab (or a menu that moved the
+// focus) acts on the last place you wrote, not on the top of the page.
+function jrFocus(){
+  var ed=jrEd(); if(!ed) return null;
+  var s=window.getSelection(), inEd=s&&s.rangeCount&&ed.contains(s.anchorNode);
+  if(!inEd||document.activeElement!==ed){
+    ed.focus();
+    if(_jrRange&&ed.contains(_jrRange.startContainer)) _restoreSel(_jrRange);
+    else { try{ var r=document.createRange(); r.selectNodeContents(ed); r.collapse(false); var sl=window.getSelection(); sl.removeAllRanges(); sl.addRange(r); }catch(e){} }
+  }
+  _activeEd=ed; return ed;
+}
+function _jrFire(ed){ _jrOwn=true; try{ if(ed) ed.dispatchEvent(new Event('input',{bubbles:true})); }finally{ _jrOwn=false; } jrSyncSoon(); }
+function _jrExec(c,v,css){ try{ document.execCommand('styleWithCSS',false,!!css); }catch(e){} try{ return document.execCommand(c,false,v==null?null:v); }catch(e){ return false; } }
+function _jrSelEl(){ var s=window.getSelection(); if(!s||!s.rangeCount) return null; var n=s.getRangeAt(0).startContainer; return n.nodeType===1?n:n.parentElement; }
+// The line the caret is on: the nearest block directly inside the editor (or inside a list item / cell).
+var JR_BLK=/^(P|DIV|H1|H2|H3|H4|H5|H6|LI|BLOCKQUOTE|PRE|TD|TH|UL|OL|TABLE|HR)$/;
+function _jrBlockOf(n,ed){ while(n&&n!==ed){ if(n.nodeType===1&&JR_BLK.test(n.tagName)) return n; n=n.parentNode; } return null; }
+function _jrAtBlockStart(r,ed){
+  var n=r.startContainer; if(n.nodeType===3&&r.startOffset>0&&/\S/.test(n.textContent.slice(0,r.startOffset))) return false;
+  var b=_jrBlockOf(n.nodeType===1?n:n.parentNode,ed)||ed, pre=document.createRange();
+  try{ pre.setStart(b,0); pre.setEnd(r.startContainer,r.startOffset); }catch(e){ return false; }
+  return !pre.toString().replace(/[ \s]/g,'') && !pre.cloneContents().querySelector('img,table,hr');
+}
+// A paragraph's indent is a margin on the paragraph itself (two ems a step, eight at most) — not the browser's own
+// <blockquote>, which it nests inside the <p> it is typed in and which comes back from a reload as empty lines.
+function _jrLevel(b){ var m=parseFloat((b&&b.style&&b.style.marginLeft)||'0'); return m>0?Math.round(m/2):0; }
+function _jrLevelAt(n,ed){ var b=_jrBlockOf(n,ed); return b&&!/^(LI|TD|TH)$/.test(b.tagName)?_jrLevel(b):0; }
+function _jrSelBlocks(ed){
+  var s=window.getSelection(); if(!s||!s.rangeCount) return [];
+  var r=s.getRangeAt(0), out=[];
+  Array.prototype.forEach.call(ed.querySelectorAll('p,div,h1,h2,h3,blockquote,pre'),function(b){
+    if(b.closest('li,td,th')||!r.intersectsNode(b)) return;
+    if(Array.prototype.some.call(b.children,function(c){ return /^(P|DIV|H1|H2|H3|BLOCKQUOTE|PRE|UL|OL|TABLE)$/.test(c.tagName); })) return;
+    out.push(b); });
+  return out;
+}
+// The browser's undo stack knows nothing of an edit made straight on the DOM (an indent, a row added by Tab). One step
+// of them is kept here and taken back by ⌘Z (or Undo) as long as nothing else has been typed since.
+var _jrSnap=null, _jrOwn=false;
+function _jrOffset(ed){ var s=window.getSelection(); if(!s||!s.rangeCount||!ed.contains(s.anchorNode)) return 0; var r=document.createRange(); try{ r.setStart(ed,0); r.setEnd(s.anchorNode,s.anchorOffset); }catch(e){ return 0; } return r.toString().length; }
+function _jrSetOffset(ed,off){
+  var w=document.createTreeWalker(ed,NodeFilter.SHOW_TEXT), n, acc=0, s=window.getSelection(), r=document.createRange();
+  while((n=w.nextNode())){ var l=n.textContent.length; if(acc+l>=off){ r.setStart(n,off-acc); r.collapse(true); s.removeAllRanges(); s.addRange(r); return; } acc+=l; }
+  r.selectNodeContents(ed); r.collapse(false); s.removeAllRanges(); s.addRange(r);
+}
+function jrSnap(ed){ _jrSnap={ed:ed,html:ed.innerHTML,off:_jrOffset(ed)}; }
+function jrUndoSnap(){
+  var sn=_jrSnap; if(!sn||!sn.ed.isConnected) return false;
+  _jrSnap=null; sn.ed.innerHTML=sn.html; sn.ed.focus(); _jrSetOffset(sn.ed,sn.off); _jrFire(sn.ed); return true;
+}
+document.addEventListener('input',function(e){ if(!_jrOwn&&_jrSnap&&e.target&&e.target.closest&&e.target.closest('.jr-ed')) _jrSnap=null; },true);
+
+// ── Commands ──────────────────────────────────────────────────────────────────────────────────────────
+function jrCmd(c,btn){
+  var ed=jrFocus(); if(!ed) return;
+  if(c.indexOf('menu:')===0){ jrMenu(c.slice(5),btn); return; }
+  _jrMenuClose();
+  switch(c){
+    case 'undo': if(!jrUndoSnap()) _jrExec('undo'); break;
+    case 'redo': _jrExec('redo'); break;
+    case 'bold': case 'italic': case 'underline': case 'strikeThrough': _jrExec(c); break;
+    case 'subscript': case 'superscript': _jrExec(c); break;   // a formula is text with two characters lowered, not a CSS rule
+    case 'foreColor': _jrExec('foreColor',BUB.fore,true); break;
+    case 'hiliteColor': _jrExec('hiliteColor',_hiliteOn()?'transparent':BUB.hilite,true); break;
+    case 'ul': _jrExec('insertUnorderedList'); _jrUnCheck(); break;
+    case 'ol': _jrExec('insertOrderedList'); break;
+    case 'todo': insertTodo(); break;
+    case 'indent': jrIndent(1); break;
+    case 'outdent': jrIndent(-1); break;
+    case 'left': _jrExec('justifyLeft'); break;
+    case 'center': _jrExec('justifyCenter'); break;
+    case 'right': _jrExec('justifyRight'); break;
+    case 'full': _jrExec('justifyFull'); break;
+    case 'link': openLinkIns(); return;
+    case 'image': openImageIns(); return;
+    case 'table': insertTable(); return;
+    case 'hr': insertDivider(); break;
+    case 'clear': _jrExec('removeFormat'); _jrExec('unlink'); if(!_jrCaretIn('li,td,th')){ var b=_jrBlockTag(); if(b&&b!=='P') _jrExec('formatBlock',JR_NORMAL); } break;
+  }
+  _jrFire(ed);
+}
+function _jrAlignNow(){ var st=function(c){ try{ return document.queryCommandState(c); }catch(e){ return false; } }; return st('justifyCenter')?'center':st('justifyRight')?'right':st('justifyFull')?'full':'left'; }
+function _jrCaretIn(sel){ var n=_jrSelEl(); return !!(n&&n.closest&&n.closest(sel)); }
+function _jrUnCheck(){ var li=_caretListItem(); if(li&&li.parentNode&&li.parentNode.tagName==='UL') li.parentNode.classList.remove('lb-check'); }
+function _jrBlockTag(){ var n=_jrSelEl(), ed=jrEd(); while(n&&n!==ed){ if(/^(H1|H2|H3|BLOCKQUOTE|PRE)$/.test(n.tagName)&&!(n.classList&&n.classList.contains('webkit-indent-blockquote'))) return n.tagName; if(n.tagName==='P'||n.tagName==='DIV') return 'P'; n=n.parentElement; } return 'P'; }
+function jrBlock(tag){ var ed=jrFocus(); if(!ed) return; _jrMenuClose(); _jrExec('formatBlock',tag==='P'?JR_NORMAL:tag); _jrFire(ed); }
+// A font or a size is a run of text, so with only a caret it is the word under it (as Word does).
+function _jrWord(){ var s=window.getSelection(); if(!s||!s.rangeCount||!s.isCollapsed) return; try{ s.modify('move','backward','word'); s.modify('extend','forward','word'); }catch(e){} }
+function jrFont(v){ var ed=jrFocus(); if(!ed) return; _jrMenuClose(); _jrWord(); _wrapSel('fontFamily',v); _jrFire(ed); }
+function jrSize(v){ var ed=jrFocus(); if(!ed) return; _jrMenuClose(); _jrWord(); _wrapSel('fontSize',(+v)+'px'); _jrFire(ed); }
+function jrColor(kind,c){
+  var ed=jrFocus(); if(!ed) return; _jrMenuClose();
+  if(kind==='hiliteColor'&&c!=='transparent') BUB.hilite=c; if(kind==='foreColor'&&c!=='inherit') BUB.fore=c;
+  _jrExec(kind,c,true); _jrFire(ed);
+}
+function jrText(t){ var ed=jrFocus(); if(!ed) return; _jrMenuClose(); _jrExec('insertText',t); _jrFire(ed); }
+function jrInsert(what){
+  var ed=jrFocus(); if(!ed) return; _jrMenuClose();
+  if(what==='date') _jrExec('insertText',fmtDate(todayStr()));
+  else if(what==='mention'){ _jrExec('insertText','@'); try{ acScan(); }catch(e){} }
+  else if(what==='tag'){ openTag(); return; }
+  else if(what==='protocol'){ openProtocolIns(); return; }
+  else if(what==='steps'){ openProtocolSteps(); return; }
+  _jrFire(ed);
+}
+// Indent: a list item goes a level deeper (and a checklist stays a checklist — the browser makes the new level a bare
+// bullet list); a paragraph moves in by two ems.
+function jrIndent(dir){
+  var ed=jrFocus(); if(!ed) return;
+  var n=_jrSelEl(), li=n&&n.closest&&n.closest('li');
+  if(li&&ed.contains(li)){
+    _jrExec(dir>0?'indent':'outdent',null,false);
+    if(dir>0){ var cur=_caretListItem(), ul=cur&&cur.parentNode, up=ul&&ul.parentNode&&ul.parentNode.closest&&ul.parentNode.closest('ul.lb-check');
+      if(ul&&ul.tagName==='UL'&&up&&!ul.classList.contains('lb-check')) ul.classList.add('lb-check'); }
+  } else {
+    var bl=_jrSelBlocks(ed); if(!bl.length) return;
+    jrSnap(ed);
+    bl.forEach(function(x){ var l=Math.max(0,Math.min(8,_jrLevel(x)+dir)); if(l) x.style.marginLeft=(l*2)+'em'; else { x.style.marginLeft=''; if(!x.getAttribute('style')) x.removeAttribute('style'); } });
+  }
+  _jrFire(ed);
+}
+
+// ── Keys ──────────────────────────────────────────────────────────────────────────────────────────────
+function jrTab(ed,back){
+  var s=window.getSelection(); if(!s||!s.rangeCount) return;
+  var r=s.getRangeAt(0), n=r.startContainer; n=n.nodeType===1?n:n.parentElement;
+  var cell=n&&n.closest&&n.closest('td,th');
+  if(cell&&ed.contains(cell)) return jrCellMove(cell,back);
+  var li=n&&n.closest&&n.closest('li');
+  if(li&&ed.contains(li)) return jrIndent(back?-1:1);
+  if(back){
+    if(_jrLevelAt(n,ed)>0) return jrIndent(-1);
+    // a tab the line holds: take the four spaces back off (the browser writes four typed spaces as a mix of ordinary and
+    // non-breaking ones)
+    if(r.collapsed&&r.startContainer.nodeType===3){ var t=r.startContainer.textContent, o=r.startOffset;
+      if(o>=4&&/^[\u00a0 ]{4}$/.test(t.slice(o-4,o))){ r.setStart(r.startContainer,o-4); s.removeAllRanges(); s.addRange(r); _jrExec('delete'); _jrFire(ed); } }
+    return;
+  }
+  if(r.collapsed&&!_jrAtBlockStart(r,ed)){ _jrExec('insertText','    '); return _jrFire(ed); }
+  jrIndent(1);
+}
+function jrCellMove(cell,back){
+  var tbl=cell.closest('table'), cells=Array.prototype.slice.call(tbl.querySelectorAll('td,th')), i=cells.indexOf(cell), j=back?i-1:i+1;
+  if(j<0) return;
+  if(j>=cells.length){ jrSnap(tbl.closest('.jr-ed')); tblAddRow(1); cells=Array.prototype.slice.call(tbl.querySelectorAll('td,th')); }
+  var c=cells[j]; if(!c) return;
+  try{ var r=document.createRange(); r.selectNodeContents(c); var s=window.getSelection(); s.removeAllRanges(); s.addRange(r); }catch(e){}
+  setTimeout(updateTableTools,0);
+}
+// Backspace at the very start of a line undoes what the line is before it merges upward: a heading, a quote or a code
+// line becomes text; an indented paragraph moves out one step.
+function jrBackspace(ed){
+  var s=window.getSelection(); if(!s||!s.rangeCount||!s.isCollapsed) return false;
+  var r=s.getRangeAt(0); if(!_jrAtBlockStart(r,ed)) return false;
+  var n=r.startContainer; n=n.nodeType===1?n:n.parentElement;
+  if(n.closest('li,td,th')) return false;
+  if(_jrBlockTag()!=='P'){ _jrExec('formatBlock',JR_NORMAL); _jrFire(ed); return true; }
+  if(_jrLevelAt(n,ed)>0){ jrIndent(-1); return true; }
+  return false;
+}
+// `---` (or ***, ___) on a line of its own and Enter: a rule, and a line after it.
+function jrEnter(ed){
+  var s=window.getSelection(); if(!s||!s.rangeCount||!s.isCollapsed) return false;
+  var n=s.anchorNode; if(!n||n.nodeType!==3) return false;
+  var b=_jrBlockOf(n.parentNode,ed), txt=(n.textContent||'').replace(/ /g,' ').trim();
+  if(!/^(-{3,}|\*{3,}|_{3,})$/.test(txt)||s.anchorOffset<n.textContent.length) return false;
+  if(b&&b!==ed&&(b.textContent||'').replace(/ /g,' ').trim()!==txt) return false;
+  if(b&&b.closest('li,td,th')) return false;
+  var r=document.createRange(); if(b&&b!==ed) r.selectNodeContents(b); else r.selectNode(n);
+  s.removeAllRanges(); s.addRange(r); _jrExec('insertHTML','<hr><div><br></div>'); _jrFire(ed); return true;
+}
+document.addEventListener('keydown',function(e){
+  var ed=e.target&&e.target.closest&&e.target.closest('.jr-ed'); if(!ed) return;
+  if(window.AC&&AC.open) return;
+  if(e.isComposing||e.keyCode===229) return;
+  var mod=e.metaKey||e.ctrlKey;
+  if(e.key!=='Tab'&&e.key!=='Escape'&&e.key!=='Shift'&&e.key!=='Meta'&&e.key!=='Control'&&e.key!=='Alt') ed._tabFree=false;
+  if(e.key==='Tab'&&!mod&&!e.altKey){
+    if(ed._tabFree) return;                 // Esc was pressed: this Tab leaves the page
+    e.preventDefault(); jrTab(ed,e.shiftKey); return; }
+  if(mod&&!e.shiftKey&&!e.altKey&&(e.key==='z'||e.key==='Z')&&_jrSnap&&_jrSnap.ed===ed){ e.preventDefault(); jrUndoSnap(); return; }
+  if(e.key==='Backspace'&&!mod&&!e.altKey&&!e.shiftKey){ if(jrBackspace(ed)) e.preventDefault(); return; }
+  if(e.key==='Enter'&&!mod&&!e.altKey&&!e.shiftKey){ if(jrEnter(ed)) e.preventDefault(); return; }
+  // Word's heading keys: ⌘⌥1 · ⌘⌥2 · ⌘⌥3, and ⌘⌥0 for normal text. By physical key: Option changes the character.
+  if(mod&&e.altKey&&!e.shiftKey&&/^Digit[0-3]$/.test(e.code)){ e.preventDefault(); jrBlock(['P','H1','H2','H3'][+e.code.slice(5)]); }
+});
+// `- ` `* ` `1. ` `[] ` `# ` `## ` `### ` `> ` at the start of a line. The command is run a tick later: Chrome refuses a
+// nested execCommand while an input event is being delivered, and the trigger is checked again then, because the
+// caret may have moved.
+document.addEventListener('input',function(e){
+  var ed=e.target&&e.target.closest&&e.target.closest('.jr-ed'); if(!ed) return;
+  if(e.inputType!=='insertText'||!/^[  ]$/.test(e.data||'')) return;
+  var s=window.getSelection(); if(!s||!s.rangeCount||!s.isCollapsed) return;
+  var node=s.anchorNode, off=s.anchorOffset; if(!node||node.nodeType!==3) return;
+  var pre=node.textContent.slice(0,off).replace(/ /g,' ');
+  var m=/^(-|\*|•|\d{1,3}[.)]|\[\s?\]|#{1,3}|>) $/.exec(pre); if(!m) return;
+  var host=node.parentElement; if(host&&host.closest('li,td,th,pre,h1,h2,h3')) return;
+  var prev=node.previousSibling; if(prev&&!(prev.nodeType===1&&/^(BR|P|DIV|H1|H2|H3|UL|OL|TABLE|HR|BLOCKQUOTE)$/.test(prev.tagName))) return;
+  var tok=m[1];
+  setTimeout(function(){
+    try{
+      // Chrome rebuilds the text node when the space lands, so the node seen above is stale: read the caret again.
+      var s2=window.getSelection(); if(!s2||!s2.rangeCount||!s2.isCollapsed) return;
+      var n2=s2.anchorNode, o2=s2.anchorOffset; if(!n2||n2.nodeType!==3||!ed.contains(n2)) return;
+      if(n2.textContent.slice(0,o2).replace(/\u00a0/g,' ')!==tok+' ') return;
+      var pv=n2.previousSibling; if(pv&&!(pv.nodeType===1&&/^(BR|P|DIV|H1|H2|H3|UL|OL|TABLE|HR|BLOCKQUOTE)$/.test(pv.tagName))) return;
+      if(n2.parentElement&&n2.parentElement.closest('li,td,th,pre,h1,h2,h3')) return;
+      var r=document.createRange(); r.setStart(n2,0); r.setEnd(n2,o2); s2.removeAllRanges(); s2.addRange(r);
+      _jrExec('delete');
+      if(tok==='-'||tok==='*'||tok==='•'){ _jrExec('insertUnorderedList'); _jrUnCheck(); }
+      else if(/^\d/.test(tok)){ _jrExec('insertOrderedList'); var li=_caretListItem(), ol=li&&li.parentNode, st=parseInt(tok,10); if(ol&&ol.tagName==='OL'&&st>1) ol.setAttribute('start',st); }
+      else if(/^\[/.test(tok)) insertTodo();
+      else if(tok==='>') _jrExec('formatBlock','BLOCKQUOTE');
+      else _jrExec('formatBlock','H'+tok.length);
+      _jrFire(ed);
+    }catch(err){}
+  },0);
+}, true);
+
+// ── Paste ─────────────────────────────────────────────────────────────────────────────────────────────
+// Foreign HTML is rebuilt from a list of what may stay. A copy from Labbook itself keeps its classes (lb-*), its list
+// state (li.done) and its data-* (links, pictures); everything else a source adds — mso classes, font tags, ids,
+// inline fonts and sizes, empty spans — is dropped, and bold / italic / underline / strike written as CSS become tags.
+var JR_KEEP={DIV:1,H1:1,H2:1,H3:1,UL:1,OL:1,LI:1,B:1,I:1,U:1,S:1,A:1,SUB:1,SUP:1,BLOCKQUOTE:1,PRE:1,CODE:1,HR:1,TABLE:1,THEAD:1,TBODY:1,TFOOT:1,TR:1,TD:1,TH:1,IMG:1,SPAN:1,BR:1};
+var JR_DROP={SCRIPT:1,STYLE:1,META:1,LINK:1,TITLE:1,HEAD:1,NOSCRIPT:1,IFRAME:1,OBJECT:1,EMBED:1,SVG:1,BUTTON:1,INPUT:1,SELECT:1,TEXTAREA:1,'O:P':1};
+var JR_BLOCKISH=/^(P|DIV|H[1-6]|UL|OL|LI|BLOCKQUOTE|PRE|TABLE|TR|TD|TH|HR|SECTION|ARTICLE|HEADER|FOOTER|ASIDE|NAV|FIGURE|FORM)$/;
+function _jrBold(w){ return /bold|bolder/.test(w)||(+w>=600); }
+function _jrCleanKids(src,out){
+  Array.prototype.forEach.call(src.childNodes,function(n){
+    if(n.nodeType===3){ out.appendChild(document.createTextNode(n.textContent)); return; }
+    if(n.nodeType!==1) return;
+    var t=n.tagName.toUpperCase(); if(JR_DROP[t]) return;
+    var st=n.style||{};
+    if(t==='STRONG') t='B'; else if(t==='EM') t='I'; else if(t==='STRIKE'||t==='DEL') t='S'; else if(/^H[4-6]$/.test(t)) t='H3';
+    else if(t==='DIV'||t==='P'){ var blocky=Array.prototype.some.call(n.children,function(c){ return JR_BLOCKISH.test(c.tagName); }); t=blocky?'':'DIV'; }
+    else if(t==='B'&&/^(normal|400)$/.test(st.fontWeight||'')) t='';     // Google Docs wraps a whole paste in <b style="font-weight:normal">
+    else if(!JR_KEEP[t]) t='';
+    if(t==='IMG'){ var cl=n.getAttribute('class')||'', sr=n.getAttribute('src')||''; if(/lb-att/.test(cl)||/^data:image\//.test(sr)){ var im=document.createElement('img'); if(/lb-att/.test(cl)) im.className='lb-att'; if(n.getAttribute('data-att')) im.setAttribute('data-att',n.getAttribute('data-att')); if(sr&&/^data:image\//.test(sr)) im.setAttribute('src',sr); out.appendChild(im); } return; }
+    if(t==='BR'){ out.appendChild(document.createElement('br')); return; }
+    if(!t||t==='SPAN'){
+      // a span says something only through its style
+      var wrap=out, node=null;
+      var fw=_jrBold(st.fontWeight||''), fi=/italic|oblique/.test(st.fontStyle||''), tdl=(st.textDecorationLine||st.textDecoration||'');
+      var col=st.color, bg=st.backgroundColor;
+      if(col&&/^(rgb\(0,\s*0,\s*0\)|black|#000000?|windowtext|inherit|initial)$/i.test(col)) col='';
+      if(bg&&/^(transparent|rgba\(0,\s*0,\s*0,\s*0\)|white|#fff(fff)?|rgb\(255,\s*255,\s*255\)|inherit|initial)$/i.test(bg)) bg='';
+      if(t==='SPAN'&&(col||bg)){ node=document.createElement('span'); if(col) node.style.color=col; if(bg) node.style.backgroundColor=bg; wrap.appendChild(node); wrap=node; }
+      [[fw,'b'],[fi,'i'],[/underline/.test(tdl)&&!/^A$/i.test(n.parentNode&&n.parentNode.tagName||''),'u'],[/line-through/.test(tdl),'s']].forEach(function(x){ if(x[0]){ var q=document.createElement(x[1]); wrap.appendChild(q); wrap=q; } });
+      _jrCleanKids(n,wrap); return;
+    }
+    var el_=document.createElement(t.toLowerCase());     // a paragraph arrives as a line (div)
+    var cls=(n.getAttribute('class')||'').split(/\s+/).filter(function(c){ return /^(lb-|done$|webkit-indent-blockquote$)/.test(c); }).join(' ');
+    if(cls) el_.className=cls;
+    Array.prototype.forEach.call(n.attributes,function(a){ if(/^data-/.test(a.name)) el_.setAttribute(a.name,a.value); });
+    if(t==='A'){ var h=n.getAttribute('href')||''; if(/^(https?:|mailto:|#)/i.test(h)) el_.setAttribute('href',h); if(!el_.className&&h) el_.className='lb-url'; }
+    if((t==='TD'||t==='TH')){ ['colspan','rowspan'].forEach(function(k){ var v=n.getAttribute(k); if(v&&/^\d{1,2}$/.test(v)&&v!=='1') el_.setAttribute(k,v); }); }
+    if(t==='TABLE'&&!el_.className) el_.className='lb-table';
+    if(/^(DIV|H1|H2|H3|LI|BLOCKQUOTE|TD|TH)$/.test(t)&&/^(center|right|justify)$/.test(st.textAlign||'')) el_.style.textAlign=st.textAlign;
+    if(/^(DIV|H1|H2|H3|BLOCKQUOTE|PRE)$/.test(t)&&/^(2|4|6|8|10|12|14|16)em$/.test(st.marginLeft||'')) el_.style.marginLeft=st.marginLeft;     // an indent copied from a Journal page
+    if(t==='BLOCKQUOTE'&&/webkit-indent-blockquote/.test(cls)) el_.setAttribute('style','margin: 0 0 0 40px; border: none; padding: 0px;');
+    if(t==='OL'&&n.getAttribute('start')&&/^\d{1,3}$/.test(n.getAttribute('start'))) el_.setAttribute('start',n.getAttribute('start'));
+    out.appendChild(el_); _jrCleanKids(n,el_);
+  });
+}
+function jrCleanHtml(html){
+  var src=document.createElement('div');
+  try{ src=new DOMParser().parseFromString('<body>'+String(html||'').replace(/<!--[\s\S]*?-->/g,'')+'</body>','text/html').body; }catch(e){ src.innerHTML=html; }
+  var out=document.createElement('div'); _jrCleanKids(src,out);
+  // an empty inline wrapper left behind
+  Array.prototype.forEach.call(out.querySelectorAll('span,b,i,u,s'),function(x){ if(!x.textContent&&!x.querySelector('img,br')) x.remove(); });
+  return out.innerHTML;
+}
+document.addEventListener('paste',function(e){
+  var ed=e.target&&e.target.closest&&e.target.closest('.jr-ed'); if(!ed||e.shiftKey) return;
+  var cd=e.clipboardData; if(!cd) return;
+  var its=cd.items||[]; for(var i=0;i<its.length;i++){ if(its[i].type&&its[i].type.indexOf('image')===0) return; }   // the picture handler owns those
+  var html=cd.getData('text/html'); if(!html) return;
+  var clean=jrCleanHtml(html); if(!clean.replace(/<[^>]*>/g,'').trim()&&!/<(img|table|hr)\b/i.test(clean)) return;
+  e.preventDefault(); _jrExec('insertHTML',clean); _jrFire(ed);
+});
+
+// ── The page's own bookkeeping ────────────────────────────────────────────────────────────────────────
+// Text and inline marks standing straight in the page (typed before there were lines) are a line like any other. This is
+// the DOM only; the stored text is rewritten when you next type, not before.
+function jrLoadHtml(html){
+  if(!html) return '';
+  var d=document.createElement('div'); d.innerHTML=html;
+  var run=[], flush=function(){
+    if(run.some(function(x){ return x.nodeType===1?x.tagName!=='BR':/\S/.test(x.textContent); })){
+      var p=document.createElement('div'); d.insertBefore(p,run[0]); run.forEach(function(x){ p.appendChild(x); }); }
+    run=[]; };
+  Array.prototype.slice.call(d.childNodes).forEach(function(c){ if(c.nodeType===1&&JR_BLOCKISH.test(c.tagName)) flush(); else run.push(c); });
+  flush();
+  return d.innerHTML;
+}
+function jrNormalize(ed){
+  // A table, a rule, a picture or a code line at the foot with nothing after it leaves no place to put the caret.
+  var last=ed.lastElementChild;
+  if(last&&/^(TABLE|HR|IMG|PRE)$/.test(last.tagName)) ed.appendChild(Object.assign(document.createElement('div'),{innerHTML:'<br>'}));
+}
+function jrInput(ed){
+  jrNormalize(ed);
+  var empty=!_noteHasContent(ed.innerHTML);
+  ed.classList.toggle('jr-empty',empty);
+  var html=empty?'':ed.innerHTML, D=ed.getAttribute('data-day'), pid=ed.getAttribute('data-page');
+  if(D){ if(html||LB.data.notebook[D]) setNotebook(html,D); }      // clearing a day that was never written leaves no record
+  else if(pid) setPage('html',html);
+  jrCount(); clearTimeout(_jrListT); _jrListT=setTimeout(_jrListSync,700);
+}
+function jrCount(){
+  var ed=jrEd(), w=el('jr-wc'); if(!ed||!w) return;
+  var t=(ed.innerText||'').trim(), n=t?t.split(/\s+/).length:0;
+  w.textContent=n?(n+' word'+(n===1?'':'s')):'';
+}
+function jrFocused(ed){
+  _activeEd=ed; try{ document.execCommand('defaultParagraphSeparator',false,'div'); }catch(e){}
+  if(!ed.firstChild||(ed.children.length===0&&!ed.textContent.trim())){ /* an empty page: the first line is a line */
+    ed.innerHTML='<div><br></div>'; try{ var r=document.createRange(); r.setStart(ed.firstChild,0); r.collapse(true); var s=window.getSelection(); s.removeAllRanges(); s.addRange(r); }catch(e){} }
+}
+
+// ── The bar ───────────────────────────────────────────────────────────────────────────────────────────
+function _jrIc(p){ return _bubSvg(p); }
+var JR_IC={
+  undo:'<path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 010 11H11"/>',
+  redo:'<path d="M15 14l5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 000 11H13"/>',
+  ul:'<path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1.3" fill="currentColor" stroke="none"/><circle cx="4.5" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="4.5" cy="18" r="1.3" fill="currentColor" stroke="none"/>',
+  ol:'<path d="M10 6h10M10 12h10M10 18h10"/><path d="M3.5 5l1.5-1v5"/><path d="M3.3 11.6a1.5 1.5 0 012.6 1c0 1-2.6 2.2-2.6 3.4h2.9"/>',
+  todo:'<rect x="3" y="5" width="6" height="6" rx="1"/><path d="M4.5 8l1 1 2-2M13 7h8M3 17h6M13 17h8"/>',
+  outdent:'<path d="M21 6H8M21 12h-9M21 18H8M6 9l-3 3 3 3"/>', indent:'<path d="M21 6H8M21 12h-9M21 18H8M3 9l3 3-3 3"/>',
+  left:'<path d="M3 6h18M3 12h12M3 18h15"/>', center:'<path d="M3 6h18M6 12h12M4 18h16"/>', right:'<path d="M3 6h18M9 12h12M6 18h15"/>', full:'<path d="M3 6h18M3 12h18M3 18h18"/>',
+  link:'<path d="M10 14a3.5 3.5 0 005 0l3-3a3.5 3.5 0 00-5-5l-1 1"/><path d="M14 10a3.5 3.5 0 00-5 0l-3 3a3.5 3.5 0 005 5l1-1"/>',
+  image:'<rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M4 17l5-4.5 4 3.5 3-2.5 4 3.5"/>',
+  table:'<rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M3.5 10h17M3.5 15h17M9.5 4.5v15M15 4.5v15"/>',
+  hr:'<path d="M3 12h18"/><path d="M7 6.5h10M7 17.5h10" opacity=".45"/>',
+  clear:'<path d="M6 5h12"/><path d="M12 5l-2.5 14"/><path d="M15 15l4 4M19 15l-4 4"/>',
+  hi:'<path d="M9 15l-4 4"/><path d="M14.5 4.5l5 5L11 18H6v-5z"/><path d="M12 7l5 5"/>',
+  caret:'<path d="M6 9l6 6 6-6"/>', plus:'<path d="M12 5v14M5 12h14"/>', omega:'<path d="M5 19h4v-2.2A7 7 0 1115 16.8V19h4"/>'
+};
+function jrBarHtml(){
+  var M=IS_MAC?'⌘':'Ctrl+';
+  function b(c,t,inner,st,x){ return '<button type="button" class="jr-b'+(x?(' '+x):'')+'" data-c="'+c+'"'+(st?(' data-st="'+st+'"'):'')+' title="'+esc(t)+'" aria-label="'+esc(t.replace(/\s*\(.*$/,''))+'" onmousedown="event.preventDefault()" onclick="jrCmd(\''+c+'\',this)">'+inner+'</button>'; }
+  function pill(k,t,label,x){ return '<button type="button" class="jr-pill'+(x?(' '+x):'')+'" data-menu="'+k+'" title="'+esc(t)+'" aria-haspopup="true" aria-label="'+esc(t)+'" onmousedown="event.preventDefault()" onclick="jrCmd(\'menu:'+k+'\',this)"><span class="jr-pl">'+esc(label)+'</span>'+_jrIc(JR_IC.caret)+'</button>'; }
+  var G=function(h){ return '<span class="jr-g" role="group">'+h+'</span>'; };
+  var caret=function(k,t){ return '<button type="button" class="jr-b jr-cb" data-menu="'+k+'" title="'+esc(t)+'" aria-haspopup="true" aria-label="'+esc(t)+'" onmousedown="event.preventDefault()" onclick="jrCmd(\'menu:'+k+'\',this)">'+_jrIc(JR_IC.caret)+'</button>'; };
+  var SH=IS_MAC?'\u21e7':'Shift+';
+  return '<div class="jr-bar" id="jr-bar" role="toolbar" aria-label="Formatting"><div class="jr-bar-in"><div class="jr-bar-l">'
+    +G(b('undo','Undo ('+M+'Z)',_jrIc(JR_IC.undo),'')+b('redo','Redo ('+M+(IS_MAC?'\u21e7Z':'Y')+')',_jrIc(JR_IC.redo),''))
+    +G(pill('style','Paragraph style','Normal text','jr-p-style')+pill('font','Font','Plex Sans','jr-p-font')+pill('size','Size','13','jr-p-size'))
+    +G(b('bold','Bold ('+M+'B)','<span class="bub-t bub-b1">B</span>','bold')+b('italic','Italic ('+M+'I)','<span class="bub-t bub-i">I</span>','italic')
+      +b('underline','Underline ('+M+'U)','<span class="bub-t bub-u">U</span>','underline')+b('strikeThrough','Strikethrough ('+M+SH+'X)','<span class="bub-t bub-s">S</span>','strikeThrough')
+      +b('subscript','Subscript \u2014 H\u2082O','<span class="bub-t">X<sub>2</sub></span>','subscript')+b('superscript','Superscript \u2014 cm\u00b2','<span class="bub-t">X<sup>2</sup></span>','superscript')+b('clear','Clear formatting ('+M+'\\)',_jrIc(JR_IC.clear),''))
+    +G(b('foreColor','Text colour','<span class="bub-t bub-a">A<i id="jr-fore" style="background:'+BUB.fore+'"></i></span>','')+caret('foreColor','Text colours')
+      +b('hiliteColor','Highlight ('+M+SH+'H)',_jrIc(JR_IC.hi),'hilite')+caret('hiliteColor','Highlight colours'))
+    +G(b('menu:align','Alignment',_jrIc(JR_IC.left)+_jrIc(JR_IC.caret),'','jr-wide jr-align'))
+    +G(b('ul','Bullet list ('+M+SH+'8)',_jrIc(JR_IC.ul),'ul')+b('ol','Numbered list ('+M+SH+'7)',_jrIc(JR_IC.ol),'ol')+b('todo','Checklist ('+M+'1)',_jrIc(JR_IC.todo),'todo')
+      +b('outdent','Decrease indent (Shift+Tab)',_jrIc(JR_IC.outdent),'')+b('indent','Increase indent (Tab)',_jrIc(JR_IC.indent),''))
+    +G(b('link','Link ('+M+SH+'L)',_jrIc(JR_IC.link),'')+b('image','Picture',_jrIc(JR_IC.image),'')+b('table','Table ('+M+SH+'T)',_jrIc(JR_IC.table),'')
+      +b('menu:sym','Symbols \u2014 \u00b5 \u00b0 \u00b1 \u2192',_jrIc(JR_IC.omega),'')+b('menu:insert','Insert \u2014 date, @ link, # tag, protocol',_jrIc(JR_IC.plus)+_jrIc(JR_IC.caret),'','jr-wide'))
+    +'</div></div></div>';
+}
+// What the page says about itself, at its foot: words, and nothing else to look at.
+function jrFootHtml(){ return '<div class="jr-foot"><span id="jr-wc" class="jr-wc"></span></div>'; }
+// Menus: a fixed list under the button that opened it, clamped to the window by its own measured box. Every item takes
+// the mousedown (so the page keeps its caret) and acts on the click.
+function _jrMenuClose(){ var m=el('jr-menu'); if(m) m.remove(); _jrMenuFor=null; Array.prototype.forEach.call(document.querySelectorAll('#jr-bar [aria-expanded]'),function(b){ b.removeAttribute('aria-expanded'); b.classList.remove('on'); }); }
+function jrMenu(kind,btn){
+  if(_jrMenuFor===kind){ _jrMenuClose(); return; }
+  _jrMenuClose();
+  var cur=_bubCur(), h='', tag=_jrBlockTag();
+  var I=function(on,label,act,st,tip){ return '<button type="button" class="jr-mi'+(on?' on':'')+'" role="menuitem" onmousedown="event.preventDefault()" onclick="'+act+'"'+(st?(' style="'+st+'"'):'')+(tip?(' title="'+esc(tip)+'"'):'')+'><span>'+esc(label)+'</span>'+(on?_jrIc('<path d="M5 12l5 5 9-10"/>'):'')+'</button>'; };
+  var cls='jr-menu';
+  if(kind==='style'){ h=JR_BLOCKS.map(function(x){ return '<button type="button" class="jr-mi jr-mst jr-mst-'+x[0].toLowerCase()+(x[0]===tag?' on':'')+'" role="menuitem" onmousedown="event.preventDefault()" onclick="jrBlock(\''+x[0]+'\')"><span>'+esc(x[1])+'</span>'+(x[0]===tag?_jrIc('<path d="M5 12l5 5 9-10"/>'):'')+'</button>'; }).join(''); }
+  else if(kind==='font'){ h=BUBBLE_FONTS.map(function(f){ return I(f[1]===cur.font,f[1],'jrFont(this.getAttribute(\'data-v\'))','font-family:'+f[0]).replace('<button ','<button data-v="'+esc(f[0])+'" '); }).join(''); }
+  else if(kind==='size'){ cls+=' jr-grid jr-sizes'; h=BUBBLE_SIZES.map(function(x){ return I(x===cur.size,String(x),'jrSize('+x+')'); }).join(''); }
+  else if(kind==='foreColor'||kind==='hiliteColor'){
+    cls+=' jr-sw'; var cols=kind==='hiliteColor'?HILITE_COLS:TEXT_COLS, cc=kind==='hiliteColor'?BUB.hilite:BUB.fore;
+    h=cols.map(function(c){ return '<button type="button" class="jr-c'+(c===cc?' on':'')+'" role="menuitem" title="'+c+'" aria-label="'+c+'" style="background:'+c+'" onmousedown="event.preventDefault()" onclick="jrColor(\''+kind+'\',\''+c+'\')"></button>'; }).join('')
+      +'<button type="button" class="jr-nob" role="menuitem" onmousedown="event.preventDefault()" onclick="jrColor(\''+kind+'\',\''+(kind==='hiliteColor'?'transparent':'inherit')+'\')">None</button>'; }
+  else if(kind==='align'){
+    var al=function(c,lbl,ic){ var on=_jrAlignNow()===c; return '<button type="button" class="jr-mi'+(on?' on':'')+'" role="menuitem" onmousedown="event.preventDefault()" onclick="jrCmd(\''+c+'\')"><span class="jr-ml">'+_jrIc(ic)+esc(lbl)+'</span>'+(on?_jrIc('<path d="M5 12l5 5 9-10"/>'):'')+'</button>'; };
+    h=al('left','Align left',JR_IC.left)+al('center','Centre',JR_IC.center)+al('right','Align right',JR_IC.right)+al('full','Justify',JR_IC.full); }
+  else if(kind==='sym'){ cls+=' jr-grid jr-syms'; h=JR_SYMS.map(function(x){ return '<button type="button" class="jr-mi" role="menuitem" onmousedown="event.preventDefault()" onclick="jrText(\''+x+'\')">'+x+'</button>'; }).join(''); }
+  else if(kind==='insert'){
+    h=I(false,'Horizontal line','jrCmd(\'hr\')')+I(false,'Today’s date','jrInsert(\'date\')',null,_scLbl({key:'d',shift:true,show:'D'}))+I(false,'Link an experiment, protocol or antibody  @','jrInsert(\'mention\')')+I(false,'Tag  #','jrInsert(\'tag\')')
+     +'<div class="jr-msep"></div>'+I(false,'Protocol…','jrInsert(\'protocol\')')+I(false,'Protocol steps as a checklist…','jrInsert(\'steps\')'); }
+  var m=document.createElement('div'); m.id='jr-menu'; m.className=cls; m.setAttribute('role','menu'); m.innerHTML=h; document.body.appendChild(m);
+  var r=btn.getBoundingClientRect(), vw=window.innerWidth, vh=window.innerHeight, mw=m.offsetWidth, mh=m.offsetHeight;
+  var left=Math.max(8,Math.min(r.left,vw-mw-8)), top=r.bottom+4; if(top+mh>vh-8) top=Math.max(8,r.top-mh-4);
+  m.style.left=Math.round(left)+'px'; m.style.top=Math.round(top)+'px'; if(mh>vh-16){ m.style.maxHeight=(vh-16)+'px'; }
+  _jrMenuFor=kind; btn.setAttribute('aria-expanded','true'); btn.classList.add('on');
+}
+document.addEventListener('mousedown',function(e){ if(_jrMenuFor&&!(e.target.closest&&(e.target.closest('#jr-menu')||e.target.closest('#jr-bar')))) _jrMenuClose(); },true);
+document.addEventListener('keydown',function(e){ if(_jrMenuFor&&e.key==='Escape'){ _jrMenuClose(); var ed=jrEd(); if(ed) ed._tabFree=false; } },true);
+window.addEventListener('resize',_jrMenuClose);
+// The open menu is walked with the arrows and answered with Enter, the caret staying in the page.
+document.addEventListener('keydown',function(e){
+  if(!_jrMenuFor) return; var m=el('jr-menu'); if(!m) return;
+  var items=Array.prototype.slice.call(m.querySelectorAll('.jr-mi,.jr-c,.jr-nob'));
+  if(/^Arrow(Down|Up|Right|Left)$/.test(e.key)&&items.length){
+    e.preventDefault(); e.stopPropagation();
+    var fwd=e.key==='ArrowDown'||e.key==='ArrowRight', i=items.findIndex(function(x){ return x.classList.contains('kb'); });
+    items.forEach(function(x){ x.classList.remove('kb'); });
+    i=i<0?(fwd?0:items.length-1):(i+(fwd?1:-1)+items.length)%items.length;
+    items[i].classList.add('kb'); try{ items[i].scrollIntoView({block:'nearest'}); }catch(err){}
+  } else if(e.key==='Enter'){ var k=m.querySelector('.kb'); if(k){ e.preventDefault(); e.stopPropagation(); k.click(); } }
+},true);
+// Which buttons are lit, and what the pills say, follow the selection — in place, never by rebuilding the bar.
+function jrSyncSoon(){ if(_jrRaf) return; _jrRaf=requestAnimationFrame(function(){ _jrRaf=0; try{ jrSync(); }catch(e){} }); }
+function jrSync(){
+  var bar=el('jr-bar'), ed=jrEd(); if(!bar||!ed) return;
+  var s=window.getSelection(), inEd=!!(s&&s.rangeCount&&ed.contains(s.anchorNode));
+  if(!inEd) return;
+  var li=_caretListItem(), chk=!!(li&&li.closest&&li.closest('ul.lb-check')&&li.parentNode&&li.parentNode.classList.contains('lb-check'));
+  var st=function(c){ try{ return document.queryCommandState(c); }catch(e){ return false; } };
+  Array.prototype.forEach.call(bar.querySelectorAll('[data-st]'),function(b){
+    var k=b.getAttribute('data-st'), on=false;
+    if(k==='hilite') on=_hiliteOn(); else if(k==='todo') on=chk; else if(k==='ul') on=st('insertUnorderedList')&&!chk; else if(k==='ol') on=st('insertOrderedList'); else on=st(k);
+    b.classList.toggle('on',on); b.setAttribute('aria-pressed',on?'true':'false'); });
+  var undo=bar.querySelector('[data-c="undo"]'), redo=bar.querySelector('[data-c="redo"]');
+  try{ undo.disabled=!(_jrSnap||document.queryCommandEnabled('undo')); redo.disabled=!document.queryCommandEnabled('redo'); }catch(e){}
+  var tag=_jrBlockTag(), cur=_bubCur(), nm={P:'Normal text',H1:'Heading 1',H2:'Heading 2',H3:'Heading 3',BLOCKQUOTE:'Quote',PRE:'Code'};
+  var a=bar.querySelector('.jr-p-style .jr-pl'), f=bar.querySelector('.jr-p-font .jr-pl'), z=bar.querySelector('.jr-p-size .jr-pl'), fc=el('jr-fore');
+  var al=bar.querySelector('.jr-align svg'); if(al) al.innerHTML=JR_IC[_jrAlignNow()];
+  if(a) a.textContent=nm[tag]||'Normal text'; if(f) f.textContent=cur.font||'Font'; if(z) z.textContent=cur.size?String(cur.size):'Size'; if(fc) fc.style.background=BUB.fore;
+}
+document.addEventListener('selectionchange',function(){
+  var ed=jrEd(); if(!ed) return; var s=window.getSelection();
+  if(s&&s.rangeCount&&ed.contains(s.anchorNode)){ _jrRange=s.getRangeAt(0).cloneRange(); jrSyncSoon(); }
+});
+// Anywhere on the sheet that is not the text is still the page: a click below the last line, or in the margin, writes
+// at the end — the way a page of Word or OneNote is all writable, not only the lines that have words on them.
+document.addEventListener('mousedown',function(e){
+  var sh=e.target&&e.target.closest&&e.target.closest('.jr-sheet'); if(!sh||e.button) return;
+  if(e.target.closest('.jr-ed,input,button,a,select,textarea,[contenteditable],label')) return;
+  var ed=sh.querySelector('.jr-ed'); if(!ed) return;
+  var r=ed.getBoundingClientRect(); if(e.clientY<r.bottom) return;       // only the part below the text
+  e.preventDefault(); jrFocus(); try{ var rg=document.createRange(); rg.selectNodeContents(ed); rg.collapse(false); var sl=window.getSelection(); sl.removeAllRanges(); sl.addRange(rg); }catch(err){}
+});
+function jrGoDate(v){ if(v&&_isDateKey(v)) openDayPage(v,true); }
+function jrPickDate(btn){ var i=btn.parentNode.querySelector('input[type=date]'); if(!i) return; try{ i.showPicker(); }catch(e){ try{ i.click(); }catch(e2){} } }
+
 function renderPageEditor(host,pg){
-  host.innerHTML='<div class="nb-desk"><div class="nb-wrap"><div class="nb-page" style="--nb-c:'+_nbPageColor(pg)+'">'+_nbPageHead(pg)
-    +'<div class="rt pg-body" contenteditable="true" data-ctx="page:'+pg.id+'" oninput="setPage(\'html\',this.innerHTML)" onfocus="_activeEd=this">'+(pg.html||'')+'</div></div></div></div>';
-  hydrateAtt(host,{lazy:true}); hydrateFloatLayers(host); }
+  var has=_noteHasContent(pg.html);
+  host.innerHTML='<div class="nb-desk jr-desk">'+jrBarHtml()+'<div class="nb-wrap"><div class="nb-page jr-sheet" style="--nb-c:'+_nbPageColor(pg)+'">'+_nbPageHead(pg)
+    +'<div class="rt jr-ed'+(has?'':' jr-empty')+'" contenteditable="true" spellcheck="true" role="textbox" aria-multiline="true" aria-label="Note" data-ph="Write here \u2014 @ links an experiment, a protocol or an antibody; # tags it." data-ctx="page:'+pg.id+'" data-page="'+pg.id+'" oninput="jrInput(this)" onfocus="jrFocused(this)">'+jrLoadHtml(pg.html||'')+'</div>'+jrFootHtml()+'</div></div></div>';
+  hydrateAtt(host,{lazy:true}); hydrateFloatLayers(host); jrCount(); }
 // A Journal page: one day, the same day note Today used to carry at its foot. The title is the
 // date and is not editable; the meta line says what the Planner has for that day and opens it.
 // Viewing a day must not create it — setNotebook() persists on the first real edit.
@@ -17711,8 +18297,12 @@ function renderDayPage(host,D){
   var pg=LB.data.notebook[D]||{date:D,html:''}, n=blocksForDate(D).length, isToday=D===todayStr();
   var title=(function(){ try{ return new Date(D+'T12:00:00').toLocaleDateString('en-GB', {weekday:'long', day:'numeric', month:'long', year:'numeric'}); }catch(e){ return fmtDate(D); } })();
   var meta=(n?(n+' step'+(n===1?'':'s')+' planned'):'')+(n?' \u00b7 ':'')+'<a class="nb-meta-link" onclick="selectNode(\'journal\');selectPage(\''+D+'\')">See '+(isToday?'today':'the day')+' in the Planner \u2192</a>';
-  var nav='<span class="jr-nav"><button class="exh-act" title="Previous day" onclick="openDayPage(\''+addDays(D,-1)+'\')">'+tbIco(P_CHEV_L,15)+'</button><button class="exh-act" title="Next day" onclick="openDayPage(\''+addDays(D,1)+'\')">'+tbIco(P_CHEV_R,15)+'</button></span>';
-  host.innerHTML='<div class="nb-desk"><div class="nb-wrap"><div class="nb-page nb-day" style="--nb-c:'+NB_COLORS.teal+'">'
+  var nav='<span class="jr-nav">'+(isToday?'':'<button class="exh-act jr-todaybtn" title="Back to today" onclick="openDayPage(\''+todayStr()+'\',true)">Today</button>')
+    +'<button class="exh-act" title="Previous day" aria-label="Previous day" onclick="openDayPage(\''+addDays(D,-1)+'\',true)">'+tbIco(P_CHEV_L,15)+'</button>'
+    +'<button class="exh-act" title="Next day" aria-label="Next day" onclick="openDayPage(\''+addDays(D,1)+'\',true)">'+tbIco(P_CHEV_R,15)+'</button>'
+    +'<span class="jr-pick"><button class="exh-act" title="Go to a date" aria-label="Go to a date" onclick="jrPickDate(this)">'+tbIco('<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/>',15)+'</button><input type="date" tabindex="-1" aria-hidden="true" value="'+D+'" onchange="jrGoDate(this.value)"></span></span>';
+  var has=_noteHasContent(pg.html);
+  host.innerHTML='<div class="nb-desk jr-desk">'+jrBarHtml()+'<div class="nb-wrap"><div class="nb-page nb-day jr-sheet" style="--nb-c:'+NB_COLORS.teal+'">'
     +'<div class="nb-crumb">'+(isToday?'Today':esc(_dayShort(D)))+nav+'</div><div class="exh-title nb-title" style="cursor:default;">'+esc(title)+'</div><div class="nb-meta">'+meta+'</div><div class="nb-rule"></div>'
     // hideDone: this page carries "Done that day" below, written from the same ticks. Listing a
     // ticked step in both is the same fact twice, and the struck-through copy above is the one
@@ -17721,8 +18311,8 @@ function renderDayPage(host,D){
     +doneTodayHtml(D)
     +cellsDayHtml(D)
     +'<div class="jr-sec-t">Notes</div>'
-    +'<div class="rt nb-body" contenteditable="true" data-ph="Anything about the day \u2014 @ links an experiment, a protocol or an antibody; # tags it." data-ctx="notebook:'+D+'" oninput="setNotebook(this.innerHTML,\''+D+'\')" onfocus="_activeEd=this">'+(pg.html||'')+'</div></div></div></div>';
-  hydrateAtt(host,{lazy:true}); hydrateFloatLayers(host); }
+    +'<div class="rt jr-ed'+(has?'':' jr-empty')+'" contenteditable="true" spellcheck="true" role="textbox" aria-multiline="true" aria-label="Notes for '+esc(title)+'" data-ph="Anything about the day \u2014 @ links an experiment, a protocol or an antibody; # tags it." data-ctx="notebook:'+D+'" data-day="'+D+'" oninput="jrInput(this)" onfocus="jrFocused(this)">'+jrLoadHtml(pg.html||'')+'</div>'+jrFootHtml()+'</div></div></div>';
+  hydrateAtt(host,{lazy:true}); hydrateFloatLayers(host); jrCount(); }
 // What was done that day, written from the ticks: project · experiment, then each step with
 // the time it was ticked and a one-line log you can add (b.log — it goes on the step, so the
 // experiment's PDF and Cmd+K carry it too). Nothing to type for the line itself.
@@ -20461,7 +21051,10 @@ var SHORTCUTS=[
   {g:'Writing', key:'\\', show:'\\', lbl:'Clear formatting', where:'text',
    fn:function(ed){ document.execCommand('removeFormat'); document.execCommand('unlink'); }},
   {g:'Writing', key:'v', shift:true, show:'V', lbl:'Paste without formatting', where:'text', native:true},
-  {g:'Writing', raw:'Tab / ⇧Tab', lbl:'Indent / outdent the list item', where:'text', native:true},
+  {g:'Writing', raw:'Tab / ⇧Tab', lbl:'Indent / outdent — a list item; on a Journal page also a paragraph, and the next table cell', where:'text', native:true},
+  {g:'Writing', raw:'Esc, then Tab', lbl:'Leave the text with the keyboard (Tab otherwise belongs to the text)', where:'text', native:true},
+  {g:'Writing', raw:_scMod().replace(/\+?$/,'')+(IS_MAC?'⌥':'+Alt+')+'1 · 2 · 3 · 0', lbl:'Journal page: Heading 1 · 2 · 3 · normal text', where:'text', native:true},
+  {g:'Writing', raw:'- ␣   1. ␣   [] ␣   # ␣   > ␣   --- ⏎', lbl:'Journal page: as you type, a bullet list, a numbered list, a checklist, a heading, a quote, a rule', where:'text', native:true},
   {g:'Writing', raw:(IS_MAC?'⌥':'Alt')+'↑ / '+(IS_MAC?'⌥':'Alt')+'↓', lbl:'Move this line up or down', where:'text', native:true},
 
   {g:'Lists', code:'Digit1', show:'1', lbl:'Checkbox list — and back to plain', where:'text',
@@ -20555,6 +21148,7 @@ document.addEventListener('keydown',function(e){
   // leave a step's text at all (WCAG 2.1.2).
   if(e.key==='Escape'){ ed._tabFree=true; return; }
   if(e.key==='Tab'){
+    if(ed.classList.contains('jr-ed')) return;     // the Journal's page owns Tab (jrTab): indent, next cell, or out after Esc
     var _sl=window.getSelection(), _nd=_sl&&_sl.anchorNode; _nd=_nd&&(_nd.nodeType===1?_nd:_nd.parentElement);
     if(ed._tabFree||!(_nd&&_nd.closest&&_nd.closest('li'))) return;
     e.preventDefault(); try{ document.execCommand('styleWithCSS',false,true); }catch(_e){} document.execCommand(e.shiftKey?'outdent':'indent'); ed.dispatchEvent(new Event('input')); }
@@ -23242,11 +23836,12 @@ function pdfScopeExps(s){
     ||(_secIdx(a.projectId,a.sectionId)-_secIdx(b.projectId,b.sectionId))
     ||String(a.startDate||'').localeCompare(String(b.startDate||''))||String(a.code||'').localeCompare(String(b.code||'')); });
 }
-// The days a Journal scope prints: every day with a note or a tick, ascending. Today is listed
-// on screen so there is somewhere to write; on paper it only counts if something was written.
+// The days a Journal scope prints: every day with a note or a tick, ascending. The list on screen also holds today,
+// the open day and days that were only planned, so there is somewhere to write; on paper a day counts only if
+// something was written or done.
 function pdfScopeDays(s){
   if(s.kind==='day') return [s.date];
-  var days=journalDays().filter(function(D){ return D!==todayStr() || _plain((LB.data.notebook[D]||{}).html||'').trim() || doneOnDay(D).length; });
+  var days=journalDays().filter(function(D){ return _noteHasContent((LB.data.notebook[D]||{}).html) || doneOnDay(D).length; });
   if(s.kind==='month') days=days.filter(function(D){ return D.slice(0,7)===s.month; });
   return days.sort();
 }
@@ -25142,6 +25737,7 @@ function positionBubble(force){
   // chrome must not be offered bold.
   var host=node&&node.closest?node.closest('[contenteditable="true"]'):null;
   if(!host) return hideBubble();
+  if(host.classList.contains('jr-ed')) return hideBubble();     // the Journal page has its toolbar: the same verbs, always in view
   var r; try{ r=sel.getRangeAt(0).getBoundingClientRect(); }catch(e){ return hideBubble(); }
   if(!r || (!r.width && !r.height)) return hideBubble();
   var b=_bubbleEl();
@@ -25622,7 +26218,7 @@ function shortcutsLegendHtml(){
     +'<tr><td><kbd>/</kbd></td><td>Insert — a photo, a table, a plate map, a protocol, a picture, a divider, a link, a tag, an antibody</td></tr>'
     +'<tr><td><kbd>@</kbd></td><td>Mention an experiment, a protocol, an antibody, a plasmid or a page</td></tr>'
     +'<tr><td><kbd>#</kbd></td><td>Tag</td></tr>'
-    +'<tr><td><kbd>select</kbd></td><td>The formatting bubble — bold, font, size, ¶ style and alignment, colours, lists, link</td></tr></table>'
+    +'<tr><td><kbd>select</kbd></td><td>The formatting bubble — bold, font, size, ¶ style and alignment, colours, lists, link. On a Journal page or a Note the same (and more) is the toolbar across the top</td></tr></table>'
     +groups.map(function(g){
       return '<div class="st-h">'+esc(g)+'</div><table class="st-keys">'
         +seen[g].map(function(sc){
