@@ -32,6 +32,8 @@
 //   L15 a step is not cut in two  On paper a step that would cross a page edge and fits on the next page starts on it (`pk-keep`); one that is longer
 //                           than a page, or whose move would leave a big hole, flows on; the print root is left as it was. (steps and their tables were
 //                           cut mid-way, e.g. a recipe table with its header on one page and its rows on the next)
+//   L16 the sheet's diluent is what is left  "What you need" lists the diluent of a spike-in as the intermediate minus the stock that goes into it, not the whole
+//                           intermediate. (100 mM biotin at 1:4 for 7 wells listed 62 µL of DMSO for a 23 µL dilution)
 //   L7 an import is one undo step  Importing one experiment from a file is undone by one ⌘Z (the bundle had it; the single import did not)
 //
 //   node tools/labbook_audit_invariants.mjs [--url=URL] [--only=L1,L3]
@@ -336,6 +338,20 @@ try {
     r.forEach(o => { if (o.join('|') !== want.join('|')) bad('L14', 'a culture row offers [' + o.join(', ') + '] instead of the five answers'); });
     await ctx.close();
   }
+  if (run('L16')) {
+    counts.L16 = 1;
+    const ctx = await newCtx(); const { page } = await open(ctx);
+    await page.evaluate(`${SEED}`);
+    const r = await page.evaluate(() => {
+      const I = { name: 'biotin', wellVolUL: 2020, foldX: 500, finalUM: 50, stockUM: 100000, nWells: 7, excess: 1.1, series: false, diluent: 'DMSO' };
+      const rows = CALC_NEEDS.spike(I); const dil = rows.filter(x => x.name === 'DMSO')[0], st = rows.filter(x => x.name === 'biotin')[0];
+      return { dil: dil && dil.qty, st: st && st.qty, rec: spikeRecipe(I) };
+    });
+    // 7 wells x 1.1 x 4.048 = 31.17 uL of 500x; 1:4 from the stock = 7.79 uL stock + 23.38 uL diluent
+    if (!(Math.abs(r.st - 7.79) < 0.02)) bad('L16', 'the stock volume on the sheet is ' + r.st + ' µL, not 7.79');
+    if (!(Math.abs(r.dil - 23.38) < 0.02)) bad('L16', 'the diluent on the sheet is ' + r.dil + ' µL, not the 23.38 µL the step makes (it lists the whole intermediate)');
+    await ctx.close();
+  }
   if (run('L15')) {
     counts.L15 = 1;
     const ctx = await newCtx(); const { page } = await open(ctx);
@@ -438,7 +454,7 @@ try {
     errs.forEach(m => bad('L13', 'page error: ' + m)); await ctx.close();
   }
 } finally { await browser.close(); if (srv) srv.kill(); }
-for (const id of ['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8', 'L9', 'L10', 'L11', 'L12', 'L13', 'L14', 'L15']) { if (ONLY && !ONLY.includes(id)) continue; const fs_ = findings.filter(f => f.id === id); process.stdout.write(`  ${fs_.length ? '✗' : '✓'} ${id}${fs_.length ? '  — ' + fs_.length + ' finding(s)' : ''}\n`); }
+for (const id of ['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8', 'L9', 'L10', 'L11', 'L12', 'L13', 'L14', 'L15', 'L16']) { if (ONLY && !ONLY.includes(id)) continue; const fs_ = findings.filter(f => f.id === id); process.stdout.write(`  ${fs_.length ? '✗' : '✓'} ${id}${fs_.length ? '  — ' + fs_.length + ' finding(s)' : ''}\n`); }
 const seen = new Set(); findings.forEach(f => { const k = f.id + f.m; if (seen.has(k)) return; seen.add(k); process.stdout.write(`     [${f.id}] ${f.m}\n`); });
 if (!findings.length) process.stdout.write('\nLabbook audit invariants hold.\n');
 process.exit(findings.length ? 1 : 0);
