@@ -27,6 +27,8 @@
 //   AR18 the bench checklist     checklist mode: a named role=checkbox on every step (Space ticks), progress, a timer on every duration of 3 h or less whose length IS the parameter,
 //                                the wake lock taken on and released (one the person switched on is left alone), ticks kept over a reload and cleared by Reset, step notes survive the repaint, 44px on the phone
 //   AR19 alphalisa               the AlphaLISA p-Rab10 protocol: its five calculators against hand arithmetic (Revvity's 300 uL Acceptor mix = 141 + 141 + 12 + 6), four stages on days 0,1,1,1, five boxes
+//   AR20 one type                every protocol x Protocol/Calculate/Output x every method tab draws its words in the ten roles of docs/UI.md > Protocol type
+//                                (title, heading, subhead, body, caption, label, data, control, badge) and nothing else; no inline font-size/font-family in the source
 //   AR11 offline                 the installable build, after one visit, reloads with the network gone and still lists 35 protocols
 //
 //   node tools/archive_audit_invariants.mjs [--only=AR3] [--url=http://127.0.0.1:8807]      exit 1 on any finding
@@ -736,6 +738,60 @@ if (run('AR19')) await guard('AR19', 'alphalisa', async () => {
   if (d.cat !== 'cellbio') bad('AR19', 'the card is under ' + d.cat); else ok();
   if (d.boxes !== 5) bad('AR19', d.boxes + ' calculator boxes, not 5'); else ok();
   await p.context().close();
+});
+
+// ═════════ AR20 — one type (docs/UI.md › Protocol type) ═════════
+// Jon, 2026-11-10: "en protocolos hay muchos tipos de letra, tamaños diferentes". The survey found 22 face/size/weight combinations
+// (mono for headings and labels, 10.5/11.5/12.5px written inline in the calculator builders). The answer is a short table; this holds it
+// on every protocol, every tab, every method tab, light and dark.
+if (run('AR20')) await guard('AR20', 'type', async () => {
+  const src = fs.readFileSync(path.join(ROOT, 'apps/archive/archive.html'), 'utf8');
+  // no inline type: a style="" or a style string built in JS that sets a size or a face is how the 22 came about
+  const inl = [];
+  src.split('\n').forEach((ln, i) => {
+    if (/^\s*\./.test(ln) || /cssText/.test(ln) || /arc-ask-msg/.test(ln)) return;      // stylesheet rules, the toast, the help dialog (a token)
+    (ln.match(/style=\\?"[^"]*"/g) || []).forEach(m => { if (/font-(size|family)\s*:/.test(m)) inl.push((i + 1) + ': ' + m.slice(0, 70)); });
+  });
+  if (inl.length) bad('AR20', inl.length + ' inline font-size/font-family in the Archive source (use a role class): ' + inl.slice(0, 3).join(' | ')); else ok();
+  const ALLOWED = new Set([
+    'Sans 20 700',                                   // title
+    'Sans 13 400', 'Sans 13 600',                    // body / heading
+    'Sans 12 400', 'Sans 12 500', 'Sans 12 600',     // caption, control, tab / subhead
+    'Sans 11 600',                                   // label (field label, table header)
+    'Mono 12 400', 'Mono 12 600',                    // data
+    'Mono 10 600']);                                 // badge
+  for (const theme of ['light', 'dark']) {
+    const p = await open(); await p.evaluate(t => { document.documentElement.setAttribute('data-theme', t); }, theme);
+    const seen = await p.evaluate(async () => {
+      const sleep = ms => new Promise(r => setTimeout(r, ms)), R = {};
+      const take = (w, where) => [...w.querySelectorAll('*')].forEach(e => {
+        if (!e.offsetParent || e.closest('svg') || /^(SUB|SUP)$/.test(e.tagName)) return;
+        const form = /^(INPUT|SELECT|TEXTAREA)$/.test(e.tagName) && e.type !== 'checkbox';
+        if (!form && ![...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim())) return;
+        const c = getComputedStyle(e), fam = /Mono/.test(c.fontFamily.split(',')[0]) ? 'Mono' : /Sans/.test(c.fontFamily.split(',')[0]) ? 'Sans' : c.fontFamily.split(',')[0];
+        const k = fam + ' ' + parseFloat(c.fontSize) + ' ' + c.fontWeight;
+        (R[k] = R[k] || []).length < 3 && R[k].push(where + ' <' + e.tagName.toLowerCase() + (e.className ? '.' + String(e.className).split(' ')[0] : '') + '> ' + (e.textContent || e.value || '').trim().slice(0, 24));
+      });
+      for (const pr of PROTOCOLS) {
+        openProtocol(pr.id); await sleep(60);
+        const w = document.getElementById('detail-' + pr.id); if (!w) continue;
+        const methods = [].concat(...((PROTOCOL_DATA[pr.id] || {}).stages || []).map(s => (s.body || []).filter(b => b.t === 'variantPicker').map(b => b.options.map(o => o.id)))).concat((PROTOCOL_DATA[pr.id] || {}).preamble ? [].concat(...(PROTOCOL_DATA[pr.id].preamble.filter(b => b.t === 'variantPicker').map(b => b.options.map(o => o.id)))) : []);
+        for (const m of [null].concat([...new Set([].concat(...methods))])) {
+          if (m) { setMethodBranch(pr.id, m); await sleep(40); }
+          for (const t of ['Protocol', 'Calculate', 'Output']) {
+            const b = [...w.querySelectorAll('.dtab-btn')].find(x => x.textContent.trim() === t); if (b) { b.click(); await sleep(40); }
+            take(w, pr.id + '/' + t + (m ? '/' + m : ''));
+          }
+        }
+        closeProtocol();
+      }
+      return R;
+    });
+    const off = Object.keys(seen).filter(k => !ALLOWED.has(k));
+    off.forEach(k => bad('AR20', theme + ': ' + k.replace(/ (\d+) /, ' $1px/') + ' is not one of the roles — ' + seen[k].join(' ; ')));
+    if (!off.length) ok();
+    await p.context().close();
+  }
 });
 
 // ═════════ AR11 — offline ═════════

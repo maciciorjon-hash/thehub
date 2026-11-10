@@ -240,6 +240,24 @@ devices that cannot hover. The experiment banner's actions are always visible on
 
 The type scale has a 10px floor and `--fs-*` steps only, with **one** documented exception: the text inside a plate well of Labbook's plate editor (`.pp-conc`, `.pp-gl-dose span`, `.pp-nbf`: 6 to 9px). A well is 21 to 34px wide and Jon wants plates small and side by side; a label that does not fit is worse than a small one. The exception is an allow-list in the type-scale invariant, so it cannot spread to anything that is not a well.
 
+## Protocol type: ten roles, one table (Archive, 2026-11-10, AR20)
+
+Jon: *"en protocolos hay muchos tipos de letra, tamaños diferentes, hay que homogeneizar todo."* A survey of all 35 protocols × Protocol/Calculate/Output found **22** face/size/weight combinations: headings and field labels in mono, `--fs-1/2/3` used for the same role in different places, and `10.5 / 11.5 / 12.5px` written inline in the calculator builders. The tokens were right; the *roles* had no table. Rule: **words are Plex Sans, numbers and codes are Plex Mono.**
+
+| role | classes | face / size / weight / colour |
+|---|---|---|
+| title | `.detail-header h2` | sans `--fs-7` 700 |
+| heading | `.proto-part` `.proto-section` `.proto-day-label` `.calc-box-title` | sans `--fs-4` 600 `--text` |
+| subhead | `.calc-sub` (a group inside a calculator, a result block's title) `.delivery-bar-label` `.export-notes-heading` | sans `--fs-3` 600 `--text` |
+| body | steps, `.proto-note` (and Tip / Warning), Output cards | sans `--fs-4` 400 (notes `--text2`); phone `--fs-5` |
+| caption | `.calc-source`, `.no-calc-note`, `.result-label` | sans `--fs-3` 400 `--text2` |
+| label | `.field label`, `th` | sans `--fs-2` 600 `--text2`, no letter-spacing |
+| data | `td`, `.result-val`, `code`, `.exp-n`, `.chk-prog`, `.chk-timer` | mono `--fs-3`, 400; totals (`tr.tot`) and results 600 |
+| control | inputs, selects, `.btn`, tabs | sans `--fs-3` (500 button/tab, 600 active tab) |
+| badge | `.tag`, `.tip-badge`, `.proto-day-badge`, `.badge` | mono `--fs-1` 600 |
+
+Bold is **600** (`.dpane strong`), never a third weight; `sub/sup` are `.8em`. **Never write `font-size` or `font-family` in a `style=""`, in HTML or in a JS string**: give the element a role class. A total row is `<tr class="tot">`. `tools/archive_audit_invariants.mjs` **AR20** measures the computed face/size/weight of every text run on every protocol, tab and method tab, light and dark, against this table, and scans the source for inline type (two bugs put back, both caught).
+
 ## Labbook, one hand (2026-10-13)
 
 Jon: *"check los experimentos visualmente, tamaños de letra, ticks, dibujos, líneas, cuadros… todo el Labbook tiene que verse homogéneo."* The
