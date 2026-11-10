@@ -4020,9 +4020,16 @@ var _notesOpenPid = null;
 var _noteDrag = null; // {id, style, startX, startY, origX, origY}
 
 function _notesKey(pid) { return 'proto_notes_' + pid; }
+// A stored record may be missing a half (a record with only `steps`, an old shape, a hand-edited value). Every reader
+// walks `.floating` and `.steps`, and one that was missing threw during startup: the Archive then never published its
+// protocol index to Labbook, so no protocol could be added to an experiment on that machine.
 function getProtoNotes(pid) {
-  try { var d = JSON.parse(localStorage.getItem(_notesKey(pid))); return d || { floating: [], steps: {} }; }
-  catch(e) { return { floating: [], steps: {} }; }
+  var d = null;
+  try { d = JSON.parse(localStorage.getItem(_notesKey(pid))); } catch(e) {}
+  if (!d || typeof d !== 'object' || Array.isArray(d)) d = {};
+  if (!Array.isArray(d.floating)) d.floating = [];
+  if (!d.steps || typeof d.steps !== 'object' || Array.isArray(d.steps)) d.steps = {};
+  return d;
 }
 function saveProtoNotes(pid, data) {
   try { localStorage.setItem(_notesKey(pid), JSON.stringify(data)); } catch(e) {}

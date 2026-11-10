@@ -29,6 +29,8 @@
 //   AR19 alphalisa               the AlphaLISA p-Rab10 protocol: its five calculators against hand arithmetic (Revvity's 300 uL Acceptor mix = 141 + 141 + 12 + 6), four stages on days 0,1,1,1, five boxes
 //   AR20 one type                every protocol x Protocol/Calculate/Output x every method tab draws its words in the ten roles of docs/UI.md > Protocol type
 //                                (title, heading, subhead, body, caption, label, data, control, badge) and nothing else; no inline font-size/font-family in the source
+//   AR21 stored notes            a stored sticky-notes record missing half of its shape (only `steps`, only `floating`, an array, a string) does not stop Archive starting: it still publishes
+//                                its 35-protocol index and ARCHIVE_PROTOCOL('alphalisa') to the page that hosts it (Labbook), with no page error
 //   AR11 offline                 the installable build, after one visit, reloads with the network gone and still lists 35 protocols
 //
 //   node tools/archive_audit_invariants.mjs [--only=AR3] [--url=http://127.0.0.1:8807]      exit 1 on any finding
@@ -792,6 +794,27 @@ if (run('AR20')) await guard('AR20', 'type', async () => {
     if (!off.length) ok();
     await p.context().close();
   }
+});
+
+// ═════════ AR21 — a half-formed stored notes record does not stop Archive starting ═════════
+if (run('AR21')) await guard('AR21', 'stored notes', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  await ctx.addInitScript(() => {
+    try {
+      localStorage.setItem('proto_notes_transfo', '{"steps":{}}');          // what a real machine had: no `floating`
+      localStorage.setItem('proto_notes_nucleospin', '{"floating":[]}');    // no `steps`
+      localStorage.setItem('proto_notes_gibson', '[]');                      // an array
+      localStorage.setItem('proto_notes_redigest', '"x"');                   // a string
+    } catch (e) {}
+  });
+  const p = await ctx.newPage(); const errs = []; p.on('pageerror', e => errs.push(e.message));
+  const r = await p.goto(base + '/__host.html'); await p.waitForTimeout(2500);
+  if (!r || r.status() !== 200) { await ctx.close(); return; }   // a --url run has no host page
+  const d = await p.evaluate(() => ({ n: (window.ARCHIVE_INDEX || []).length, st: (typeof window.ARCHIVE_PROTOCOL === 'function' && (window.ARCHIVE_PROTOCOL('alphalisa') || {}).stages || []).length }));
+  if (errs.length) bad('AR21', 'a stored notes record made startup throw: ' + errs[0]); else ok();
+  if (d.n !== 35) bad('AR21', 'the host page received ' + d.n + ' protocols from Archive instead of 35'); else ok();
+  if (!d.st) bad('AR21', "ARCHIVE_PROTOCOL('alphalisa') returned no stages to the host page"); else ok();
+  await ctx.close();
 });
 
 // ═════════ AR11 — offline ═════════
