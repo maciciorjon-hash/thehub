@@ -8294,6 +8294,37 @@ function plateCompoundSlots(p){
     var s=by[key]; if(!s){ s=by[key]={name:nm,gid:w.groupId||null,ids:[]}; out.push(s); }
     s.ids.push(id);
   }
+  if(!out.length) out=_plColumnSlots(p);
+  return out;
+}
+// A screen plate that draws one compound per column (the D2B 384) names no block: its treatment
+// wells carry a type and a shade and nothing else, so a compound list found "no compound blocks"
+// and was refused on every D2B experiment. Each column that holds treatment wells is a compound,
+// provided the columns are the same band (same rows) — which is what stops a half-drawn map of
+// something else from being read as a screen.
+function _plColumnSlots(p){
+  var d=plateDims(p), cols=[], sig=null, ok=true;
+  for(var c=0;c<d.c;c++){
+    var ids=[], rows=[];
+    for(var r=0;r<d.r;r++){
+      var id=wellIdOf(r,c), w=(p.wells||{})[id];
+      if(!w||!w.typeId||w.typeId==='blank'||w.noLig||w.noSub||_plIsCtl(p,id)) continue;
+      if(String(w.compound||'').trim()||w.groupId) return [];
+      ids.push(id); rows.push(r);
+    }
+    if(!ids.length) continue;
+    var s=rows.join(','); if(sig===null) sig=s; else if(s!==sig) ok=false;
+    cols.push({name:'',gid:null,ids:ids});
+  }
+  return (ok&&cols.length>1)?cols:[];
+}
+// The wells that carry the vehicle: named DMSO, or typed as the vehicle (the D2B map types them
+// and leaves the name empty, so a second assay plate lost its DMSO columns).
+function _plVehicleIds(p){
+  var out=[], types={}; plateTypes(p).forEach(function(t){ types[t.id]=t; });
+  Object.keys(p.wells||{}).forEach(function(id){ var w=p.wells[id]; if(!w||w.noLig||w.noSub) return;
+    var t=types[w.typeId], tn=t?(t.name||t.id):String(w.typeId||'');
+    if(/^dmso$/i.test(String(w.compound||''))||(!String(w.compound||'').trim()&&/^(dmso|vehicle)\b/i.test(tn))) out.push(id); });
   return out;
 }
 // A list of compounds laid onto the blocks the user drew: compound 1 into block 1, and so on in
@@ -8311,7 +8342,7 @@ function echoAssignSource(expId,res,file,replace){
   var dup=names.filter(function(x,i){ return names.indexOf(x)!==i; }).length;
   function go(){
     undoMark('Compound list',['experiments.'+e.id]);
-    var dmso=[]; Object.keys(p.wells).forEach(function(id){ var w=p.wells[id]; if(w&&/^dmso$/i.test(String(w.compound||''))&&!w.noLig&&!w.noSub) dmso.push(id); });
+    var dmso=_plVehicleIds(p);
     var plates=[];
     for(var k=0;k<nP;k++){
       var pl={name:'Plate '+(k+1),n:0,wells:{}};

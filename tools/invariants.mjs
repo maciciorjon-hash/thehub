@@ -2098,6 +2098,46 @@ async function suite(opts) {
       if (!junk.error) bad('B22', 'junk', 'an unrelated CSV was accepted');
     });
 
+    // B22b — the same list on every D2B preset: its 384 plate draws one compound per COLUMN and names no block, so a
+    // list was refused with "no plate map with compound blocks" on every D2B experiment (Jon's own picklist, 2026-11-11).
+    if (run('B22')) await guard('B22', 'D2B column plate', async () => {
+      const P = (LB.data.projects || []).find(p => (p.sections || []).length);
+      const keys = Object.keys(LB.data.presets).filter(k => /^D2B/.test(k));
+      if (!keys.length) { bad('B22', 'D2B setup', 'no D2B preset in the notebook'); return; }
+      // the example the lab keeps: plate barcode, source well (A1 and E01 spellings mixed), code, stock
+      const rows = 'ABCDEFGH', L = ['Source plate Barcode,Source Well,Compound Code,Concentration (mM)'];
+      for (let r = 0; r < 8; r++) for (let c = 1; c <= 12; c++) L.push(['D2B_X', rows[r] + (r >= 4 && c < 10 ? '0' + c : c), `X_${rows[r]}${c}`, '1'].join(','));
+      L.push('D2B_X,P2,dBET6,1', 'D2B_X,P3,SIM1,1');
+      const csv = L.join('\r\n') + '\r\n', N = 98;
+      const asked = [], a0 = window.lbAlert, c0 = window.lbConfirm;
+      window.lbAlert = (m) => { asked.push(String(m)); return Promise.resolve(); };
+      window.lbConfirm = () => Promise.resolve(true);
+      try {
+        for (const key of keys) {
+          const tpl = LB.data.presets[key];
+          const su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup || {})));
+          const before = new Set(Object.keys(LB.data.experiments));
+          buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-10-01', type: 'D2B', title: 'INV D2B list', code: 'INV_B22B_' + key, setup: su, plate: true });
+          const e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); clean.push(e); openExp(e.id); tick('B22');
+          asked.length = 0;
+          const per = plateCompoundSlots(e.plate).length;
+          if (per < 2) { bad('B22', key, 'the D2B plate has ' + per + ' compound blocks, so a compound list has nowhere to go'); continue; }
+          const dmso0 = Object.values(e.plate.wells).filter(w => w.typeId === 'dmso').length;
+          echoImportText(e.id, csv, new File([csv], 'D2B_list.csv'), false); await sleep(500);
+          const ex = LB.data.experiments[e.id], R = ex.echoRun;
+          if (!R || !R.source) { bad('B22', key, 'nothing stored: ' + (asked[0] || 'no message').slice(0, 120)); continue; }
+          const nP = Math.ceil(N / per);
+          if (R.plates.length !== nP) bad('B22', key, `expected ${nP} plates of ${per}, got ${R.plates.length}`);
+          if (R.compounds.length !== N) bad('B22', key, 'stored ' + R.compounds.length + ' compounds, the file has ' + N);
+          // a compound fills its whole column (every dose and replicate), the next compound the next column
+          const cols = plateCompoundSlots(ex.plate);
+          cols.forEach((sl, j) => sl.ids.forEach(id => { if (ex.plate.wells[id].compound !== R.compounds[j]) bad('B22', key, id + ' holds ' + ex.plate.wells[id].compound + ', column ' + (j + 1) + ' is ' + R.compounds[j]); }));
+          // the DMSO columns are on every assay plate, not only the first (they are typed, never named)
+          R.plates.forEach((pl, k) => { const d = Object.values(pl.wells).filter(w => w.dmsoOnly).length; if (d !== dmso0) bad('B22', key, `plate ${k + 1} has ${d} DMSO wells, the map has ${dmso0}`); });
+        }
+      } finally { window.lbAlert = a0; window.lbConfirm = c0; }
+    });
+
 
     // B25 — the Echo square belongs to an experiment that uses an Echo.
     if (run('B25')) await guard('B25', 'echo square', async () => {
