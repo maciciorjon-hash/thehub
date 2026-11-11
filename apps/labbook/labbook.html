@@ -1898,6 +1898,11 @@ details.pl-sec>*:not(summary):last-child{padding-bottom:11px;}
    each printing their concentration. */
 .pp-gl-dose{align-items:flex-start;justify-content:flex-start;box-shadow:inset 0 0 0 1.5px rgba(20,24,40,.55);}
 .pp-gl-dose span{font-size:9px;font-weight:600;padding:0 3px;border-radius:0 0 3px 0;background:rgba(255,255,255,.85);max-width:100%;}
+/* A block name that does not fit across its block is written up its side (_fitBlockName measures; a block taller than it is wide turns it). */
+.pl-gl.rot,.pp-gl.rot{align-items:center;justify-content:center;}
+.pl-gl.rot span,.pp-gl.rot span{writing-mode:vertical-rl;transform:rotate(180deg);max-width:none;max-height:100%;padding:5px 1px;border-radius:var(--r-1);}
+.pl-list{min-height:96px;max-height:220px;line-height:1.5;}
+.pl-prev-sub{color:var(--text3);}
 .pp-conc{font-family:var(--sans);font-size:8.5px;font-weight:600;color:#1a1d2e;line-height:1;letter-spacing:-.1px;font-variant-numeric:tabular-nums;}
 .pp-grid.txt .pp-w .pp-conc,.pp-w .pp-conc{font-size:8px;}
 /* One number over the block that holds it. No pill behind it: the block's own colour is what
@@ -7097,7 +7102,10 @@ function plateColLabelsOf(p){ var out={}; if(!p) return out; var per={};
   return out; }
 // What every renderer draws from: the record plus the colours and headers its concentrations give.
 function plateView(p){ if(!p) return p; var v=Object.assign({},p); v.colLabels=plateColLabelsOf(p); v._shW=plateShadeMap(p); return v; }
-function plateWellColor(p,w){ if(!w) return null; var t=plateTypeById(p,w.typeId); if(!t) return null;
+function plateWellColor(p,w){ if(!w) return null;
+  // A well that holds a concentration is a point on a dose series even when its type is not in this plate's palette (a
+  // layout with its own types, a series painted on fresh wells): it takes the dose colour rather than none, so the series shows.
+  var t=plateTypeById(p,w.typeId)||(w.conc?PLATE_TYPES.filter(function(x){ return x.id==='dose'; })[0]:null); if(!t) return null;
   var sh=(p&&p._shW&&p._shW.has(w))?p._shW.get(w):(+w.shade||0);
   return (sh>0)?_mixWhite(t.color,Math.min(0.85,sh)):t.color; }
 // A block of wells sharing one label, written once in the middle (compound 125 across B2–C12)
@@ -7596,6 +7604,11 @@ function copyPlateSummary(key){ var p=plateOf(key); if(!p) return;
 // A plate map goes into a slide deck and a lab meeting, and CSV and PDF are neither. Drawn on
 // a canvas rather than screenshotted, so it does not depend on what is scrolled into view and
 // comes out at print resolution.
+// A block name written upwards, centred on (cx,cy), cut to `len`; the halo keeps it readable over the wells.
+function _plUpLabel(x,text,cx,cy,len,fs,ink,bare){ var lbl=_plFit(x,String(text),len), tw=x.measureText(lbl).width;
+  x.save(); x.translate(cx,cy); x.rotate(-Math.PI/2);
+  if(!bare){ x.fillStyle='rgba(255,255,255,0.88)'; _plRoundRect(x,-tw/2-4,-(fs+5)/2,tw+8,fs+5,3); x.fill(); }
+  x.fillStyle=ink; x.textAlign='center'; x.textBaseline='middle'; x.fillText(lbl,0,0); x.restore(); }
 function plateToPNG(p,name){
   if(!p) return; p=plateView(p);
   var d=plateDims(p), W=Math.max(18,Math.round(760/d.c)), HDR=26, PAD=18, S=2;
@@ -7702,6 +7715,7 @@ function plateToPNG(p,name){
     x.strokeStyle='rgba(0,0,0,0.55)'; x.lineWidth=1.6; _plRoundRect(x,bx+1,by+1,bw-2,bh-2,4); x.stroke();
     if(!b.name) return;
     var fs=Math.max(8,Math.min(13,Math.round(W/3.4))); x.font='700 '+fs+'px ui-sans-serif,system-ui,sans-serif';
+    if(x.measureText(b.name).width>bw-10 && bh>bw){ _plUpLabel(x,b.name,bx+bw/2,by+bh/2,bh-12,fs,ink); return; }
     var lbl=_plFit(x,b.name,bw-10), tw=x.measureText(lbl).width;
     x.fillStyle='rgba(255,255,255,0.88)'; _plRoundRect(x,bx+bw/2-tw/2-4,by+2,tw+8,fs+5,3); x.fill();
     x.fillStyle=ink; x.fillText(lbl,bx+bw/2,by+2+(fs+5)/2);
@@ -7712,6 +7726,7 @@ function plateToPNG(p,name){
     x.strokeStyle='rgba(0,0,0,0.28)'; x.lineWidth=1.1;
     _plRoundRect(x,bx+1,by+1,bw-2,bh-2,4); x.stroke();
     x.fillStyle=ink; x.font='600 '+Math.max(9,Math.min(15,Math.round(bw/6)))+'px ui-sans-serif,system-ui,sans-serif';
+    if(x.measureText(b.label).width>bw-8 && bh>bw){ _plUpLabel(x,b.label,bx+bw/2,by+bh/2,bh-12,Math.max(9,Math.min(15,Math.round(bw/6))),ink,true); return; }
     x.fillText(_plFit(x,b.label,bw-8),bx+bw/2,by+bh/2);
   });
   // Words round the plate: the text, and a hairline between it and the wells it covers.
@@ -9362,7 +9377,24 @@ function plRenderGrid(){ var p=plCur(), host=el('pl-grid'); if(!p||!host) return
   host.style.gridTemplateColumns=tiers(CO,16)+'26px repeat('+d.c+','+wpx+'px)'+(geo.R?(' '+tiers(geo.R,16)):'');
   host.style.gridTemplateRows=tiers(RO,18)+'repeat('+(base-1+d.r)+',auto)'+(geo.B?(' '+tiers(geo.B,18)):'');
   host.style.fontSize=fs+'px';
-  host.innerHTML=h; plSyncGhosts(); }
+  host.innerHTML=h; _fitBlockNames(host); plSyncGhosts(); }
+// ── A block's name turns up its side when it does not fit across ────────────────────────────────────────────────────
+// A compound's name is written once across its block. A block two wells wide ("GNE-…" in 38 px) cut it to three letters and an
+// ellipsis, though the block is eight wells tall. Measured, not guessed: the name is truncated (scrollWidth over clientWidth) and
+// the block is taller than it is wide → it is written upwards (.rot). Done after every render of a card or the editor, by what is added
+// to the page, and again when the window changes size.
+function _fitBlockName(g){ var s=g.firstElementChild; if(!s||s.tagName!=='SPAN') return;
+  g.classList.remove('rot'); var w=g.clientWidth, h=g.clientHeight; if(!w||!h) return;
+  if(s.scrollWidth>s.clientWidth+1 && h>w) g.classList.add('rot'); }
+function _fitBlockNames(root){ if(!root||!root.querySelectorAll) return;
+  if(root.matches&&root.matches('.pl-gl,.pp-gl')) _fitBlockName(root);
+  Array.prototype.forEach.call(root.querySelectorAll('.pl-gl,.pp-gl'),_fitBlockName); }
+(function(){ var q=[], t=0, rt=0;
+  function flush(){ t=0; var l=q; q=[]; l.forEach(function(n){ if(n.isConnected) _fitBlockNames(n); }); }
+  function go(){ new MutationObserver(function(ms){ ms.forEach(function(m){ Array.prototype.forEach.call(m.addedNodes,function(n){ if(n.nodeType===1) q.push(n); }); });
+      if(q.length&&!t) t=setTimeout(flush,16); }).observe(document.body,{childList:true,subtree:true});
+    window.addEventListener('resize',function(){ clearTimeout(rt); rt=setTimeout(function(){ _fitBlockNames(document.body); },120); }); }
+  if(document.body) go(); else document.addEventListener('DOMContentLoaded',go); })();
 // ── Writing on the plate ─────────────────────────────────────────────────────────────────────
 // Select wells, and a dashed + appears beside the plate on every side, over exactly the columns
 // (above, below) or rows (left, right) the selection covers. Click it, type, Enter. Click a label
@@ -9575,14 +9607,78 @@ function plSelectBlockOf(id){ var p=plCur(); if(!p) return; var g=((p.wells||{})
   PL.sel={}; Object.keys(p.wells).forEach(function(k){ if(p.wells[k].groupId===g) PL.sel[k]=1; }); PL.anchor=id; plRender(); }
 // Read from what was typed (kept on PL as it is typed), so a redraw mid-form reads the same numbers.
 function _plSeriesForm(){ var u=PL.doseUnit||'nM'; return { top:_toBase(PL.doseTop!=null?PL.doseTop:'1000', u), mass:_isMassUnit(u), fac:+(PL.doseFold!=null?PL.doseFold:'3')||0 }; }
+// A series painted on wells that were empty is "Dose series". A layout with its own palette (the AlphaLISA halves: two kits) has no such
+// type, and the wells then had a type the plate could not colour: the series was drawn in no colour at all. Add it to the palette.
+function _plDoseTypeId(p){
+  if(!plateTypes(p).some(function(t){ return t.id==='dose'; })){ var d=PLATE_TYPES.filter(function(t){ return t.id==='dose'; })[0];
+    _plOwnTypes(p).push({id:'dose',name:d.name,color:d.color}); }
+  return 'dose'; }
+// ── Typed concentrations ─────────────────────────────────────────────────────────────────────────────────────────────
+// Not every series is a dilution: 10, 3, 1, 0.3… or a list from a protocol or from Excel. A column (or a row, or a block) pasted
+// here is read value by value; a bare number takes the Unit beside it, a number with its own unit keeps it ("500 nM", "1 uM").
+// What was typed is what is written on the wells (3.3 stays 3.3, never rounded to what a dilution would have printed).
+var _CONC_UNITS={fm:'fM',pm:'pM',nm:'nM',um:'µM',mm:'mM',m:'M','pg/ml':'pg/mL','ng/ml':'ng/mL','ug/ml':'µg/mL','mg/ml':'mg/mL'};
+function _plParseList(txt,unit){
+  var toks=String(txt||'').replace(/\r/g,'').replace(/[μ]/g,'µ').split(/[\n\t;]+|,\s+/).map(function(t){ return t.trim(); }).filter(Boolean);
+  var out=[], bad=[], mass=null, mixed=false;
+  toks.forEach(function(tk){
+    var m=/^(\d*[.,]?\d+(?:e[+\-]?\d+)?)\s*([a-zµ]+(?:\s*\/\s*[a-z]+)?)?$/i.exec(tk); if(!m){ bad.push(tk); return; }
+    var num=m[1].replace(',','.'), u=m[2]?m[2].replace(/\s+/g,'').toLowerCase().replace('µ','u'):'';
+    var cu=u?_CONC_UNITS[u]:unit; if(!cu){ bad.push(tk); return; }
+    var v=_parseConcAny(num+' '+cu); if(!isFinite(v)||v<0){ bad.push(tk); return; }
+    var ms=_isMassUnit(cu); if(mass===null) mass=ms; else if(ms!==mass){ mixed=true; bad.push(tk); return; }
+    out.push({conc:num+' '+cu, v:v}); });
+  return {vals:out, bad:bad, mass:!!mass, mixed:mixed}; }
+// The wells in the order an arrow walks them: line by line, each line from the tail of the arrow to its head.
+function _plPaintOrder(ids,dir){
+  var colMajor=(dir==='down'||dir==='up'), rev=(dir==='left'||dir==='up');
+  return ids.map(function(id){ var x=wellRC(id); return {id:id,r:x.r,c:x.c}; }).sort(function(A,B){
+    var l=colMajor?((A.c-B.c)||(rev?B.r-A.r:A.r-B.r)):((A.r-B.r)||(rev?B.c-A.c:A.c-B.c)); return l; })
+    .map(function(x){ return x.id; }); }
+// What the typed list becomes on the selection: each well's value. 'lines' — every line of the selection repeats the list along the
+// arrow (replicates); 'wells' — one value per well, line by line, the way the arrow reads the selection.
+function _plListAssign(ids,dir,vals,fill){ var out={};
+  if(fill==='wells') _plPaintOrder(ids,dir).forEach(function(id,i){ if(i<vals.length) out[id]=vals[i]; });
+  else { var plan=PlateEngine.seriesPlan(ids,dir); ids.forEach(function(id){ var i=plan.idx[id]; if(i<vals.length) out[id]=vals[i]; }); }
+  return out; }
+function plSetDoseMode(m){ PL.doseMode=m; plRenderSide(); }
+function plSetDoseFill(m){ PL.doseFill=m; plRenderSide(); }
+function plApplyList(p,ids){
+  var u=PL.doseUnit||'nM', rd=_plParseList(PL.doseList,u);
+  if(!rd.vals.length){ var t=el('pl-dose-list'); if(t) t.focus(); toast(rd.bad.length?('Could not read "'+rd.bad[0]+'" as a concentration'):'Type or paste the concentrations first'); return; }
+  var fill=PL.doseFill==='wells'?'wells':'lines', gp=PlateEngine.seriesPlan(ids,PL.dir||PL.lastDir), dir=gp.dir;
+  var as=_plListAssign(ids,dir,rd.vals,fill), done=Object.keys(as);
+  plMark('Typed concentrations');
+  var sid='s'+Date.now().toString(36), tid=_plDoseTypeId(p);
+  done.forEach(function(id){ var fresh=!(p.wells||{})[id], w=_plWell(p,id);
+    if(fresh||!w.typeId||w.typeId==='blank') w.typeId=tid;
+    w.conc=as[id].conc; w.sid=sid; });
+  PL.lastDir=dir; platePersist(PL.key); plRender();
+  var pts=fill==='wells'?ids.length:gp.n;
+  toast(rd.vals.length+' value'+(rd.vals.length===1?'':'s')+' on '+done.length+' well'+(done.length===1?'':'s')
+    +(rd.vals.length!==pts?(' — the selection has '+pts+(fill==='wells'?' wells':' points')):'')+(rd.bad.length?(' · '+rd.bad.length+' not read'):'')); }
+function _plListPrev(p,ids,gp){ var rd=_plParseList(PL.doseList,PL.doseUnit||'nM'), fill=PL.doseFill==='wells'?'wells':'lines';
+  if(!rd.vals.length&&!rd.bad.length) return 'Type or paste a column from Excel — one concentration per line.';
+  var pts=fill==='wells'?ids.length:gp.n, n=rd.vals.length;
+  var t='<b>'+n+' value'+(n===1?'':'s')+'</b> for '+pts+(fill==='wells'?' well':' point')+(pts===1?'':'s');
+  if(fill==='lines'&&gp.lines>1) t+=' × '+gp.lines+' lines';
+  if(n){ var vs=rd.vals.map(function(x){ return x.v; }), hi=Math.max.apply(null,vs), lo=Math.min.apply(null,vs);
+    t+=' · '+rd.vals[0].conc+' → '+rd.vals[n-1].conc+(hi!==vs[0]||lo!==vs[n-1]?' <span class="pl-prev-sub">(not in order — each well is shaded by its own value)</span>':''); }
+  if(n&&n<pts) t+=' · <span class="warn">the last '+(pts-n)+' stay empty</span>';
+  if(n>pts) t+=' · <span class="warn">'+(n-pts)+' value'+(n-pts===1?'':'s')+' left over</span>';
+  if(rd.mixed) t+=' · <span class="warn">molar and mass per volume cannot be mixed in one series</span>';
+  else if(rd.bad.length) t+=' · <span class="warn">not read: '+esc(rd.bad.slice(0,3).join(', '))+(rd.bad.length>3?'…':'')+'</span>';
+  if(ids.some(function(id){ return ((p.wells||{})[id]||{}).conc; })) t+=' · <span class="warn">replaces the concentrations here</span>';
+  return t; }
 function plApplySeries(){ var p=plCur(); if(!p) return; var ids=plSelIds(); if(!ids.length) return;
+  if(PL.doseMode==='list') return plApplyList(p,ids);
   var f=_plSeriesForm(), plan=PlateEngine.seriesPlan(ids, PL.dir||PL.lastDir);
   if(!(f.top>0)){ var t=el('pl-dose-top'); if(t) t.focus(); toast('Give the series a top concentration'); return; }
   if(plan.n>1&&!(f.fac>1)){ var q=el('pl-dose-fold'); if(q) q.focus(); toast('The dilution factor has to be above 1'); return; }
   plMark('Dilution series');
   var sid='s'+Date.now().toString(36);
   ids.forEach(function(id){ var fresh=!(p.wells||{})[id], w=_plWell(p,id);
-    if(fresh||!w.typeId||w.typeId==='blank') w.typeId='dose';
+    if(fresh||!w.typeId||w.typeId==='blank') w.typeId=_plDoseTypeId(p);
     w.conc=_fmtConcU(PlateEngine.seriesConc(f.top,f.fac,plan.idx[id]),f.mass); w.sid=sid; });
   if(plan.n>1) PL.lastDir=plan.dir;
   platePersist(PL.key); plRender();
@@ -9610,7 +9706,7 @@ function plMakeCompounds(){ var p=plCur(); if(!p) return; var ids=plSelIds(); va
   if(!p.groups) p.groups={};
   plan.zones.forEach(function(z,i){ var gid='c'+Date.now().toString(36)+i;
     p.groups[gid]={label:'',cpd:true};
-    z.forEach(function(id){ var fresh=!(p.wells||{})[id], w=_plWell(p,id); w.groupId=gid; if(fresh) w.typeId='dose'; }); });
+    z.forEach(function(id){ var fresh=!(p.wells||{})[id], w=_plWell(p,id); w.groupId=gid; if(fresh) w.typeId=_plDoseTypeId(p); }); });
   _plGcGroups(p); _plRenumberCpds(p);
   platePersist(PL.key); plRender();
   toast(plan.zones.length+' compound'+(plan.zones.length===1?'':'s')+' made — name them in the list'); }
@@ -9927,13 +10023,24 @@ function plRenderSide(){ plSyncGhosts(); var p=plCur(), host=el('pl-side'); if(!
     } else {
       // Compounds: the series the wells are dosed with, and the compounds made from that area.
       var gp=PlateEngine.seriesPlan(ids, PL.dir||PL.lastDir), f=_plSeriesForm();
-      var dirs=[['left','&#8592;','Highest on the right'],['right','&#8594;','Highest on the left'],['up','&#8593;','Highest at the bottom'],['down','&#8595;','Highest at the top']];
+      var listMode=PL.doseMode==='list', fillW=PL.doseFill==='wells';
+      var dirs=listMode?[['left','&#8592;','First value on the right, last on the left'],['right','&#8594;','First value on the left, last on the right'],['up','&#8593;','First value at the bottom, last at the top'],['down','&#8595;','First value at the top, last at the bottom']]
+                       :[['left','&#8592;','Highest on the right'],['right','&#8594;','Highest on the left'],['up','&#8593;','Highest at the bottom'],['down','&#8595;','Highest at the top']];
       var prevS=_plSeriesPrev(p,ids,gp,f);
-      var dilHtml='<div class="pl-sub-t">1 · Dilution series</div><div class="cc-inputs"><label class="ci-f"><span>Top concentration</span><input type="number" id="pl-dose-top" value="'+esc(PL.doseTop||'1000')+'" oninput="PL.doseTop=this.value;_plPrevUpd()" onkeydown="if(event.key===\'Enter\'){event.preventDefault();plApplySeries();}"></label>'
-        +'<label class="ci-f"><span>Unit</span><select id="pl-dose-unit" onchange="PL.doseUnit=this.value;_plPrevUpd()">'+[['Molar',['nM','µM','mM']],['Mass per volume',['pg/mL','ng/mL','µg/mL','mg/mL']]].map(function(g){ return '<optgroup label="'+g[0]+'">'+g[1].map(function(u){ return '<option'+((PL.doseUnit||'nM')===u?' selected':'')+'>'+u+'</option>'; }).join('')+'</optgroup>'; }).join('')+'</select></label>'
-        +'<label class="ci-f"><span>Dilution factor</span><input type="number" id="pl-dose-fold" value="'+esc(PL.doseFold||'3')+'" step="0.5" oninput="PL.doseFold=this.value;_plPrevUpd()" onkeydown="if(event.key===\'Enter\'){event.preventDefault();plApplySeries();}"></label></div>'
-        +'<div class="pl-sub-t" style="margin-top:9px">Highest concentration</div><div class="pl-dirs">'+dirs.map(function(x){ return '<button class="pl-btn'+(gp&&gp.dir===x[0]?' on':'')+'" title="'+x[2]+'" onclick="plSetDir(\''+x[0]+'\')">'+x[1]+'</button>'; }).join('')+'</div>'
-        +'<div class="pl-row2"><button class="pl-btn primary" onclick="plApplySeries()">Set the series ⏎</button></div>'
+      var unitSel='<label class="ci-f"><span>Unit'+(listMode?' (for bare numbers)':'')+'</span><select id="pl-dose-unit" onchange="PL.doseUnit=this.value;_plPrevUpd()">'+[['Molar',['nM','µM','mM']],['Mass per volume',['pg/mL','ng/mL','µg/mL','mg/mL']]].map(function(g){ return '<optgroup label="'+g[0]+'">'+g[1].map(function(u){ return '<option'+((PL.doseUnit||'nM')===u?' selected':'')+'>'+u+'</option>'; }).join('')+'</optgroup>'; }).join('')+'</select></label>';
+      var modeHtml='<div class="pl-dirs pl-dosemode"><button class="pl-btn'+(listMode?'':' on')+'" onclick="plSetDoseMode(\'fold\')" title="A top concentration and a dilution factor">Top + dilution</button>'
+        +'<button class="pl-btn'+(listMode?' on':'')+'" onclick="plSetDoseMode(\'list\')" title="Type or paste each concentration, as in a spreadsheet column">Type the values</button></div>';
+      var dirHtml='<div class="pl-sub-t" style="margin-top:9px">'+(listMode?'Paint in the direction of the arrow':'Highest concentration')+'</div><div class="pl-dirs">'+dirs.map(function(x){ return '<button class="pl-btn'+(gp&&gp.dir===x[0]?' on':'')+'" title="'+x[2]+'" onclick="plSetDir(\''+x[0]+'\')">'+x[1]+'</button>'; }).join('')+'</div>';
+      var dilHtml='<div class="pl-sub-t">1 · '+(listMode?'Concentrations':'Dilution series')+'</div>'+modeHtml+(listMode
+        ?('<div class="cc-inputs" style="margin-top:8px"><label class="ci-f" style="grid-column:1/-1"><span>One per line — or a column or row pasted from Excel</span><textarea id="pl-dose-list" class="pp-ta pl-list" spellcheck="false" placeholder="10 µM&#10;3.3 µM&#10;1.1 µM&#10;…" oninput="PL.doseList=this.value;_plPrevUpd()" onkeydown="if((event.metaKey||event.ctrlKey)&&event.key===\'Enter\'){event.preventDefault();plApplySeries();}">'+esc(PL.doseList||'')+'</textarea></label>'+unitSel+'</div>'
+          +'<div class="pl-sub-t" style="margin-top:9px;font-weight:400">Spread over the selection</div><div class="pl-dirs">'
+          +'<button class="pl-btn'+(fillW?'':' on')+'" onclick="plSetDoseFill(\'lines\')" title="Every row (or column) of the selection repeats the list: replicates">Each line repeats the list</button>'
+          +'<button class="pl-btn'+(fillW?' on':'')+'" onclick="plSetDoseFill(\'wells\')" title="One value per well, line by line, the way the arrow reads the selection">One value per well</button></div>')
+        :('<div class="cc-inputs"><label class="ci-f"><span>Top concentration</span><input type="number" id="pl-dose-top" value="'+esc(PL.doseTop||'1000')+'" oninput="PL.doseTop=this.value;_plPrevUpd()" onkeydown="if(event.key===\'Enter\'){event.preventDefault();plApplySeries();}"></label>'
+          +unitSel
+          +'<label class="ci-f"><span>Dilution factor</span><input type="number" id="pl-dose-fold" value="'+esc(PL.doseFold||'3')+'" step="0.5" oninput="PL.doseFold=this.value;_plPrevUpd()" onkeydown="if(event.key===\'Enter\'){event.preventDefault();plApplySeries();}"></label></div>'))
+        +dirHtml
+        +'<div class="pl-row2"><button class="pl-btn primary" onclick="plApplySeries()">'+(listMode?'Paint the values ⌘⏎':'Set the series ⏎')+'</button></div>'
         +'<div class="pl-prev" id="pl-prev"'+(prevS?'':' hidden')+'>'+prevS+'</div>';
       var cp=_plCpdPlan(p,ids), k=cp?cp.zones.length:0, R=PL.reps||2, prevC='';
       if(cp){ var pmin=Math.min.apply(null,cp.pts), pmax=Math.max.apply(null,cp.pts);
@@ -10013,7 +10120,7 @@ function _plDataTab(p){
       +act('exportPlatePNG(PL.key)','Download PNG','a picture of this map, at print resolution')
     +'</div></div>'; }
 // The preview line under the Dilution form, repainted as the numbers are typed (never the form).
-function _plSeriesPrev(p,ids,gp,f){ if(!gp) return '';
+function _plSeriesPrev(p,ids,gp,f){ if(!gp) return ''; if(PL.doseMode==='list') return _plListPrev(p,ids,gp);
   var t='<b>'+gp.n+' point'+(gp.n===1?'':'s')+'</b> along '+(gp.dir==='right'||gp.dir==='left'?'the columns':'the rows')+(gp.lines>1?(' × '+gp.lines+' lines'):'');
   if(f.top>0){ if(gp.n>1&&f.fac>1) t+=' · '+_fmtConcU(f.top,f.mass)+' → '+_fmtConcU(PlateEngine.seriesConc(f.top,f.fac,gp.n-1),f.mass); else if(gp.n===1) t+=' · '+_fmtConcU(f.top,f.mass); else t+=' · <span class="warn">the dilution factor has to be above 1</span>'; }
   if(ids.some(function(id){ return ((p.wells||{})[id]||{}).conc; })) t+=' · <span class="warn">replaces the concentrations here</span>';

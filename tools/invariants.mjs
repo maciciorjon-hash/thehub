@@ -202,6 +202,10 @@
 //                            another label; the card, the PNG, the print table and a copied layout all carry it. (the plate map could not say what a column was)
 //   B53 time course       Time Course is Kinetic degradation with the compound left open: type KD (Tempo still takes it), code tag TC, the same steps, waits and measures,
 //                            no compound of the lab's own named in the prose, and an experiment from it keeps the 900 min / 5 min run and its plate The kinetic assay medium is named in full (CO2-independent medium + 10% FBS) in every step of KD, Time Course and the SPARK NS preset.
+//   B59 typed series,      A dose series is drawn in colour even on a plate whose palette has no "Dose series" (the AlphaLISA halves: two kits; the type is added, and a stored well with a
+//       arrow order, names  concentration whose type the plate lacks still takes the dose colour); Type the values reads a column or row pasted from Excel ("3.3 uM", "1,1", bare numbers in the Unit),
+//       turn to fit         keeps what was typed, and paints it in the order of the arrow chosen (→ ← ↑ ↓, a list repeated on each line or one value per well); a compound's name too long for its
+//                            block is written up its side (editor, card, PNG) and one that fits stays across. (the series came out grey; concentrations could only be a top and a factor)
 //   B58 mass series,      A dose series can run in pg/ng/µg/mg per mL (doxycycline, a ligand, an antibody) as well as nM/µM/mM: written in its own family, shaded high to low, headed by its columns, described as an n-fold series, never read as nM (the setup's top concentration is not rewritten from it); molar is as before. Clear plate (in the footer, every step) asks, then empties wells, blocks, column headers and the words round the plate, keeps format/title/palette, and Undo brings it all back
 //       clear plate
 //   B57 old words, new     The suspension-and-seed step of a run made before the split ("… + seed": prose with 90 µL typed in, "the labelling is covalent…", a list of what
@@ -3381,6 +3385,65 @@ async function suite(opts) {
         if (Object.keys(p.wells || {}).length !== nWells || !p.edges || p.edges.length !== 1 || !p.colLabels || p.colTitle !== 'Dose') bad('B58', 'undo', 'Undo did not bring the cleared plate back (' + Object.keys(p.wells || {}).length + ' wells)');
       } finally { window.lbConfirm = lc; }
       closePlateEditor(); await sleep(60);
+    });
+
+    // B59 — a series shows in colour, typed concentrations are painted in the arrow's order, a block's name turns to fit.
+    if (run('B59')) await guard('B59', 'typed series, colour, names', async () => {
+      const P = (LB.data.projects || []).find(p => (p.sections || []).length);
+      const key = 'AL_SUREFIRE384', tpl = LB.data.presets[key];
+      if (!tpl) { bad('B59', 'setup', 'the AlphaLISA 384 preset is not in the notebook'); return; }
+      const su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup || {})));
+      const before = new Set(Object.keys(LB.data.experiments));
+      buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-11-01', type: 'EXP', title: 'INV typed series', code: 'INV_B59', setup: su, plate: true });
+      const e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); if (!e) { bad('B59', 'create', 'no experiment was made'); return; }
+      clean.push(e); openExp(e.id); tick('B59');
+      const sel = async (r0, r1, c0, c1) => { PL.sel = {}; for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) PL.sel[wellIdOf(r, c)] = 1; plRender(); await sleep(40); };
+      const setList = async txt => { const ta = document.getElementById('pl-dose-list'); if (!ta) { bad('B59', 'textarea', 'Type the values has no box to type in'); return false; } ta.value = txt; ta.dispatchEvent(new Event('input', { bubbles: true })); await sleep(30); return true; };
+      openPlateEditor('exp:' + e.id); await sleep(120);
+      let p = plCur(); p.wells = {}; p.groups = {}; p.colLabels = {}; plSetDosing(true); plSetMode('dose'); await sleep(40);
+      // (1) the series is drawn in colour on a plate whose own palette has no "Dose series" (the two kits of the AlphaLISA halves)
+      if (plateTypes(p).some(t => t.id === 'dose')) bad('B59', 'setup', 'the layout already has a dose type, so this does not test the missing palette');
+      PL.doseTop = '1000'; PL.doseUnit = 'nM'; PL.doseFold = '3'; PL.dir = 'right'; PL.doseMode = 'fold'; await sel(0, 1, 0, 5); plApplySeries(); await sleep(40);
+      p = plCur(); let view = plateView(p);
+      const colorOf = id => plateWellColor(view, p.wells[id]);
+      if (!colorOf('A1') || !colorOf('A6') || colorOf('A1') === colorOf('A6')) bad('B59', 'colour', 'a series painted on fresh wells has no colour or no gradient: ' + colorOf('A1') + ' … ' + colorOf('A6'));
+      if (!plateTypes(p).some(t => t.id === 'dose')) bad('B59', 'palette', 'the Dose series type was not added to the palette the wells use');
+      const stray = { typeId: 'nothing-here', conc: '10 nM' };   // a stored plate from before: a typed well whose type the plate does not have
+      if (!plateWellColor(view, stray)) bad('B59', 'stored', 'a well with a concentration and a type the plate lacks is drawn in no colour');
+      // (2) typed concentrations
+      p.wells = {}; plRender(); PL.dir = null; PL.lastDir = null; PL.doseUnit = 'µM'; await sel(0, 1, 0, 3); plSetDoseMode('list'); await sleep(40);
+      if (!(await setList('10\n3.3 uM\n1,1\n0.37 nM'))) return;
+      const rd = _plParseList(PL.doseList, 'µM');
+      if (rd.vals.map(x => x.conc).join('|') !== '10 µM|3.3 µM|1.1 µM|0.37 nM') bad('B59', 'read', 'the list was read as ' + rd.vals.map(x => x.conc).join('|'));
+      const wr = _plParseList('1.2345 µM\t2\tDMSO\t5 ng/mL', 'nM');
+      if (wr.vals.map(x => x.conc).join('|') !== '1.2345 µM|2 nM' || wr.bad.join() !== 'DMSO,5 ng/mL' || !wr.mixed) bad('B59', 'read2', 'a row from Excel: ' + JSON.stringify(wr));
+      const row = r => [0, 1, 2, 3].map(c => (plCur().wells[wellIdOf(r, c)] || {}).conc).join('|');
+      PL.dir = 'right'; plRenderSide(); await sleep(20); await setList('10\n3.3 uM\n1,1\n0.37 nM'); plApplySeries(); await sleep(40);
+      if (row(0) !== '10 µM|3.3 µM|1.1 µM|0.37 nM' || row(1) !== row(0)) bad('B59', 'right', '→ should put the first value on the left in both lines: ' + row(0) + ' / ' + row(1));
+      PL.dir = 'left'; plRenderSide(); await sleep(20); await setList('10\n3.3 uM\n1,1\n0.37 nM'); plApplySeries(); await sleep(40);
+      if (row(0) !== '0.37 nM|1.1 µM|3.3 µM|10 µM') bad('B59', 'left', '← should put the first value on the right: ' + row(0));
+      PL.dir = 'down'; plRenderSide(); await sleep(20); plSetDoseFill('wells'); await sel(2, 3, 0, 1); PL.dir = 'down'; plRenderSide(); await sleep(20); await setList('1\n2\n3\n4');
+      plApplySeries(); await sleep(40);
+      const at = id => (plCur().wells[id] || {}).conc;
+      if ([at('C1'), at('D1'), at('C2'), at('D2')].join('|') !== '1 µM|2 µM|3 µM|4 µM') bad('B59', 'down wells', '↓ one value per well should run down column 1 then column 2: ' + [at('C1'), at('D1'), at('C2'), at('D2')].join('|'));
+      PL.dir = 'up'; plRenderSide(); await sleep(20); plApplySeries(); await sleep(40);
+      if ([at('D1'), at('C1'), at('D2'), at('C2')].join('|') !== '1 µM|2 µM|3 µM|4 µM') bad('B59', 'up wells', '↑ one value per well should start at the bottom: ' + [at('D1'), at('C1'), at('D2'), at('C2')].join('|'));
+      view = plateView(plCur()); if (!(view._shW.get(plCur().wells.C2) === 0 && view._shW.get(plCur().wells.D1) > 0.7)) bad('B59', 'shade', 'typed values are not shaded high to low');
+      await sel(4, 4, 0, 2); await setList('1\n2'); const pv = document.getElementById('pl-prev').textContent;
+      if (!/stay empty|left over|1 well|3 wells/.test(pv)) bad('B59', 'preview', 'the preview does not say the list and the selection differ: ' + pv);
+      PL.doseMode = 'fold'; plRenderSide();
+      // (3) a block's name turns up its side when it does not fit across, and stays across when it does
+      p = plCur(); p.wells = {}; p.groups = {}; plRender(); PL.doseTop = '1000'; PL.dir = 'down'; PL.doseMode = 'fold'; await sel(0, 6, 1, 4); plApplySeries(); PL.reps = 2; await sel(0, 6, 1, 4); plSetSplit('cols'); plMakeCompounds(); await sleep(60);
+      const L = _plCpdList(plCur()); if (L.length < 2) { bad('B59', 'blocks', 'two compound blocks were not made'); return; }
+      plNameSet(L[0].gid, 'A very long compound name that cannot fit across two wells'); plNameSet(L[1].gid, 'X'); await sleep(80);
+      const gls = [...document.querySelectorAll('#pl-grid .pl-gl')];
+      if (gls.length < 2 || !gls[0].classList.contains('rot')) bad('B59', 'rotate', 'a name too long for its block did not turn up its side in the editor');
+      if (gls[1] && gls[1].classList.contains('rot')) bad('B59', 'short', 'a name that fits was turned');
+      closePlateEditor(); await sleep(150);
+      const pps = [...document.querySelectorAll('.blk-plate .pp-gl')];
+      if (!pps.some(g => g.classList.contains('rot'))) bad('B59', 'card', 'the plate card did not turn the long name up its side');
+      const dl0 = window._dl; let png = 0; window._dl = () => { png++; };
+      try { plateToPNG(plCur ? (plateOf('exp:' + e.id)) : null, 'x'); await sleep(200); } catch (x) { bad('B59', 'png', 'the PNG threw: ' + x.message); } finally { window._dl = dl0; }
     });
 
     // B28 — a date typed into Repeat is a real day or it is refused.
