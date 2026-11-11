@@ -489,6 +489,7 @@ var editingMemberId = null;
 var _fbReady = false;
 var _firstSnap = true;
 var _showArchived = false;
+var AHEAD_MONTHS = 4;     // the ledger always shows this many months past the current one (a payment in advance has a column)
 
 function makeMember(name, drink){
   return { id:'m-'+Math.random().toString(36).slice(2,9), name:name, drink:drink||'coffee', startMonth:null, notes:'', accountName:'' };
@@ -686,20 +687,24 @@ function getYearPayments(){
   if (!state) return {};
   return (state.payments && state.payments[currentYear]) || {};
 }
-function memberPaid(memberId, month){
-  var v = (getYearPayments()[memberId] || {})[month];
+function getPaymentsFor(year){
+  return (state && state.payments && state.payments[year]) || {};
+}
+function memberPaid(memberId, month, year){
+  var v = (getPaymentsFor(year || currentYear)[memberId] || {})[month];
   return !!v;
 }
-function paymentSource(memberId, month){
-  var v = (getYearPayments()[memberId] || {})[month];
+function paymentSource(memberId, month, year){
+  var v = (getPaymentsFor(year || currentYear)[memberId] || {})[month];
   if (!v) return null;
   return v === 'auto' ? 'auto' : 'manual';
 }
 // When a payment was marked paid (set by togglePaid) — lets everyone see
 // how current the ledger is, same idea as the Monzo balance timestamp.
-function paymentMarkedAt(memberId, month){
-  if (!state.paymentsMeta || !state.paymentsMeta[currentYear]) return null;
-  var v = (state.paymentsMeta[currentYear][memberId] || {})[month];
+function paymentMarkedAt(memberId, month, year){
+  year = year || currentYear;
+  if (!state.paymentsMeta || !state.paymentsMeta[year]) return null;
+  var v = (state.paymentsMeta[year][memberId] || {})[month];
   return v || null;
 }
 function memberPriceMonthly(member){
@@ -773,9 +778,9 @@ function cuppaMonth(d){
   render();
 }
 
-function isMonthComplete(mn){
+function isMonthComplete(mn, year){
   if (!state) return false;
-  var yp = getYearPayments();
+  var yp = getPaymentsFor(year || currentYear);
   return state.members.every(function(m){ if (m.drink === 'none') return true; return !!(yp[m.id] && yp[m.id][mn]); });
 }
 function toggleArchived(){ _showArchived = !_showArchived; renderTable(); }
@@ -786,20 +791,28 @@ function toggleArchived(){ _showArchived = !_showArchived; renderTable(); }
 function renderTable(){
   var nowYear = (new Date()).getFullYear(), nowMonth = (new Date()).getMonth();
   var host = document.getElementById('tbl-scroll');
-  if (currentYear > nowYear) { host.innerHTML = '<p class="owing-empty">No data for ' + currentYear + ' yet.</p>'; document.getElementById('table-title').textContent = ''; return; }
-  var yp = getYearPayments(), firstIdx = 0;
-  for (var fi = 0; fi <= (currentYear < nowYear ? 11 : nowMonth); fi++) { var fmn = MONTHS[fi]; if (state.members.some(function(m){ return yp[m.id] && yp[m.id][fmn]; })) { firstIdx = fi; break; } }
-  var allMonths = MONTHS.slice(firstIdx, 12);
-  var done = allMonths.filter(function(mn){ var i = MONTHS.indexOf(mn); return ((currentYear < nowYear) || i <= nowMonth) && isMonthComplete(mn) && mn !== currentMonth; });
-  var months = _showArchived ? allMonths : allMonths.filter(function(mn){ return done.indexOf(mn) < 0; });
-  if (!months.length) months = [currentMonth];
+  // A past year is shown whole. From this year on the ledger is a window: from the first month with a payment up to
+  // AHEAD_MONTHS past the real current month, across New Year, so what has been paid in advance has a place to go.
+  var viewY = Math.min(currentYear, nowYear), yp = getPaymentsFor(viewY), firstIdx = 0;
+  for (var fi = 0; fi <= (viewY < nowYear ? 11 : nowMonth); fi++) { var fmn = MONTHS[fi]; if (state.members.some(function(m){ return yp[m.id] && yp[m.id][fmn]; })) { firstIdx = fi; break; } }
+  var allMonths = [];                                         // { y, i, mn }
+  if (viewY < nowYear) { for (var a = firstIdx; a < 12; a++) allMonths.push({ y: viewY, i: a, mn: MONTHS[a] }); }
+  else { for (var k = nowYear * 12 + firstIdx; k <= nowYear * 12 + nowMonth + AHEAD_MONTHS; k++) allMonths.push({ y: Math.floor(k / 12), i: k % 12, mn: MONTHS[k % 12] }); }
+  if (currentYear > allMonths[allMonths.length - 1].y) { host.innerHTML = '<p class="owing-empty">No data for ' + currentYear + ' yet.</p>'; document.getElementById('table-title').textContent = ''; return; }
+  var isNowCol = function(c){ return c.y === currentYear && c.mn === currentMonth; };
+  var isPast = function(c){ return c.y < nowYear || (c.y === nowYear && c.i <= nowMonth); };
+  var done = allMonths.filter(function(c){ return isPast(c) && isMonthComplete(c.mn, c.y) && !isNowCol(c); });
+  var months = _showArchived ? allMonths : allMonths.filter(function(c){ return done.indexOf(c) < 0; });
+  if (!months.length) months = allMonths.filter(isNowCol).slice(0, 1);
+  if (!months.length) months = allMonths.slice(-1);
+  var firstY = allMonths[0].y, yrTag = function(c){ return c.y !== firstY ? ' ’' + String(c.y).slice(2) : ''; };
   var q = (search || '').toLowerCase().trim();
   var members = state.members.slice().sort(function(a, b){ return a.name.localeCompare(b.name); });
   if (q) members = members.filter(function(m){ return m.name.toLowerCase().indexOf(q) >= 0 || String(m.accountName || '').toLowerCase().indexOf(q) >= 0; });
   document.getElementById('table-title').innerHTML = members.length + ' member' + (members.length === 1 ? '' : 's')
     + (done.length ? ' · <button class="link" onclick="toggleArchived()">' + (_showArchived ? 'hide the ' + done.length + ' paid-up month' + (done.length === 1 ? '' : 's') : done.length + ' paid-up month' + (done.length === 1 ? '' : 's') + ' hidden — show') + '</button>' : '');
   var html = '<table class="ledger"><thead><tr><th class="name">Name</th>';
-  months.forEach(function(mn){ var i = MONTHS.indexOf(mn); html += '<th class="' + (mn === currentMonth ? 'now' : '') + '" scope="col">' + MONTHS_ABBR[i] + '</th>'; });
+  months.forEach(function(c){ html += '<th class="' + (isNowCol(c) ? 'now' : '') + '" scope="col">' + MONTHS_ABBR[c.i] + yrTag(c) + '</th>'; });
   if (isAdmin) html += '<th aria-label="Edit"></th>';
   html += '</tr></thead><tbody>';
   if (!members.length) html += '<tr><td colspan="' + (months.length + 2) + '" class="owing-empty">Nobody matches “' + esc(q) + '”.</td></tr>';
@@ -807,12 +820,12 @@ function renderTable(){
     var inactive = m.drink === 'none';
     html += '<tr class="' + (inactive ? 'inactive' : '') + '"><td class="name"><div class="nm">' + (DRINK_ICONS[m.drink || 'coffee'] || DRINK_ICONS.coffee)
       + '<div class="nm-t"><span class="nm-n">' + esc(m.name) + '</span><span class="nm-s">' + (inactive ? 'not in the kitty' : _money(memberPriceMonthly(m)) + ' / month') + (m.notes ? ' · ' + esc(m.notes) : '') + '</span></div></div></td>';
-    months.forEach(function(mn){
-      var i = MONTHS.indexOf(mn), fut = currentYear === nowYear && i > nowMonth, paid = memberPaid(m.id, mn), src = paymentSource(m.id, mn);
-      var at = paid ? paymentMarkedAt(m.id, mn) : null;
-      var tip = inactive ? m.name + ' is not in the kitty' : paid ? (src === 'auto' ? 'Found in the Monzo statement' : 'Marked paid') + (at ? ' · ' + new Date(at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '') : m.name + ' · ' + mn + ' — not paid';
-      html += '<td class="' + (mn === currentMonth ? 'now' : '') + '">' + (inactive ? '<span class="pay na">—</span>'
-        : '<button class="pay' + (paid ? ' paid' : '') + (src === 'auto' ? ' auto' : '') + (fut ? ' future' : '') + '" data-m="' + m.id + '" data-mn="' + mn + '" onclick="togglePaid(this.dataset.m,this.dataset.mn)" title="' + esc(tip) + '" aria-pressed="' + (paid ? 'true' : 'false') + '" aria-label="' + esc(m.name + ', ' + mn + ': ' + (paid ? 'paid' : 'not paid')) + '">' + (paid ? _ICO_CHECK : '') + '</button>') + '</td>';
+    months.forEach(function(c){
+      var mn = c.mn, fut = !isPast(c), paid = memberPaid(m.id, mn, c.y), src = paymentSource(m.id, mn, c.y), lbl = mn + (c.y !== nowYear ? ' ' + c.y : '');
+      var at = paid ? paymentMarkedAt(m.id, mn, c.y) : null;
+      var tip = inactive ? m.name + ' is not in the kitty' : paid ? (src === 'auto' ? 'Found in the Monzo statement' : 'Marked paid') + (at ? ' · ' + new Date(at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '') : m.name + ' · ' + lbl + ' — not paid';
+      html += '<td class="' + (isNowCol(c) ? 'now' : '') + '">' + (inactive ? '<span class="pay na">—</span>'
+        : '<button class="pay' + (paid ? ' paid' : '') + (src === 'auto' ? ' auto' : '') + (fut ? ' future' : '') + '" data-m="' + m.id + '" data-mn="' + mn + '" data-y="' + c.y + '" onclick="togglePaid(this.dataset.m,this.dataset.mn,+this.dataset.y)" title="' + esc(tip) + '" aria-pressed="' + (paid ? 'true' : 'false') + '" aria-label="' + esc(m.name + ', ' + lbl + ': ' + (paid ? 'paid' : 'not paid')) + '">' + (paid ? _ICO_CHECK : '') + '</button>') + '</td>';
     });
     if (isAdmin) html += '<td><button class="edit-btn" onclick="editMember(\'' + m.id + '\')">Edit</button></td>';
     html += '</tr>';
@@ -905,27 +918,28 @@ function renderFunStats(){
 // ─── Members Tab ───────────────────────────────────────────────────────────
 
 // ─── Actions ───────────────────────────────────────────────────────────────
-function togglePaid(memberId, month){
+function togglePaid(memberId, month, year){
   if (!isAdmin){ toast('Sign in as admin to edit'); return; }
-  if (!state.payments[currentYear]) state.payments[currentYear] = {};
-  if (!state.payments[currentYear][memberId]) state.payments[currentYear][memberId] = {};
+  var Y = year || currentYear;
+  if (!state.payments[Y]) state.payments[Y] = {};
+  if (!state.payments[Y][memberId]) state.payments[Y][memberId] = {};
   if (!state.paymentsMeta) state.paymentsMeta = {};
-  if (!state.paymentsMeta[currentYear]) state.paymentsMeta[currentYear] = {};
-  if (!state.paymentsMeta[currentYear][memberId]) state.paymentsMeta[currentYear][memberId] = {};
-  var now = state.payments[currentYear][memberId][month];
-  var y = currentYear, prevMeta = state.paymentsMeta[currentYear][memberId][month];
+  if (!state.paymentsMeta[Y]) state.paymentsMeta[Y] = {};
+  if (!state.paymentsMeta[Y][memberId]) state.paymentsMeta[Y][memberId] = {};
+  var now = state.payments[Y][memberId][month];
+  var y = Y, prevMeta = state.paymentsMeta[Y][memberId][month];
   var m = (state.members || []).find(function(x){ return x.id === memberId; });
   if (now) {
-    delete state.payments[currentYear][memberId][month];
-    delete state.paymentsMeta[currentYear][memberId][month];
+    delete state.payments[Y][memberId][month];
+    delete state.paymentsMeta[Y][memberId][month];
   } else {
-    state.payments[currentYear][memberId][month] = 'manual';
-    state.paymentsMeta[currentYear][memberId][month] = new Date().toISOString();
+    state.payments[Y][memberId][month] = 'manual';
+    state.paymentsMeta[Y][memberId][month] = new Date().toISOString();
   }
   render();
   saveToFirebase('toggle '+memberId+' '+month);
   // One click is easy to make by accident on a grid of them, so every toggle can be taken back.
-  toast((m ? m.name : 'Member') + ' · ' + month + ' — ' + (now ? 'marked unpaid' : 'marked paid'), { label: 'Undo', act: function(){
+  toast((m ? m.name : 'Member') + ' · ' + month + (Y !== (new Date()).getFullYear() ? ' ' + Y : '') + ' — ' + (now ? 'marked unpaid' : 'marked paid'), { label: 'Undo', act: function(){
     var row = ((state.payments[y] = state.payments[y] || {})[memberId] = state.payments[y][memberId] || {});
     var meta = ((state.paymentsMeta[y] = state.paymentsMeta[y] || {})[memberId] = state.paymentsMeta[y][memberId] || {});
     if (now) { row[month] = now; if (prevMeta) meta[month] = prevMeta; }

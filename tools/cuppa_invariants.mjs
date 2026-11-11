@@ -8,6 +8,8 @@
 //   CU3  viewers do not write      a click from someone who is not signed in as admin changes nothing
 //   CU4  months move               ‹ › cross the year boundary both ways, "this month" comes back, and the tiles, the
 //                                  shaded column and the owing list follow the month chosen
+//   CU11 four months ahead         the ledger always runs 4 months past the current one, across New Year (Nov → Mar ’27); a click on a
+//                                  month of next year is stored under next year, and Undo takes it back
 //   CU5  search filters            a part of a name keeps its row and drops the rest; nothing matching says so
 //   CU6  no emoji in the UI        the interface draws its icons; only the Slack message (content) may carry emoji
 //   CU8  a write that fails says so      offline or refused by the server: the header says NOT SAVED, the toast offers Retry, a retry that
@@ -151,6 +153,42 @@ if (run('CU4')) await guard('CU4', async () => {
   r.home && r.todayHidden ? ok() : bad('CU4', '"this month" does not come back, or its button stays up on this month');
   /May/.test(r.title) && /May/.test(r.tileLbl) && r.shade === 'May' && r.owing ? ok() : bad('CU4', `the screen does not follow the month chosen (${r.title} · ${r.tileLbl} · ${r.shade})`);
   r.todayShown ? ok() : bad('CU4', 'away from this month there is no way back to it');
+  await p.context().close();
+});
+
+if (run('CU11')) await guard('CU11', async () => {
+  const p = await open();
+  await admin(p);
+  const r = await p.evaluate(() => {
+    const out = {}, now = new Date(), nowM = now.getMonth(), nowY = now.getFullYear();
+    state.members.forEach(m => { if (m.drink !== 'none') { state.payments[nowY][m.id] = state.payments[nowY][m.id] || {}; } });
+    _showArchived = true; render();
+    const heads = [...document.querySelectorAll('#tbl-scroll thead th')].filter(th => !th.classList.contains('name') && th.textContent.trim() && th.getAttribute('aria-label') !== 'Edit');
+    const last = heads[heads.length - 1].textContent.trim().split(' ')[0];
+    const endIdx = (nowM + 4) % 12;
+    out.last = last; out.wantLast = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][endIdx];
+    out.after = document.querySelectorAll('#tbl-scroll th.now ~ th:not([aria-label])').length;
+    // a month of next year (only exists in the window when the four months cross New Year)
+    const nextYearCell = document.querySelector('#tbl-scroll button.pay[data-y="' + (nowY + 1) + '"]');
+    out.crosses = nowM + 4 > 11; out.hasNext = !!nextYearCell;
+    if (nextYearCell) {
+      const id = nextYearCell.dataset.m, mn = nextYearCell.dataset.mn;
+      nextYearCell.click();
+      out.stored = !!(state.payments[nowY + 1] && state.payments[nowY + 1][id] && state.payments[nowY + 1][id][mn]) && !(state.payments[nowY][id] || {})[mn];
+      out.painted = document.querySelector('#tbl-scroll button.pay[data-m="' + id + '"][data-mn="' + mn + '"][data-y="' + (nowY + 1) + '"]').classList.contains('paid');
+      document.querySelector('#toast button, .toast button').click();
+      out.undone = !((state.payments[nowY + 1] || {})[id] || {})[mn];
+    }
+    return out;
+  });
+  r.last === r.wantLast ? ok() : bad('CU11', `the ledger ends at ${r.last}, four months ahead is ${r.wantLast}`);
+  r.after === 4 ? ok() : bad('CU11', `${r.after} months after the current one, 4 expected`);
+  !r.crosses || r.hasNext ? ok() : bad('CU11', 'the four months cross New Year but next year has no column');
+  if (r.hasNext) {
+    r.stored && r.painted ? ok() : bad('CU11', 'a click on a month of next year is not stored under next year');
+    r.undone ? ok() : bad('CU11', 'Undo did not take back a payment made for next year');
+  }
+  p.errs.length ? bad('CU11', 'errors: ' + p.errs.join(' | ')) : ok();
   await p.context().close();
 });
 
