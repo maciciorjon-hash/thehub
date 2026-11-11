@@ -19,6 +19,8 @@
 //   S7  opaque links      a public app's link is an opaque slug, never its name: opening Echo writes the slug to the URL, the
 //                         slug opens it for anyone, and #echo opens only for the admin or a visitor who typed Echo's word
 //
+//   S10 reload keeps the place  reloading the tab reopens what was open (the section, and the app inside it); a new tab still starts on Planner
+//
 //   S9  navigation is quick  a rail click between sections changes the screen at full strength within a frame or two and has
 //                         settled inside 200 ms: no crossfade copy, no section animation longer than --dur-1 + stagger
 //
@@ -284,6 +286,44 @@ if (run('S9')) {
 }
 
 for (const e of errs) bad('page', e);
+if (run('S10')) {
+  // One context = one tab's sessionStorage: reload there, then open a second page (new tab) in the same
+  // context — sessionStorage is per tab, so the new one must start on Planner.
+  const c10 = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const p10 = await c10.newPage();
+  await p10.route(/^https?:/, r => r.abort());
+  // Boot the way an admin's page does: initHub draws the visitor view first, then auth resolves as admin.
+  // (DOMContentLoaded is swallowed so the file:// "no Firebase" path cannot resolve auth as a visitor first.)
+  const hold = () => { try { localStorage.setItem('lb_tour_done', '1'); } catch (e) {} window.addEventListener('DOMContentLoaded', e => e.stopPropagation(), true); };
+  await p10.addInitScript(hold);
+  const boot = async pg => { await pg.goto('file://' + SHELL, { waitUntil: 'load' }); await pg.waitForTimeout(500); await pg.evaluate(() => { initHub(); isAdmin = true; _authResolved = true; onAdminStateChanged(); }); await pg.waitForTimeout(2500); };
+  await boot(p10);
+  await p10.evaluate(async () => { wsGo('analysis'); await new Promise(r => setTimeout(r, 500)); openApp('echo'); await new Promise(r => setTimeout(r, 900)); });
+  const before = await p10.evaluate(() => ({ app: currentApp, sec: _wsSection }));
+  await p10.reload({ waitUntil: 'load' });
+  await p10.waitForTimeout(500);
+  await p10.evaluate(() => { initHub(); isAdmin = true; _authResolved = true; onAdminStateChanged(); });
+  await p10.waitForTimeout(2500);
+  const after = await p10.evaluate(() => ({ app: currentApp, sec: _wsSection, shown: !!document.getElementById('view-echo') && getComputedStyle(document.getElementById('view-echo')).display !== 'none' }));
+  if (before.app !== 'echo' || before.sec !== 'analysis') bad('S10', 'setup: ' + JSON.stringify(before)); else ok();
+  if (after.app !== 'echo' || after.sec !== 'analysis' || !after.shown) bad('S10', 'after a reload inside Echo the Hub is on ' + JSON.stringify(after) + ' (want Echo under Data Analysis)'); else ok();
+  // leave Echo to a landing, reload: lands on that landing, no app
+  await p10.evaluate(async () => { wsGo('archive'); await new Promise(r => setTimeout(r, 600)); });
+  await p10.reload({ waitUntil: 'load' });
+  await p10.waitForTimeout(500);
+  await p10.evaluate(() => { initHub(); isAdmin = true; _authResolved = true; onAdminStateChanged(); });
+  await p10.waitForTimeout(2500);
+  const land = await p10.evaluate(() => ({ app: currentApp, sec: _wsSection }));
+  if (land.app || land.sec !== 'archive') bad('S10', 'after leaving Echo for Archive and reloading the Hub is on ' + JSON.stringify(land)); else ok();
+  // a new tab (own sessionStorage) starts on Planner
+  const p11 = await c10.newPage();
+  await p11.route(/^https?:/, r => r.abort());
+  await boot(p11);
+  const fresh = await p11.evaluate(() => ({ app: currentApp, sec: _wsSection }));
+  if (fresh.sec !== 'planner') bad('S10', 'a new tab started on ' + JSON.stringify(fresh) + ' (want Planner)'); else ok();
+  await c10.close();
+}
+
 await browser.close();
 for (const f of findings) console.log(f);
 console.log(`\n${passed} passed, ${findings.length} finding${findings.length === 1 ? '' : 's'}`);

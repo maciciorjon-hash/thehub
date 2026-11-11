@@ -2137,6 +2137,8 @@ that this tab wrote the hash itself; `_openFromHash` opens the app only when tha
 which is true in a tab opened from a link or a bookmark and false in one that navigated here. It
 also learned `#cells`, which it had never handled.
 
+**Superseded 2026-11-11: a reload keeps the place.** Jon asked that reloading reopen what was open, not Home. `_hereSave()` (called by `wsGo`, `openApp`, `openCells`, `backToHub`) writes `{sec, app}` to `sessionStorage['hub_here']`; `_wsSection` starts from it, and `_hereRestore()` (end of `onAdminStateChanged`, after auth) reopens the app. The snapshot is taken once at load (`_hereBoot`) because the admin's first `wsGo` rewrites the stored place before the restore runs. sessionStorage is per tab, so a new tab or bookmark still starts on Planner (S8). Guard: S10 in `tools/hub_invariants.mjs`, bug put back and caught.
+
 **A completed experiment stops asking for work.** `carryoverForDate` excluded only *archived*
 experiments, so one marked Completed from the status dropdown — without archiving — went on
 pushing its unticked steps into tomorrow's carry-over for the full 21 days. `expClosed(e)` is
