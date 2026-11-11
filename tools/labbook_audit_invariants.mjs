@@ -38,6 +38,9 @@
 //                           seeding and for every mix, and the numbers come out by hand (21,120 µL of cells at 0.08 M/mL; lysis 4,224 µL = 845 Lysis Buffer 5X + 3,379 water (Revvity's, no inhibitors); Acceptor mix
 //                           470 / 470 / 40 / 20 per mL = Revvity's 141 / 141 / 12 / 6 in 300 µL; Donor beads 6 in 300 µL of buffer); the plate has a kit on each half; the treatment
 //                           hours are the step's wait; no step shows a token it cannot answer. (the run made from the Archive stages had no recipes, a clipped tick and a bare plate)
+//   L18 the incubation is an input  The by-hand compound addition quotes its wait ("Incubate {{c.wait}}") and its calculator has an Incubation (h) box that writes that wait, so
+//                           the sentence, the chip and the timer say one number; a step still to be done that carries the old fixed "3 h" is brought up to it. (added to the AlphaLISA run the
+//                           chip said 16 h and the sentence 3 h, and the hours could not be changed where the other numbers are)
 //   L7 an import is one undo step  Importing one experiment from a file is undone by one ⌘Z (the bundle had it; the single import did not)
 //
 //   node tools/labbook_audit_invariants.mjs [--url=URL] [--only=L1,L3]
@@ -410,6 +413,47 @@ try {
     errs.forEach(m => bad('L17', 'page error: ' + m));
     await ctx.close();
   }
+  if (run('L18')) {
+    counts.L18 = 1;
+    const ctx = await newCtx(); const { page, errs } = await open(ctx);
+    await page.evaluate(`${SEED}`);
+    const r = await page.evaluate(() => {
+      const key = 'AL_SUREFIRE384', tpl = LB.data.presets[key]; if (!tpl) return { gone: true };
+      const P = LB.data.projects.find(p => (p.sections || []).length), S = P.sections[0], before = Object.assign({}, LB.data.experiments);
+      buildExperimentFrom({ pid: P.id, sid: S.id, key, tpl, startDate: '2026-11-10', type: presetBase(key), title: tpl.title, code: 'AU_L18', setup: setupDefaultsFor(key), plate: true });
+      const e = Object.values(LB.data.experiments).find(x => !before[x.id]);
+      SEL.page = e.id;
+      const plain = h => { const d = document.createElement('div'); d.innerHTML = h; return d.textContent.replace(/\s+/g, ' '); };
+      const at = e.blocks.findIndex(b => b.title === 'Compound treatment') + 1;
+      insertStepBlock(libSpec('lib:compound-manual'), at);
+      const b = e.blocks[at], out = { title: b.title, token: /\{\{c\.wait\}\}/.test(b.html) };
+      const box = () => { const d = document.createElement('div'); d.innerHTML = calcInputsHtml(b); const i = d.querySelector('input[data-wait]'); return i ? i.value : null; };
+      out.box0 = box(); out.text0 = plain(fillCalcText(b.html, b, e));
+      calcWaitSet(b.id, '18');
+      out.box18 = box(); out.wait18 = b.waitMin; out.own18 = !!b.waitOwn; out.text18 = plain(fillCalcText(b.html, b, e)); out.eff18 = blkWait(e, b).min;
+      // a step written before: "3 h" in the prose, a wait of its own
+      const old = JSON.parse(JSON.stringify(b)); old.id = uid(); old.html = old.html.replace('{{c.wait}}', '3 h'); old.waitMin = 180; old.waitOwn = 1; delete old.tpl;
+      e.blocks.splice(at + 1, 0, old);
+      const n = _spikeWait();
+      out.migrated = n; out.oldToken = /\{\{c\.wait\}\}/.test(old.html); out.oldText = plain(fillCalcText(old.html, old, e));
+      // a done step is a record: left as it was
+      const rec = JSON.parse(JSON.stringify(old)); rec.id = uid(); rec.html = rec.html.replace('{{c.wait}}', '3 h'); rec.done = true; e.blocks.splice(at + 2, 0, rec);
+      _spikeWait(); out.recKept = /3 h/.test(rec.html) && !/\{\{c\.wait\}\}/.test(rec.html);
+      return out;
+    });
+    if (r.gone) bad('L18', 'the AlphaLISA preset is gone (the test is void)');
+    else {
+      if (!r.token) bad('L18', 'the by-hand compound addition says its incubation in fixed words, not {{c.wait}}');
+      if (r.box0 == null) bad('L18', 'the step\'s calculator has no Incubation (h) box');
+      if (r.box18 !== '18' || r.wait18 !== 1080 || !r.own18) bad('L18', 'typing 18 in the Incubation box left box ' + r.box18 + ', wait ' + r.wait18 + ' min, own ' + r.own18 + ' (want 18, 1080, own)');
+      if (r.eff18 !== 1080) bad('L18', 'the step is last on its day and the next is tomorrow, and the wait became ' + r.eff18 + ' min instead of staying the 18 h typed');
+      if (!/Incubate 18 h at 37/.test(r.text18)) bad('L18', 'the sentence does not follow the box: ' + r.text18);
+      if (r.migrated !== 1 || !r.oldToken || !/Incubate 3 h at 37/.test(r.oldText)) bad('L18', 'a step still to be done with "3 h" in its prose was not brought up to {{c.wait}} (migrated ' + r.migrated + ', text: ' + r.oldText + ')');
+      if (!r.recKept) bad('L18', 'a done step was reworded (it is a record)');
+    }
+    errs.forEach(m => bad('L18', 'page error: ' + m));
+    await ctx.close();
+  }
   if (run('L15')) {
     counts.L15 = 1;
     const ctx = await newCtx(); const { page } = await open(ctx);
@@ -512,7 +556,7 @@ try {
     errs.forEach(m => bad('L13', 'page error: ' + m)); await ctx.close();
   }
 } finally { await browser.close(); if (srv) srv.kill(); }
-for (const id of ['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8', 'L9', 'L10', 'L11', 'L12', 'L13', 'L14', 'L15', 'L16']) { if (ONLY && !ONLY.includes(id)) continue; const fs_ = findings.filter(f => f.id === id); process.stdout.write(`  ${fs_.length ? '✗' : '✓'} ${id}${fs_.length ? '  — ' + fs_.length + ' finding(s)' : ''}\n`); }
+for (const id of ['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8', 'L9', 'L10', 'L11', 'L12', 'L13', 'L14', 'L15', 'L16', 'L17', 'L18']) { if (ONLY && !ONLY.includes(id)) continue; const fs_ = findings.filter(f => f.id === id); process.stdout.write(`  ${fs_.length ? '✗' : '✓'} ${id}${fs_.length ? '  — ' + fs_.length + ' finding(s)' : ''}\n`); }
 const seen = new Set(); findings.forEach(f => { const k = f.id + f.m; if (seen.has(k)) return; seen.add(k); process.stdout.write(`     [${f.id}] ${f.m}\n`); });
 if (!findings.length) process.stdout.write('\nLabbook audit invariants hold.\n');
 process.exit(findings.length ? 1 : 0);

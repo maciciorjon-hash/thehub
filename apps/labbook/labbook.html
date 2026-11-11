@@ -3844,7 +3844,7 @@ var NB_COMMON={
   mg132:{title:'MG132 pre-treatment',
     html:'<ol><li>Make the {{c.fold}} {{c.name}} fresh: {{c.stockUL}} of the {{c.stockConc}} stock + {{c.diluentUL}} {{c.diluent}} = {{c.totalUL}} at {{c.interConc}} ({{c.dilution}}).</li><li>Spike {{c.addUL}} into all {{c.nWells}} ({{c.wellVol}} already there &rarr; {{c.newVol}}, {{c.finalConc}} in the well) &mdash; do not aspirate.</li><li>Incubate 1 h at 37 &deg;C before the compounds.</li></ol>'},
   cmpd:{title:'Test compounds',
-    html:'<ol><li>Prepare each concentration at {{c.fold}} in {{c.diluent}}, one tube per concentration, as on the plate map. {{c.seriesText}}</li><li>Add {{c.addUL}} of the {{c.fold}} to each treated well ({{c.wellVol}} already in the well &rarr; {{c.newVol}}); do not aspirate.</li><li>Add {{c.addUL}} of vehicle ({{c.diluent}} with matched DMSO) to the vehicle and control wells.</li><li>Incubate 3 h at 37 &deg;C.</li></ol>'},
+    html:'<ol><li>Prepare each concentration at {{c.fold}} in {{c.diluent}}, one tube per concentration, as on the plate map. {{c.seriesText}}</li><li>Add {{c.addUL}} of the {{c.fold}} to each treated well ({{c.wellVol}} already in the well &rarr; {{c.newVol}}); do not aspirate.</li><li>Add {{c.addUL}} of vehicle ({{c.diluent}} with matched DMSO) to the vehicle and control wells.</li><li>Incubate {{c.wait}} at 37 &deg;C.</li></ol>'},
   read:{title:'NanoBRET substrate + read', aka:['NanoBRET read'],
     pub:'NanoBRET substrate was added ({{c.perWell}} per well) and the plate read at {{c.donorNm}} (donor) and {{c.acceptorNm}} (acceptor). The corrected BRET ratio is the acceptor/donor ratio of the + ligand wells minus the same ratio in the matched &minus;ligand wells.',
     html:'<ol><li>Prepare the substrate immediately before use: {{c.reagentUL}} {{c.name}} ({{c.dilution}}) + {{c.diluentUL}} {{c.diluent}} = {{c.total}} ({{c.perWell}} per well for {{c.nWells}}). Keep it dark.</li><li>Add {{c.perWell}} per well directly onto the cells, without aspirating ({{c.wellVol}} already in the well &rarr; {{c.finalVol}}).</li><li>Shake ~10 s on the orbital shaker; equilibrate 2&ndash;3 min at room temperature.</li><li>Read the donor ({{c.donorNm}}) and acceptor ({{c.acceptorNm}}) channels; save the data.</li></ol><p><b>Results</b></p><p></p>'}
@@ -5056,6 +5056,10 @@ var CALC_KINDS={
     {k:'stockUM',t:'num',lbl:'Source stock (µM)'},
     {k:'nWells',t:'num',lbl:'# wells'},{k:'excess',t:'num',lbl:'Excess ×',step:'0.05'},
     {k:'diluent',t:'txt',lbl:'Diluent'},
+    // The incubation after the addition is the step's own wait (the chip on the step, the timer, the day's
+    // clock) — one number, shown here because it is an input of the step. Drawn only for a step whose text
+    // quotes it ({{c.wait}}); a step written with "3 h" in the prose keeps that and has no box.
+    {k:'_wait',t:'wait',lbl:'Incubation (h)'},
     {k:'stockFold',t:'num',lbl:'Stock strength (×)',show:function(I){ return I.stockFold!=null; }}],
     defaults:{name:'MG132',wellVolUL:100,foldX:10,finalUM:10,stockUM:10000,nWells:84,excess:1.1,diluent:'Opti-MEM'},
     compute:function(v){ return spikeRecipe(v); } },
@@ -5837,7 +5841,7 @@ function refreshCalcRecipes(e){ if(!e) return;
 // a full re-render would take the caret out of whatever is being typed.
 function refreshCalcSpans(b,e){ var row=el('blk-'+b.id); if(!row) return;
   var sp=row.querySelectorAll('.cv[data-c]'); if(!sp.length) return;
-  var vals=calcValuesOf(b,e)||{};
+  var vals=calcValuesOf(b,e)||{}; if(row.querySelector('.cv[data-c="wait"]')) vals.wait=_waitVal(b,e);
   sp.forEach(function(x){ var v=vals[x.getAttribute('data-c')]; x.textContent=(v==null?'—':v); x.classList.toggle('cv-none',v==null); x.classList.toggle('cv-e',v===''); }); }
 // A select is only as honest as its widest option: the grid hands every field the same narrow
 // track, so a field whose choices are prose — a cell line with its modification, a control
@@ -5906,6 +5910,9 @@ function calcInputsHtml(b){ if(b.calc.kind==='archive') return archiveCalcHtml(b
     if(f.t==='select'){ var so=(f.opts||[]).map(function(x){ return '<option value="'+esc(x)+'"'+(String(v)===String(x)?' selected':'')+'>'+esc(x)+'</option>'; }).join('');
       return '<label class="'+ciWide(f.opts)+'"'+(f.hint?(' title="'+esc(f.hint)+'"'):'')+'><span>'+f.lbl
         +(f.hint?' <span class="ci-hint">?</span>':'')+'</span><select data-k="'+f.k+'" onchange="calcUpd(\''+b.id+'\')">'+so+'</select></label>'; }
+    if(f.t==='wait'){ if(!_quotesWait(b)) return '';
+      var _we=_curExp(), _wm=_we?blkWait(_we,b).min:(+b.waitMin||0);
+      return '<label class="ci-f"><span>'+f.lbl+'</span><input type="number" min="0" step="any" data-wait="1" value="'+(_wm>0?esc(String(Math.round(_wm/60*100)/100)):'')+'" oninput="calcWaitSet(\''+b.id+'\',this.value)"></label>'; }
     if(f.t==='check'){ return '<label class="ci-f chk"><input type="checkbox" data-k="'+f.k+'"'+(v?' checked':'')+' onchange="calcUpd(\''+b.id+'\',\''+f.k+'\')"><span>'+f.lbl+'</span></label>'; }
     if(f.t==='txt'){ return '<label class="ci-f"><span>'+f.lbl+'</span><input data-k="'+f.k+'" value="'+esc(v==null?'':v)+'" oninput="calcUpd(\''+b.id+'\',\''+f.k+'\')"></label>'; }
     // A derived input wears where it came from. Typing in it is allowed and makes it yours —
@@ -5955,6 +5962,19 @@ function _photoFab(){
 }
 function _leanInit(){ _photoFab(); }
 function _blkById(id){ var e=_curExp(); if(!e) return null; return (e.blocks||[]).filter(function(x){return x.id===id;})[0]||null; }
+// Does this step's text say its wait ({{c.wait}})? Then the wait is an input of the step, and the calculator draws it.
+function _quotesWait(b){ return (String((b.tpl&&b.tpl.html)||'')+String(b.html||'')).indexOf('{{c.wait}}')>=0; }
+// The incubation box writes the step's own wait — what the chip, the timer and the day's clock read — and marks it
+// yours (waitOwn), so a next step on a later day does not turn it into the overnight default.
+function calcWaitSet(id,val){ var b=_blkById(id), e=_curExp(); if(!b||!e) return;
+  var h=parseFloat(val), m=(h>0)?Math.round(h*60):0;
+  if(m>0){ b.waitMin=m; b.waitOwn=1; } else { delete b.waitMin; delete b.waitOwn; }
+  refreshCalcSpans(b,e);
+  var row=el('blk-'+b.id), chips=row?row.querySelectorAll('.blk-wait'):[];
+  if(chips.length){ var first=chips[0], tmp=document.createElement('div'); tmp.innerHTML=blkWaitHtml(b,e.id);
+    Array.prototype.slice.call(tmp.children).forEach(function(n){ first.parentNode.insertBefore(n,first); });
+    Array.prototype.forEach.call(chips,function(c){ c.remove(); }); }
+  e.updated=Date.now(); queueSave(); }
 function calcUpd(id,key){ var b=_blkById(id); if(!b||!b.calc) return; var wrap=document.querySelector('.blk-calc[data-calc="'+id+'"]'); if(!wrap) return;
   // The plate is read first: changing it rescales the per-well numbers, and the loop below must
   // not then write the stale values still sitting in the inputs back over them.
@@ -10728,6 +10748,24 @@ function _legacyWords(){
         b.tpl.html=th; b.html=bh; ch=true; n++; } });
     if(ch) e.updated=Date.now(); });
   return n; }
+// The by-hand compound addition used to say "Incubate 3 h at 37 °C" in its prose, whatever the step's wait was: added to
+// the AlphaLISA run (compound treatment overnight) the chip said 16 h and the sentence 3 h, and the hours were not an
+// input. A step still to be done says "{{c.wait}}" now, and the calculator has the box for it. The number it quotes is the
+// step's own wait (the chip's), never a made-up one; a step with no wait keeps its words, a done step is a record.
+var _SPIKE_3H=/Incubate 3 h at 37 (&deg;|\u00b0)C\./;
+function _spikeWait(){
+  var ex=(LB.data&&LB.data.experiments)||{}, n=0;
+  Object.keys(ex).forEach(function(id){ var e=ex[id], ch=false;
+    if(!e||!e.blocks||e.status==='done'||e.status==='archived') return;
+    e.blocks.forEach(function(b){
+      if(b.proto||b.done||!b.calc||b.calc.kind!=='spike'||_quotesWait(b)) return;
+      if(!_SPIKE_3H.test(String(b.html||''))) return;
+      if(!(blkWait(e,b).min>0)) return;
+      b.html=String(b.html).replace(_SPIKE_3H,'Incubate {{c.wait}} at 37 &deg;C.');
+      if(b.tpl&&b.tpl.html&&_SPIKE_3H.test(b.tpl.html)) b.tpl.html=b.tpl.html.replace(_SPIKE_3H,'Incubate {{c.wait}} at 37 &deg;C.');
+      ch=true; n++; });
+    if(ch) e.updated=Date.now(); });
+  return n; }
 var _STEP_PLAIN_KEYS={id:1,date:1,dayOffset:1,done:1,completedAt:1,html:1,title:1,tpl:1,calc:1,calcSeed:1,floatImgs:1,stepDone:1,pub:1,waitMin:1,waitSameDay:1};
 function _stepHasRecords(b){
   if(b.done||b.completedAt) return true;
@@ -10811,6 +10849,7 @@ function seedPresets(){
   _seedPresetsInner();
   var _sp=[]; try{ _sp=_stepSplits().concat(_calcKeysFromPresets()); }catch(_e){}
   var _lw=0; try{ _lw=_legacyWords(); }catch(_e){}
+  try{ if(_spikeWait()) setTimeout(function(){ try{ save(); }catch(e){} },0); }catch(_e){}
   if(_lw){ setTimeout(function(){ try{ save(); }catch(e){} },0);
     setTimeout(function(){ try{ toast('Reworded '+_lw+' NanoBRET step'+(_lw===1?'':'s')+' to the preset’s words — the numbers now follow each step’s calculator. Nothing recorded was changed.'); }catch(e){} },2400); }
   if(_calcKeysFin&&!_sp.length) setTimeout(function(){ try{ save(); }catch(e){} },0);
@@ -10982,7 +11021,7 @@ function _seedPresetsInner(){
   // you have changed is left alone. (This upgrade itself is still a blunt refresh — no built-in
   // can have been edited through the new field before the field existed — and it is what stamps
   // the signatures that make every later bump safe.)
-  var upgrade=!LB.data._presetV24;
+  var upgrade=!LB.data._presetV25;
   EXP_TYPES.forEach(function(t){
     var cur=LB.data.presets[t.id];
     var edited = cur && cur._seedSig && !_sigSame(cur._seedSig,_presetSig(cur)) && !_presetWordsUnedited(cur);
@@ -10996,7 +11035,7 @@ function _seedPresetsInner(){
       if(!cur._seedSig) cur._seedSig=_presetSig(cur);   // stamp what is there, whatever it is
     }
   });
-  if(upgrade) LB.data._presetV24=true;
+  if(upgrade) LB.data._presetV25=true;
   // The one-time flag meant a preset added later could never reach an existing notebook. The
   // inner check is what makes this safe to run every load: it only fills in what is missing and
   // never touches a preset you have edited.
@@ -15038,7 +15077,7 @@ function dupExperiment(id){ var e=LB.data.experiments[id]; if(!e) return;
   c.created=Date.now(); c.updated=Date.now(); LB.data.experiments[c.id]=c;
   // A copy has nothing ticked, so it can take the preset's steps as they are now — a finished run it was copied from may
   // be older than the split suspension and seeding, and waiting for the next load left the old step on the screen.
-  try{ _stepSplits(); _legacyWords(); }catch(_e){}
+  try{ _stepSplits(); _legacyWords(); _spikeWait(); }catch(_e){}
   save(); SEL.page=c.id; EXP_TAB='steps'; renderAll();
   toast('Duplicated as '+(c.code||'a new experiment')+' — dated from today, nothing ticked'); }
 // Same date swap as a replicate's code, but a copy is not a replicate: a free code keeps its
@@ -23070,6 +23109,8 @@ function dsRailName(){ var D=DS; if(!D) return;
 function dsSetWait(i,v){ var D=DS; if(!D||!D.mods[i]) return;
   var n=_parseWait(v);
   D.mods[i].w=(n>0)?n:0; D.mods[i].waitOwn=true; dsDraw(); }
+function dsWaitH(i,val){ var D=DS; if(!D||!D.mods[i]) return;
+  var h=parseFloat(val); D.mods[i].w=(h>0)?Math.round(h*60):0; D.mods[i].waitOwn=true; dsLiveRefresh(i); }
 function dsCalcHtml(m,i){
   if(!m.calc||!CALC_KINDS[m.calc.kind])
     return '<div class="ds-fld"><button type="button" class="ps-calc-add" onclick="dsAddCalc('+i+')">'+tbIco(P_SIGMA,13)+' add a prep calculator</button></div>';
@@ -23101,6 +23142,9 @@ function dsCalcHtml(m,i){
       return '<label class="ci-f"><span>'+esc(f.lbl)+'</span><select onchange="dsCalcSet('+i+',\''+f.k+'\',this.value)">'+fo+'</select></label>'; }
     if(f.t==='select'){ var so=(f.opts||[]).map(function(x){ return '<option value="'+esc(x)+'"'+(String(v)===String(x)?' selected':'')+'>'+esc(x)+'</option>'; }).join('');
       return '<label class="'+ciWide(f.opts)+'"'+(f.hint?(' title="'+esc(f.hint)+'"'):'')+'><span>'+esc(f.lbl)+(f.hint?' <span class="ci-hint">?</span>':'')+'</span><select onchange="dsCalcSet('+i+',\''+f.k+'\',this.value)">'+so+'</select></label>'; }
+    if(f.t==='wait'){ if(!(live&&String(live.html||'').indexOf('{{c.wait}}')>=0)) return '';
+      var _dw=blkWait(ps,live).min;
+      return '<label class="ci-f"><span>'+esc(f.lbl)+'</span><input type="number" min="0" step="any" value="'+(_dw>0?esc(String(Math.round(_dw/60*100)/100)):'')+'" oninput="dsWaitH('+i+',this.value)"></label>'; }
     if(f.t==='check'){ return '<label class="ci-f chk"><input type="checkbox"'+(v?' checked':'')+' onchange="dsCalcSet('+i+',\''+f.k+'\',this.checked)"><span>'+esc(f.lbl)+'</span></label>'; }
     if(f.t==='txt'){ return '<label class="ci-f"'+(f.hint?(' title="'+esc(f.hint)+'"'):'')+'><span>'+esc(f.lbl)+(f.hint?' <span class="ci-hint">?</span>':'')+'</span><input value="'+esc(v==null?'':v)+'" oninput="dsCalcSet('+i+',\''+f.k+'\',this.value)"></label>'; }
     // A derived input wears where it came from, and typing in it makes it yours — the same
