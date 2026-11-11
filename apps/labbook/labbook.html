@@ -580,6 +580,8 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 .psteps>li.pstep-done .pstep-t{opacity:.45;text-decoration:line-through;text-decoration-color:var(--text3);}
 .pstep-t{cursor:default;}
 .pstep-tick{position:absolute;left:-38px;top:3px;}
+/* the tick stands 38px left of its list, and the Planner's day card clips what leaves it (overflow:hidden), so the list starts 20px in there: half of every tick was cut off */
+.day-exp .psteps{margin-left:20px;}
 .pstep-noteb{margin-left:7px;background:none;border:none;color:var(--text3);font-size:var(--fs-2);
   cursor:pointer;opacity:0;transition:opacity .12s;padding:0 2px;}
 .psteps>li:hover .pstep-noteb{opacity:1;}
@@ -4324,6 +4326,49 @@ var EXTRA_PRESET_SEED={
     {d:2,title:'Kinetic read — after the PROTAC',
      pub:'The read continued at 37 &deg;C every {{intervalMin}} min to {{runMin}} min in all (15 h after the PROTAC). Traces were normalised to the pre-read and to the vehicle control.',
      html:'<ol><li>Resume the kinetic read at 37 &deg;C, every {{intervalMin}} min, to {{runMin}} min in all (15 h after the PROTAC).</li></ol>'}]},
+  // AlphaLISA SureFire Ultra on one 384-well plate, as Jon runs it (Zher Yin's in-house protocol, Archive `alphalisa`,
+  // In house tab): cells seeded, compound the next day, lysed and read in the same plate with no lysate transfer. It is
+  // written here in the notebook's own shape — one step per thing done, a calculator for every mix, the plate drawn —
+  // because a run built from the Archive stages carried none of that: no suspension recipe, no mix volumes, ticks the
+  // Planner clipped, and a plate that did not know what went in it. Differences from the p-Rab10 original (Jon, 2026-11-10):
+  // HeLa at 4,000/well, compound the day after seeding for 18 h, no chloroquine, no viability reagent. Seeded in 50 µL
+  // (Revvity's 384-well value; the protocol gives none). Lysis keeps the sheet's protease and phosphatase inhibitors.
+  // No compound calculator on purpose: the compound layout is not decided, and one would ask for a stock Jon has not fixed.
+  // Mix amounts are per mL of finished mix, so they follow the wells: lysis 5X + 20X + 20X to 1X; Acceptor mix Reaction
+  // Buffer 1 = 2 = (1000 - 40 - 20)/2 = 470, Activation Buffer 1:25 (40), Acceptor beads 1:50 (20) — Revvity's 300 µL
+  // example (141 / 141 / 12 / 6); Donor beads 6 µL in 300 µL of dilution buffer as the sheet says (19.6 per mL).
+  'AL_SUREFIRE384':{name:'AlphaLISA_SureFire_Ultra_384',baseType:'EXP',
+   title:'AlphaLISA SureFire Ultra — total protein, known degraders (384-well)',
+   setup:{format:'384',cellLine:'HeLa',cellsPerWell:4000,treatH:18,treatUL:36},
+   setupAdd:[{f:'cellLine',t:'cellline',lbl:'Cell line',d:'HeLa'},
+             {f:'cellsPerWell',t:'num',lbl:'Cells / well',d:4000},
+             {f:'treatH',t:'num',lbl:'Compound treatment (h)',d:18,wait:1},
+             {f:'treatUL',t:'num',lbl:'Treatment volume (µL)',d:36}],
+   plateOn:true, layout:'alphalisa384', blocks:[
+    {d:0,title:'Seeding',
+     calc:{kind:'seed',inputs:{cellLine:'HeLa',cellsPerWell:4000,volPerWell:50,format:'384',nPlates:1,excess:1.1}},
+     html:'<ol><li>Count the cells and resuspend them in {{c.medium}} at {{c.density}} &mdash; {{c.totalVol}} for {{c.wells}}.</li><li>Add {{c.volPerWell}} of the suspension to each well ({{c.cellsPerWell}}) of a {{format}}-well plate.</li><li>Incubate overnight at 37 &deg;C, 5% CO&#8322;.</li></ol>'},
+    {d:1,title:'Compound treatment',w:1080,
+     pub:'The medium was replaced with {{treatUL}} &micro;L of {{c.medium}} containing the compound, and the cells were treated for {{treatH}} h at 37 &deg;C, 5% CO&#8322;.',
+     html:'<ol><li>Replace the medium with {{treatUL}} &micro;L of {{c.medium}} containing the compound, as on the plate map.</li><li>Treat for {{treatH}} h at 37 &deg;C, 5% CO&#8322; &mdash; note the start time.</li></ol><p>The compound layout is still to be decided; the Echo is being tried for this step.</p>'},
+    {d:2,title:'Prepare lysis buffer',
+     calc:{kind:'mixparts',inputs:{name:'lysis buffer',parts:'5X lysis buffer 200, Protease inhibitor 50, Phosphatase inhibitor 50',diluent:'water',volPerWell:10,format:'384',nPlates:1,excess:1.1}},
+     html:'<ol><li>Make {{c.total}} of {{c.name}} ({{c.wells}} at {{c.perWell}} per well): combine {{c.partsText}} with {{c.diluentUL}} of {{c.diluent}}, so each is at 1X.</li></ol>'},
+    {d:2,title:'Lysis',w:15,
+     pub:'The cells were washed once with PBS and lysed in {{c.perWell}} of lysis buffer per well, shaking at 350 rpm at room temperature for 15 min.',
+     html:'<ol><li>Wash the cells once with PBS.</li><li>Replace the PBS with {{c.perWell}} of lysis buffer per well.</li><li>Shake at 350 rpm (or higher) at room temperature for 15 min.</li></ol>'},
+    {d:2,title:'Prepare Acceptor mix',
+     calc:{kind:'mixparts',inputs:{name:'Acceptor mix',parts:'Reaction Buffer 1 470, Activation Buffer 40, Acceptor Beads 20',diluent:'Reaction Buffer 2',volPerWell:5,format:'384',nPlates:1,excess:1.1}},
+     html:'<ol><li>Make {{c.total}} of {{c.name}} ({{c.wells}} at {{c.perWell}} per well): combine {{c.partsText}} with {{c.diluentUL}} of {{c.diluent}} &mdash; the two Reaction Buffers in equal parts, Activation Buffer at 1:25 and Acceptor Beads at 1:50 of the final volume.</li><li>Make it fresh and use it within 30 minutes.</li></ol>'},
+    {d:2,title:'Acceptor beads',w:60,
+     pub:'{{c.perWell}} of AlphaLISA SureFire Ultra Acceptor bead mix was added to each well in the dark and the plate incubated for 1 h at room temperature.',
+     html:'<ol><li>Add {{c.perWell}} of Acceptor mix to each well, in the dark.</li><li>Incubate for 1 h at room temperature.</li></ol>'},
+    {d:2,title:'Prepare Donor mix',
+     calc:{kind:'mixparts',inputs:{name:'Donor mix',parts:'Donor Beads 19.6',diluent:'Dilution Buffer',volPerWell:5,format:'384',nPlates:1,excess:1.1}},
+     html:'<ol><li>Make {{c.total}} of {{c.name}} ({{c.wells}} at {{c.perWell}} per well): combine {{c.partsText}} with {{c.diluentUL}} of {{c.diluent}} &mdash; 6 &micro;L of beads in 300 &micro;L of {{c.diluent}}. Donor beads are light sensitive: make it and use it in the dark.</li></ol>'},
+    {d:2,title:'Donor beads and read',w:240,
+     pub:'{{c.perWell}} of Donor bead mix was added to each well in the dark and the plate incubated for at least 4 h at room temperature before reading on an AlphaScreen / AlphaLISA-compatible plate reader.',
+     html:'<ol><li>Add {{c.perWell}} of Donor mix to each well, in the dark.</li><li>Incubate for at least 4 h (4 h to overnight) at room temperature.</li><li>Read on a plate reader compatible with AlphaScreen / AlphaLISA; save the data.</li></ol><p><b>Results</b></p><p></p>'}]},
   'CLONE_HIFI':{name:'Cloning — Restriction + HiFi (PX458)',baseType:'CLONE',title:'Cloning — Restriction + HiFi (PX458)',
    setup:{method:'NEBuilder HiFi'}, blocks:[
     {d:0,title:'Vector linearization',w:30,pub:'PX458 was linearized with BbsI for 30 min at 37 &deg;C, gel-purified and quantified.',html:'<ol><li>Linearize: digest 1 &micro;g PX458 with BbsI (NEB), 37 &deg;C for 30 min.</li><li>Confirm on a 1% gel (~9.3 kb); excise, NucleoSpin, NanoDrop.</li></ol>'},
@@ -4779,7 +4824,7 @@ function applySetupToBlocks(type,setup,blocks,prevSetup,presetKey){
   // the bench timer never learned it \u2014 you could set 20 h and the schedule stayed at whatever
   // the preset shipped. The block it belongs to is the one whose own text quotes it; a wait you
   // typed yourself (waitOwn) is never overwritten.
-  (S.fields||[]).filter(function(f){ return f.wait; }).forEach(function(f){
+  (S.fields||[]).concat(presetKey?presetSetupAdd(presetKey):[]).filter(function(f){ return f.wait; }).forEach(function(f){
     var h=parseFloat(setup[f.f]); if(!isFinite(h)||h<=0) return;
     var tok='{{'+f.f+'}}';
     blocks.forEach(function(b){
@@ -6885,6 +6930,20 @@ var PLATE_LAYOUTS=[
      add('r',nPts,nPts,'DMSO');
      add('r',0,nPts,prot+' conc.');
      p.edges=E;
+     return p; }}   ,
+  // Jon's AlphaLISA plate (2026-11-10): one 384-well plate, a different kit on each half — SMARCA2 on columns 1–12,
+  // SMARCA4 on 13–24 — and the compounds still to be laid out, so the halves are all it says.
+  {id:'alphalisa384', label:'AlphaLISA 384 — one kit on each half', format:'384',
+   sub:'SMARCA2 kit on columns 1–12, SMARCA4 kit on 13–24; compound layout to be decided',
+   build:function(){
+     var d=PLATE_FORMATS['384'], p=newPlate('384');
+     p.title='AlphaLISA 384 — SMARCA2 and SMARCA4 kits';
+     p.note='Columns 1–12: SMARCA2 kit. Columns 13–24: SMARCA4 kit. Compound layout to be decided.';
+     p.types=[{id:'s2',name:'SMARCA2 kit',color:'#9fc3e8'},{id:'s4',name:'SMARCA4 kit',color:'#e0b9a9'}];
+     p.groups={g_s2:{label:'SMARCA2 kit'},g_s4:{label:'SMARCA4 kit'}};
+     for(var r=0;r<d.r;r++) for(var c=0;c<d.c;c++){
+       var half=c<d.c/2?'s2':'s4';
+       p.wells[wellIdOf(r,c)]={typeId:half,groupId:'g_'+half}; }
      return p; }}
 ];
 function plLayoutMenu(){

@@ -40,6 +40,8 @@
 //                           sat 4px below the task text beside it; the code link's dashed border made it 1px taller than its neighbours (Jon, 2026-10-28)
 //   T21 one left edge       a carried-over step's tick stands where a due step's tick does — on a phone the due rows had their 10px inset and the
 //                           carried-over ones did not, so the two lists of ticks were 10px apart (Jon, 2026-10-28)
+//   T22 a tick stays in view  a step written from an Archive protocol and open on Today: every tick is whole inside its day card — the card clips what
+//                           leaves it and the ticks stand 38px left of their list, so on Today each was cut in half and read as ")" (Jon, 2026-11-11)
 //
 //   node tools/labbook_style_invariants.mjs [--url=URL] [--only=T1,T5]
 import { chromium } from 'playwright';
@@ -97,6 +99,15 @@ const SCENES = {
   exp_done: `openExp(window.__SW.bio)`,
   journal_day: `openDayPage(todayStr())`,
   planner_today: `selectNode('journal')`,
+  // an experiment made from an Archive protocol (steps with their own ticks), due today and open
+  planner_proto: `(function(){ var P=LB.data.projects.filter(function(x){ return (x.sections||[]).length; })[0], key='AL_SUREFIRE384', tpl=LB.data.presets[key], before={};
+    Object.keys(LB.data.experiments).forEach(function(k){ before[k]=1; });
+    buildExperimentFrom({pid:P.id,sid:P.sections[0].id,key:key,tpl:tpl,startDate:todayStr(),type:'EXP',title:'proto tick',code:'ST_PROTO',setup:setupDefaultsFor(key),plate:false});
+    var e=Object.values(LB.data.experiments).filter(function(x){ return !before[x.id]; })[0], b=e.blocks[0];
+    b.proto={pid:'alphalisa',protoName:'AlphaLISA',stageId:'s2',v:1,name:b.title,variant:'inhouse',body:[{t:'steps',ordered:true,items:[
+      {id:'a.1',html:'Replace the DMEM with <strong>{{p.treatVol}}</strong> of DMEM.',params:{treatVol:{type:'vol',value:36,unit:'\\u00b5L',label:'Treatment volume'}}},{id:'a.2',html:'Treat.',params:{}}]}]};
+    delete b.tpl; b.html=''; selectNode('journal');
+    /* one step due: Today opens it on its own */ })()`,
   planner_today_phone: `selectNode('journal')`,   // the same screen at 390px wide (the runner resizes for any scene ending in _phone)
   week: `selectNode('week')`,
   exps: `selectNode('exps')`,
@@ -109,6 +120,7 @@ const SCENES = {
   setup_editor_plates: `(function(){ LB.data.experiments.x_plates={id:'x_plates',type:'D2B',name:'Plates fixture',blocks:[],
     setup:{format:'384',cellLine:'hela',cellsPerWell:4000,nPlates:10,nCompounds:20,nTotal:96,nConc:7,nReps:2,dmsoMax:0.25,treatH:6}}; openSetupEditor('x_plates'); })()`,
 };
+SCENES.planner_proto_phone = SCENES.planner_proto;   // the same screen at 390px
 
 // Each check: which scenes, and a function (run in the page) returning a list of findings.
 const CHECKS = [
@@ -228,6 +240,11 @@ const CHECKS = [
     if(!due.length||!carry.length) return ['needs a due step and a carried-over one on this screen ('+due.length+' / '+carry.length+')'];
     var want=Math.round(due[0].getBoundingClientRect().left*10)/10;
     carry.forEach(function(e){ var l=Math.round(e.getBoundingClientRect().left*10)/10; if(Math.abs(l-want)>.6) bad.push('a carried-over tick stands at x='+l+' where a due step\\'s tick stands at x='+want); });
+    return bad.slice(0,3); })()`],
+  ['T22', ['planner_proto', 'planner_proto_phone'], `(function(){ var S=__st, bad=[], ticks=S.all('.pstep-tick');
+    if(!ticks.length) return ['no step tick on this screen: the Archive-protocol step is not open on Today'];
+    ticks.forEach(function(t){ var card=t.closest('.day-exp'), a=t.getBoundingClientRect(), c=card&&card.getBoundingClientRect();
+      if(!c) return; if(a.left<c.left-0.5||a.right>c.right+0.5) bad.push('a step tick is cut by its day card: tick x='+Math.round(a.left)+'..'+Math.round(a.right)+', card x='+Math.round(c.left)+'..'+Math.round(c.right)); });
     return bad.slice(0,3); })()`],
 ];
 
