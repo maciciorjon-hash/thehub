@@ -35,7 +35,7 @@
 //   L16 the sheet's diluent is what is left  "What you need" lists the diluent of a spike-in as the intermediate minus the stock that goes into it, not the whole
 //                           intermediate. (100 mM biotin at 1:4 for 7 wells listed 62 µL of DMSO for a 23 µL dilution)
 //   L17 the AlphaLISA run is a notebook run  The AlphaLISA preset is written in the notebook's own shape, not as Archive stages: eight steps over three days, a calculator for the
-//                           seeding and for every mix, and the numbers come out by hand (21,120 µL of cells at 0.08 M/mL; lysis 4,224 µL = 845 + 211 + 211 + 2,957; Acceptor mix
+//                           seeding and for every mix, and the numbers come out by hand (21,120 µL of cells at 0.08 M/mL; lysis 4,224 µL = 845 Lysis Buffer 5X + 3,379 water (Revvity's, no inhibitors); Acceptor mix
 //                           470 / 470 / 40 / 20 per mL = Revvity's 141 / 141 / 12 / 6 in 300 µL; Donor beads 6 in 300 µL of buffer); the plate has a kit on each half; the treatment
 //                           hours are the step's wait; no step shows a token it cannot answer. (the run made from the Archive stages had no recipes, a clipped tick and a bare plate)
 //   L7 an import is one undo step  Importing one experiment from a file is undone by one ⌘Z (the bundle had it; the single import did not)
@@ -396,7 +396,7 @@ try {
       if (r.unresolved.length) bad('L17', 'a step shows a token it cannot answer or an empty number: ' + r.unresolved.join(', '));
       if (r.seed.density !== '0.08 M cells/mL' || r.seed.totalVol !== '21,120 µL (21.12 mL)' || r.seed.wells !== '384 wells') bad('L17', 'the seeding says ' + [r.seed.density, r.seed.totalVol, r.seed.wells].join(' · ') + ', not 0.08 M cells/mL · 21,120 µL (21.12 mL) · 384 wells (4,000 cells in 50 µL, 384 wells x 1.1)');
       // 4,224 µL = 10 µL x 384 x 1.1; 5X at 200/mL, each 20X at 50/mL, water the rest
-      if (r.lysis.join(',') !== '4224,844.8,211.2,211.2,2956.8') bad('L17', 'the lysis buffer is ' + r.lysis.join(' + ') + ', not 4224 = 844.8 + 211.2 + 211.2 + 2956.8 µL');
+      if (r.lysis.join(',') !== '4224,844.8,3379.2') bad('L17', 'the lysis buffer is ' + r.lysis.join(' + ') + ', not 4224 = 844.8 + 3379.2 µL (Revvity: Lysis Buffer 5X in water, no inhibitors added)');
       // 2,112 µL: Reaction Buffer 1 and 2 equal (470/mL), Activation Buffer 1:25, beads 1:50
       if (r.acc.join(',') !== '2112,992.64,84.48,42.24,992.64') bad('L17', 'the Acceptor mix is ' + r.acc.join(' + ') + ', not 2112 = 992.64 + 84.48 + 42.24 + 992.64 µL');
       if (r.rev.join(',') !== '141,12,6,141,300') bad('L17', 'in 300 µL the Acceptor mix is ' + r.rev.join(' / ') + ', Revvity\'s example is 141 / 12 / 6 / 141 µL');
@@ -405,7 +405,7 @@ try {
       if (r.plate.types !== 'SMARCA2 kit|SMARCA4 kit' || r.plate.groups !== 'SMARCA2 kit|SMARCA4 kit') bad('L17', 'the plate names its kits ' + r.plate.types + ' / ' + r.plate.groups);
       if (r.wait !== 1080 || r.wait20 !== 1200) bad('L17', 'the treatment wait is ' + r.wait + ' min at 18 h and ' + r.wait20 + ' min at 20 h, not 1080 and 1200 (the setup hours are the wait)');
       if (!/36 µL/.test(r.text['Compound treatment']) || !/18 h/.test(r.text['Compound treatment']) || !/20 h/.test(r.text20)) bad('L17', 'the treatment step does not quote the setup (36 µL, 18 h, then 20 h): ' + r.text['Compound treatment'] + ' / ' + r.text20);
-      if (!/10 µL of lysis buffer per well/.test(r.text['Lysis']) || !/5 µL of Acceptor mix/.test(r.text['Acceptor beads']) || !/5 µL of Donor mix/.test(r.text['Donor beads and read'])) bad('L17', 'a bead or lysis step does not say the volume its mix is made for: ' + [r.text['Lysis'], r.text['Acceptor beads'], r.text['Donor beads and read']].join(' / '));
+      if (!/10 µL of lysis buffer per well/.test(r.text['Lysis']) || !/10 min/.test(r.text['Lysis']) || !/5 µL of Acceptor mix/.test(r.text['Acceptor beads']) || !/5 µL of Donor mix/.test(r.text['Donor beads and read'])) bad('L17', 'a bead or lysis step does not say the volume its mix is made for: ' + [r.text['Lysis'], r.text['Acceptor beads'], r.text['Donor beads and read']].join(' / '));
     }
     errs.forEach(m => bad('L17', 'page error: ' + m));
     await ctx.close();
