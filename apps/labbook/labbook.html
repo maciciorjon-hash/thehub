@@ -5686,11 +5686,22 @@ function mixpartsRecipe(v){
       +'Check the amounts: they are µL of stock <b>per mL</b> of the finished solution.</div>':'')
     +_subNote(e,{nPlates:'# plates',excess:'Excess ×'});
 }
+// A stock that is already the strength that goes in (stock = final × X) is added to the wells as it
+// is: there is no intermediate to make. The table used to print "diluted 1:1 · 0 µL of water" under a
+// red "barely a dilution" for a 1 mM biotin stock added straight to the wells (Jon, 2026-11-12).
+function _spikeDirect(v){ var X=+v.foldX||0, fin=+v.finalUM||0, st=+v.stockUM||0;
+  return !v.series&&X>1&&fin>0&&st>0&&Math.abs(st/(fin*X)-1)<1e-6; }
 function spikeRecipe(v){
   var V=+v.wellVolUL||0, X=+v.foldX||0, fin=+v.finalUM||0, stock=+v.stockUM||0;
   var n=+v.nWells||0, ex=+v.excess||1, dl=esc(v.diluent||'medium'), name=esc(v.name||'reagent');
   if(!(V>0)||!(X>1)) return '<b>Spike-in</b> — the well has to hold something and the intermediate has to be stronger than 1×.';
   var add=V/(X-1), newV=V+add, inter=fin*X, need=add*n*ex;
+  if(_spikeDirect(v)) return '<b>Add '+nfmt(add)+' µL per well</b> of the '+_fmtConc(stock*1000)+' '+name+' stock'+(v.diluent?' (in '+dl+')':'')
+    +' straight to the '+nfmt(V)+' µL already in the well → '+nfmt(newV)+' µL/well at '+_fmtConc(fin*1000)+' '+name+'.'
+    +'<div class="cc-tblwrap"><table class="cc-tbl"><tr><th>Step</th><th>Amount</th></tr>'
+    +'<tr><td>'+name+' stock '+_fmtConc(stock*1000)+', undiluted</td><td>'+_amt(need,nfmt(n)+' well'+(n===1?'':'s')+_ovxL(ex))+'</td></tr></table></div>'
+    +'<div class="cc-note">The stock becomes part of the final volume, so the amount is V×c/(S−c), not V×c/S: '+nfmt(V*fin/stock)
+    +' µL would leave the wells at '+_fmtConc(fin*1000*V/(V+V*fin/stock))+' instead of '+_fmtConc(fin*1000)+'.</div>';
   var df=(inter>0&&stock>0)?(stock/inter):0;
   var vs=df>0?(need/df):0;
   // A stock volume too small to pipette is taken as a dilution, and the remainder has to leave
@@ -17005,7 +17016,7 @@ var CALC_NEEDS={
     // whole intermediate as diluent overstated it by the stock's own volume (62 µL of DMSO for a
     // 23 µL dilution).
     var vsStock=(!v.series&&(+v.stockUM)>0)? inter*((+v.finalUM||0)*f)/(+v.stockUM) : 0;
-    var out=[{k:'reagent', name:(v.diluent||'diluent'), qty:Math.max(0,inter-vsStock), unit:'µL',
+    var out=_spikeDirect(v)?[]:[{k:'reagent', name:(v.diluent||'diluent'), qty:Math.max(0,inter-vsStock), unit:'µL',
               note:'to make the '+nfmt(f)+'× intermediate'}];
     // A dose series is not one tube, so there is no single stock volume to state -- the same
     // reason spikeRecipe suppresses its stock rows when `series` is on.
@@ -17013,7 +17024,7 @@ var CALC_NEEDS={
     else {
       var vs=((+v.stockUM)>0)? inter*((+v.finalUM||0)*f)/(+v.stockUM) : null;
       out.unshift({k:'compound', name:v.name, qty:vs, unit:'µL',
-                   note:((+v.stockUM)?('from a '+nfmt(v.stockUM)+' µM stock'):'')});
+                   note:((+v.stockUM)?('from a '+nfmt(v.stockUM)+' µM stock'):'')+(_spikeDirect(v)?', straight into the wells':'')});
     }
     return out;
   },

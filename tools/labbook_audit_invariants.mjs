@@ -38,6 +38,9 @@
 //                           seeding and for every mix, and the numbers come out by hand (21,120 µL of cells at 0.08 M/mL; lysis 4,224 µL = 845 Lysis Buffer 5X + 3,379 water (Revvity's, no inhibitors); Acceptor mix
 //                           470 / 470 / 40 / 20 per mL = Revvity's 141 / 141 / 12 / 6 in 300 µL; Donor beads 6 in 300 µL of buffer); the plate has a kit on each half; the treatment
 //                           hours are the step's wait; no step shows a token it cannot answer. (the run made from the Archive stages had no recipes, a clipped tick and a bare plate)
+//   L20 a stock added as it is has no dilution table  A stock that is already the strength that goes in (1 mM biotin, 200 µM final in 2,000 µL → 500 µL per well) is
+//                           written as "Add 500 µL per well of the stock" with the stock volume for the wells, not as a 5× intermediate "diluted 1:1" with 0 µL of water
+//                           under a "barely a dilution" warning, and What you need lists no diluent; a real intermediate keeps its table.
 //   L19 the AlphaLISA mixes are for the wells used  Lysis buffer, Acceptor mix and Donor mix follow the plate map's wells (setup '# wells used' with no map), not the whole plate; runs made before are given the number; a ticked step is left
 //   L18 the incubation is an input  The by-hand compound addition quotes its wait ("Incubate {{c.wait}}") and its calculator has an Incubation (h) box that writes that wait, so
 //                           the sentence, the chip and the timer say one number; a step still to be done that carries the old fixed "3 h" is brought up to it. (added to the AlphaLISA run the
@@ -455,6 +458,27 @@ try {
     errs.forEach(m => bad('L18', 'page error: ' + m));
     await ctx.close();
   }
+  if (run('L20')) {
+    counts.L20 = 1;
+    const ctx = await newCtx(); const { page, errs } = await open(ctx);
+    await page.evaluate(`${SEED}`);
+    const r = await page.evaluate(() => {
+      const plain = h => { const d = document.createElement('div'); d.innerHTML = h; return d.textContent.replace(/\s+/g, ' '); };
+      const D = { name: 'biotin', wellVolUL: 2000, foldX: 5, finalUM: 200, stockUM: 1000, nWells: 7, excess: 1.1, series: false, diluent: 'water' };
+      const lo = Object.assign({}, D, { foldX: 20, finalUM: 50 });
+      const mid = Object.assign({}, D, { foldX: 500, finalUM: 50, stockUM: 100000, diluent: 'DMSO' });
+      const need = CALC_NEEDS.spike(D);
+      return { hi: plain(spikeRecipe(D)), lo: plain(spikeRecipe(lo)), mid: plain(spikeRecipe(mid)), needNames: need.map(x => x.name), needQty: need.map(x => x.qty) };
+    });
+    if (!/Add 500 µL per well of the 1 mM biotin stock/.test(r.hi) || !/2,500 µL\/well at 200 µM/.test(r.hi)) bad('L20', 'a 1 mM stock added straight to 2,000 µL for 200 µM does not say 500 µL per well → 2,500 µL: ' + r.hi);
+    if (!/Add 105 µL per well/.test(r.lo) || !/50 µM/.test(r.lo)) bad('L20', 'the 50 µM wells do not say 105 µL per well: ' + r.lo);
+    if (/diluted 1:1|barely a dilution|(^|[^\d,.])0 µL/.test(r.hi + r.lo)) bad('L20', 'a stock added undiluted still prints a 1:1 dilution, 0 µL of diluent or the "barely a dilution" warning: ' + r.hi);
+    if (!/3,850 µL/.test(r.hi)) bad('L20', 'the stock needed for 7 wells with 10% overage is not 3,850 µL: ' + r.hi);
+    if (r.needNames.includes('water') || r.needNames.length !== 1 || !(Math.abs(r.needQty[0] - 3850) < 0.5)) bad('L20', 'What you need lists a diluent for a stock that is not diluted, or the wrong stock volume: ' + r.needNames + ' ' + r.needQty);
+    if (!/intermediate/.test(r.mid) || !/diluted 1:/.test(r.mid)) bad('L20', 'a stock that IS diluted into an intermediate lost its table: ' + r.mid);
+    errs.forEach(m => bad('L20', 'page error: ' + m));
+    await ctx.close();
+  }
   if (run('L19')) {
     counts.L19 = 1;
     const ctx = await newCtx(); const { page, errs } = await open(ctx);
@@ -598,7 +622,7 @@ try {
     errs.forEach(m => bad('L13', 'page error: ' + m)); await ctx.close();
   }
 } finally { await browser.close(); if (srv) srv.kill(); }
-for (const id of ['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8', 'L9', 'L10', 'L11', 'L12', 'L13', 'L14', 'L15', 'L16', 'L17', 'L18', 'L19']) { if (ONLY && !ONLY.includes(id)) continue; const fs_ = findings.filter(f => f.id === id); process.stdout.write(`  ${fs_.length ? '✗' : '✓'} ${id}${fs_.length ? '  — ' + fs_.length + ' finding(s)' : ''}\n`); }
+for (const id of ['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8', 'L9', 'L10', 'L11', 'L12', 'L13', 'L14', 'L15', 'L16', 'L17', 'L18', 'L19', 'L20']) { if (ONLY && !ONLY.includes(id)) continue; const fs_ = findings.filter(f => f.id === id); process.stdout.write(`  ${fs_.length ? '✗' : '✓'} ${id}${fs_.length ? '  — ' + fs_.length + ' finding(s)' : ''}\n`); }
 const seen = new Set(); findings.forEach(f => { const k = f.id + f.m; if (seen.has(k)) return; seen.add(k); process.stdout.write(`     [${f.id}] ${f.m}\n`); });
 if (!findings.length) process.stdout.write('\nLabbook audit invariants hold.\n');
 process.exit(findings.length ? 1 : 0);
