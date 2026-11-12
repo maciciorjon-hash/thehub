@@ -38,6 +38,7 @@
 //                           seeding and for every mix, and the numbers come out by hand (21,120 µL of cells at 0.08 M/mL; lysis 4,224 µL = 845 Lysis Buffer 5X + 3,379 water (Revvity's, no inhibitors); Acceptor mix
 //                           470 / 470 / 40 / 20 per mL = Revvity's 141 / 141 / 12 / 6 in 300 µL; Donor beads 6 in 300 µL of buffer); the plate has a kit on each half; the treatment
 //                           hours are the step's wait; no step shows a token it cannot answer. (the run made from the Archive stages had no recipes, a clipped tick and a bare plate)
+//   L19 the AlphaLISA mixes are for the wells used  Lysis buffer, Acceptor mix and Donor mix follow the plate map's wells (setup '# wells used' with no map), not the whole plate; runs made before are given the number; a ticked step is left
 //   L18 the incubation is an input  The by-hand compound addition quotes its wait ("Incubate {{c.wait}}") and its calculator has an Incubation (h) box that writes that wait, so
 //                           the sentence, the chip and the timer say one number; a step still to be done that carries the old fixed "3 h" is brought up to it. (added to the AlphaLISA run the
 //                           chip said 16 h and the sentence 3 h, and the hours could not be changed where the other numbers are)
@@ -454,6 +455,47 @@ try {
     errs.forEach(m => bad('L18', 'page error: ' + m));
     await ctx.close();
   }
+  if (run('L19')) {
+    counts.L19 = 1;
+    const ctx = await newCtx(); const { page, errs } = await open(ctx);
+    await page.evaluate(`${SEED}`);
+    const r = await page.evaluate(() => {
+      const key = 'AL_SUREFIRE384', tpl = LB.data.presets[key]; if (!tpl) return { gone: true };
+      const P = LB.data.projects.find(p => (p.sections || []).length), S = P.sections[0], before = Object.assign({}, LB.data.experiments);
+      buildExperimentFrom({ pid: P.id, sid: S.id, key, tpl, startDate: '2026-11-10', type: presetBase(key), title: tpl.title, code: 'AU_L19', setup: setupDefaultsFor(key), plate: true });
+      const e = Object.values(LB.data.experiments).find(x => !before[x.id]);
+      const MIX = ['Prepare lysis buffer', 'Prepare Acceptor mix', 'Prepare Donor mix'];
+      const wells = () => MIX.map(t => _mixParts(e.blocks.find(b => b.title === t).calc.inputs).wells);
+      const out = { asked: (presetSetupAdd(key).find(f => f.f === 'nSamples') || {}).lbl, start: wells() };
+      // the plate map decides: keep 100 painted wells, the mixes follow
+      const w = e.plate.wells, ids = Object.keys(w); ids.slice(100).forEach(id => delete w[id]);
+      syncExpDerived(e); out.plate100 = wells();
+      // no plate map: the setup's "# wells used" is the number
+      delete e.plate; e.plateOn = false; e.setup.nSamples = 60; e.blocks.forEach(b => { if (b.calc && b.calc.kind === 'mixparts') { delete b.calc.own; } });
+      e.blocks = applySetupToBlocks(e.type, e.setup, e.blocks, Object.assign({}, e.setup, { nSamples: 384 }), e.presetKey); syncExpDerived(e); out.setup60 = wells();
+      // a run made before: mixes counted by plate format, no nWells, setup without the question
+      const o = JSON.parse(JSON.stringify(e)); o.id = uid(); o.code = 'AU_L19_old'; delete o.setup.nSamples; o.setupAdd = (o.setupAdd || []).filter(f => f.f !== 'nSamples');
+      o.blocks.forEach(b => { if (b.calc && b.calc.kind === 'mixparts') { delete b.calc.inputs.nWells; if (b.calcSeed) delete b.calcSeed.nWells; } });
+      LB.data.experiments[o.id] = o;
+      const n = _alphaWells();
+      out.migrated = n; out.oldWells = MIX.map(t => o.blocks.find(b => b.title === t).calc.inputs.nWells); out.oldAsk = (o.setupAdd || []).some(f => f.f === 'nSamples');
+      // a ticked step is a record
+      const q = JSON.parse(JSON.stringify(o)); q.id = uid(); q.code = 'AU_L19_rec'; q.blocks.forEach(b => { if (b.calc && b.calc.kind === 'mixparts') { delete b.calc.inputs.nWells; b.done = true; } });
+      LB.data.experiments[q.id] = q; _alphaWells(); out.recKept = q.blocks.filter(b => b.calc && b.calc.kind === 'mixparts').every(b => b.calc.inputs.nWells === undefined);
+      return out;
+    });
+    if (r.gone) bad('L19', 'the AlphaLISA preset is gone (the test is void)');
+    else {
+      if (r.asked !== '# wells used') bad('L19', 'the AlphaLISA setup does not ask how many wells are used (' + r.asked + ')');
+      if (r.start.join() !== '384,384,384') bad('L19', 'a fresh AlphaLISA run makes its mixes for ' + r.start.join('/') + ' wells, not the 384 of the painted plate');
+      if (r.plate100.join() !== '100,100,100') bad('L19', 'the plate map has 100 wells and the lysis buffer / Acceptor / Donor mixes are for ' + r.plate100.join('/') + ': they do not follow the map (they were made for the whole plate)');
+      if (r.setup60.join() !== '60,60,60') bad('L19', 'with no plate map and "# wells used" = 60 the mixes are for ' + r.setup60.join('/') + ' wells');
+      if (r.migrated !== 3 || r.oldWells.join() !== '384,384,384' || !r.oldAsk) bad('L19', 'a run made before the wells question was not given it (migrated ' + r.migrated + ', wells ' + r.oldWells.join('/') + ', asked ' + r.oldAsk + ')');
+      if (!r.recKept) bad('L19', 'a ticked step was given a wells number (it is a record)');
+    }
+    errs.forEach(m => bad('L19', 'page error: ' + m));
+    await ctx.close();
+  }
   if (run('L15')) {
     counts.L15 = 1;
     const ctx = await newCtx(); const { page } = await open(ctx);
@@ -556,7 +598,7 @@ try {
     errs.forEach(m => bad('L13', 'page error: ' + m)); await ctx.close();
   }
 } finally { await browser.close(); if (srv) srv.kill(); }
-for (const id of ['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8', 'L9', 'L10', 'L11', 'L12', 'L13', 'L14', 'L15', 'L16', 'L17', 'L18']) { if (ONLY && !ONLY.includes(id)) continue; const fs_ = findings.filter(f => f.id === id); process.stdout.write(`  ${fs_.length ? '✗' : '✓'} ${id}${fs_.length ? '  — ' + fs_.length + ' finding(s)' : ''}\n`); }
+for (const id of ['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8', 'L9', 'L10', 'L11', 'L12', 'L13', 'L14', 'L15', 'L16', 'L17', 'L18', 'L19']) { if (ONLY && !ONLY.includes(id)) continue; const fs_ = findings.filter(f => f.id === id); process.stdout.write(`  ${fs_.length ? '✗' : '✓'} ${id}${fs_.length ? '  — ' + fs_.length + ' finding(s)' : ''}\n`); }
 const seen = new Set(); findings.forEach(f => { const k = f.id + f.m; if (seen.has(k)) return; seen.add(k); process.stdout.write(`     [${f.id}] ${f.m}\n`); });
 if (!findings.length) process.stdout.write('\nLabbook audit invariants hold.\n');
 process.exit(findings.length ? 1 : 0);

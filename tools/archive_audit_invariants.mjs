@@ -726,7 +726,7 @@ if (run('AR19')) await guard('AR19', 'alphalisa', async () => {
     const ih = tab('inhouse');
     const ihBoxes = { treat: [par('treatVol'), val('al-tvol')], lysis: [par('lysisVol'), val('al-lvol')], fold: [51, val('al-dfold')], pi: [20, val('al-pix')], phi: [20, val('al-phix')] };
     const days = (v) => (D.stages || []).filter(s => s.variant === v).map(s => s.day);
-    return { inDays: days('inhouse'), rvDays: days('revvity'), cat: c && c.category, boxes: document.querySelectorAll('#detail-alphalisa .calc-box').length,
+    return { inDays: days('inhouse'), rvDays: days('revvity'), cat: c && c.category, boxes: document.querySelectorAll('#detail-alphalisa .calc-box:not(.calc-wells)').length,
              tokens: JSON.stringify(D).match(/\{\{[^}]*\}\}/g).length > 0, rv, ih, rvBoxes, ihBoxes, tabs: document.querySelectorAll('#detail-alphalisa .vtab-btn').length,
              variants: (D.variants || []).map(x => x.label), untagged: (D.stages || []).filter(s => !s.variant).length }; });
   if (d.inDays.join() !== '0,1,1,1') bad('AR19', 'the in-house stages fall on days ' + d.inDays.join() + ', not 0,1,1,1'); else ok();
@@ -739,6 +739,14 @@ if (run('AR19')) await guard('AR19', 'alphalisa', async () => {
   Object.entries(d.rvBoxes).concat(Object.entries(d.ihBoxes)).forEach(([k, [step, box]]) => { if (step !== box) bad('AR19', 'a step says ' + step + ' but its calculator box holds ' + box + ' (' + k + ')'); else ok(); });
   if (d.cat !== 'cellbio') bad('AR19', 'the card is under ' + d.cat); else ok();
   if (d.boxes !== 5) bad('AR19', d.boxes + ' calculator boxes, not 5'); else ok();
+  // One number for the plate: the wells used fill every calculator, so no mix is made for the whole plate (Jon, 2026-11-12)
+  const wl = await p.evaluate(() => { document.getElementById('al-nwells').value = 40; document.getElementById('al-nwells').dispatchEvent(new Event('input'));
+    const ids = ['al-wells', 'al-twells', 'al-lwells', 'al-awells', 'al-dwells'];
+    const all = ids.map(i => document.getElementById(i).value);
+    document.getElementById('al-lwells').value = 24; calcAlphalisa();
+    return { all, lysis: document.getElementById('al-lysis-result').textContent, acc: document.getElementById('al-acc-result').textContent }; });
+  if (wl.all.join() !== '40,40,40,40,40') bad('AR19', 'the wells-used box does not fill the calculators: ' + wl.all.join()); else ok();
+  if (!/24 wells/.test(wl.lysis) || !/40 wells/.test(wl.acc)) bad('AR19', 'a calculator does not keep its own wells after the shared box (lysis ' + wl.lysis.slice(0, 40) + ' | acceptor ' + wl.acc.slice(0, 40) + ')'); else ok();
   await p.context().close();
 });
 
