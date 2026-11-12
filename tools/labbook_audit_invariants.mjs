@@ -41,7 +41,7 @@
 //   L20 a stock added as it is has no dilution table  A stock that is already the strength that goes in (1 mM biotin, 200 µM final in 2,000 µL → 500 µL per well) is
 //                           written as "Add 500 µL per well of the stock" with the stock volume for the wells, not as a 5× intermediate "diluted 1:1" with 0 µL of water
 //                           under a "barely a dilution" warning, and What you need lists no diluent; a real intermediate keeps its table.
-//   L19 the AlphaLISA mixes are for the wells used  Lysis buffer, Acceptor mix and Donor mix follow the plate map's wells (setup '# wells used' with no map), not the whole plate; runs made before are given the number; a ticked step is left
+//   L19 the AlphaLISA seeding and mixes are for the wells used  Seeding, lysis buffer, Acceptor mix and Donor mix follow the plate map's wells (setup '# wells used' with no map), not the whole plate; runs made before are given the number; a ticked step is left
 //   L18 the incubation is an input  The by-hand compound addition quotes its wait ("Incubate {{c.wait}}") and its calculator has an Incubation (h) box that writes that wait, so
 //                           the sentence, the chip and the timer say one number; a step still to be done that carries the old fixed "3 h" is brought up to it. (added to the AlphaLISA run the
 //                           chip said 16 h and the sentence 3 h, and the hours could not be changed where the other numbers are)
@@ -488,33 +488,33 @@ try {
       const P = LB.data.projects.find(p => (p.sections || []).length), S = P.sections[0], before = Object.assign({}, LB.data.experiments);
       buildExperimentFrom({ pid: P.id, sid: S.id, key, tpl, startDate: '2026-11-10', type: presetBase(key), title: tpl.title, code: 'AU_L19', setup: setupDefaultsFor(key), plate: true });
       const e = Object.values(LB.data.experiments).find(x => !before[x.id]);
-      const MIX = ['Prepare lysis buffer', 'Prepare Acceptor mix', 'Prepare Donor mix'];
-      const wells = () => MIX.map(t => _mixParts(e.blocks.find(b => b.title === t).calc.inputs).wells);
+      const MIX = ['Seeding', 'Prepare lysis buffer', 'Prepare Acceptor mix', 'Prepare Donor mix'];
+      const wells = () => MIX.map(t => { const I = e.blocks.find(b => b.title === t).calc.inputs; return t === 'Seeding' ? _seedWells(Object.assign({}, CALC_KINDS.seed.defaults, I)) : _mixParts(I).wells; });
       const out = { asked: (presetSetupAdd(key).find(f => f.f === 'nSamples') || {}).lbl, start: wells() };
       // the plate map decides: keep 100 painted wells, the mixes follow
       const w = e.plate.wells, ids = Object.keys(w); ids.slice(100).forEach(id => delete w[id]);
       syncExpDerived(e); out.plate100 = wells();
       // no plate map: the setup's "# wells used" is the number
-      delete e.plate; e.plateOn = false; e.setup.nSamples = 60; e.blocks.forEach(b => { if (b.calc && b.calc.kind === 'mixparts') { delete b.calc.own; } });
+      delete e.plate; e.plateOn = false; e.setup.nSamples = 60; e.blocks.forEach(b => { if (b.calc && (b.calc.kind === 'mixparts' || b.calc.kind === 'seed')) { delete b.calc.own; } });
       e.blocks = applySetupToBlocks(e.type, e.setup, e.blocks, Object.assign({}, e.setup, { nSamples: 384 }), e.presetKey); syncExpDerived(e); out.setup60 = wells();
       // a run made before: mixes counted by plate format, no nWells, setup without the question
       const o = JSON.parse(JSON.stringify(e)); o.id = uid(); o.code = 'AU_L19_old'; delete o.setup.nSamples; o.setupAdd = (o.setupAdd || []).filter(f => f.f !== 'nSamples');
-      o.blocks.forEach(b => { if (b.calc && b.calc.kind === 'mixparts') { delete b.calc.inputs.nWells; if (b.calcSeed) delete b.calcSeed.nWells; } });
+      o.blocks.forEach(b => { if (b.calc && (b.calc.kind === 'mixparts' || b.calc.kind === 'seed')) { delete b.calc.inputs.nWells; if (b.calcSeed) delete b.calcSeed.nWells; } });
       LB.data.experiments[o.id] = o;
       const n = _alphaWells();
       out.migrated = n; out.oldWells = MIX.map(t => o.blocks.find(b => b.title === t).calc.inputs.nWells); out.oldAsk = (o.setupAdd || []).some(f => f.f === 'nSamples');
       // a ticked step is a record
-      const q = JSON.parse(JSON.stringify(o)); q.id = uid(); q.code = 'AU_L19_rec'; q.blocks.forEach(b => { if (b.calc && b.calc.kind === 'mixparts') { delete b.calc.inputs.nWells; b.done = true; } });
-      LB.data.experiments[q.id] = q; _alphaWells(); out.recKept = q.blocks.filter(b => b.calc && b.calc.kind === 'mixparts').every(b => b.calc.inputs.nWells === undefined);
+      const q = JSON.parse(JSON.stringify(o)); q.id = uid(); q.code = 'AU_L19_rec'; q.blocks.forEach(b => { if (b.calc && (b.calc.kind === 'mixparts' || b.calc.kind === 'seed')) { delete b.calc.inputs.nWells; b.done = true; } });
+      LB.data.experiments[q.id] = q; _alphaWells(); out.recKept = q.blocks.filter(b => b.calc && (b.calc.kind === 'mixparts' || b.calc.kind === 'seed')).every(b => b.calc.inputs.nWells === undefined);
       return out;
     });
     if (r.gone) bad('L19', 'the AlphaLISA preset is gone (the test is void)');
     else {
       if (r.asked !== '# wells used') bad('L19', 'the AlphaLISA setup does not ask how many wells are used (' + r.asked + ')');
-      if (r.start.join() !== '384,384,384') bad('L19', 'a fresh AlphaLISA run makes its mixes for ' + r.start.join('/') + ' wells, not the 384 of the painted plate');
-      if (r.plate100.join() !== '100,100,100') bad('L19', 'the plate map has 100 wells and the lysis buffer / Acceptor / Donor mixes are for ' + r.plate100.join('/') + ': they do not follow the map (they were made for the whole plate)');
-      if (r.setup60.join() !== '60,60,60') bad('L19', 'with no plate map and "# wells used" = 60 the mixes are for ' + r.setup60.join('/') + ' wells');
-      if (r.migrated !== 3 || r.oldWells.join() !== '384,384,384' || !r.oldAsk) bad('L19', 'a run made before the wells question was not given it (migrated ' + r.migrated + ', wells ' + r.oldWells.join('/') + ', asked ' + r.oldAsk + ')');
+      if (r.start.join() !== '384,384,384,384') bad('L19', 'a fresh AlphaLISA run makes its seeding and mixes for ' + r.start.join('/') + ' wells, not the 384 of the painted plate');
+      if (r.plate100.join() !== '100,100,100,100') bad('L19', 'the plate map has 100 wells and the seeding / lysis buffer / Acceptor / Donor mixes are for ' + r.plate100.join('/') + ': they do not follow the map (they were made for the whole plate)');
+      if (r.setup60.join() !== '60,60,60,60') bad('L19', 'with no plate map and "# wells used" = 60 the seeding and mixes are for ' + r.setup60.join('/') + ' wells');
+      if (r.migrated !== 4 || r.oldWells.join() !== '384,384,384,384' || !r.oldAsk) bad('L19', 'a run made before the wells question was not given it (migrated ' + r.migrated + ', wells ' + r.oldWells.join('/') + ', asked ' + r.oldAsk + ')');
       if (!r.recKept) bad('L19', 'a ticked step was given a wells number (it is a record)');
     }
     errs.forEach(m => bad('L19', 'page error: ' + m));

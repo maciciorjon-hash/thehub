@@ -4339,7 +4339,7 @@ var EXTRA_PRESET_SEED={
   // HeLa at 4,000/well, compound the day after seeding for 18 h, no chloroquine, no viability reagent. Seeded in 50 µL
   // (Revvity's 384-well value; the protocol gives none). Lysis follows Revvity's manual (Jon, 2026-11-11): Lysis Buffer 5X in water, no inhibitors added (it already holds phosphatase inhibitors), about 350 rpm for 10 min; the volume stays 10 µL because the plate is read in place (Revvity's 20-25 µL is for its two-plate route).
   // No compound calculator on purpose: the compound layout is not decided, and one would ask for a stock Jon has not fixed.
-  // The mixes are made for the wells the plate map has (mixparts nWells is plate-fed; the setup's '# wells used' is where it starts, and what
+  // The seeding and the mixes are made for the wells the plate map has (seed/mixparts nWells is plate-fed; the setup's '# wells used' is where it starts, and what
   // counts with no plate map), not for the whole plate (Jon, 2026-11-12). Mix amounts are per mL of finished mix, so they follow the wells: lysis 5X to 1X (200 per mL); Acceptor mix Reaction
   // Buffer 1 = 2 = (1000 - 40 - 20)/2 = 470, Activation Buffer 1:25 (40), Acceptor beads 1:50 (20) — Revvity's 300 µL
   // example (141 / 141 / 12 / 6); Donor beads 6 µL in 300 µL of dilution buffer as the sheet says (19.6 per mL).
@@ -4350,10 +4350,10 @@ var EXTRA_PRESET_SEED={
              {f:'cellsPerWell',t:'num',lbl:'Cells / well',d:4000},
              {f:'treatH',t:'num',lbl:'Compound treatment (h)',d:18,wait:1},
              {f:'treatUL',t:'num',lbl:'Treatment volume (µL)',d:36},
-             {f:'nSamples',t:'num',lbl:'# wells used',d:384,hint:'How many wells get the lysis buffer and the bead mixes. The plate map decides: once wells are painted on it the mixes are made for the wells it has (clear the ones you do not use); this is the number they start from, and the one that counts when there is no plate map.'}],
+             {f:'nSamples',t:'num',lbl:'# wells used',d:384,hint:'How many wells are seeded and get the lysis buffer and the bead mixes. The plate map decides: once wells are painted on it the cell suspension and the mixes are made for the wells it has (clear the ones you do not use); this is the number they start from, and the one that counts when there is no plate map.'}],
    plateOn:true, layout:'alphalisa384', blocks:[
     {d:0,title:'Seeding',
-     calc:{kind:'seed',inputs:{cellLine:'HeLa',cellsPerWell:4000,volPerWell:50,format:'384',nPlates:1,excess:1.1}},
+     calc:{kind:'seed',inputs:{cellLine:'HeLa',cellsPerWell:4000,volPerWell:50,format:'384',nPlates:1,nWells:384,excess:1.1}},
      html:'<ol><li>Count the cells and resuspend them in {{c.medium}} at {{c.density}} &mdash; {{c.totalVol}} for {{c.wells}}.</li><li>Add {{c.volPerWell}} of the suspension to each well ({{c.cellsPerWell}}) of a {{format}}-well plate.</li><li>Incubate overnight at 37 &deg;C, 5% CO&#8322;.</li></ol>'},
     {d:1,title:'Compound treatment',w:1080,
      pub:'The medium was replaced with {{treatUL}} &micro;L of {{c.medium}} containing the compound, and the cells were treated for {{treatH}} h at 37 &deg;C, 5% CO&#8322;.',
@@ -4823,7 +4823,7 @@ function _applySetupGates(type,setup,blocks,prevSetup,presetKey,anchor){
     var nx=blocks[blocks.indexOf(o)+1]; o.waitSameDay=!!(o.waitMin&&nx&&(+nx.dayOffset||0)===off0);
     sync();
   }); }
-var SETUP_CALC_MAP={rtxmix:{ngPerWell:'dnaNg',fugeneRatio:'fugeneRatio',nWells:'nWells'}, spike:{nWells:'nSamples'}, mixparts:{nWells:'nSamples'}};
+var SETUP_CALC_MAP={rtxmix:{ngPerWell:'dnaNg',fugeneRatio:'fugeneRatio',nWells:'nWells'}, spike:{nWells:'nSamples'}, mixparts:{nWells:'nSamples'}, seed:{nWells:'nSamples'}};
 function applySetupToBlocks(type,setup,blocks,prevSetup,presetKey){
   var S=setupSchema(type); if(!S||!setup) return blocks;
   // A setup field marked `wait` is a duration, not just a word for the prose. "Treatment (h)"
@@ -4969,11 +4969,11 @@ function _reagentTotal(v){ var pw=+v.perWellUL||0, n=+v.nWells||0, ex=+v.excess|
 var CALC_KINDS={
   seed:{ label:'Cell seeding', fields:[
     {k:'cellLine',t:'cellline',lbl:'Cell line'},{k:'cellsPerWell',t:'num',lbl:'Cells / well'},
-    {k:'volPerWell',t:'num',lbl:'Vol / well (µL)'},{k:'format',t:'format',lbl:'Plate'},
-    {k:'nPlates',t:'num',lbl:'# plates'},{k:'excess',t:'num',lbl:'Excess ×',step:'0.05'}],
+    {k:'volPerWell',t:'num',lbl:'Vol / well (µL)'},{k:'format',t:'format',lbl:'Plate',show:function(I){ return !(+I.nWells>0); }},
+    {k:'nPlates',t:'num',lbl:'# plates',show:function(I){ return !(+I.nWells>0); }},{k:'nWells',t:'num',lbl:'# wells seeded',show:function(I){ return I.nWells!=null; }},{k:'excess',t:'num',lbl:'Excess ×',step:'0.05'}],
     defaults:{cellLine:'HEK293',cellsPerWell:3000,volPerWell:30,format:'384',nPlates:1,excess:1.5},
-    compute:function(v){ v=_calcEff(v,{nPlates:1,excess:1}); var wells=wellsOf(v.format)*v.nPlates; var dens=(+v.cellsPerWell)/(+v.volPerWell)/1000; var totUL=(+v.volPerWell)*wells*v.excess; var cells=dens*(totUL/1000);
-      return '<b>Prepare</b> '+nfmt(dens)+' M/mL &mdash; '+mlfmt(totUL)+' total'+_ovxL(v.excess)+' ('+nfmt(cells)+' M cells). <b>Seed</b> '+nfmt(v.volPerWell)+' µL/well → '+nfmt(v.cellsPerWell)+' cells/well &middot; '+nfmt(v.nPlates)+'× '+esc(String(v.format))+'-well ('+wells+' wells).'
+    compute:function(v){ v=_calcEff(v,{nPlates:1,excess:1}); var wells=_seedWells(v); var dens=(+v.cellsPerWell)/(+v.volPerWell)/1000; var totUL=(+v.volPerWell)*wells*v.excess; var cells=dens*(totUL/1000);
+      return '<b>Prepare</b> '+nfmt(dens)+' M/mL &mdash; '+mlfmt(totUL)+' total'+_ovxL(v.excess)+' ('+nfmt(cells)+' M cells). <b>Seed</b> '+nfmt(v.volPerWell)+' µL/well → '+nfmt(v.cellsPerWell)+' cells/well &middot; '+(+v.nWells>0?'':nfmt(v.nPlates)+'× '+esc(String(v.format))+'-well ')+'('+wells+' wells).'
         +seedPlausibility(v, _SEED_FIX_CALL)+_subNote(v,{nPlates:'# plates',excess:'Excess ×'}); } },
   // ── NanoBRET reverse transfection, per DNA condition ────────────────────────────────────
   // A NanoBRET run is not one master mix: the pair, each single construct and the mock each get
@@ -5173,7 +5173,7 @@ var CALC_KINDS={
 // number never freezes into the prose and a corrected calculator reaches every step at once.
 // A kind with no entry here has no numbers a step may quote; a token it cannot answer prints —.
 var CALC_VALUES={
-  seed:function(v){ v=_calcEff(v,{nPlates:1,excess:1}); var wells=wellsOf(v.format)*v.nPlates; var dens=(+v.cellsPerWell)/(+v.volPerWell)/1000; var totUL=(+v.volPerWell)*wells*v.excess;
+  seed:function(v){ v=_calcEff(v,{nPlates:1,excess:1}); var wells=_seedWells(v); var dens=(+v.cellsPerWell)/(+v.volPerWell)/1000; var totUL=(+v.volPerWell)*wells*v.excess;
     return {density:nfmt(dens)+' M cells/mL', totalVol:mlfmt(totUL), cells:nfmt(dens*totUL/1000)+' M cells', volPerWell:nfmt(v.volPerWell)+' µL', cellsPerWell:nfmt(v.cellsPerWell)+' cells', nPlates:nfmt(v.nPlates), format:String(v.format||'')+'-well', wells:nfmt(wells)+' wells', cellLine:((cellLineDef(v.cellLine)||{}).label||String(v.cellLine||'cells')).replace(/\s*\(.*\)$/,''), medium:esc((cellLineDef(v.cellLine)||{}).medium||'culture medium')}; },
   rtxmix:function(v,ctx){ var n=+v.nWells||0, ex=+v.excess||1, W=n*ex, disp=+v.dispenseUL||0, tot=disp*W, ngw=+v.ngPerWell||0, dnaNg=ngw*W, stock=+v.stockNgUl||0;
     // The untransfected wells are the plate's to count, and they still have to start at the same
@@ -5670,6 +5670,8 @@ function _cultureMedium(v){ var d=String(v.diluent||'').trim();
   if(d&&!/^(medium|media|medio)$/i.test(d)) return d;
   var c=(v.cellLine!=null&&v.cellLine!=='')?cellLineDef(v.cellLine):null;
   return (c&&c.medium)||d||'diluent'; }
+// Wells a seeding is made for: the counted number when the step has one (the plate map's, or the setup's), else N plates of the format.
+function _seedWells(v){ return (+v.nWells>0)?+v.nWells:wellsOf(v.format)*v.nPlates; }
 function mixpartsRecipe(v){
   var M=_mixParts(v), nm=esc(v.name||'working solution'), dl=esc(M.diluent), e=M.raw;
   if(!(M.totUL>0)) return '<b>'+nm+'</b> — set the volume per well and the number of plates.';
@@ -7915,7 +7917,7 @@ function plateConditionCounts(e){
 // 84 wells" follows the map as you paint it, until you type over the number (b.calc.own) or the step
 // is ticked (what was pipetted is what the step says). The plan moves with it, so following the map
 // is not a deviation from the plan — the map IS the plan.
-var PLATE_FED={spike:['nWells'], rtxmix:['nWells'], reagent:['nWells'], mixparts:['nWells']};
+var PLATE_FED={spike:['nWells'], rtxmix:['nWells'], reagent:['nWells'], mixparts:['nWells'], seed:['nWells']};
 function plateDosedWells(e,any){ var n=0;
   expPlates(e).forEach(function(p){ Object.keys(p.wells||{}).forEach(function(k){ var w=p.wells[k]; if(w&&w.typeId&&w.typeId!=='blank'&&(any||w.conc)) n++; }); });
   return n; }
@@ -7934,7 +7936,7 @@ function plateWellsFor(e,b){ var k=b&&b.calc&&b.calc.kind; if(!PLATE_FED[k]||!e)
   // no-reagent control: a read of "no substrate" is a well that never got it.
   else if(k==='reagent'){ if(!(+(b.calc.inputs&&b.calc.inputs.perWellUL)>0)) return null; n=plateReagentWells(e); }
   // A solution counted per well or sample is made for every well that holds something.
-  else if(k==='mixparts'){ if(!(+(b.calc.inputs&&b.calc.inputs.nWells)>0)) return null; n=plateDosedWells(e,true); }
+  else if(k==='mixparts'||k==='seed'){ if(!(+(b.calc.inputs&&b.calc.inputs.nWells)>0)) return null; n=plateDosedWells(e,true); }   // a seeding counts its wells too, when the step has a count (not N plates of a format)
   return n>0?n:null; }
 // A number typed over the plan is the number that run used: either the box said so (own) or it no
 // longer equals what the plan last planted (the same test the setup's own values pass).
@@ -10384,8 +10386,8 @@ function _plFeedsHtml(){ var e=_plExp(); if(!e) return '';
   var L=expPlateList(e), wells=0; L.forEach(function(x){ wells+=plateCount(x.p); });
   var rows=[];
   (e.blocks||[]).forEach(function(b){ if(!b.calc||!b.calc.inputs) return; var k=b.calc.kind;
-    if(['nbtx','nbsusp','rtxmix','spike','reagent','mixparts'].indexOf(k)<0) return;
-    if(k==='mixparts'&&!(+b.calc.inputs.nWells>0)) return;
+    if(['nbtx','nbsusp','rtxmix','spike','reagent','mixparts','seed'].indexOf(k)<0) return;
+    if((k==='mixparts'||k==='seed')&&!(+b.calc.inputs.nWells>0)) return;
     if(k==='reagent'&&!(+b.calc.inputs.perWellUL>0)) return;   // a total typed for one plate does not follow the map
     var v=calcValuesOf(b,e); if(!v) return;
     var line=(k==='nbtx')?(v.wells+' · '+v.nMixes)
@@ -10393,6 +10395,7 @@ function _plFeedsHtml(){ var e=_plExp(); if(!e) return '';
       :(k==='rtxmix')?(v.nWells+' · '+v.total+' of mix')
       :(k==='reagent')?(v.nWells+' · '+v.total+' to make')
       :(k==='mixparts')?(v.wells+' · '+v.total+' to make')
+      :(k==='seed')?(v.wells+' · '+v.totalVol+' of suspension')
       :(v.nWells+' · '+v.totalUL+' to make');
     var st='<span class="pl-fd-s ok">follows the map</span>';
     if(PLATE_FED[k]){ var n=plateWellsFor(e,b);
@@ -10886,7 +10889,7 @@ function _spikeWait(){
       ch=true; n++; });
     if(ch) e.updated=Date.now(); });
   return n; }
-// The AlphaLISA mixes (lysis buffer, Acceptor mix, Donor mix) were made for N plates of the format, i.e. all 384 wells
+// The AlphaLISA seeding and mixes (lysis buffer, Acceptor mix, Donor mix) were made for N plates of the format, i.e. all 384 wells
 // whatever the plate map held. They count wells now (`nWells`, followed from the plate map, started from the setup's
 // "# wells used"), so a run made before that gets the number a plate of the format has, and the plate map takes over from
 // there. A step already ticked is a record, and a number the person typed over the plan stays theirs.
@@ -10900,8 +10903,8 @@ function _alphaWells(){
       var d=presetSetupAdd('AL_SUREFIRE384').filter(function(f){ return f&&f.f==='nSamples'; })[0];
       if(d){ e.setupAdd.push(JSON.parse(JSON.stringify(d))); ch=true; } }
     e.blocks.forEach(function(b){
-      if(b.done||!b.calc||b.calc.kind!=='mixparts'||!b.calc.inputs||b.calc.inputs.nWells!==undefined) return;
-      if(!/^Prepare (lysis buffer|Acceptor mix|Donor mix)$/.test(String((b.tpl&&b.tpl.title)||b.title||''))) return;
+      if(b.done||!b.calc||(b.calc.kind!=='mixparts'&&b.calc.kind!=='seed')||!b.calc.inputs||b.calc.inputs.nWells!==undefined) return;
+      if(!/^(Seeding|Prepare (lysis buffer|Acceptor mix|Donor mix))$/.test(String((b.tpl&&b.tpl.title)||b.title||''))) return;
       var I=b.calc.inputs;
       I.nWells=(+su.nSamples>0)?+su.nSamples:tot*(+I.nPlates||1);
       if(b.calcSeed) b.calcSeed.nWells=I.nWells;
@@ -11163,7 +11166,7 @@ function _seedPresetsInner(){
   // you have changed is left alone. (This upgrade itself is still a blunt refresh — no built-in
   // can have been edited through the new field before the field existed — and it is what stamps
   // the signatures that make every later bump safe.)
-  var upgrade=!LB.data._presetV26;
+  var upgrade=!LB.data._presetV27;
   EXP_TYPES.forEach(function(t){
     var cur=LB.data.presets[t.id];
     var edited = cur && cur._seedSig && !_sigSame(cur._seedSig,_presetSig(cur)) && !_presetWordsUnedited(cur);
@@ -11177,7 +11180,7 @@ function _seedPresetsInner(){
       if(!cur._seedSig) cur._seedSig=_presetSig(cur);   // stamp what is there, whatever it is
     }
   });
-  if(upgrade) LB.data._presetV26=true;
+  if(upgrade) LB.data._presetV27=true;
   // The one-time flag meant a preset added later could never reach an existing notebook. The
   // inner check is what makes this safe to run every load: it only fills in what is missing and
   // never touches a preset you have edited.
@@ -16968,7 +16971,7 @@ function repStatsHtml(e){
 var CALC_NEEDS={
   seed:function(v){
     v=_calcEff(v,{nPlates:1,excess:1});
-    var wells=wellsOf(v.format)*v.nPlates;
+    var wells=_seedWells(v);
     var totUL=(+v.volPerWell||0)*wells*v.excess;
     var cells=((+v.cellsPerWell||0)/(+v.volPerWell||1)/1000)*(totUL/1000);
     return [{k:'cells', name:v.cellLine, qty:cells, unit:'M cells'},
