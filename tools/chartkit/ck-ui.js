@@ -102,11 +102,19 @@ var ChartKit = (function(){
       var n = function(v){ return String(+(+v).toPrecision(4)); };
       return '<div class="ck-warn">Some of the data lie outside this range (they run from ' + n(scene.yData.lo) + ' to ' + n(scene.yData.hi) + '). On auto the axis would be ' + n(scene.yAuto.min) + ' to ' + n(scene.yAuto.max) + '.</div><div class="ck-row"><button type="button" class="ck-btn" data-a="yauto">Use auto</button></div>';
     }
+    // the same for the X range: a minimum or maximum typed (or kept from an earlier figure) that leaves doses outside the axis
+    function xCutNote(){
+      if (!scene || !scene.xCut || !scene.xAuto || !scene.xData) return '';
+      var n = function(v){ return String(+(+v).toPrecision(4)); }, u = (C.xUnitOf(doc, spec).to || '');
+      return '<div class="ck-warn">Some doses lie outside this range (they run from ' + n(scene.xData.lo) + ' to ' + n(scene.xData.hi) + (u ? ' ' + u : '') + '). On auto the axis would be ' + n(scene.xAuto.min) + ' to ' + n(scene.xAuto.max) + '.</div><div class="ck-row"><button type="button" class="ck-btn" data-a="xauto">Use auto</button></div>';
+    }
+    var xnoteHtml = '';
+    function xNote(){ var el = panel.querySelector('#ck-xnote'); if (!el || !scene) return; var h = xCutNote(); if (xnoteHtml !== h) { el.innerHTML = h; xnoteHtml = h; } }
     var ynoteHtml = '';
     function yNote(){ var el = panel.querySelector('#ck-ynote'); if (!el || !scene) return; var h = yCutNote(); if (ynoteHtml !== h) { el.innerHTML = h; ynoteHtml = h; } }   // left alone when unchanged: a button under the pointer is not replaced between its press and release
     function draw(){
       scene = C.build(doc, spec);
-      yNote();
+      yNote(); xNote();
       var s = X.toSVG(scene, { transparent: true });
       var inner = s.slice(s.indexOf('>') + 1, s.lastIndexOf('</svg>'));
       svg.setAttribute('viewBox', '0 0 ' + scene.W.toFixed(2) + ' ' + scene.H.toFixed(2));
@@ -207,7 +215,7 @@ var ChartKit = (function(){
       var kind = scene ? scene.kind : 'bars', its = doc.items || [], nOn = its.filter(function(it){ return !spec.hidden[it.id]; }).length;
       if (id === 'compounds') return its.length ? nOn + ' of ' + its.length + ' drawn' : 'none yet';
       if (id === 'chart') return (kind === 'bars' ? 'Bars' : 'Curves') + ' · ' + ({ sd: 'SD', sem: 'SEM', ci95: '95% CI', range: 'range', none: 'no bars' }[spec.err.type] || 'SD');
-      if (id === 'axes') { var rg = function(a){ var s = function(v){ return v !== null && v !== '' && v !== undefined; }; return s(a.min) || s(a.max) ? (s(a.min) ? a.min : 'auto') + '–' + (s(a.max) ? a.max : 'auto') : 'auto'; }; var uo = C.xUnitOf(doc, spec); return kind === 'xy' && uo.to ? uo.to + ' · ' + (spec.y.log ? 'log ' : '') + 'Y ' + rg(spec.y) : 'Y ' + (spec.y.log ? 'log ' : '') + rg(spec.y); }
+      if (id === 'axes') { var rg = function(a){ var s = function(v){ return v !== null && v !== '' && v !== undefined; }; return s(a.min) || s(a.max) ? (s(a.min) ? a.min : 'auto') + '–' + (s(a.max) ? a.max : 'auto') : 'auto'; }; var uo = C.xUnitOf(doc, spec); var xr = kind === 'xy' ? rg(spec.x) : 'auto'; return kind === 'xy' && uo.to ? uo.to + ' · ' + (xr !== 'auto' ? 'X ' + xr + ' · ' : '') + (spec.y.log ? 'log ' : '') + 'Y ' + rg(spec.y) : (xr !== 'auto' ? 'X ' + xr + ' · ' : '') + 'Y ' + (spec.y.log ? 'log ' : '') + rg(spec.y); }
       if (id === 'text') return 'legend ' + (spec.legend.show ? (spec.legend.pos === 'auto' ? 'auto' : spec.legend.pos) : 'off');
       if (id === 'table') { if (!spec.table.show) return 'off'; var n = doc.table.cols.filter(function(c){ return spec.table.cols[c.id] === undefined ? c.on : !!spec.table.cols[c.id]; }).length; return 'on · ' + n + ' value' + (n === 1 ? '' : 's'); }
       if (id === 'page') return +spec.w.toFixed(1) + ' × ' + +spec.h.toFixed(1) + ' in';
@@ -288,7 +296,7 @@ var ChartKit = (function(){
     function axesHtml(kind){
       var yBad = C.fin(+spec.y.min) && C.fin(+spec.y.max) && spec.y.min !== null && spec.y.max !== null && +spec.y.min >= +spec.y.max;
       return grp('Y axis', pair(pf('Minimum', 'y.min', { auto: 1 }), pf('Maximum', 'y.max', { auto: 1 })) + pair(pf('Major step', 'y.major', { auto: 1 }), pf('Decimals', 'y.dec', { auto: 1, step: 1 })) + (yBad ? '<div class="ck-warn">The maximum has to be above the minimum — the axis is on auto until it is.</div>' : '') + '<div id="ck-ynote">' + (ynoteHtml = yCutNote()) + '</div>' + fld('Logarithmic', 'y.log', 'bool')) +
-        grp('X axis', (doc.xUnit ? fld('Concentration unit', 'x.unit', 'sel', { seg: true, opts: [['auto', 'Auto'], ['M', 'M'], ['mM', 'mM'], ['\u00b5M', '\u00b5M'], ['nM', 'nM'], ['pM', 'pM']], hint: spec.x.unit === 'auto' ? 'Auto keeps ' + doc.xUnit + ', chosen from your data' : 'the numbers on the axis, the curves and the title follow' }) : '') + (kind === 'xy' && doc.xScale !== 'lin' ? fld('Numbers on the axis', 'x.fmt', 'sel', { seg: true, opts: [['auto', 'Auto'], ['plain', 'Numbers'], ['pow', 'Powers'], ['log', 'log']], hint: spec.x.fmt === 'log' ? 'log of the molar concentration, as Prism writes it' : 'Numbers 0.1, 1, 10 · Powers 10\u207b\u2079' }) : '') + (kind === 'bars' ? fld('Label angle', 'x.rot', 'sel', { seg: true, num: 1, opts: [[0, 'Flat'], [45, '45°'], [90, 'Vertical']] }) + fld('Order', 'x.order', 'sel', { seg: true, opts: [['given', 'As given'], ['desc', 'High → low'], ['asc', 'Low → high']] }) + fld('Concentration labels', 'x.labels', 'bool') : pair(pf('Minimum', 'x.min', { auto: 1 }), pf('Maximum', 'x.max', { auto: 1 })))) +
+        grp('X axis', (doc.xUnit ? fld('Concentration unit', 'x.unit', 'sel', { seg: true, opts: [['auto', 'Auto'], ['M', 'M'], ['mM', 'mM'], ['\u00b5M', '\u00b5M'], ['nM', 'nM'], ['pM', 'pM']], hint: spec.x.unit === 'auto' ? 'Auto keeps ' + doc.xUnit + ', chosen from your data' : 'the numbers on the axis, the curves and the title follow' }) : '') + (kind === 'xy' && doc.xScale !== 'lin' ? fld('Numbers on the axis', 'x.fmt', 'sel', { seg: true, opts: [['auto', 'Auto'], ['plain', 'Numbers'], ['pow', 'Powers'], ['log', 'log']], hint: spec.x.fmt === 'log' ? 'log of the molar concentration, as Prism writes it' : 'Numbers 0.1, 1, 10 · Powers 10\u207b\u2079' }) : '') + (kind === 'bars' ? fld('Label angle', 'x.rot', 'sel', { seg: true, num: 1, opts: [[0, 'Flat'], [45, '45°'], [90, 'Vertical']] }) + fld('Order', 'x.order', 'sel', { seg: true, opts: [['given', 'As given'], ['desc', 'High → low'], ['asc', 'Low → high']] }) + fld('Concentration labels', 'x.labels', 'bool') : pair(pf('Minimum', 'x.min', { auto: 1 }), pf('Maximum', 'x.max', { auto: 1 })) + '<div id="ck-xnote">' + (xnoteHtml = xCutNote()) + '</div>')) +
         grp('Lines', fld('Axis width', 'axisW', 'num', { step: 0.25, min: 0.25, max: 5 }) + fld('Tick length', 'tick', 'num', { step: 0.5, min: 0, max: 12 }) + fld('Box around the plot', 'box', 'bool') + fld('Horizontal grid', 'grid', 'bool')) +
         grp('Reference line', fld('Show', 'ref.show', 'bool') + pair(pf('At', 'ref.y', { auto: 1 }), pf('Width', 'ref.w', { step: 0.25, min: 0.25, max: 5 })) + fld('Dotted', 'ref.dash', 'bool'));
     }
@@ -421,6 +429,7 @@ var ChartKit = (function(){
       else if (a === 'hideleg') { pushUndo('leg'); spec.legend.show = false; sel = null; draw(); renderSel(); renderPanel(); save(); }
       else if (a === 'resetpos') { if (sel) { pushUndo('pos'); delete spec.pos[sel.indexOf('leg:') === 0 ? 'legend' : sel]; draw(); overlay(); save(); } }
       else if (a === 'restoreomit') { pushUndo('omit'); spec.omit = {}; draw(); renderPanel(); save(); }
+      else if (a === 'xauto') { pushUndo('xauto'); spec.x.min = null; spec.x.max = null; draw(); renderPanel(); save(); }
       else if (a === 'yauto') { pushUndo('yauto'); spec.y.min = null; spec.y.max = null; draw(); renderPanel(); save(); }
       else if (a === 'resetlayout') { pushUndo('layout'); spec.pos = {}; spec.margin = { l: 0, r: 0, t: 0, b: 0 }; draw(); renderPanel(); save(); }
       else if (a === 'resetall') { pushUndo('all'); spec = C.withDefaults(null); adoptItems(); sel = null; syncBar(); draw(); renderSel(); renderPanel(); save(); }

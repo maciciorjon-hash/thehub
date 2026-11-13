@@ -401,6 +401,29 @@ await page.click('button[data-a="yauto"]'); await page.waitForTimeout(300);
 const k30e = await ev(() => ({ min: window.kit.spec().y.min, warn: !!document.querySelector('#ck-ynote .ck-warn') }));
 check('K30 a point or bar past the end of a typed axis is clipped to the plot, a warning offers auto, and its button works on the first click after typing', k30c && k30d.warn && k30d.clipped > 5 && k30e.min === null && !k30e.warn, JSON.stringify([k30d, k30e]));
 
+// K42 — a curve never leaves the plot: with an X minimum typed above the lowest dose, no line is drawn past the axis (it used to run 8 pt over the tick numbers, the clip rectangle's margin),
+// a point past it is not drawn, and the X range says so (a warning with "Use auto", the Axes entry names the range) as the Y range does. Log and linear axes.
+const k42 = await ev(() => { const C = ChartKitCore, mkpts = xs => xs.map((c, j) => ({ x: c, label: '' + c, reps: [0, 1, 2].map(r => ({ id: 'p' + j + ':' + r, v: 20 + 10 * j + r })) })),
+  out = {}; [['log', [0.1, 0.4, 1.6, 6, 25, 100, 1000]], ['lin', [0, 2, 4, 6, 8, 10, 12]]].forEach(([sc, xs]) => {
+    const doc = { kind: 'xy', xScale: sc, items: [{ id: 'a', name: 'a', points: mkpts(xs), fit: { fn: x => 10 + 80 / (1 + Math.pow(x / (sc === 'log' ? 5 : 6), -1.5 + (sc === 'lin' ? 3 : 0))) } }] };
+    const typed = sc === 'log' ? 1 : 3, c = C.build(doc, C.withDefaults({ kind: 'xy', x: { min: typed }, xy: { extend: true } })), a = C.build(doc, C.withDefaults({ kind: 'xy' })), p = c.plot, eps = 0.01;
+    const bad = c.prims.filter(q => (q.t === 'path' && /^(fit|join|pt):/.test(q.el || '') && q.pts.some(z => z[0] < p.x - eps || z[0] > p.x + p.w + eps || z[1] < p.y - eps || z[1] > p.y + p.h + eps)) || (q.t === 'marker' && (q.cx < p.x - 0.5 || q.cx > p.x + p.w + 0.5))).length;
+    const mk = c.prims.filter(q => q.t === 'marker').length, mkAuto = a.prims.filter(q => q.t === 'marker').length;
+    out[sc] = { bad, mk, mkAuto, cut: c.xCut, auto: c.xAuto, data: c.xData, autoCut: a.xCut, fit: c.prims.filter(q => q.el === 'fit:a').length };
+  }); return out; });
+check('K42 an X minimum above the lowest dose: no line or point is drawn past the plot, the points beyond it are not drawn, the fit is still there (log and linear)',
+  ['log', 'lin'].every(k => k42[k].bad === 0 && k42[k].mk < k42[k].mkAuto && k42[k].mk > 0 && k42[k].fit >= 1), JSON.stringify(k42));
+check('K42 …and the X range says it cuts doses and offers the range auto would draw (which holds them); auto says nothing',
+  ['log', 'lin'].every(k => k42[k].cut && k42[k].auto && k42[k].auto.min <= k42[k].data.lo && k42[k].auto.max >= k42[k].data.hi && !k42[k].autoCut), JSON.stringify(k42));
+await open('xy');
+await ev(() => { window.kit.open('axes'); });
+const k42a = await ev(() => document.querySelector('.ck-secs, .ck-menu, .ck-panel') ? true : false);
+await page.locator('input[data-p="x.min"]').fill('50'); await page.waitForTimeout(300);
+const k42b = await ev(() => ({ warn: !!document.querySelector('#ck-xnote .ck-warn'), entry: (document.querySelector('[data-menu="axes"]') || {}).textContent || '' }));
+await page.click('button[data-a="xauto"]'); await page.waitForTimeout(300);
+const k42c = await ev(() => ({ min: window.kit.spec().x.min, warn: !!document.querySelector('#ck-xnote .ck-warn') }));
+check('K42 a typed X minimum that cuts the doses shows a warning under the X axis, and Use auto clears it on the first click', k42a && k42b.warn && /X 50/.test(k42b.entry) && k42c.min === null && !k42c.warn, JSON.stringify([k42b, k42c]));
+
 // K29 — the unit of the concentration axis: M, mM, µM, nM or pM. Everything on the figure is the same physical figure in another unit
 await open('xy');
 const k29 = await ev(() => {
