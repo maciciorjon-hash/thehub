@@ -41,7 +41,7 @@ var SetupKit = (function(){
   }
   // The plate, small. paint: true when the plate is dragged on (see paint()). cell(r, c) → { bg: css colour or '', rd: has readings, cls: extra class, t: tooltip }. wells are the same on every app: rows A…, columns 1….
   function mini(o){
-    var rows = o.rows, cols = o.cols, h = '<div class="sx-mini' + (o.paint ? ' paint' : '') + '" style="grid-template-columns:14px repeat(' + cols + ',1fr)"><span></span>', r, c;
+    var rows = o.rows, cols = o.cols, h = '<div class="sx-mini' + (o.paint ? ' paint' : '') + '" style="grid-template-columns:14px repeat(' + cols + ',minmax(0,1fr))"><span></span>', r, c;
     for (c = 0; c < cols; c++) h += '<span class="l" data-col="' + (c + 1) + '">' + (cols > 12 && c % 2 ? '' : c + 1) + '</span>';
     for (r = 0; r < rows; r++) {
       h += '<span class="l" data-row="' + String.fromCharCode(65 + r) + '">' + String.fromCharCode(65 + r) + '</span>';

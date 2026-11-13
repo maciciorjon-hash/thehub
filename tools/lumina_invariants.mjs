@@ -1122,6 +1122,17 @@ try {
   check('L39 selecting the typed series again returns the list; the session, copy-paste and undo keep it; Top + dilution still makes a plain series beside it', back.again && back.sess && back.loaded && back.paste && back.undo && back.series, JSON.stringify(back));
 } catch (err) { check('L39 the checks ran to the end', false, String(err && err.message || err).split('\n')[0]); }
 
+// L40 — the plate in Setup stays inside its card on a 384 plate (2026-11-13). repeat(24, 1fr) lets every column take its label's width, so the grid ran ~65px past the card.
+try {
+  const o = {};
+  for (const w of [874, 1440]) {
+    await page.setViewportSize({ width: w, height: 700 });
+    o[w] = await page.evaluate(() => { setPlateFormat(384); switchTab('input'); lsOpen(2); const m = document.querySelector('.sx-mini'), wr = m.parentNode; const r = { fits: m.scrollWidth <= m.clientWidth + 1, inCard: m.getBoundingClientRect().right <= wr.getBoundingClientRect().right + 0.5 }; lsKit().close && lsKit().close(); return r; });
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  check('L40 Setup › Controls: the 384 plate fits its card, at a laptop width and at a narrow one', Object.values(o).every(x => x.fits && x.inCard), JSON.stringify(o));
+} catch (err) { check('L40 the checks ran to the end', false, String(err && err.message || err).split('\n')[0]); }
+
 check('no page or console errors', errs.length === 0, errs.slice(0, 3).join(' | '));
 await browser.close();
 if (findings.length) { console.log(findings.join('\n')); console.log(`\n${findings.length} finding(s), ${passed} checks passed.`); process.exit(1); }
