@@ -5728,6 +5728,8 @@ function runLuminaAnalysis(opts){
     // (F test, p < 0.05, the same as Echo). A series flat at the FULL-EFFECT end (under half the control) is the opposite case — maximal at
     // the lowest dose — and keeps its fit. Only on the % of control scale: on raw counts "flat and low" cannot be told from "flat and inactive".
     var cv = (doNormalize && !gainMode) ? _curveVsFlat(fit) : null, level = yArr.reduce(function(a, v){ return a + v; }, 0) / yArr.length;
+    // readings that are all the same number (a saturated reader, a pasted constant) have no variance for the F test to use: that is a flat line, not a curve
+    if (!cv && doNormalize && !gainMode && yArr.length >= 4 && yMax === yMin) cv = { F: 0, p: 1, df1: 3, df2: Math.max(1, yArr.length - 4) };
     var noCurve = !!(cv && cv.p >= 0.05 && level > 50), noCurveP = noCurve ? cv.p : null;
     if (noCurve) { bottom = level; top = level; logEC50 = (xMin + xMax) / 2; hill = 1; }   // the flat line, not a sigmoid it did not earn
     var ec50M = noCurve ? NaN : Math.pow(10, logEC50);

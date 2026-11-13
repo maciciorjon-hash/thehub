@@ -1199,6 +1199,22 @@ try {
   check('L43 a typed list too long for the plate is refused, and the advice is to shorten the list (a series still says Points)', r.none && /list/i.test(r.toast) && !/Points/.test(r.toast) && /list/i.test(r.plan) && !/Points/.test(r.plan) && /Points/.test(r.toastSeries), JSON.stringify(r));
 } catch (err) { check('L43 the checks ran to the end', false, String(err && err.message || err).split('\n')[0]); }
 
+// L44 — readings that are all one number (a saturated reader) are the flat line, not a curve with a potency picked out of nothing (2026-11-13)
+try {
+  const r = await ev(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    loadLuminaTestData(); await wait(300);
+    const pl = state.plates[0], Z = state.layout.zones;
+    Z[1].forEach(pos => { pl.signal[pos] = 100; });   // Ref-A: every well the same, at the control
+    Z[2].forEach(pos => { pl.signal[pos] = 3; });     // Cpd-42: every well the same, at full effect (stays a fit that is below the doses)
+    state.ctrlWells.forEach(pos => { pl.signal[pos] = 100; });
+    lmAfterChange(); _lmEnsureFit(true); await wait(500);
+    const by = id => state.fitResults.find(x => x.sampleId === id);
+    return { flat: !!by('Ref-A').noCurve, ec50: by('Ref-A').ec50M, max: !by('Cpd-42').noCurve };
+  });
+  check('L44 readings that are all one number, at the control, are the flat line (no potency); the same number at full effect keeps its fit', r.flat && !isFinite(r.ec50) && r.max, JSON.stringify(r));
+} catch (err) { check('L44 the checks ran to the end', false, String(err && err.message || err).split('\n')[0]); }
+
 check('no page or console errors', errs.length === 0, errs.slice(0, 3).join(' | '));
 await browser.close();
 if (findings.length) { console.log(findings.join('\n')); console.log(`\n${findings.length} finding(s), ${passed} checks passed.`); process.exit(1); }
