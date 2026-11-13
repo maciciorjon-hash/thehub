@@ -268,6 +268,19 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px soli
 .lm-cpd .f-dir{grid-column:1/-1;}
 .lm-cpd input,.lm-cpd select{width:100%;box-sizing:border-box;}
 .lm-mode-row{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:flex-end;}
+.lm-gmodes{display:flex;margin-bottom:12px;}
+.lm-gmodes button{flex:1;min-height:32px;}
+.lm-gdir{margin-top:10px;}
+.lm-glist{display:none;margin-bottom:2px;}
+.lm-glist>label{display:block;margin-bottom:4px;}
+.lm-conc-list{display:block;width:100%;box-sizing:border-box;font-family:var(--mono);font-size:var(--fs-3);line-height:1.5;height:auto;min-height:120px;padding:8px 10px;resize:vertical;white-space:pre;overflow:auto;}
+.lm-conc-list.bad{border-color:var(--warn-ink,var(--warn));}
+.lm-hint{font-size:var(--fs-2);color:var(--text3);margin-top:4px;line-height:1.45;}
+.lm-mode[data-m="grad"].gl .f-top,.lm-mode[data-m="grad"].gl .f-fac{display:none;}
+.lm-mode[data-m="grad"].gl .lm-glist{display:block;}
+.lm-mode[data-m="grad"].gl #lm-gseries{margin-bottom:10px;}
+.lm-mode[data-m="grad"].gl .f-unit{grid-column:1/-1;}
+.lm-mode[data-m="grad"].gl .f-unit select{width:100px;}
 .lm-go{width:100%;margin-top:12px;}
 .lm-mode[data-m="ctl"] .lm-mode-row{flex-wrap:nowrap;}
 .lm-mode[data-m="ctl"] .lm-go{margin-top:0;flex:1;}
@@ -2241,13 +2254,24 @@ var EdgeKit = (function () {
             <button type="button" data-m="nrm" onclick="lmSetMode('nrm')" title="Divide some wells by control wells of their own instead of the plate's 100% control">Normalise</button>
           </div>
           <div class="lm-mode" data-m="grad">
-            <div class="lm-cpd">
-              <div class="field"><label>Top conc.</label><input id="lm-top" type="number" step="any" min="0" value="10"></div>
-              <div class="field"><label>Unit</label>
+            <div class="seg lm-gmodes" id="lm-gmodes" role="group" aria-label="How the concentrations are given">
+              <button type="button" data-g="series" onclick="lmSetGradMode('series')" title="A top concentration and one fold between neighbouring points">Top + dilution</button>
+              <button type="button" data-g="list" onclick="lmSetGradMode('list')" title="Write every concentration, one per line — for a series that is not a constant fold">Type the values</button>
+            </div>
+            <div class="lm-cpd" id="lm-gseries">
+              <div class="field f-top"><label>Top conc.</label><input id="lm-top" type="number" step="any" min="0" value="10"></div>
+              <div class="field f-unit"><label id="lm-unit-lbl">Unit</label>
                 <select id="lm-unit"><option value="1e-3">mM</option><option value="1e-6" selected>µM</option><option value="1e-9">nM</option><option value="1e-12">pM</option><option value="1">M</option></select>
               </div>
-              <div class="field"><label>Dilution</label><input id="lm-fac" type="number" step="any" min="1" value="3" title="Fold between neighbouring points"></div>
-              <div class="field f-dir"><label>Highest at</label><div class="lm-dir" id="lm-dir"><button type="button" data-d="right" onclick="lmSetGradDir('right')" title="Highest on the left, diluting to the right">&#8594;</button><button type="button" data-d="left" onclick="lmSetGradDir('left')" title="Highest on the right, diluting to the left">&#8592;</button><button type="button" data-d="down" onclick="lmSetGradDir('down')" title="Highest at the top, diluting downwards">&#8595;</button><button type="button" data-d="up" onclick="lmSetGradDir('up')" title="Highest at the bottom, diluting upwards">&#8593;</button></div></div>
+              <div class="field f-fac"><label>Dilution</label><input id="lm-fac" type="number" step="any" min="1" value="3" title="Fold between neighbouring points"></div>
+            </div>
+            <div class="lm-glist field" id="lm-glist">
+              <label for="lm-conc-list">Concentrations, one per line</label>
+              <textarea id="lm-conc-list" class="lm-conc-list" rows="7" spellcheck="false" autocomplete="off" placeholder="1 µM&#10;100 nM&#10;33.3 nM&#10;11.1 nM&#10;3.70 nM&#10;1.23 nM&#10;412 pM" oninput="lmListInput()"></textarea>
+              <div class="lm-hint">The first line is the first point, at the end chosen below. Paste a column from Excel; a number with no unit takes the Unit above.</div>
+            </div>
+            <div class="lm-cpd lm-gdir">
+              <div class="field f-dir"><label id="lm-dir-lbl">Highest at</label><div class="lm-dir" id="lm-dir"><button type="button" data-d="right" onclick="lmSetGradDir('right')" title="Highest on the left, diluting to the right">&#8594;</button><button type="button" data-d="left" onclick="lmSetGradDir('left')" title="Highest on the right, diluting to the left">&#8592;</button><button type="button" data-d="down" onclick="lmSetGradDir('down')" title="Highest at the top, diluting downwards">&#8595;</button><button type="button" data-d="up" onclick="lmSetGradDir('up')" title="Highest at the bottom, diluting upwards">&#8593;</button></div></div>
             </div>
             <button class="btn primary lm-go" id="lm-apply-grad" onclick="lmApplyGrad()">Set gradient</button>
           </div>
@@ -3023,6 +3047,7 @@ var _lmPlateActive = false;    // the last press was on the plate, so the keys a
 var _lmClip = null;            // ⌘C buffer: a block of layout relative to its top-left
 var _lmUndo = [], _lmRedo = [];
 var LM_DIR = null;             // gradient direction chosen for this selection; null = from its shape
+var LM_GMODE = 'series';       // how the gradient panel takes its concentrations: 'series' (top + one fold) or 'list' (each one typed)
 var _lmLastDir = null;         // the direction of the last gradient set — the next one likely matches
 var LM_MODE = null;            // what the panel applies: 'grad' | 'cpd' | 'ctl'; null = the next step
 var LM_REPS = 2;               // replicate lines per compound
@@ -3049,11 +3074,31 @@ function _lmGradAt(pos){
   for (var i = gs.length - 1; i >= 0; i--) { var k = gs[i].idx[pos]; if (k !== undefined) return { g: gs[i], i: k }; }
   return null;
 }
-function lmConcAt(pos){ var a = _lmGradAt(pos); return a ? a.g.top * a.g.unitMul / Math.pow(a.g.fac, a.i) : undefined; }
+// A gradient is a top and a fold, or — when the series is not a constant fold — the concentrations themselves, in M, one per point (g.concs[i]).
+function _lmGradConc(g, i){ var c = g.concs && g.concs[i]; return c > 0 ? c : g.top * g.unitMul / Math.pow(g.fac, i); }
+function lmConcAt(pos){ var a = _lmGradAt(pos); return a ? _lmGradConc(a.g, a.i) : undefined; }
 function _lmGradRange(g){
   var n = 0; Object.keys(g.idx).forEach(function(p){ n = Math.max(n, g.idx[p] + 1); });
-  var hi = g.top * g.unitMul;
-  return { n: n, hi: hi, lo: hi / Math.pow(g.fac, n - 1) };
+  return { n: n, hi: _lmGradConc(g, 0), lo: _lmGradConc(g, Math.max(0, n - 1)) };
+}
+// Concentrations typed by hand, one to a line (a column pasted from Excel, or split with ; or ", "). A decimal comma is read (1,5 µM), μ/µ/u are micro,
+// a number with no unit takes defMul. What was typed is what is kept: 33.3 nM stays 33.3 nM. Returns { vals: [M…], bad: [the pieces that are not a concentration] }.
+var LM_UNIT_MUL = { 'm': 1, 'mm': 1e-3, 'um': 1e-6, 'µm': 1e-6, 'μm': 1e-6, 'nm': 1e-9, 'pm': 1e-12, 'fm': 1e-15 };
+function lmParseConcList(txt, defMul){
+  var out = { vals: [], bad: [] };
+  String(txt || '').split(/[\n\r\t;]+|,\s+/).forEach(function(piece){
+    piece = piece.trim(); if (!piece) return;
+    var m = /^([+-]?(?:\d+(?:[.,]\d*)?|[.,]\d+)(?:e[+-]?\d+)?)\s*([a-zA-Zµμ]*)$/i.exec(piece);
+    var mul = m ? (m[2] ? LM_UNIT_MUL[m[2].toLowerCase()] : defMul) : undefined;
+    var v = m && mul ? parseFloat(m[1].replace(',', '.')) * mul : NaN;
+    if (v > 0 && isFinite(v)) out.vals.push(v); else out.bad.push(piece);
+  });
+  return out;
+}
+// The number as it would be typed: the unit that keeps it between 1 and 999, no trailing zeros (3.33e-8 → "33.3 nM").
+function lmFmtTyped(c){
+  var us = [['M', 1], ['mM', 1e-3], ['µM', 1e-6], ['nM', 1e-9], ['pM', 1e-12], ['fM', 1e-15]];
+  for (var i = 0; i < us.length; i++) if (c >= us[i][1] * 0.9999999 || i === us.length - 1) return String(+(c / us[i][1]).toPrecision(6)) + ' ' + us[i][0];
 }
 function _lmS(){ return state.layout.zones.length; }
 function _lmZoneMap(){ var m = {}; state.layout.zones.forEach(function(z, i){ z.forEach(function(p){ m[p] = i; }); }); return m; }
@@ -3362,6 +3407,9 @@ function _lmPrefill(){
     document.getElementById('lm-top').value = +g.top.toPrecision(6);
     document.getElementById('lm-unit').value = String(g.unitMul);
     document.getElementById('lm-fac').value = g.fac;
+    // A typed series comes back as the list it was, in the order of its points.
+    LM_GMODE = g.concs ? 'list' : 'series';
+    if (g.concs) document.getElementById('lm-conc-list').value = g.concs.map(lmFmtTyped).join('\n');
   }
 }
 function _lmLine(kind, i){ return new Set(PlateEngine.line(kind, i, _lmDims())); }
@@ -3510,6 +3558,9 @@ function _lmGradForm(){
   };
 }
 function lmSetGradDir(d){ LM_DIR = d; lmRenderPanel(); }
+function _lmGradList(){ return lmParseConcList(document.getElementById('lm-conc-list').value, parseFloat(document.getElementById('lm-unit').value) || 1e-6); }
+function lmSetGradMode(m){ LM_GMODE = m === 'list' ? 'list' : 'series'; lmRenderPanel(); if (LM_GMODE === 'list') { var t = document.getElementById('lm-conc-list'); if (t) t.focus(); } }
+function lmListInput(){ lmRenderPanel(); }
 function lmSetMode(m){ LM_MODE = m; if (m !== 'nrm') LM_NX = null; lmRenderPanel(); renderGrid(); }
 function lmSetReps(n){ LM_REPS = n; lmRenderPanel(); }
 function lmSetSplit(s){ LM_SPLIT = s; lmRenderPanel(); }
@@ -3553,12 +3604,25 @@ function lmApply(){
 }
 function lmApplyGrad(){
   if (!LM_SEL.size) { toast('Drag across the wells the dilution series covers.'); return; }
-  var f = _lmGradForm(), plan = _lmGradPlan();
-  if (!(f.top > 0)) { document.getElementById('lm-top').focus(); toast('Give the gradient a top concentration.'); return; }
-  if (plan.n > 1 && !(f.fac > 1)) { document.getElementById('lm-fac').focus(); toast('The dilution factor has to be above 1.'); return; }
+  var f = _lmGradForm(), plan = _lmGradPlan(), typed = LM_GMODE === 'list', tl = typed ? _lmGradList() : null, list = document.getElementById('lm-conc-list');
+  if (typed) {
+    if (tl.bad.length) { list.focus(); toast('Not a concentration: ' + tl.bad.slice(0, 3).join(', ') + (tl.bad.length > 3 ? '…' : '') + ' — write them like 100 nM, one per line.'); return; }
+    if (!tl.vals.length) { list.focus(); toast('Type the concentrations, one per line.'); return; }
+    if (tl.vals.length !== plan.n) { list.focus(); toast('The list has ' + tl.vals.length + ' value' + (tl.vals.length === 1 ? '' : 's') + ' and the selection ' + plan.n + ' point' + (plan.n === 1 ? '' : 's') + ' — make them agree.'); return; }
+  }
+  else {
+    if (!(f.top > 0)) { document.getElementById('lm-top').focus(); toast('Give the gradient a top concentration.'); return; }
+    if (plan.n > 1 && !(f.fac > 1)) { document.getElementById('lm-fac').focus(); toast('The dilution factor has to be above 1.'); return; }
+  }
   lmMark();
   _lmTakeWells(LM_SEL, { grads: 1 });
-  state.layout.grads.push({ id: 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), top: f.top, unitMul: f.unitMul, fac: f.fac || 1, dir: plan.dir, idx: plan.idx });
+  var gid = 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+  if (typed) {
+    // top and fac stay filled (first value; the fold the series averages) for what reads them as a plain series; concs is what counts.
+    var cs = tl.vals, n = cs.length;
+    state.layout.grads.push({ id: gid, top: cs[0] / f.unitMul, unitMul: f.unitMul, fac: n > 1 && cs[0] > cs[n - 1] ? Math.pow(cs[0] / cs[n - 1], 1 / (n - 1)) : 1, dir: plan.dir, idx: plan.idx, concs: cs.slice() });
+  }
+  else state.layout.grads.push({ id: gid, top: f.top, unitMul: f.unitMul, fac: f.fac || 1, dir: plan.dir, idx: plan.idx });
   if (plan.n > 1) _lmLastDir = plan.dir;
   // The next thing a gradient needs is compounds on it — the selection now reads as that.
   var first = !state.layout.zones.length;
@@ -3711,11 +3775,23 @@ function lmRenderPanel(){
   if (!n) txt = '';
   else if (sig) txt = 'Double-click a well to type or correct its reading.';
   else if (m === 'grad') {
-    var gp = _lmGradPlan(), f = _lmGradForm();
+    var gp = _lmGradPlan(), f = _lmGradForm(), typed = LM_GMODE === 'list', tl = typed ? _lmGradList() : null;
     document.querySelectorAll('#lm-dir button').forEach(function(b){ b.classList.toggle('active', !!gp && b.dataset.d === gp.dir); });
+    document.querySelectorAll('#lm-gmodes button').forEach(function(b){ b.classList.toggle('active', b.dataset.g === LM_GMODE); });
+    document.querySelector('.lm-mode[data-m="grad"]').classList.toggle('gl', typed);
+    document.getElementById('lm-dir-lbl').textContent = typed ? 'First value at' : 'Highest at';
+    document.getElementById('lm-unit-lbl').textContent = typed ? 'Unit for numbers with none' : 'Unit';
+    document.getElementById('lm-conc-list').classList.toggle('bad', !!(tl && (tl.bad.length || (gp && tl.vals.length && tl.vals.length !== gp.n))));
     if (gp) {
       txt = '<b>' + gp.n + ' point' + (gp.n === 1 ? '' : 's') + '</b> along ' + (gp.dir === 'right' || gp.dir === 'left' ? 'the columns' : 'the rows') + ', ' + gp.lines + ' line' + (gp.lines === 1 ? '' : 's') + ' deep';
-      if (f.top > 0) {
+      if (typed) {
+        // What the list says against what the selection holds — a list is never quietly shorter or longer than the series it paints.
+        if (tl.vals.length) txt += ' · ' + fmtConc(tl.vals[0]) + (tl.vals.length > 1 ? ' → ' + fmtConc(tl.vals[tl.vals.length - 1]) : '');
+        if (tl.bad.length) txt += ' · <span class="warn">not read: ' + tl.bad.slice(0, 3).map(esc).join(', ') + (tl.bad.length > 3 ? '…' : '') + '</span>';
+        else if (!tl.vals.length) txt += ' · <span class="warn">type the concentrations</span>';
+        else if (tl.vals.length !== gp.n) txt += ' · <span class="warn">' + tl.vals.length + ' value' + (tl.vals.length === 1 ? '' : 's') + ' for ' + gp.n + ' point' + (gp.n === 1 ? '' : 's') + (tl.vals.length > gp.n ? ' — ' + (tl.vals.length - gp.n) + ' left over' : ' — ' + (gp.n - tl.vals.length) + ' short') + '</span>';
+      }
+      else if (f.top > 0) {
         var hi = f.top * f.unitMul;
         if (gp.n > 1 && f.fac > 1) txt += ' · ' + fmtConc(hi) + ' → ' + fmtConc(hi / Math.pow(f.fac, gp.n - 1));
         else if (gp.n === 1) txt += ' · ' + fmtConc(hi);
@@ -3795,7 +3871,7 @@ function lmCopy(cut){
   var b = _lmBox(LM_SEL), zm = _lmZoneMap();
   _lmClip = Array.from(LM_SEL).map(function(p){
     var q = _rc(p), a = _lmGradAt(p);
-    return { dr: q.r - b.r0, dc: q.c - b.c0, z: zm[p], g: a ? { id: a.g.id, top: a.g.top, unitMul: a.g.unitMul, fac: a.g.fac, dir: a.g.dir, i: a.i } : null,
+    return { dr: q.r - b.r0, dc: q.c - b.c0, z: zm[p], g: a ? { id: a.g.id, top: a.g.top, unitMul: a.g.unitMul, fac: a.g.fac, dir: a.g.dir, i: a.i, concs: a.g.concs ? a.g.concs.slice() : undefined } : null,
       ctrl: state.ctrlWells.has(p), zero: state.zeroCtrlWells.has(p) };
   });
   if (cut) { lmMark(); _lmTakeWells(LM_SEL); lmAfterChange(); }
@@ -3817,7 +3893,7 @@ function lmPaste(){
   targets.forEach(function(t){
     var x = t.x;
     if (x.g) {
-      if (!gmap[x.g.id]) { gmap[x.g.id] = { id: 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), top: x.g.top, unitMul: x.g.unitMul, fac: x.g.fac, dir: x.g.dir, idx: {} }; state.layout.grads.push(gmap[x.g.id]); }
+      if (!gmap[x.g.id]) { gmap[x.g.id] = { id: 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), top: x.g.top, unitMul: x.g.unitMul, fac: x.g.fac, dir: x.g.dir, idx: {} }; if (x.g.concs) gmap[x.g.id].concs = x.g.concs.slice(); state.layout.grads.push(gmap[x.g.id]); }
       gmap[x.g.id].idx[t.pos] = x.g.i;
     }
     if (x.z !== undefined) { if (!zmap[x.z]) { zmap[x.z] = []; state.layout.zones.push(zmap[x.z]); } zmap[x.z].push(t.pos); }
@@ -4079,8 +4155,10 @@ function renderGrid(){
   // visible without a number.
   function alphaFor(pos){
     var a = _lmGradAt(pos); if (!a) return 0.4;
-    var n = _lmGradRange(a.g).n;
-    return n > 1 ? 0.52 - 0.36 * (a.i / (n - 1)) : 0.4;
+    var n = _lmGradRange(a.g).n, k = a.i;
+    // A typed series need not run high to low: the darkest well is the highest concentration, wherever it sits.
+    if (a.g.concs && n > 1) { var c0 = _lmGradConc(a.g, a.i); k = 0; for (var q = 0; q < n; q++) if (_lmGradConc(a.g, q) > c0) k++; }
+    return n > 1 ? 0.52 - 0.36 * (k / (n - 1)) : 0.4;
   }
   // Every cell is placed explicitly: the zone labels are grid items spanning their wells, and
   // an auto-placed sibling would flow around them.
@@ -7681,10 +7759,10 @@ var assistRegister, assistOpen, assistClose, assistAsk, assistToggle;
         steps: ['**Drag** across wells to select a rectangle.', '**Shift** extends the selection from where it started.', '`⌘` / `Ctrl` adds or removes wells.', 'A **row or column label** takes the whole line; the corner takes the plate.', 'A compound’s label takes the compound; a double-click takes its whole zone.', 'Or type a range such as `B2:C11` in the box above the panel and press Enter.', '`Esc` deselects.'],
         prep: plate, show: [{ sel: '#well-grid', say: 'Drag here.' }] },
       { id: 'gradient', t: 'Draw a dilution series (gradient)', group: 'The plate', on: ['plate'],
-        q: ['gradient', 'dilution series', 'serial dilution', 'concentrations', 'top concentration', 'dilution factor', 'set gradient', 'serie de diluciones', 'diluciones', 'concentracion', 'factor de dilucion', 'highest at', 'points', 'puntos', 'direction', 'direccion'],
+        q: ['gradient', 'dilution series', 'serial dilution', 'concentrations', 'top concentration', 'dilution factor', 'set gradient', 'serie de diluciones', 'dilucion no constante', 'type the values', 'manual concentrations', 'diluciones', 'concentracion', 'factor de dilucion', 'highest at', 'points', 'puntos', 'direction', 'direccion'],
         a: 'A gradient is one dilution series drawn on the plate. Its points run along the direction you choose; the other way across the selection is replicates.',
         steps: ['Drag across the wells the series covers — any shape, any direction.', 'In the panel, give the **Top conc.**, its unit and the **Dilution** (fold between neighbouring points).', 'Choose **Highest at** (← → ↑ ↓).', 'Press **Set gradient**.'],
-        tip: 'You can divide a plate into as many gradients as it holds. Wells shaded dark to light show which end is highest.',
+        tip: 'You can divide a plate into as many gradients as it holds. Wells shaded dark to light show which end is highest. A series that is not a constant fold (1 µM, 100 nM, then threefold down): switch to **Type the values**, write one concentration per line (a column pasted from Excel works), choose **First value at**, and press **Set gradient**.',
         prep: plate, show: [{ sel: '#well-grid', say: 'Drag across the wells of one series, then set the numbers in the panel that appears.' }],
         see: ['compounds', 'select-wells'] },
       { id: 'compounds', t: 'Make compounds from a gradient', group: 'The plate', on: ['plate'],
@@ -8206,7 +8284,8 @@ var tourRegister, appTour, tourEnd, tourGuideRefresh, tourOffer;
         lead: 'A gradient is one dilution series, drawn on the plate. Its points run along the direction you choose; the other way across the selection is replicates.',
         do: ['Drag across the wells the series covers — any shape, any direction. A plate can be divided into as many gradients as it holds.',
           'In the panel give the **Top conc.**, its unit and the **Dilution** (the fold between neighbouring points).',
-          'Choose **Highest at** — ← → ↑ ↓ — and press **Set gradient**.'],
+          'Choose **Highest at** — ← → ↑ ↓ — and press **Set gradient**.',
+          'Not a constant fold? Switch to **Type the values** and write one concentration per line — 1 µM, 100 nM, 33.3 nM… — with **First value at** choosing the end the first line goes to.'],
         ref: [['Points and replicates', 'Read off the shape of your selection — you never type them. The preview says “11 points × 2 replicates · 1 µM → 16.9 pM” before you apply.'],
           ['Shading', 'Wells are shaded dark to light, so the end that holds the top concentration is visible.']],
         watch: [{ k: 'tip', t: 'Column and row headers print the concentration when every gradient well under them shares it; otherwise the well prints it.' }],

@@ -1054,6 +1054,74 @@ try {
   check('L38 Setup › Controls: the segmented choice sets the mode and shows the finding; Off clears it', r.ui.mode === 'correct' && r.ui.active === 'correct' && r.ui.note.length > 20 && r.uiOff.mode === 'off' && r.uiOff.note === '', { ui: r.ui, off: r.uiOff });
 } catch (err) { check('L38 the checks ran to the end', false, String(err && err.message || err).split('\n')[0]); }
 
+// L39 — a series that is not a constant fold (2026-11-13). Jon: 1 µM, then 100 nM, then threefold down to 412 pM — the gradient panel had only a top and one factor,
+// so it could not be drawn. 'Type the values' takes one concentration per line, in the order of the arrow, and writes exactly those.
+try {
+  await page.evaluate(() => { switchTab('input'); switchSubtab('layout'); state.layout = { grads: [], zones: [] }; state.ctrlWells = new Set(); state.zeroCtrlWells = new Set(); lmAfterChange(); lmSetSel(new Set()); });
+  const COL = ['B', 'C', 'D', 'E', 'F', 'G', 'H'].map(L => L);
+  const sel = rows => page.evaluate(w => { lmSetSel(new Set(w)); }, [].concat(...rows.map(L => [2, 3, 4, 5, 6, 7].map(c => L + c))));
+  await sel(COL);
+  await page.click('#lm-gmodes [data-g=list]');
+  const shown = await page.evaluate(() => ({ list: getComputedStyle(document.getElementById('lm-glist')).display, top: getComputedStyle(document.querySelector('#lm-gseries .f-top')).display, lbl: document.getElementById('lm-dir-lbl').textContent, active: document.querySelector('#lm-gmodes .active').dataset.g }));
+  await page.fill('#lm-conc-list', '1 µM\n100 nM\n33.3 nM\n11.1 nM\n3.70 nM\n1.23 nM\n412 pM');
+  await page.click('#lm-dir [data-d=down]');
+  const pv = await page.evaluate(() => document.getElementById('lm-preview').textContent);
+  await page.click('#lm-apply-grad');
+  await page.click('#lm-modes [data-m=cpd]'); await page.click('#lm-apply-cpd');
+  const r = await page.evaluate(() => {
+    const o = {}, c = p => lmConcAt(p);
+    o.col = ['B', 'C', 'D', 'E', 'F', 'G', 'H'].map(L => c(L + '2'));
+    o.reps = ['B', 'H'].every(L => [2, 3, 4, 5, 6, 7].every(k => c(L + k) === c(L + '2')));
+    o.one = state.layout.grads.length; o.concs = (state.layout.grads[0] || {}).concs;
+    o.hdr = Array.from(document.querySelectorAll('#well-grid .well-rowlbl .hc')).map(e => e.textContent);
+    o.data = lmPlateWellData(0); o.dataConc = o.data.B2 && Math.abs(o.data.B2.conc / 1e-6 - 1) < 1e-9 && Math.abs(o.data.H7.conc / 412e-12 - 1) < 1e-9;
+    o.shade = ['B2', 'D2', 'H2'].map(p => getComputedStyle(document.querySelector('.well[data-pos="' + p + '"]')).backgroundColor);
+    return o;
+  });
+  check('L39 Type the values shows a list and no top/dilution; the first line is the first point at the chosen end', shown.list === 'block' && shown.top === 'none' && shown.lbl === 'First value at' && shown.active === 'list' && /7 points/.test(pv) && /1 µM → 412 pM/.test(pv), JSON.stringify([shown, pv]));
+  check('L39 the typed concentrations are the ones on the wells, down the rows (1 µM, 100 nM, 33.3 nM … 412 pM), the same across the replicates', r.one === 1 && r.col.every((v, i) => Math.abs(v / [1e-6, 1e-7, 33.3e-9, 11.1e-9, 3.7e-9, 1.23e-9, 412e-12][i] - 1) < 1e-9) && r.reps, JSON.stringify([r.col, r.reps]));
+  check('L39 the row headers read them (1 µM, 100 nM, 33.3 nM, 11.1 nM, 3.70 nM, 1.23 nM, 412 pM) and the analysis gets the same numbers per well', r.hdr.join('|') === '1 µM|100 nM|33.3 nM|11.1 nM|3.70 nM|1.23 nM|412 pM' && r.dataConc, JSON.stringify([r.hdr, r.dataConc]));
+  check('L39 the shade follows the concentration: the highest well is the darkest, the lowest the lightest', (() => { const a = x => parseFloat((x.match(/,\s*([\d.]+)\)$/) || [0, 1])[1]); return a(r.shade[0]) > a(r.shade[1]) && a(r.shade[1]) > a(r.shade[2]); })(), JSON.stringify(r.shade));
+  // the list and the selection must agree, and a word is not read as a number
+  const bad = await page.evaluate(() => {
+    lmSetMode('grad'); const n0 = state.layout.grads.length, snap = JSON.stringify(state.layout.grads), o = {};
+    const L = document.getElementById('lm-conc-list');
+    L.value = '1 µM\n100 nM\n33.3 nM'; L.dispatchEvent(new Event('input', { bubbles: true })); o.pvShort = document.getElementById('lm-preview').textContent; lmApplyGrad(); o.short = JSON.stringify(state.layout.grads) === snap;
+    L.value = '1 µM\n100 nM\n33.3 nM\n11.1 nM\n3.70 nM\n1.23 nM\n412 pM\n1 pM'; L.dispatchEvent(new Event('input', { bubbles: true })); o.pvLong = document.getElementById('lm-preview').textContent; lmApplyGrad(); o.long = JSON.stringify(state.layout.grads) === snap;
+    L.value = '1 µM\nabc\n33.3 nM\n11.1 nM\n3.70 nM\n1.23 nM\n412 pM'; L.dispatchEvent(new Event('input', { bubbles: true })); o.pvBad = document.getElementById('lm-preview').textContent; lmApplyGrad(); o.bad = JSON.stringify(state.layout.grads) === snap; o.focus = document.activeElement === L;
+    L.value = '1 µM\n0\n33.3 nM\n11.1 nM\n3.70 nM\n1.23 nM\n412 pM'; L.dispatchEvent(new Event('input', { bubbles: true })); lmApplyGrad(); o.zero = JSON.stringify(state.layout.grads) === snap;
+    return o;
+  });
+  check('L39 a list shorter or longer than the series is refused and the preview says by how many; a word and a zero are not read', bad.short && bad.long && bad.bad && bad.zero && /short/.test(bad.pvShort) && /left over/.test(bad.pvLong) && /not read: abc/.test(bad.pvBad) && bad.focus, JSON.stringify(bad));
+  // what it reads: a pasted Excel column, a decimal comma, bare numbers in the unit chosen, a unit per line, μ/µ/u
+  const rd = await page.evaluate(() => {
+    const P = (t, m) => lmParseConcList(t, m || 1e-9), same = (a, b) => a.length === b.length && a.every((v, i) => Math.abs(v / b[i] - 1) < 1e-9);
+    return {
+      col: same(P('100\r\n33.3\r\n11.1\r\n').vals, [100e-9, 33.3e-9, 11.1e-9]),
+      comma: same(P('1,5 µM; 2,5 uM\t3 μM').vals, [1.5e-6, 2.5e-6, 3e-6]),
+      list: same(P('1 mM, 500 µM, 250 µM').vals, [1e-3, 500e-6, 250e-6]),
+      mixed: same(P('2\n10 nM\n1 µM\n0.5 pM', 1e-6).vals, [2e-6, 10e-9, 1e-6, 0.5e-12]),
+      sci: same(P('1e-6 M\n3.3e-7 M').vals, [1e-6, 3.3e-7]),
+      bad: P('5 µg/mL\n-3 nM\n1.2.3').bad.length === 3,
+    };
+  });
+  check('L39 it reads a column pasted from Excel, a decimal comma, ; and ", ", a unit per line or the Unit for bare numbers, μ µ u, and 1e-6 M', Object.values(rd).every(Boolean), JSON.stringify(rd));
+  // selecting the series again gives back the list it was; copy-paste and the session keep it; Top + dilution still works beside it
+  const back = await page.evaluate(() => {
+    const o = {}; lmSetSel(new Set()); lmSetSel(new Set(['B2', 'H7']));
+    o.again = document.getElementById('lm-conc-list').value === '1 µM\n100 nM\n33.3 nM\n11.1 nM\n3.7 nM\n1.23 nM\n412 pM' && LM_GMODE === 'list';
+    const sess = JSON.parse(JSON.stringify(lmSession())); o.sess = (sess.layout.grads[0].concs || []).length === 7;
+    lmLoadSession(sess, null); o.loaded = Math.abs(lmConcAt('D2') / 33.3e-9 - 1) < 1e-9;
+    lmSetSel(new Set(['B2', 'C2', 'D2', 'E2', 'F2', 'G2', 'H2'])); lmCopy(false); lmSetSel(new Set(['B10'])); lmPaste();
+    o.paste = Math.abs(lmConcAt('D10') / 33.3e-9 - 1) < 1e-9 && Math.abs(lmConcAt('H10') / 412e-12 - 1) < 1e-9 && state.layout.grads.length === 2;
+    lmUndo(); o.undo = lmConcAt('D10') === undefined;
+    lmSetSel(new Set(['A1', 'A2', 'A3', 'A4'])); lmSetGradMode('series'); document.getElementById('lm-top').value = '10'; document.getElementById('lm-unit').value = '1e-6'; document.getElementById('lm-fac').value = '2'; lmSetGradDir('right'); lmApplyGrad();
+    o.series = !state.layout.grads.slice(-1)[0].concs && Math.abs(lmConcAt('A4') / (10e-6 / 8) - 1) < 1e-9 && Math.abs(lmConcAt('A1') / 10e-6 - 1) < 1e-9;
+    return o;
+  });
+  check('L39 selecting the typed series again returns the list; the session, copy-paste and undo keep it; Top + dilution still makes a plain series beside it', back.again && back.sess && back.loaded && back.paste && back.undo && back.series, JSON.stringify(back));
+} catch (err) { check('L39 the checks ran to the end', false, String(err && err.message || err).split('\n')[0]); }
+
 check('no page or console errors', errs.length === 0, errs.slice(0, 3).join(' | '));
 await browser.close();
 if (findings.length) { console.log(findings.join('\n')); console.log(`\n${findings.length} finding(s), ${passed} checks passed.`); process.exit(1); }
