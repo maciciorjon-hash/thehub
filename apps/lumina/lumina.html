@@ -3083,14 +3083,14 @@ function _lmGradRange(g){
   return { n: n, hi: _lmGradConc(g, 0), lo: _lmGradConc(g, Math.max(0, n - 1)) };
 }
 // Concentrations typed by hand, one to a line (a column pasted from Excel, or split with ; or ", "). A decimal comma is read (1,5 µM), μ/µ/u are micro,
-// a number with no unit takes defMul. What was typed is what is kept: 33.3 nM stays 33.3 nM. Returns { vals: [M…], bad: [the pieces that are not a concentration] }.
+// a number with no unit takes defMul (written with an exponent, 1E-07, it is molar). What was typed is what is kept: 33.3 nM stays 33.3 nM. Returns { vals: [M…], bad: [the pieces that are not a concentration] }.
 var LM_UNIT_MUL = { 'm': 1, 'mm': 1e-3, 'um': 1e-6, 'µm': 1e-6, 'μm': 1e-6, 'nm': 1e-9, 'pm': 1e-12, 'fm': 1e-15 };
 function lmParseConcList(txt, defMul){
   var out = { vals: [], bad: [] };
   String(txt || '').split(/[\n\r\t;]+|,\s+/).forEach(function(piece){
     piece = piece.trim(); if (!piece) return;
     var m = /^([+-]?(?:\d+(?:[.,]\d*)?|[.,]\d+)(?:e[+-]?\d+)?)\s*([a-zA-Zµμ]*)$/i.exec(piece);
-    var mul = m ? (m[2] ? LM_UNIT_MUL[m[2].toLowerCase()] : defMul) : undefined;
+    var mul = m ? (m[2] ? LM_UNIT_MUL[m[2].toLowerCase()] : /e/i.test(m[1]) ? 1 : defMul) : undefined;   // 1.00E-07 with no unit is molar (a column of molar values from Excel), not 1e-7 of the unit chosen
     var v = m && mul ? parseFloat(m[1].replace(',', '.')) * mul : NaN;
     if (v > 0 && isFinite(v)) out.vals.push(v); else out.bad.push(piece);
   });

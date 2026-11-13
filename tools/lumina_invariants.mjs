@@ -1215,6 +1215,13 @@ try {
   check('L44 readings that are all one number, at the control, are the flat line (no potency); the same number at full effect keeps its fit', r.flat && !isFinite(r.ec50) && r.max, JSON.stringify(r));
 } catch (err) { check('L44 the checks ran to the end', false, String(err && err.message || err).split('\n')[0]); }
 
+// L45 — a typed concentration written with an exponent and no unit is molar (Excel's 1.00E-07), a plain number takes the unit chosen (2026-11-13)
+try {
+  const r = await ev(() => ({ a: lmParseConcList('1e-6\n1.00E-07\n5\n2,5 µM\n300 nM\n0.1 uM', 1e-9).vals, b: lmParseConcList('5\n1E-9', 1e-6).vals }));
+  const near = (x, y) => Math.abs(x / y - 1) < 1e-9;
+  check('L45 an exponent with no unit is molar; a plain number takes the unit chosen; units written are read', r.a.length === 6 && near(r.a[0], 1e-6) && near(r.a[1], 1e-7) && near(r.a[2], 5e-9) && near(r.a[3], 2.5e-6) && near(r.a[4], 3e-7) && near(r.a[5], 1e-7) && near(r.b[0], 5e-6) && near(r.b[1], 1e-9), JSON.stringify(r));
+} catch (err) { check('L45 the checks ran to the end', false, String(err && err.message || err).split('\n')[0]); }
+
 check('no page or console errors', errs.length === 0, errs.slice(0, 3).join(' | '));
 await browser.close();
 if (findings.length) { console.log(findings.join('\n')); console.log(`\n${findings.length} finding(s), ${passed} checks passed.`); process.exit(1); }
