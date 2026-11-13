@@ -1015,6 +1015,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
 .sx-check{display:flex;gap:8px;align-items:center;font-size:var(--fs-3);color:var(--text2);cursor:pointer;}
 .setup-card input[type="text"],.setup-card input[type="number"],.setup-card select,.setup-card textarea{box-sizing:border-box;width:100%;min-width:0;height:32px;min-height:0;padding:0 10px;border-radius:var(--r-1);border:1px solid var(--border2);background:var(--surface2);color:var(--text);font-family:var(--sans);font-size:var(--fs-3);outline:none;}
 .setup-card textarea{height:auto;min-height:92px;padding:8px 10px;resize:vertical;line-height:1.5;}
+.setup-card textarea.bad{border-color:var(--poor);}
 .setup-card input:focus,.setup-card select:focus,.setup-card textarea:focus{border-color:var(--accent);}
 .setup-card :focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
 .setup-card input:focus-visible,.setup-card select:focus-visible,.setup-card textarea:focus-visible{outline-offset:0;}
@@ -4923,7 +4924,7 @@ async function lmPlaceSignalFiles(files, plateIdx){
 // (layout, controls, names, readings), so nothing here is a second model: anything done on the plate is in the dialog
 // when it opens, and anything done in the dialog is on the plate when it closes — and ⌘Z undoes either.
 // ══════════════════════════════════════════════════════════════
-var LS = { form: { top: 10, unit: 'µM', fac: 3, pts: null, n: null, reps: 2, dir: 'right', run: 'rows', start: '', names: '' }, same: false, hand: false, from: null, touched: false, brush: 'ctrl' };
+var LS = { form: { top: 10, unit: 'µM', fac: 3, pts: null, n: null, reps: 2, dir: 'right', run: 'rows', start: '', names: '', gmode: 'series', list: '' }, same: false, hand: false, from: null, touched: false, brush: 'ctrl' };
 var LS_UNIT = { 'M': 1, 'mM': 1e-3, 'µM': 1e-6, 'nM': 1e-9, 'pM': 1e-12 };
 var lsK = null;
 function lsEl(id){ return document.getElementById(id); }
@@ -5100,10 +5101,16 @@ function lsFree(){
   var ctl = Array.from(state.ctrlWells).concat(Array.from(state.zeroCtrlWells));
   return PlateEngine.freeStart({ r: state.rows, c: state.cols }, ctl, LS.form.run);
 }
+// The values typed by hand in 'Type the values' (null in 'Top + dilution'): { vals: [M…], bad: [...] }; an empty or unreadable list gives null too.
+function lsTyped(){
+  var f = LS.form; if (f.gmode !== 'list') return null;
+  var r = lmParseConcList(f.list, LS_UNIT[f.unit] || 1e-6);
+  return r.vals.length >= 2 ? r : null;
+}
 function lsNames(){ return PlateEngine.pasteList(LS.form.names).filter(function(x){ return x; }); }
 // Blocks of `reps` lines by `pts` points around the controls, one after the other (PlateEngine.blockPlan).
 function lsBlocks(want){
-  var f = LS.form, fr = lsFree(), pts = f.pts || fr.pts, r0 = fr.r0, c0 = fr.c0;
+  var f = LS.form, fr = lsFree(), pts = lsTyped() ? lsTyped().vals.length : (f.pts || fr.pts), r0 = fr.r0, c0 = fr.c0;
   var start = f.start ? PlateEngine.parseRange(f.start, { r: state.rows, c: state.cols }) : null;
   if (start && start.length) { var q = PlateEngine.rc(start[0]); r0 = q.r; c0 = q.c; }
   return { pts: pts, reps: f.reps, blocks: PlateEngine.blockPlan({ r: state.rows, c: state.cols }, { reps: f.reps, pts: pts, run: f.run, r0: r0, c0: c0, need: want, blocked: function(p){ return state.ctrlWells.has(p) || state.zeroCtrlWells.has(p); } }) };
@@ -5119,15 +5126,16 @@ function lsCompounds(){
   var f = LS.form, fr = lsFree(), P = state.plates.length;
   if (!LS.touched && !f.names) {
     if (state.names.some(function(n){ return n; })) f.names = state.names.map(function(n){ return n == null ? '' : String(n); }).join('\n').replace(/\n+$/, '');
-    var g = state.layout.grads[0]; if (g) { f.top = g.top; var u = Object.keys(LS_UNIT).filter(function(k){ return LS_UNIT[k] === g.unitMul; })[0]; if (u) f.unit = u; f.fac = g.fac; f.dir = g.dir === 'left' || g.dir === 'up' ? 'left' : 'right'; f.run = g.dir === 'down' || g.dir === 'up' ? 'cols' : 'rows'; }
+    var g = state.layout.grads[0]; if (g) { f.top = g.top; var u = Object.keys(LS_UNIT).filter(function(k){ return LS_UNIT[k] === g.unitMul; })[0]; if (u) f.unit = u; f.fac = g.fac; if (g.concs && g.concs.length) { f.gmode = 'list'; f.list = g.concs.map(lmFmtTyped).join('\n'); } f.dir = g.dir === 'left' || g.dir === 'up' ? 'left' : 'right'; f.run = g.dir === 'down' || g.dir === 'up' ? 'cols' : 'rows'; }
   }
-  var rows = f.run === 'rows';
+  var rows = f.run === 'rows', list = f.gmode === 'list';
   lsK.pane('compounds').innerHTML = '<div class="sx-two"><div>' +
     SetupKit.group('Compounds', 'one name per line — paste a column from Excel', SetupKit.field('', '', '<textarea id="ls-names" rows="4" spellcheck="false" placeholder="Compound A&#10;Compound B&#10;…">' + esc(f.names) + '</textarea>', '', 'ls-names-n')) +
-    SetupKit.group('Dose series', 'the same for every compound', '<div class="sx-grid">' +
-      SetupKit.field('Top concentration', 'ls-top', '<div class="sx-inline"><input id="ls-top" type="number" step="any" min="0" value="' + f.top + '"><select id="ls-unit">' + Object.keys(LS_UNIT).filter(function(u){ return u !== 'M'; }).map(function(u){ return '<option' + (u === f.unit ? ' selected' : '') + '>' + u + '</option>'; }).join('') + '</select></div>') +
-      SetupKit.field('Dilution factor', 'ls-fac', '<input id="ls-fac" type="number" step="any" min="1.01" value="' + f.fac + '">', '3 = threefold between neighbours') +
-      SetupKit.field('Points', 'ls-pts', '<input id="ls-pts" type="number" step="1" min="2" max="24" placeholder="auto: ' + fr.pts + '" value="' + (f.pts || '') + '">', 'auto = the free wells after the controls') +
+    SetupKit.group('Dose series', 'the same for every compound', '<div class="sx-f" style="margin-bottom:12px">' + SetupKit.seg('ls-gmode', [['series', 'Top + dilution'], ['list', 'Type the values']], f.gmode, 'm', 'How the series is written') + '</div><div class="sx-grid">' +
+      SetupKit.field(list ? 'Unit for numbers without one' : 'Top concentration', 'ls-top', '<div class="sx-inline">' + (list ? '' : '<input id="ls-top" type="number" step="any" min="0" value="' + f.top + '">') + '<select id="ls-unit">' + Object.keys(LS_UNIT).filter(function(u){ return u !== 'M'; }).map(function(u){ return '<option' + (u === f.unit ? ' selected' : '') + '>' + u + '</option>'; }).join('') + '</select></div>') +
+      (list ? SetupKit.field('Concentrations', 'ls-conc-list', '<textarea id="ls-conc-list" rows="8" spellcheck="false" placeholder="1 µM&#10;100 nM&#10;33.3 nM&#10;11.1 nM&#10;…">' + esc(f.list) + '</textarea>', 'one per line, highest first — a column pasted from Excel works; a unit on each line (nM, µM…) is read', 'ls-conc-note').replace('<div class="sx-f">', '<div class="sx-f" style="grid-column:1/-1">') :
+        SetupKit.field('Dilution factor', 'ls-fac', '<input id="ls-fac" type="number" step="any" min="1.01" value="' + f.fac + '">', '3 = threefold between neighbours') +
+        SetupKit.field('Points', 'ls-pts', '<input id="ls-pts" type="number" step="1" min="2" max="24" placeholder="auto: ' + fr.pts + '" value="' + (f.pts || '') + '">', 'auto = the free wells after the controls')) +
       SetupKit.field('Replicates per compound', '', SetupKit.seg('ls-reps', [1, 2, 3, 4].map(function(n){ return [n, n]; }), f.reps, 'n', 'Replicates')) +
       SetupKit.field('Highest concentration at', '', SetupKit.seg('ls-dir', [['right', 'The ' + (rows ? 'left' : 'top')], ['left', 'The ' + (rows ? 'right' : 'bottom')]], f.dir, 'd', 'Highest concentration')) +
       SetupKit.field('The series runs', '', SetupKit.seg('ls-run', [['rows', 'Along the rows'], ['cols', 'Down the columns']], f.run, 'r', 'Direction of the series')) +
@@ -5141,10 +5149,17 @@ function lsCompounds(){
 }
 function lsPlanText(){
   var el = lsEl('ls-plan'); if (!el) return;
-  var f = LS.form, c = lsCounts(), b = lsBlocks(c.S || 1), fac = f.fac > 1 ? f.fac : 3, hi = f.top * (LS_UNIT[f.unit] || 1), nn = lsEl('ls-names-n');
+  var f = LS.form, c = lsCounts(), b = lsBlocks(c.S || 1), fac = f.fac > 1 ? f.fac : 3, hi = f.top * (LS_UNIT[f.unit] || 1), nn = lsEl('ls-names-n'), ty = lsTyped();
+  if (f.gmode === 'list') {
+    var pr = lmParseConcList(f.list, LS_UNIT[f.unit] || 1e-6), cn = lsEl('ls-conc-note'), ta = lsEl('ls-conc-list');
+    if (ta) ta.classList.toggle('bad', !!pr.bad.length);
+    if (cn) cn.innerHTML = pr.bad.length ? '<span class="warn">Not read: ' + pr.bad.slice(0, 4).map(esc).join(', ') + (pr.bad.length > 4 ? '…' : '') + ' — write a number with an optional unit, like 33.3 nM.</span>'
+      : pr.vals.length ? pr.vals.length + (pr.vals.length === 1 ? ' value' : ' values') + (pr.vals.length < 2 ? ' — a series needs at least two.' : '.') : 'one per line, highest first — a column pasted from Excel works; a unit on each line (nM, µM…) is read';
+    if (ty) { hi = ty.vals[0]; }
+  }
   if (nn) nn.textContent = c.N ? c.N + (c.N === 1 ? ' name' : ' names') : 'No names yet: compounds are called Compound 1, 2, 3… and can be renamed in the list on the Plate tab.';
   var lost = c.lost;
-  el.innerHTML = '<b>' + c.T + (c.T === 1 ? ' compound' : ' compounds') + '</b> × ' + f.reps + (f.reps === 1 ? ' replicate' : ' replicates') + ' · ' + b.pts + ' points · ' + fmtConc(hi) + ' → ' + fmtConc(hi / Math.pow(fac, b.pts - 1)) +
+  el.innerHTML = '<b>' + c.T + (c.T === 1 ? ' compound' : ' compounds') + '</b> × ' + f.reps + (f.reps === 1 ? ' replicate' : ' replicates') + ' · ' + b.pts + ' points · ' + (ty ? fmtConc(ty.vals[0]) + ' → ' + fmtConc(ty.vals[ty.vals.length - 1]) : f.gmode === 'list' ? 'type at least two values' : fmtConc(hi) + ' → ' + fmtConc(hi / Math.pow(fac, b.pts - 1))) +
     '<br>' + c.S + ' per plate' + (c.same ? ', the same on ' + c.plates + ' plates' : ' on ' + c.plates + (c.plates === 1 ? ' plate' : ' plates')) + (c.cap < c.T && !c.same ? ' (a plate holds ' + c.cap + ')' : '') +
     (lost > 0 ? '<br><span class="warn">' + lost + (lost === 1 ? ' compound does' : ' compounds do') + ' not fit — shorten the series or use fewer replicates.</span>' : '') +
     (!c.cap ? '<br><span class="warn">Nothing fits: the controls and the series leave no room. Change Points or Start at.</span>' : '') +
@@ -5152,8 +5167,15 @@ function lsPlanText(){
 }
 function lsPlace(){
   var f = LS.form;
-  if (!(f.top > 0)) { toast('Give the series a top concentration.'); lsEl('ls-top').focus(); return; }
-  if (!(f.fac > 1)) { toast('The dilution factor has to be above 1.'); lsEl('ls-fac').focus(); return; }
+  var ty = null;
+  if (f.gmode === 'list') {
+    var pr = lmParseConcList(f.list, LS_UNIT[f.unit] || 1e-6); ty = lsTyped();
+    if (pr.bad.length) { toast('Not read: ' + pr.bad.slice(0, 3).join(', ') + ' — write a number with an optional unit, like 33.3 nM.'); lsEl('ls-conc-list').focus(); return; }
+    if (!ty) { toast('Type at least two concentrations, one per line.'); lsEl('ls-conc-list').focus(); return; }
+  } else {
+    if (!(f.top > 0)) { toast('Give the series a top concentration.'); lsEl('ls-top').focus(); return; }
+    if (!(f.fac > 1)) { toast('The dilution factor has to be above 1.'); lsEl('ls-fac').focus(); return; }
+  }
   if (f.start && !PlateEngine.parseRange(f.start, { r: state.rows, c: state.cols })) { toast('“' + f.start + '” is not a well — write one like C1, or leave it empty.'); lsEl('ls-start').focus(); return; }
   var c = lsCounts(); if (!c.S) { toast('Nothing fits with these controls and this series — change Points or Start at.'); return; }
   lmMark();
@@ -5165,7 +5187,10 @@ function lsPlace(){
     groups[key] = groups[key].concat(w.map(function(x){ return x.p; }));
   });
   var dir = runRows ? (f.dir === 'right' ? 'right' : 'left') : (f.dir === 'right' ? 'down' : 'up');
-  state.layout = { norm: lmRules().slice(), grads: order.map(function(k, i){ var plan = PlateEngine.seriesPlan(groups[k], dir); return { id: 'g' + Date.now().toString(36) + i, top: f.top, unitMul: LS_UNIT[f.unit] || 1e-6, fac: f.fac, dir: plan.dir, idx: plan.idx }; }),
+  state.layout = { norm: lmRules().slice(), grads: order.map(function(k, i){ var plan = PlateEngine.seriesPlan(groups[k], dir); 
+    var g = { id: 'g' + Date.now().toString(36) + i, top: f.top, unitMul: LS_UNIT[f.unit] || 1e-6, fac: f.fac, dir: plan.dir, idx: plan.idx };
+    if (ty) { g.unitMul = LS_UNIT[f.unit] || 1e-6; g.top = ty.vals[0] / g.unitMul; g.fac = Math.pow(ty.vals[0] / ty.vals[ty.vals.length - 1], 1 / (ty.vals.length - 1)) || 1; g.concs = ty.vals.slice(); }
+    return g; }),
                    zones: PlateEngine.sortZones(bl.map(function(w){ return w.map(function(x){ return x.p; }); })) };
   _lmLastDir = dir;
   var names = lsNames(), list = [];
@@ -5213,6 +5238,7 @@ function lsWire(d){
     if (t.id === 'ls-paste') { var txt = t.value; if (txt && lmPasteReadings(txt)) { t.value = ''; lsK.refresh(); } return; }
     if (t.id === 'ls-assayid') { state.assayId = t.value.trim(); return; }
     if (t.id === 'ls-names') { f.names = t.value; LS.touched = true; lsPlanText(); }
+    else if (t.id === 'ls-conc-list') { f.list = t.value; lsPlanText(); lsMiniInto('ls-mini-p'); }
     else if (t.id === 'ls-top') { f.top = parseFloat(t.value); lsPlanText(); }
     else if (t.id === 'ls-fac') { f.fac = parseFloat(t.value); lsPlanText(); }
     else if (t.id === 'ls-pts') { var n = parseInt(t.value, 10); f.pts = n >= 2 ? Math.min(24, n) : null; lsPlanText(); lsMiniInto('ls-mini-p'); }
@@ -5222,7 +5248,7 @@ function lsWire(d){
   d.addEventListener('change', function(e){
     var t = e.target;
     if (t.id === 'ls-assay') { lsEl('assay-type').value = t.value; onAssayTypeChange(); lsEl('ls-assay-hint').textContent = lsAssayHint(t.value); lsK.tabs(); }
-    else if (t.id === 'ls-unit') { LS.form.unit = t.value; lsPlanText(); }
+    else if (t.id === 'ls-unit') { LS.form.unit = t.value; lsPlanText(); lsMiniInto('ls-mini-p'); }
     else if (t.dataset.role) lsSetRole(t.dataset.role, t.value, t);
     else if (t.closest && t.closest('#ls-hand') && t.dataset.p) lsHandCommit(t);
   });
@@ -5253,6 +5279,7 @@ function lsWire(d){
     if (t.closest('#ls-viab') && t.dataset.v) { lmSetViab(t.dataset.v === 'on'); lsK.render(); return; }
     if (t.closest('#ls-edge') && t.dataset.v) { lmSetEdge(t.dataset.v); lsK.render(); return; }
     if (t.closest('#ls-same')) { LS.same = t.dataset.g === 'same'; lsCompounds(); return; }
+    if (t.closest('#ls-gmode')) { f.gmode = t.dataset.m; lsCompounds(); return; }
     if (t.closest('#ls-reps')) { f.reps = +t.dataset.n; lsCompounds(); return; }
     if (t.closest('#ls-dir')) { f.dir = t.dataset.d; lsCompounds(); return; }
     if (t.closest('#ls-run')) { f.run = t.dataset.r; lsCompounds(); return; }
@@ -7762,7 +7789,7 @@ var assistRegister, assistOpen, assistClose, assistAsk, assistToggle;
         q: ['gradient', 'dilution series', 'serial dilution', 'concentrations', 'top concentration', 'dilution factor', 'set gradient', 'serie de diluciones', 'dilucion no constante', 'type the values', 'manual concentrations', 'diluciones', 'concentracion', 'factor de dilucion', 'highest at', 'points', 'puntos', 'direction', 'direccion'],
         a: 'A gradient is one dilution series drawn on the plate. Its points run along the direction you choose; the other way across the selection is replicates.',
         steps: ['Drag across the wells the series covers — any shape, any direction.', 'In the panel, give the **Top conc.**, its unit and the **Dilution** (fold between neighbouring points).', 'Choose **Highest at** (← → ↑ ↓).', 'Press **Set gradient**.'],
-        tip: 'You can divide a plate into as many gradients as it holds. Wells shaded dark to light show which end is highest. A series that is not a constant fold (1 µM, 100 nM, then threefold down): switch to **Type the values**, write one concentration per line (a column pasted from Excel works), choose **First value at**, and press **Set gradient**.',
+        tip: 'You can divide a plate into as many gradients as it holds. Wells shaded dark to light show which end is highest. A series that is not a constant fold (1 µM, 100 nM, then threefold down): switch to **Type the values**, write one concentration per line (a column pasted from Excel works), choose **First value at**, and press **Set gradient**. The Setup dialog (**Compounds** step) has the same switch: the typed list goes on every compound.',
         prep: plate, show: [{ sel: '#well-grid', say: 'Drag across the wells of one series, then set the numbers in the panel that appears.' }],
         see: ['compounds', 'select-wells'] },
       { id: 'compounds', t: 'Make compounds from a gradient', group: 'The plate', on: ['plate'],

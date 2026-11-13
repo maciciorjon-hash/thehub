@@ -1133,6 +1133,40 @@ try {
   check('L40 Setup › Controls: the 384 plate fits its card, at a laptop width and at a narrow one', Object.values(o).every(x => x.fits && x.inCard), JSON.stringify(o));
 } catch (err) { check('L40 the checks ran to the end', false, String(err && err.message || err).split('\n')[0]); }
 
+// L41 — Setup › Compounds takes a series typed by hand, like the Plate tab does (2026-11-13). The same list is written for every compound; it is kept on the gradient (concs), shown again on reopening, and a bad list is refused.
+try {
+  const r = await page.evaluate(async () => {
+    const o = {}, tick = () => new Promise(r => setTimeout(r, 30));
+    setPlateFormat(96); switchTab('input');
+    state.layout = { grads: [], zones: [] }; state.ctrlWells = new Set(); state.zeroCtrlWells = new Set(); state.names = []; LS.touched = false; LS.form.names = 'Cpd A\nCpd B\nCpd C'; LS.form.gmode = 'series'; LS.form.list = ''; LS.form.pts = null; LS.form.n = null; LS.form.start = ''; LS.form.reps = 2; LS.form.run = 'rows'; LS.form.dir = 'right';
+    lsOpen(3); await tick();
+    const q = id => document.getElementById(id), seg = document.querySelector('#ls-gmode');
+    o.seg = !!seg && !q('ls-conc-list') && !!q('ls-top') && !!q('ls-fac');
+    seg.querySelector('[data-m="list"]').click(); await tick();
+    o.listUi = !!q('ls-conc-list') && !q('ls-top') && !q('ls-fac') && !q('ls-pts');
+    const type = v => { const t = q('ls-conc-list'); t.value = v; t.dispatchEvent(new Event('input', { bubbles: true })); };
+    type('1 µM\n100 nM\n33.3 nM\n11.1 nM\n3.7 nM\n1.23 nM\n412 pM');
+    o.plan = /7 points/.test(q('ls-plan').textContent) && /412 pM/.test(q('ls-plan').textContent);
+    type('1 µM\n100 nM\nabc'); o.badNote = /Not read: abc/.test(q('ls-conc-note').textContent) && q('ls-conc-list').classList.contains('bad');
+    q('ls-place').click(); await tick(); o.refused = state.layout.grads.length === 0;
+    type('1 µM\n100 nM\n33.3 nM\n11.1 nM\n3.7 nM\n1.23 nM\n412 pM');
+    q('ls-place').click(); await tick();
+    const g = state.layout.grads[0]; o.concs = !!g && (g.concs || []).length === 7;
+    const want = [1e-6, 100e-9, 33.3e-9, 11.1e-9, 3.7e-9, 1.23e-9, 412e-12], wd = lmPlateWellData(0), cs = Object.keys(wd).map(k => wd[k].conc);
+    o.wells = cs.length === 6 * 7 && cs.every(c => want.some(w => Math.abs(c / w - 1) < 1e-9)) && want.every(w => cs.filter(c => Math.abs(c / w - 1) < 1e-9).length === 6);
+    LS.touched = false; LS.form.gmode = 'series'; LS.form.list = ''; LS.form.names = ''; lsOpen(2); await tick(); lsOpen(3); await tick();
+    o.back = LS.form.gmode === 'list' && !!q('ls-conc-list') && q('ls-conc-list').value.split('\n').length === 7 && /33.3 nM/.test(q('ls-conc-list').value);
+    q('ls-gmode').querySelector('[data-m="series"]').click(); await tick();
+    const fire = (id, v) => { q(id).value = v; q(id).dispatchEvent(new Event('input', { bubbles: true })); };
+    fire('ls-top', '10'); fire('ls-fac', '2'); fire('ls-pts', '5');
+    q('ls-place').click(); await tick();
+    const g2 = state.layout.grads[0]; o.series = !!g2 && !g2.concs && Math.abs(g2.fac - 2) < 1e-9;
+    lsKit().close && lsKit().close();
+    return o;
+  });
+  check('L41 Setup › Compounds: Type the values shows a list in place of top + factor, counts the points, refuses a bad list, puts the typed concentrations on every compound, returns them on reopening; Top + dilution still works', Object.values(r).every(Boolean), JSON.stringify(r));
+} catch (err) { check('L41 the checks ran to the end', false, String(err && err.message || err).split('\n')[0]); }
+
 check('no page or console errors', errs.length === 0, errs.slice(0, 3).join(' | '));
 await browser.close();
 if (findings.length) { console.log(findings.join('\n')); console.log(`\n${findings.length} finding(s), ${passed} checks passed.`); process.exit(1); }
