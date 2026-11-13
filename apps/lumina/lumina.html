@@ -2638,7 +2638,7 @@ function lgGraphDoc(){
   return { sig: state.plates.map(function(p){ return (p.file || '') + ':' + Object.keys(p.signal).length + (lmViabOn() ? state.viabView + Object.keys(p.viab || {}).length : ''); }).join('|') + '|' + t + '|' + state.names.join(','),
     // the Assay ID typed in Setup names the figure; without one, the kind of assay does
     title: [lmHistName() || (lmViabOn() && state.viabView === 'viab' ? 'Viability' : (ASSAY_NAMES[t] || 'Dose\u2013response') + (lmViabOn() && state.viabView === 'rel' ? ', relative to viability' : '')), '', ''],
-    xTitle: '[compound] (' + u[0] + ')', xUnit: u[0], yTitle: lab.yAxis, refLine: state.normalised ? { y: 100 } : null, items: items,
+    xTitle: '[compound] (' + u[0] + ')', xUnit: u[0], yTitle: (_lmNorm() || gain) ? lab.yAxis : 'Signal (raw counts)', refLine: state.normalised ? { y: 100 } : null, items: items,
     table: ChartKitCore.fourPL({ potency: lab.ec50Name, effect: gain ? 'Emax' : (lab.dmaxName || 'Span'), pct: _lmNorm(), gain: gain, sig: 4, note: 'Four-parameter logistic fit of the replicates in the figure \u00b7 ' + (gain ? 'Emax = top' : (lab.dmaxName || 'Span') + ' = top \u2212 bottom' + (_lmNorm() ? ' (% of control)' : '')) + ' \u00b7 n.d. = no usable curve' }),
     refit: function(it, pts){
       var xs = [], ys = []; pts.forEach(function(p){ p.reps.forEach(function(v){ xs.push(Math.log10(p.x * u[1])); ys.push(v); }); });
@@ -8855,7 +8855,7 @@ var ChartKitCore = (function(){
       yTicks = { step: 0, ticks: [], min: Math.pow(10, Math.floor(Math.log10(l0))), max: Math.pow(10, Math.ceil(Math.log10(l1))) };
       for (var q = Math.log10(yTicks.min); q <= Math.log10(yTicks.max) + 1e-9; q++) yTicks.ticks.push(Math.pow(10, q));
     } else {
-      var pad = (hi - lo) * 0.04 || 1, a0 = yMin !== null ? yMin : (lo < 0 ? lo - pad : (kind === 'bars' ? 0 : lo - pad)), a1 = yMax !== null ? yMax : hi + pad;
+      var pad = (hi - lo) * 0.04 || 1, a0 = yMin !== null ? yMin : (lo < 0 ? lo - pad : (kind === 'bars' ? 0 : Math.max(0, lo - pad))), a1 = yMax !== null ? yMax : hi + pad;
       if (a1 <= a0) { if (yMax !== null && yMin === null) a0 = a1 - Math.max(hi - lo, 1); else a1 = a0 + Math.max(hi - lo, 1); }   // one bound set past the data: the other follows it
       var tk = linTicks(a0, a1, +spec.y.major || 0, 6);
       // An end left on auto is a tick at or beyond the data (and its padding): rounded outwards, never in, so no point, bar or error bar is cut off.

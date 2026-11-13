@@ -143,6 +143,12 @@ try { if (hasX) {
   const raw = await ev(() => ({ norm: state.normalised, txt: document.querySelector('#results-table-wrap tbody tr').textContent, flags: state.fitResults.filter(r => r.flagSD).length, note: !document.getElementById('rs-note').hidden }));
   check('L7 no control → raw counts, not "%"', raw.norm === false && !/%/.test(raw.txt) && raw.note, JSON.stringify(raw));
   check('L7 no control → the SD flag (in % of control) does not fire', raw.flags === 0, String(raw.flags));
+  // L42 the figure says what it draws: raw counts are not "% viability", and an all-positive run is not drawn on an axis that goes below zero
+  await ev(() => switchTab('graph')); await page.waitForTimeout(800);
+  const g1 = await ev(() => { const sc = _lgKit.scene(); return { yT: sc.prims.filter(p => p.el === 'yTitle').map(p => p.text).join(''), min: sc.yTicks.min, lo: sc.yData && sc.yData.lo }; });
+  check('L42 no control → the figure\'s Y title is the raw counts, not a percentage', /raw counts/i.test(g1.yT) && !/%/.test(g1.yT), JSON.stringify(g1));
+  check('L42 readings that are all positive are not drawn on an axis that starts below zero', g1.lo >= 0 && g1.min >= 0, JSON.stringify(g1));
+  await ev(() => switchTab('results')); await page.waitForTimeout(300);
 
   // ── L2 settings stability ────────────────────────────────────────────────────────────
   await page.click('#rs-set-btn');
@@ -167,6 +173,10 @@ try { if (hasX) {
   await ev(() => { lmSetSel(new Set(['H11', 'H12'])); lmMarkCtrl('ctrl'); switchTab('results'); }); await page.waitForTimeout(700);
   const norm = await ev(() => ({ n: state.normalised, txt: document.querySelector('#results-table-wrap tbody tr').textContent }));
   check('L7 with a control the effect is a % again', norm.n === true && /%/.test(norm.txt), JSON.stringify(norm));
+  await ev(() => switchTab('graph')); await page.waitForTimeout(800);
+  const g2 = await ev(() => _lgKit.scene().prims.filter(p => p.el === 'yTitle').map(p => p.text).join(''));
+  check('L42 with a control the figure\'s Y title is the percentage again', /%/.test(g2), g2);
+  await ev(() => switchTab('results')); await page.waitForTimeout(300);
 
   // ── L3 units ─────────────────────────────────────────────────────────────────────────
   const MUL = { M: 1, mM: 1e-3, uM: 1e-6, nM: 1e-9, pM: 1e-12 };

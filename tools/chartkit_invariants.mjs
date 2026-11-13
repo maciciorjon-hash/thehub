@@ -424,6 +424,12 @@ await page.click('button[data-a="xauto"]'); await page.waitForTimeout(300);
 const k42c = await ev(() => ({ min: window.kit.spec().x.min, warn: !!document.querySelector('#ck-xnote .ck-warn') }));
 check('K42 a typed X minimum that cuts the doses shows a warning under the X axis, and Use auto clears it on the first click', k42a && k42b.warn && /X 50/.test(k42b.entry) && k42c.min === null && !k42c.warn, JSON.stringify([k42b, k42c]));
 
+// K43 — readings that are all positive are not drawn on an axis that goes below zero (a curve whose lowest point was 96 got a Y axis from -1000), on auto; a run with a negative reading still gets room below it
+const k43 = await ev(() => { const C = ChartKitCore, mk = (lo, hi) => ({ id: 'a', name: 'a', points: [1, 3, 10, 30, 100, 300].map((c, j) => ({ x: c, label: '' + c, reps: [0, 1, 2].map(r => ({ id: 'p' + j + ':' + r, v: lo + (hi - lo) * j / 5 + r })) })) }),
+  y = (it, kind) => C.build({ kind: kind, xScale: 'log', items: [it] }, C.withDefaults({ kind: kind })).yTicks.min;
+  return { curvesPos: y(mk(96, 3600), 'xy'), curvesZero: y(mk(0, 100), 'xy'), curvesNeg: y(mk(-30, 100), 'xy'), bars: y(mk(96, 3600), 'bars') }; });
+check('K43 all-positive readings: the auto Y axis starts at zero or above (curves and bars); a negative reading still gets room below it', k43.curvesPos >= 0 && k43.curvesZero >= 0 && k43.bars >= 0 && k43.curvesNeg < 0, JSON.stringify(k43));
+
 // K29 — the unit of the concentration axis: M, mM, µM, nM or pM. Everything on the figure is the same physical figure in another unit
 await open('xy');
 const k29 = await ev(() => {
