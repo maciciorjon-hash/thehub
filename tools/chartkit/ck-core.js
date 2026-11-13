@@ -507,7 +507,7 @@ var ChartKitCore = (function(){
     var data = [];
     // x geometry
     var xPx, xTickList = [];
-    var xCut = false, xAuto = null, xData = null;   // a typed X range that leaves doses outside the figure (the X twin of yCut)
+    var xCut = false, xAuto = null, xData = null, xBad = false;   // a typed X range that leaves doses outside the figure (the X twin of yCut)
     if (kind === 'bars') {
       var nG = Math.max(1, vis.length), nb = nBarsMax, B = spec.bar;
       // total width = nG*(nb*bw + (nb-1)*inner*bw) + (nG+1)*gap*bw
@@ -539,23 +539,26 @@ var ChartKitCore = (function(){
         if (kx > 1) xTickList.forEach(function(t, ti){ if (ti % kx) t.label = ''; });
       }
     } else {
+      var xr = { min: spec.x.min, max: spec.x.max };
+      // a minimum that is not below the maximum is no range: the axis stays on auto (as the Y axis does) and the panel says so
+      xBad = fin(+xr.min) && fin(+xr.max) && xr.min !== null && xr.max !== null && xr.min !== '' && xr.max !== '' && +xr.min >= +xr.max; if (xBad) xr = { min: null, max: null };
       var lin = doc.xScale === 'lin', la = 0, lb = 1, d0 = 0, d1 = 1;
       var xv = []; vis.forEach(function(it){ it.pts.forEach(function(p){ if (lin ? fin(p.x) : p.x > 0) xv.push(p.x); }); });
       var xlo = xv.length ? Math.min.apply(null, xv) : 1, xhi = xv.length ? Math.max.apply(null, xv) : 10;
       if (lin) {
         // a linear axis: from a round number at or below the lowest x to one at or above the highest, or the minimum and maximum the person typed
         var lt = linTicks(xlo === xhi ? xlo - 1 : xlo, xlo === xhi ? xhi + 1 : xhi, 0, 6), st = lt.step, typed = function(v){ return v !== null && v !== undefined && v !== '' && fin(+v); };
-        la = typed(spec.x.min) ? +spec.x.min : Math.floor(xlo / st + 1e-9) * st; lb = typed(spec.x.max) ? +spec.x.max : Math.ceil(xhi / st - 1e-9) * st; if (lb <= la) lb = la + st;
+        la = typed(xr.min) ? +xr.min : Math.floor(xlo / st + 1e-9) * st; lb = typed(xr.max) ? +xr.max : Math.ceil(xhi / st - 1e-9) * st; if (lb <= la) lb = la + st;
         var laA = Math.floor(xlo / st + 1e-9) * st, lbA = Math.ceil(xhi / st - 1e-9) * st; if (lbA <= laA) lbA = laA + st;
-        if (xv.length && (typed(spec.x.min) || typed(spec.x.max))) { xCut = xlo < la - 1e-9 * Math.max(1, Math.abs(xlo)) || xhi > lb + 1e-9 * Math.max(1, Math.abs(xhi)); xAuto = { min: laA, max: lbA }; xData = { lo: xlo, hi: xhi }; }
+        if (xv.length && (typed(xr.min) || typed(xr.max))) { xCut = xlo < la - 1e-9 * Math.max(1, Math.abs(xlo)) || xhi > lb + 1e-9 * Math.max(1, Math.abs(xhi)); xAuto = { min: laA, max: lbA }; xData = { lo: xlo, hi: xhi }; }
         xPx = function(x){ return plot.x + (x - la) / (lb - la) * plot.w; };
         linTicks(la, lb, 0, 6).ticks.forEach(function(v){ xTickList.push({ x: xPx(v), label: fmt(v), major: true }); });
       } else {
       // Automatic range: a tenth of a decade of air round the data, then out to the next 1-2-5 value (0.1, 0.2, 0.5, 1, 2, 5, 10 ...), so the curves fill the plot instead of sitting in the middle of seven decades.
       var L125 = [0, Math.LOG10E * Math.log(2), Math.LOG10E * Math.log(5)];
       function snap125(v, up){ var f = Math.floor(v + 1e-9), r = v - f, k, c = [L125[0], L125[1], L125[2], 1]; if (up) { for (k = 0; k < 4; k++) if (c[k] >= r - 1e-9) return f + c[k]; } for (k = 3; k >= 0; k--) if (c[k] <= r + 1e-9) return f + c[k]; return f; }
-      var d0 = fin(spec.x.min) && +spec.x.min > 0 ? Math.log10(+spec.x.min) : snap125(Math.log10(xlo) - 0.1, false), d1 = fin(spec.x.max) && +spec.x.max > 0 ? Math.log10(+spec.x.max) : snap125(Math.log10(xhi) + 0.1, true);
-      if (xv.length && ((fin(spec.x.min) && +spec.x.min > 0) || (fin(spec.x.max) && +spec.x.max > 0))) { xCut = Math.log10(xlo) < d0 - 1e-9 || Math.log10(xhi) > d1 + 1e-9; xAuto = { min: Math.pow(10, snap125(Math.log10(xlo) - 0.1, false)), max: Math.pow(10, snap125(Math.log10(xhi) + 0.1, true)) }; xData = { lo: xlo, hi: xhi }; }
+      var d0 = fin(xr.min) && +xr.min > 0 ? Math.log10(+xr.min) : snap125(Math.log10(xlo) - 0.1, false), d1 = fin(xr.max) && +xr.max > 0 ? Math.log10(+xr.max) : snap125(Math.log10(xhi) + 0.1, true);
+      if (xv.length && ((fin(xr.min) && +xr.min > 0) || (fin(xr.max) && +xr.max > 0))) { xCut = Math.log10(xlo) < d0 - 1e-9 || Math.log10(xhi) > d1 + 1e-9; xAuto = { min: Math.pow(10, snap125(Math.log10(xlo) - 0.1, false)), max: Math.pow(10, snap125(Math.log10(xhi) + 0.1, true)) }; xData = { lo: xlo, hi: xhi }; }
       if (d1 <= d0) d1 = d0 + 1;
       xPx = function(x){ return plot.x + (Math.log10(Math.max(x, 1e-30)) - d0) / (d1 - d0) * plot.w; };
       var exps = []; for (var e0 = Math.ceil(d0 - 1e-9); e0 <= d1 + 1e-9; e0++) exps.push(e0);
@@ -649,7 +652,7 @@ var ChartKitCore = (function(){
       var TB = tableBlock(vis, doc.table, spec, kind, W, H, F);
       if (TB) { TB.prims.forEach(function(p){ prims.push(p); }); tableH = TB.h; }
     }
-    return { W: W, H: H + tableH, figH: H, prims: prims, plot: plot, kind: kind, font: F, clip: { x: plot.x - 8, y: plot.y - 3, w: plot.w + 16, h: plot.h + 6 }, items: items, yTicks: yTicks, yData: fin(lo) ? { lo: lo, hi: hi } : null, yCut: yCut, yAuto: yAuto, xCut: xCut, xAuto: xAuto, xData: xData, titles: titles.length, grew: grew };
+    return { W: W, H: H + tableH, figH: H, prims: prims, plot: plot, kind: kind, font: F, clip: { x: plot.x - 8, y: plot.y - 3, w: plot.w + 16, h: plot.h + 6 }, items: items, yTicks: yTicks, yData: fin(lo) ? { lo: lo, hi: hi } : null, yCut: yCut, yAuto: yAuto, xCut: xCut, xAuto: xAuto, xData: xData, xBad: xBad, titles: titles.length, grew: grew };
   }
   function autoKind(doc, spec){
     var vis = (doc.items || []).filter(function(i){ return !spec.hidden[i.id]; });

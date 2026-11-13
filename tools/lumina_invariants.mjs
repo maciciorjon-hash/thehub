@@ -1177,6 +1177,28 @@ try {
   check('L41 Setup › Compounds: Type the values shows a list in place of top + factor, counts the points, refuses a bad list, puts the typed concentrations on every compound, returns them on reopening; Top + dilution still works', Object.values(r).every(Boolean), JSON.stringify(r));
 } catch (err) { check('L41 the checks ran to the end', false, String(err && err.message || err).split('\n')[0]); }
 
+// L43 — a typed list too long for the plate says to shorten the list, not to change a Points box that is not there in this mode (2026-11-13)
+try {
+  const r = await page.evaluate(async () => {
+    const o = {}, tick = () => new Promise(r => setTimeout(r, 30));
+    setPlateFormat(96); switchTab('input');
+    state.layout = { grads: [], zones: [] }; state.ctrlWells = new Set(); state.zeroCtrlWells = new Set(); state.names = []; LS.touched = false; LS.form.names = 'Cpd A\nCpd B\nCpd C'; LS.form.gmode = 'series'; LS.form.list = ''; LS.form.pts = null; LS.form.n = null; LS.form.start = ''; LS.form.reps = 2; LS.form.run = 'rows'; LS.form.dir = 'right';
+    state.plates = [_lmNewPlate()]; state.plate = 0;
+    lsOpen(3); await tick();
+    const q = id => document.getElementById(id);
+    q('ls-gmode').querySelector('[data-m="list"]').click(); await tick();
+    const t = q('ls-conc-list'); t.value = Array.from({ length: 14 }, (_, i) => (10 / Math.pow(3, i)).toPrecision(3) + ' µM').join('\n'); t.dispatchEvent(new Event('input', { bubbles: true }));
+    o.plan = q('ls-plan').textContent; q('ls-place').click(); await tick();
+    o.toast = document.getElementById('toast').textContent; o.none = state.layout.grads.length === 0;
+    q('ls-gmode').querySelector('[data-m="series"]').click(); await tick();
+    const fire = (id, v) => { q(id).value = v; q(id).dispatchEvent(new Event('input', { bubbles: true })); };
+    fire('ls-top', '10'); fire('ls-fac', '3'); fire('ls-pts', '14'); q('ls-place').click(); await tick();
+    o.toastSeries = document.getElementById('toast').textContent; lsKit().close && lsKit().close();
+    return o;
+  });
+  check('L43 a typed list too long for the plate is refused, and the advice is to shorten the list (a series still says Points)', r.none && /list/i.test(r.toast) && !/Points/.test(r.toast) && /list/i.test(r.plan) && !/Points/.test(r.plan) && /Points/.test(r.toastSeries), JSON.stringify(r));
+} catch (err) { check('L43 the checks ran to the end', false, String(err && err.message || err).split('\n')[0]); }
+
 check('no page or console errors', errs.length === 0, errs.slice(0, 3).join(' | '));
 await browser.close();
 if (findings.length) { console.log(findings.join('\n')); console.log(`\n${findings.length} finding(s), ${passed} checks passed.`); process.exit(1); }

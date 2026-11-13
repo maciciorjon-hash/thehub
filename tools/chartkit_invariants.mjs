@@ -410,7 +410,9 @@ const k42 = await ev(() => { const C = ChartKitCore, mkpts = xs => xs.map((c, j)
     const bad = c.prims.filter(q => (q.t === 'path' && /^(fit|join|pt):/.test(q.el || '') && q.pts.some(z => z[0] < p.x - eps || z[0] > p.x + p.w + eps || z[1] < p.y - eps || z[1] > p.y + p.h + eps)) || (q.t === 'marker' && (q.cx < p.x - 0.5 || q.cx > p.x + p.w + 0.5))).length;
     const mk = c.prims.filter(q => q.t === 'marker').length, mkAuto = a.prims.filter(q => q.t === 'marker').length;
     out[sc] = { bad, mk, mkAuto, cut: c.xCut, auto: c.xAuto, data: c.xData, autoCut: a.xCut, fit: c.prims.filter(q => q.el === 'fit:a').length };
-  }); return out; });
+  }); out.bad = {}; [['log', [0.1, 1, 10, 100]], ['lin', [0, 2, 4, 6]]].forEach(([sc, xs]) => { const doc = { kind: 'xy', xScale: sc, items: [{ id: 'a', name: 'a', points: mkpts(xs) }] };
+    out.bad[sc] = [[5, 5], [100, 10]].map(([a, b]) => { const c = C.build(doc, C.withDefaults({ kind: 'xy', x: { min: a, max: b } })), au = C.build(doc, C.withDefaults({ kind: 'xy' })); return { flag: c.xBad, same: JSON.stringify(c.prims.filter(q => /^xTick/.test(q.el || '')).map(q => q.text)) === JSON.stringify(au.prims.filter(q => /^xTick/.test(q.el || '')).map(q => q.text)) }; }); }); return out; });
+check('K42 an X minimum not below the maximum is no range: the axis is on auto, the panel says so (as the Y axis does)', ['log', 'lin'].every(k => k42.bad[k].every(r => r.flag && r.same)), JSON.stringify(k42.bad));
 check('K42 an X minimum above the lowest dose: no line or point is drawn past the plot, the points beyond it are not drawn, the fit is still there (log and linear)',
   ['log', 'lin'].every(k => k42[k].bad === 0 && k42[k].mk < k42[k].mkAuto && k42[k].mk > 0 && k42[k].fit >= 1), JSON.stringify(k42));
 check('K42 …and the X range says it cuts doses and offers the range auto would draw (which holds them); auto says nothing',
@@ -419,10 +421,10 @@ await open('xy');
 await ev(() => { window.kit.open('axes'); });
 const k42a = await ev(() => document.querySelector('.ck-secs, .ck-menu, .ck-panel') ? true : false);
 await page.locator('input[data-p="x.min"]').fill('50'); await page.waitForTimeout(300);
-const k42b = await ev(() => ({ warn: !!document.querySelector('#ck-xnote .ck-warn'), entry: (document.querySelector('[data-menu="axes"]') || {}).textContent || '' }));
+const k42b = await ev(() => ({ warn: !!document.querySelector('#ck-xnote .ck-warn'), line: /outside the X range/.test((document.querySelector('.ck-status') || {}).textContent || ''), entry: (document.querySelector('[data-menu="axes"]') || {}).textContent || '' }));
 await page.click('button[data-a="xauto"]'); await page.waitForTimeout(300);
-const k42c = await ev(() => ({ min: window.kit.spec().x.min, warn: !!document.querySelector('#ck-xnote .ck-warn') }));
-check('K42 a typed X minimum that cuts the doses shows a warning under the X axis, and Use auto clears it on the first click', k42a && k42b.warn && /X 50/.test(k42b.entry) && k42c.min === null && !k42c.warn, JSON.stringify([k42b, k42c]));
+const k42c = await ev(() => ({ min: window.kit.spec().x.min, warn: !!document.querySelector('#ck-xnote .ck-warn'), line: /outside the X range/.test((document.querySelector('.ck-status') || {}).textContent || '') }));
+check('K42 a typed X minimum that cuts the doses shows a warning under the X axis and under the figure, and Use auto clears both on the first click', k42a && k42b.warn && k42b.line && /X 50/.test(k42b.entry) && k42c.min === null && !k42c.warn && !k42c.line, JSON.stringify([k42b, k42c]));
 
 // K43 — readings that are all positive are not drawn on an axis that goes below zero (a curve whose lowest point was 96 got a Y axis from -1000), on auto; a run with a negative reading still gets room below it
 const k43 = await ev(() => { const C = ChartKitCore, mk = (lo, hi) => ({ id: 'a', name: 'a', points: [1, 3, 10, 30, 100, 300].map((c, j) => ({ x: c, label: '' + c, reps: [0, 1, 2].map(r => ({ id: 'p' + j + ':' + r, v: lo + (hi - lo) * j / 5 + r })) })) }),
