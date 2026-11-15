@@ -200,6 +200,7 @@
 //   B60 spark ns oa        Six presets (HB_SPARK_SC1..6): DELE1-HiBiT by hand, 96-well, two plates of three compounds in duplicate with rows A and H empty and the DMSO in column 12; the
 //       scenarios            steps and days of each scenario (OA none / 3 h before / at seeding / removed), the PROTAC 10x going onto the volume the steps above left (11.11 onto 100, 10 onto 90),
 //                            seeding, OA and AFC counted over both plates, and the layouts that do not ask for empty outer rows left as they were
+//   B61 spark isrib        SC3 with ISRIB (HB_SPARK_SC3_ISRIB): the series DOWN the rows (layout drcols, a compound per pair of columns, 7 points A-G, DMSO in row H), one plate per condition with the same six compounds, ISRIB for plate 2 only, the medium swapped on both.
 //   B54 plate labels      Words round the plate: select wells and a dashed + sits beside the plate on all four sides over exactly the selected columns/rows; a label
 //                            is typed, edited, removed and undone; a wider one stacks outside a narrower one; nothing written round the plate sits on a well, a header or
 //                            another label; the card, the PNG, the print table and a copied layout all carry it. (the plate map could not say what a column was)
@@ -3257,6 +3258,62 @@ async function suite(opts) {
       const p0 = L.build(o); if (Object.keys(p0.wells).length !== 96 || !p0.wells.A1 || !p0.wells.H12) bad('B60', 'edge off', 'with the outer rows on, the bands no longer fill rows A–H');
       if ((L.more(o) || []).length) bad('B60', 'edge off', 'a plate without edgeRows drew more plates (CTG "# plates" is copies per readout)');
       if (compoundsPerPlate({ format: '96', nPoints: 11, nReps: 2 }) !== 4 || compoundsPerPlate({ format: '96', nPoints: 11, nReps: 2, edgeRows: 1 }) !== 3) bad('B60', 'per plate', 'a 96-well plate holds 4 compounds in duplicate, 3 with rows A and H empty');
+    });
+
+    // B61 — SC3 + ISRIB: the same screen with the series running down the rows, two plates carrying the same compounds, ISRIB on one of them.
+    if (run('B61')) await guard('B61', 'spark isrib', async () => {
+      const P = (LB.data.projects || []).find(p => (p.sections || []).length);
+      const key = 'HB_SPARK_SC3_ISRIB', tpl = LB.data.presets[key];
+      if (!tpl) { bad('B61', key, 'the preset is not in the notebook'); return; }
+      if (presetBase(key) !== 'HB' || tpl.layout !== 'drcols') bad('B61', 'identity', 'type ' + presetBase(key) + ', layout ' + tpl.layout);
+      const CMP = ['G3', 'G4', 'G5', 'G6', 'G7', 'G8'];
+      const su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup || {})), { compounds: CMP.join('\n') });
+      const before = new Set(Object.keys(LB.data.experiments));
+      buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-11-15', type: 'HB', title: 'INV isrib', code: 'INV_B61', setup: su, plate: true });
+      const e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); if (!e) { bad('B61', key, 'no experiment was made'); return; }
+      clean.push(e); tick('B61');
+      // the steps, their days and the two waits
+      const WANT = [['Cell seeding', 0], ['ISRIB addition (plate 2 only)', 0], ['Fresh medium with OA (2 h before the PROTAC)', 1], ['PROTAC addition', 1], ['AFC viability reagent', 1], ['HiBiT Lytic + read', 1]];
+      if (e.blocks.length !== WANT.length) bad('B61', 'steps', e.blocks.length + ' steps: ' + e.blocks.map(b => b.title).join(' | '));
+      WANT.forEach(([t, d], i) => { const b = e.blocks[i]; if (!b) return;
+        if (b.title !== t) bad('B61', 'step ' + (i + 1), '"' + b.title + '", expected "' + t + '"');
+        else if (+b.date.slice(8) - +e.startDate.slice(8) !== d) bad('B61', 'day', '"' + t + '" is on day ' + (+b.date.slice(8) - +e.startDate.slice(8)) + ', expected ' + d); });
+      const by = re => e.blocks.find(b => re.test(b.title));
+      if ((by(/Fresh medium/) || {}).waitMin !== 120) bad('B61', 'OA wait', 'OA alone for ' + (by(/Fresh medium/) || {}).waitMin + ' min, expected 120 (Jon: 2 h of OA)');
+      if ((by(/^PROTAC/) || {}).waitMin !== 360) bad('B61', 'PROTAC wait', 'the PROTAC is on for ' + (by(/^PROTAC/) || {}).waitMin + ' min, expected 360');
+      // ISRIB: plate 2 only (96 wells, not the 192 the map has), 10x, 0.3 uM final from the 10 mM stock, and the number is the run's own
+      const ib = by(/ISRIB/), Ii = ib && ib.calc.inputs;
+      if (!Ii || Ii.nWells !== 96 || !(ib.calc.own && ib.calc.own.nWells)) bad('B61', 'ISRIB wells', 'ISRIB goes into ' + (Ii && Ii.nWells) + ' wells, expected plate 2 alone (96)');
+      if (!Ii || Ii.foldX !== 10 || Math.abs(Ii.finalUM - 0.3) > 1e-9 || Ii.stockUM !== 10000 || Ii.wellVolUL !== 90) bad('B61', 'ISRIB', JSON.stringify(Ii));
+      // the PROTAC: 7 points from 20 uM, 3-fold, 6 compounds, onto the 90 uL the fresh medium leaves
+      const Ip = (by(/^PROTAC/) || { calc: {} }).calc.inputs;
+      if (!Ip || Ip.topFinalNM !== 20000 || Ip.nPoints !== 7 || Ip.df !== 3 || Ip.nCompounds !== 6 || Ip.wellVolUL !== 90 || Ip.foldX !== 10) bad('B61', 'series', JSON.stringify(Ip));
+      // the medium swap says the volume the PROTAC goes onto
+      if (!/90 (µL|&micro;L)/.test((by(/Fresh medium/) || {}).html || '')) bad('B61', 'medium volume', 'the medium step does not say 90 µL, which is what the PROTAC calculator assumes');
+      // two plates, the same six compounds on both, the series down the rows A-G and the vehicle in H
+      const pl = [e.plate].concat(e.morePlates || []);
+      if (pl.length !== 2) { bad('B61', 'plates', pl.length + ' plates, expected 2'); return; }
+      if (!/Plate 1/.test(pl[0].title) || !/ISRIB/.test(pl[1].title) || /ISRIB/.test(pl[0].title)) bad('B61', 'plate names', pl.map(p => p.title).join(' | '));
+      pl.forEach((p, k) => {
+        const ids = Object.keys(p.wells);
+        if (ids.length !== 96) bad('B61', 'plate ' + (k + 1), ids.length + ' wells, expected all 96');
+        CMP.forEach((c, i) => { for (const col of [2 * i + 1, 2 * i + 2]) for (let r = 0; r < 8; r++) { const w = p.wells[String.fromCharCode(65 + r) + col];
+          if (!w || w.compound !== c) bad('B61', 'compound ' + (k + 1), String.fromCharCode(65 + r) + col + ' holds ' + (w && w.compound) + ', expected ' + c);
+          else if ((r === 7) !== (w.typeId === 'dmso')) bad('B61', 'vehicle ' + (k + 1), String.fromCharCode(65 + r) + col + ' is ' + w.typeId + ' (the vehicle is row H and only row H)');
+          else if (r < 7 && w.conc !== _fmtConc(20000 / Math.pow(3, r))) bad('B61', 'series ' + (k + 1), String.fromCharCode(65 + r) + col + ' is ' + w.conc + ', expected ' + _fmtConc(20000 / Math.pow(3, r))); } });
+      });
+      if (JSON.stringify(pl[0].wells) !== JSON.stringify(pl[1].wells)) bad('B61', 'same layout', 'the two plates do not carry the same wells');
+      // the plate feeds what is made for both plates
+      const nw = re => { const b = by(re); return b && b.calc && b.calc.inputs && (b.calc.inputs.nWells || b.calc.inputs.nPlates); };
+      if (nw(/Cell seeding/) !== 192 || nw(/AFC/) !== 192 || nw(/HiBiT Lytic/) !== 2) bad('B61', 'wells', 'seeding ' + nw(/Cell seeding/) + ', AFC ' + nw(/AFC/) + ', lytic plates ' + nw(/HiBiT Lytic/) + ' — expected 192 wells and 2 plates');
+      // a screen drawn the old way is untouched, and the geometry says 6 compounds a plate
+      if (compoundsPerPlate({ format: '96', nPoints: 7, nReps: 2, seriesDown: 1 }) !== 6 || compoundsPerPlate({ format: '96', nPoints: 7, nReps: 2 }) !== 4) bad('B61', 'per plate', 'series down holds 12/replicates compounds, the bands 4');
+      if (_autoLayout('HB', { format: '96', dosing: 'Manual (serial dilution)', seriesDown: true }).id !== 'drcols' || _autoLayout('HB', { format: '96', dosing: 'Manual (serial dilution)' }).id !== 'drbands') bad('B61', 'auto layout', 'seriesDown must pick drcols, and only it');
+      const L = PLATE_LAYOUTS.find(x => x.id === 'drcols');
+      const q = L.more({ format: '96', topConc: 20000, df: 3, nPoints: 7, nReps: 2, compounds: 'a\nb\nc\nd\ne\nf\ng' });
+      if (q.length !== 1 || Object.keys(q[0].wells).length !== 16) bad('B61', 'spill', 'a seventh compound should go on a second plate with its own two columns, got ' + q.length + ' extra plate(s)');
+      openExp(e.id); await sleep(60);
+      const txt = document.body.innerText; if (/\{\{[^}]*\}\}/.test(txt)) bad('B61', 'tokens', 'an unfilled token on the page: ' + (txt.match(/\{\{[^}]*\}\}/) || [])[0]);
     });
 
     // B54 — words round the plate: what a column or a row is, written beside it.

@@ -4396,6 +4396,20 @@ var EXTRA_PRESET_SEED={
 //   6 OA at seeding, removed next morning, then PROTAC 6 h
 // Everything goes on a well as a 10× on top of what is there: the cells go in as 90 µL and the OA as 10 µL, so the PROTAC is 100/9 =
 // 11.11 µL onto 100 µL (10 µL onto 90 where there is no OA, or where the OA was removed and 90 µL of fresh medium went back).
+// The two read steps every SPARK NS OA scenario ends with: the AFC viability reagent (the medium is aspirated, the plate holds just it) and the
+// HiBiT Lytic reagent on top of it, read together on the GloMax Discover. `rd` is the day they fall on.
+function _hbSparkRead(rd){
+  return [
+    {d:rd,title:'AFC viability reagent',w:30,
+    calc:{kind:'reagent',inputs:{name:'AFC substrate',diluent:'PBS',perWellUL:50,nWells:144,excess:1.1,dilution:125,replace:true}},
+    pub:'Viability was multiplexed with the HiBiT read: the medium was aspirated and {{c.perWell}} per well of PBS containing the AFC fluorescent reagent at {{afcUM}} &micro;M was added and incubated for 30 min at 37 &deg;C.',
+    html:'<ol><li>Make the AFC reagent for all the wells in one tube: {{c.reagentUL}} {{c.name}} ({{c.dilution}}) + {{c.diluentUL}} {{c.diluent}} = {{c.total}} ({{afcUM}} &micro;M; {{c.perWell}} per well for {{c.nWells}}).</li><li>Aspirate the medium from the cells and add {{c.perWell}} per well.</li><li>Incubate 30 min at 37 &deg;C.</li></ol>'},
+    {d:rd,title:'HiBiT Lytic + read',w:10,
+    calc:{kind:'lytic',inputs:{format:'96',nPlates:2,cellVolPerWell:50,ratio:1,lgbitDil:100,subDil:50,excess:1.2}},
+    pub:'HiBiT-tagged protein levels were quantified with the Nano-Glo HiBiT Lytic assay (Promega): lytic reagent containing LgBiT at {{c.lgbitDil}} and substrate at {{c.substrateDil}} was added on top of the AFC reagent at equal volume, the plates shaken at 300 rpm for 1 min and, after 10 min at room temperature, AFC fluorescence (405 nm excitation, 495&ndash;505 nm emission) and luminescence (0.3 s per well) were read on a GloMax Discover. Luminescence, fluorescence and their ratio were each normalised to the vehicle control and fitted with a four-parameter logistic model to give DC&#8325;&#8320; and D<sub>max</sub>.',
+    html:'<ol><li>Make up the reagent: {{c.bufferUL}} Nano-Glo HiBiT Lytic Buffer + {{c.lgbitUL}} LgBiT ({{c.lgbitDil}}) + {{c.substrateUL}} substrate ({{c.substrateDil}}). Mix gently &mdash; do not vortex.</li><li>Add {{c.addPerWell}} per well on top of the AFC reagent, without aspirating ({{c.ratio}} reagent : cells).</li><li>Shake at 300 rpm for 1 min, then 10 min at room temperature.</li><li>Read on the GloMax Discover, protocol HiBiT + FLUO: fluorescence (AFC, 405 nm excitation, 495&ndash;505 nm emission), then luminescence 0.3 s; save the data.</li></ol><p><b>Results</b></p><p></p>'}
+  ];
+}
 function _hbSparkOA(n){
   var OA=(n>=3), M='DMEM + 10% FBS';
   var T={1:{h:6,t:'no OA, PROTAC for 6 h'},2:{h:24,t:'no OA, PROTAC for 24 h'},3:{h:6,t:'OA 3 h before the PROTAC (6 h)'},
@@ -4430,14 +4444,7 @@ function _hbSparkOA(n){
   if(n===6){ pb.calc.inputs.wellVolUL=90; pb.calc.own={wellVolUL:true}; }
   bl.push(pb);
   var rd=(n===2)?2:1;   // the 24 h PROTAC goes on the day after seeding and is read the day after that
-  bl.push({d:rd,title:'AFC viability reagent',w:30,
-    calc:{kind:'reagent',inputs:{name:'AFC substrate',diluent:'PBS',perWellUL:50,nWells:144,excess:1.1,dilution:125,replace:true}},
-    pub:'Viability was multiplexed with the HiBiT read: the medium was aspirated and {{c.perWell}} per well of PBS containing the AFC fluorescent reagent at {{afcUM}} &micro;M was added and incubated for 30 min at 37 &deg;C.',
-    html:'<ol><li>Make the AFC reagent for all the wells in one tube: {{c.reagentUL}} {{c.name}} ({{c.dilution}}) + {{c.diluentUL}} {{c.diluent}} = {{c.total}} ({{afcUM}} &micro;M; {{c.perWell}} per well for {{c.nWells}}).</li><li>Aspirate the medium from the cells and add {{c.perWell}} per well.</li><li>Incubate 30 min at 37 &deg;C.</li></ol>'});
-  bl.push({d:rd,title:'HiBiT Lytic + read',w:10,
-    calc:{kind:'lytic',inputs:{format:'96',nPlates:2,cellVolPerWell:50,ratio:1,lgbitDil:100,subDil:50,excess:1.2}},
-    pub:'HiBiT-tagged protein levels were quantified with the Nano-Glo HiBiT Lytic assay (Promega): lytic reagent containing LgBiT at {{c.lgbitDil}} and substrate at {{c.substrateDil}} was added on top of the AFC reagent at equal volume, the plates shaken at 300 rpm for 1 min and, after 10 min at room temperature, AFC fluorescence (405 nm excitation, 495&ndash;505 nm emission) and luminescence (0.3 s per well) were read on a GloMax Discover. Luminescence, fluorescence and their ratio were each normalised to the vehicle control and fitted with a four-parameter logistic model to give DC&#8325;&#8320; and D<sub>max</sub>.',
-    html:'<ol><li>Make up the reagent: {{c.bufferUL}} Nano-Glo HiBiT Lytic Buffer + {{c.lgbitUL}} LgBiT ({{c.lgbitDil}}) + {{c.substrateUL}} substrate ({{c.substrateDil}}). Mix gently &mdash; do not vortex.</li><li>Add {{c.addPerWell}} per well on top of the AFC reagent, without aspirating ({{c.ratio}} reagent : cells).</li><li>Shake at 300 rpm for 1 min, then 10 min at room temperature.</li><li>Read on the GloMax Discover, protocol HiBiT + FLUO: fluorescence (AFC, 405 nm excitation, 495&ndash;505 nm emission), then luminescence 0.3 s; save the data.</li></ol><p><b>Results</b></p><p></p>'});
+  _hbSparkRead(rd).forEach(function(b){ bl.push(b); });
   var add=[];
   if(OA){ add.push({f:'oligoUM',t:'num',lbl:'OA — oligomycin (µM, final)',d:1,step:'0.05'});
           add.push({f:'antiUM',t:'num',lbl:'OA — antimycin A (µM, final)',d:10,step:'0.05'}); }
@@ -4447,6 +4454,42 @@ function _hbSparkOA(n){
     setupAdd:add, plateOn:true, layout:'drbands', blocks:bl};
 }
 [1,2,3,4,5,6].forEach(function(n){ EXTRA_PRESET_SEED['HB_SPARK_SC'+n]=_hbSparkOA(n); });
+
+// ── SPARK NS, Scenario 3 with ISRIB (Jon, 2026-11-15): SC3 turned into an A/B on one day ─────────────────────────────────────
+// Two 96-well plates seeded from one suspension, 20,000 cells in 90 µL. Plate 2 gets ISRIB (a 10×, 10 µL onto the 90) straight after
+// seeding and overnight; the next morning BOTH plates have their medium aspirated and get the same fresh medium with OA, so the
+// ISRIB goes with the medium and the two plates are handled alike. OA 2 h, then the PROTAC 6 h, then the multiplex read as in SC3.
+// Every plate carries the same six compounds in duplicate: seven concentrations from 20 µM, 3-fold, DOWN the rows A-G, DMSO in row H
+// (layout `drcols`, `plateNames` = one plate per condition). One series per compound serves both plates.
+function _hbSparkIsrib(){
+  var M='DMEM + 10% FBS', bl=[];
+  bl.push({d:0,title:'Cell seeding',
+    calc:{kind:'seed',inputs:{cellLine:'HeLa',cellsPerWell:20000,volPerWell:90,format:'96',nPlates:2,nWells:192,excess:1.2}},
+    pub:'DELE1-HiBiT {{cellLine}} cells were seeded in two white {{format}}-well plates from one suspension at {{cellsPerWell}} per well in {{c.volPerWell}} ({{c.density}}).',
+    html:'<ol><li>Count the cells and resuspend them in {{c.medium}} at {{c.density}} &mdash; {{c.totalVol}} for {{c.wells}}.</li><li>Add {{c.volPerWell}} of the suspension to each well ({{c.cellsPerWell}}) of both white {{format}}-well plates. Label them: plate 1 is SC3 alone, plate 2 gets the ISRIB.</li><li>Plate 2 goes straight on to the ISRIB step; plate 1 goes to 37 &deg;C, 5% CO&#8322; overnight.</li></ol>'});
+  bl.push({d:0,title:'ISRIB addition (plate 2 only)',
+    calc:{kind:'spike',inputs:{name:'ISRIB',wellVolUL:90,foldX:10,series:false,finalUM:0.3,stockUM:10000,nWells:96,excess:1.1,diluent:M,minVolUL:1},own:{nWells:true}},
+    pub:'ISRIB, made in {{c.diluent}} from a DMSO stock, was added to every well of plate 2 straight after seeding at {{c.fold}} ({{c.addUL}} per well): {{isribUM}} &micro;M final. Plate 1 received no ISRIB.',
+    html:'<ol><li>Prepare at {{c.fold}} in {{c.diluent}}: ISRIB ({{isribUM}} &micro;M final).</li><li>Add {{c.addUL}} per well to plate 2 only ({{c.wellVol}} already in the well &rarr; {{c.newVol}}); do not aspirate.</li><li>Back to 37 &deg;C, 5% CO&#8322; overnight, with plate 1.</li></ol>'});
+  bl.push({d:1,title:'Fresh medium with OA (2 h before the PROTAC)',w:120,
+    pub:'Both plates, the ISRIB plate included, had the medium aspirated and replaced with 90 &micro;L of fresh '+M+' containing OA ({{oligoUM}} &micro;M oligomycin + {{antiUM}} &micro;M antimycin A), so that the plates were handled alike; the PROTAC was added 2 h later.',
+    html:'<ol><li>Make fresh '+M+' with OA at its final strength ({{oligoUM}} &micro;M oligomycin + {{antiUM}} &micro;M antimycin A), enough for 90 &micro;L in every well of both plates.</li><li>Aspirate the medium from every well of both plates &mdash; the ISRIB goes with it on plate 2.</li><li>Add 90 &micro;L of the OA medium per well, the same on both plates.</li><li>Back to 37 &deg;C &mdash; note the time. OA alone for 2 h.</li></ol>'});
+  bl.push({d:1,title:'PROTAC addition',
+    calc:{kind:'serial',inputs:{name:'PROTACs',topFinalNM:20000,foldX:10,df:3,nPoints:7,volPerPoint:60,wellVolUL:90,stockUM:10000,nCompounds:6,diluent:M},own:{wellVolUL:true}},
+    pub:'PROTACs were serially diluted ({{nPoints}} points, {{df}}-fold from {{topConc}} nM, made at 10&times;) and added by hand to the wells of both plates at 1/10 of the volume, the series running down the plate with the {{vehicle}} control in the last row, and the cells were treated for {{treatH}} h in the presence of OA.',
+    html:'<ol><li>Tube 1 at {{c.topTube}}: {{c.stockUL}} of the {{c.stockConc}} stock + {{c.firstDiluentUL}} {{c.diluent}} ({{c.dilution}}).</li><li>Tubes 2&ndash;{{c.nPoints}}: {{c.keepUL}} {{c.diluent}} in each.</li><li>Transfer {{c.transferUL}} down the series ({{c.df}}), mixing, with a fresh tip each time. One series per compound; it serves both plates.</li><li>Add {{c.addUL}} of each point to its wells on both plates ({{c.wellVol}} already there &rarr; {{c.newVol}}) &mdash; {{c.series}} in the well, the top point in row A. Add {{c.addUL}} of {{c.diluent}} with the matched {{vehicle}} to row H.</li><li>Check the plates against the plate maps.</li><li>Incubate {{treatH}} h at 37 &deg;C, 5% CO&#8322; &mdash; note the time.</li></ol>'});
+  _hbSparkRead(1).forEach(function(b){ bl.push(b); });
+  return {name:'HiBiT_SPARK_Scenario_3_ISRIB',baseType:'HB',
+    title:'HiBiT degradation — SPARK NS, Scenario 3 with ISRIB: OA 2 h before the PROTAC (6 h), plate 2 pre-treated with ISRIB (96-well)',
+    setup:{format:'96',cellLine:'HeLa',cellsPerWell:20000,nPlates:2,treatH:6,dosing:'Manual (serial dilution)',topConc:20000,df:3,nPoints:7,nReps:2,
+           seriesDown:true,vehicle:'DMSO',plateNames:'Plate 1 — SC3 (OA only)\nPlate 2 — SC3 + ISRIB'},
+    setupAdd:[{f:'oligoUM',t:'num',lbl:'OA — oligomycin (µM, final)',d:1,step:'0.05'},
+              {f:'antiUM',t:'num',lbl:'OA — antimycin A (µM, final)',d:10,step:'0.05'},
+              {f:'isribUM',t:'num',lbl:'ISRIB on plate 2 (µM, final)',d:0.3,step:'0.05'},
+              {f:'afcUM',t:'num',lbl:'AFC reagent in PBS (µM)',d:80}],
+    plateOn:true, layout:'drcols', blocks:bl};
+}
+EXTRA_PRESET_SEED.HB_SPARK_SC3_ISRIB=_hbSparkIsrib();
 
 // ── Setup parameters (asked once, up front, in the New-experiment modal) ──
 // Each experiment type declares the handful of decisions you actually make when you plan it.
@@ -4491,12 +4534,18 @@ var SETUP_SCHEMA={
     {f:'nReps',t:'num',lbl:'Technical replicates',d:2,when:_whenManual},
     // Rows A and H are the plate's edge: evaporation and the reader's own optics make them the wells nobody trusts, so
     // a screen by hand often leaves them without compound (Jon's SPARK NS plates start at B1). Off, the bands start at A.
-    {f:'edgeRows',t:'check',lbl:'Leave the outer rows (A and H) empty',d:false,when:_whenManual,
+    // Turn it the other way: a compound owns its replicate columns and the series runs from row A down, the vehicle in the row after the last point.
+    {f:'seriesDown',t:'check',lbl:'Run each series down the rows (top to bottom)',d:false,when:_whenManual,
+     hint:'Each compound takes its replicates as neighbouring columns and the concentration falls from row A; the vehicle is the row after the last point. A 96-well plate holds 12 divided by the replicates in compounds.'},
+    // One plate per condition, every plate carrying every compound (SC3 and SC3 + ISRIB: same layout, the cells were treated differently).
+    {f:'plateNames',t:'list',lbl:'Plates, one per condition',d:'',ph:'One per line \u2014 each plate carries every compound',when:function(su){ return _whenManual(su)&&!!su.seriesDown; },
+     hint:'Leave empty for one plate (or as many as the compounds need). A name a line makes that many plates, each with all the compounds and the same layout; the name is the plate\'s title.'},
+    {f:'edgeRows',t:'check',lbl:'Leave the outer rows (A and H) empty',d:false,when:function(su){ return _whenManual(su)&&!su.seriesDown; },
      hint:'The bands start at row B and stop at row G, so a 96-well plate holds three compounds in duplicate instead of four. Off, they fill every row.'},
     {f:'compounds',t:'list',lbl:'Compounds',d:'',ph:'One per line \u2014 paste a column straight from Excel'},
     {f:'vehicle',t:'txt',lbl:'Vehicle',d:'DMSO',hint:'What the compounds are dissolved in, and what the control wells get instead of compound.'},
     {f:'vehiclePct',t:'num',lbl:'Vehicle, final (%)',d:'',step:'0.05',hint:'The final concentration in the well \u2014 e.g. 0.1 for a 1000\u00d7 stock. Leave empty if it varies.'},],
-    pubSkip:['compounds','nReps','edgeRows']},
+    pubSkip:['compounds','nReps','edgeRows','seriesDown','plateNames']},
   CTG:{plate:true,plateOn:true,fields:[
     {f:'format',t:'format',lbl:'Format',d:'96',opts:['96','384']},
     {f:'cellLine',t:'cellline',lbl:'Cell line',d:'SUDHL5'},
@@ -4889,7 +4938,7 @@ function _applySetupGates(type,setup,blocks,prevSetup,presetKey,anchor){
     var nx=blocks[blocks.indexOf(o)+1]; o.waitSameDay=!!(o.waitMin&&nx&&(+nx.dayOffset||0)===off0);
     sync();
   }); }
-var SETUP_CALC_MAP={rtxmix:{ngPerWell:'dnaNg',fugeneRatio:'fugeneRatio',nWells:'nWells'}, spike:{nWells:'nSamples'}, mixparts:{nWells:'nSamples'}, seed:{nWells:'nSamples'}};
+var SETUP_CALC_MAP={rtxmix:{ngPerWell:'dnaNg',fugeneRatio:'fugeneRatio',nWells:'nWells'}, spike:{nWells:'nSamples',finalUM:'isribUM'}, mixparts:{nWells:'nSamples'}, seed:{nWells:'nSamples'}};
 function applySetupToBlocks(type,setup,blocks,prevSetup,presetKey){
   var S=setupSchema(type); if(!S||!setup) return blocks;
   // A setup field marked `wait` is a duration, not just a word for the prose. "Treatment (h)"
@@ -7011,6 +7060,15 @@ var PLATE_LAYOUTS=[
        q.note=q.note.replace(/ Plate 1 of.*$/,'')+' Plate '+k+' of '+Math.ceil(all.length/per)+'.';
        out.push(q); }
      return out; }},
+  // The same screen with the series turned the other way (Jon, 2026-11-15, SC3 + ISRIB): each compound owns `nReps` neighbouring
+  // columns, the concentration falls from the top row down and the vehicle is the row after the last point, so 7 points + DMSO is
+  // rows A-H and a 96-well plate holds 12 / nReps compounds. `plateNames` is the other thing a plate can differ in: one plate per
+  // condition, each carrying every compound (the cells on plate 2 were pre-treated, the layout is the same), and a compound list
+  // longer than one plate still spills onto further plates within each condition.
+  {id:'drcols', label:'Dose response — one compound per pair of columns, series down the rows + vehicle', formats:['96','384'], format:'96',
+   sub:'each compound on its own columns, the series from the top row down, the vehicle in the row after it',
+   build:function(o){ return _drcolsPlates(o)[0]; },
+   more:function(o){ return _drcolsPlates(o).slice(1); }},
   // SPARK NS time course: DELE1-HiBiT followed for 18 h on one 96-well plate. OA goes on every well
   // at the start of the read (high, low, or the vehicle), and 3 h in a PROTAC series goes onto the
   // wells that take it. Six pairs of columns: no OA, OA high, OA low (vehicle at 3 h), then the same
@@ -14720,11 +14778,49 @@ function _setupList(v){
 function compoundsPerPlate(su){
   su=su||{};
   var d=PLATE_FORMATS[String(su.format||'96')]||PLATE_FORMATS['96'];
+  // The series down the rows: a compound owns nReps columns and the whole height, so the count is columns / replicates.
+  if(su.seriesDown) return Math.max(1,Math.floor(d.c/Math.max(1,Math.round(+su.nReps||1))));
   var nPts=Math.max(1,Math.min(Math.round(+su.nPoints||11), d.c-1));
   var nReps=Math.max(1,Math.round(+su.nReps||1));
   var across=Math.max(1,Math.floor(d.c/(nPts+1)));
   var down=Math.max(1,Math.floor((d.r-(su.edgeRows?2:0))/nReps));
   return Math.max(1, across*down);
+}
+// The plates of the `drcols` layout (series down the rows). One plate per entry of `plateNames` (a condition each, all with the same
+// compounds), and within each condition a plate per `compoundsPerPlate` compounds. With no names there is one condition.
+function _drcolsPlates(o){
+  o=o||{};
+  var fmt=(String(o.format)==='384')?'384':'96', d=PLATE_FORMATS[fmt];
+  var top=+o.topConc||1000, fold=+o.df||3;
+  var nPts=Math.max(1,Math.min(Math.round(+o.nPoints||7), d.r-1));
+  var nReps=Math.max(1,Math.min(Math.round(+o.nReps||2), d.c));
+  var veh=String(o.vehicle||'DMSO').trim()||'DMSO';
+  var per=Math.max(1,Math.floor(d.c/nReps)), all=_setupList(o.compounds), names=_setupList(o.plateNames);
+  if(!all.length) for(var i=0;i<per;i++) all.push('Compound '+(i+1));
+  var chunks=[]; for(var i2=0;i2<all.length;i2+=per) chunks.push(all.slice(i2,i2+per));
+  var conds=names.length?names:[''], out=[], total=conds.length*chunks.length, no=0;
+  var rowName=function(r){ return String.fromCharCode(65+r); };
+  conds.forEach(function(cond){ chunks.forEach(function(chunk,ci){
+    no++;
+    var p=newPlate(fmt);
+    p.title=cond||(total>1?('Plate '+no+' — '+chunk.join(', ')):('Dose response — '+chunk.length+' compound'+(chunk.length===1?'':'s')+' × '+nPts+' pts × '+nReps+' ('+fmt+'-well)'));
+    if(cond&&chunks.length>1) p.title=cond+' — '+chunk.join(', ');
+    p.note=chunk.length+' compound'+(chunk.length===1?'':'s')+', '+nReps+' column'+(nReps===1?'':'s')+' each; the '+nPts+'-point series from '+_fmtConc(top)+', '+fold+'-fold, runs down rows A\u2013'+rowName(nPts-1)
+      +'; row '+rowName(nPts)+' is the '+veh+' control.'+(total>1?(' Plate '+no+' of '+total+'.'):'');
+    p.types=[{id:'dose', name:'Dose series', color:'#cfe2f3'},
+             {id:'dmso', name:veh,           color:'#f4b98f'}];
+    chunk.forEach(function(cmp,k){
+      for(var c=k*nReps;c<(k+1)*nReps;c++){
+        for(var r=0;r<nPts;r++) p.wells[wellIdOf(r,c)]={typeId:'dose',compound:cmp,conc:_fmtConc(top/Math.pow(fold,r))};
+        p.wells[wellIdOf(nPts,c)]={typeId:'dmso',compound:cmp,label:veh};
+      }
+    });
+    // The compound over its columns; the concentrations are already on every well, so there is nothing written down the side.
+    var E=[]; chunk.forEach(function(cmp,k){ E.push({id:'dc'+k,side:'t',a:k*nReps,b:(k+1)*nReps-1,text:cmp}); });
+    p.edges=E;
+    out.push(p);
+  }); });
+  return out;
 }
 // "24+72" is two readouts and therefore two plates: the 24 h plate is read — and consumed, CTG
 // is an endpoint assay — before the 72 h one is due, so they cannot be the same wells.
@@ -15097,9 +15193,16 @@ function _autoLayout(type,su){
   su=su||{}; var fmt=String(su.format||'96');
   function L(id){ return _layoutFor(id,fmt); }
   if(fmt==='384'&&(type==='HB'||type==='D2B')&&su.dosing!=='Manual (serial dilution)') return L('echo384');
-  if(type==='HB'&&su.dosing==='Manual (serial dilution)') return L('drbands');
+  if(type==='HB'&&su.dosing==='Manual (serial dilution)') return L(su.seriesDown?'drcols':'drbands');
   if(type==='CTG'&&su.doseResp!==false) return L('drbands');
   return null;
+}
+// The plates after the first that a layout draws by itself (compounds that did not fit on plate 1, one plate per condition). The record
+// and the Designer's review both read it, so the review counts the wells the record will — a seeding is made for every plate, not for plate 1.
+function _layoutMorePlates(key,type,setup,layoutId){
+  var lid=(layoutId!=null&&layoutId!=='')?layoutId:_presetLayoutId(key), L=(lid&&lid!=='none')?_layoutFor(lid,setup.format):_autoLayout(type,setup);
+  var mp=[]; if(L&&L.more){ try{ mp=L.more(setup)||[]; }catch(_e){} }
+  return mp;
 }
 function experimentPlateFor(key,type,setup,e,echo,onOutside,layoutId){
   // A real picklist beats any ready-made layout: it is what the machine actually did. This
@@ -15213,10 +15316,7 @@ function buildExperimentFrom(sp){
       e.plate = _plateMap ? JSON.parse(JSON.stringify(_plateMap))
                             : experimentPlateFor(key,type,setup,e,null,null,_layout);
       // A layout that spreads its compounds over several plates draws the others too (HiBiT by hand, outer rows empty).
-      if(!_plateMap){
-        var _lid2=(_layout!=null&&_layout!=='')?_layout:_presetLayoutId(key), _L2=(_lid2&&_lid2!=='none')?_layoutFor(_lid2,setup.format):_autoLayout(type,setup);
-        if(_L2&&_L2.more){ var _mp=[]; try{ _mp=_L2.more(setup)||[]; }catch(_e){} if(_mp.length) e.morePlates=_mp; }
-      }
+      if(!_plateMap){ var _mp=_layoutMorePlates(key,type,setup,_layout); if(_mp.length) e.morePlates=_mp; }
     }
     // The plate, the header and the steps agree from the first draw, not from the first time
     // somebody touches the map.
@@ -22322,7 +22422,9 @@ function dsPseudo(D){
   // The record takes the wells of every step from its plate the moment it is made, so the plan
   // that previews it has to: the same plate (dsPlateFor is the one the record is drawn from),
   // the same counts.
-  if(D.plate||D.echo){ try{ var _pp=dsPlateFor(D,pseudo); if(_pp){ pseudo.plate=_pp; syncExpDerived(pseudo); } }catch(e){} }
+  if(D.plate||D.echo){ try{ var _pp=dsPlateFor(D,pseudo); if(_pp){ pseudo.plate=_pp;
+    if(!D.echo&&!D.plateMap){ var _mp2=_layoutMorePlates(D.presetKey||'',D.type,setup,D.layout||null); if(_mp2.length) pseudo.morePlates=_mp2; }
+    syncExpDerived(pseudo); } }catch(e){} }
   try{ syncChainedInputs(pseudo); }catch(e){}
   return pseudo;
 }
