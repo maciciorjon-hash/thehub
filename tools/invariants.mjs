@@ -201,6 +201,7 @@
 //       scenarios            steps and days of each scenario (OA none / 3 h before / at seeding / removed), the PROTAC 10x going onto the volume the steps above left (11.11 onto 100, 10 onto 90),
 //                            seeding, OA and AFC counted over both plates, and the layouts that do not ask for empty outer rows left as they were
 //   B61 spark isrib        SC3 with ISRIB (HB_SPARK_SC3_ISRIB): the series DOWN the rows (layout drcols, a compound per pair of columns, 7 points A-G, DMSO in row H), one plate per condition with the same six compounds, ISRIB for plate 2 only, the medium swapped on both.
+//   B62 spark nb pairs     NanoBRET SPARK screen with several pairs (NB_SPARK_PAIRS96, layout nbscreenpairs96): NL-DELE1(CTD)/DELE1(CTD)-NL against HT-CRBN at 1:50 with G4 and G7 at 20, 10, 1 µM in duplicate, MG132 an hour first - row A the −ligand of each pair over its own three columns, row B each construct alone + mock + the first pair without substrate, DMSO then one band per compound from row C; what does not fit is named; the screen it came from is untouched
 //   B54 plate labels      Words round the plate: select wells and a dashed + sits beside the plate on all four sides over exactly the selected columns/rows; a label
 //                            is typed, edited, removed and undone; a wider one stacks outside a narrower one; nothing written round the plate sits on a well, a header or
 //                            another label; the card, the PNG, the print table and a copied layout all carry it. (the plate map could not say what a column was)
@@ -3314,6 +3315,61 @@ async function suite(opts) {
       if (q.length !== 1 || Object.keys(q[0].wells).length !== 16) bad('B61', 'spill', 'a seventh compound should go on a second plate with its own two columns, got ' + q.length + ' extra plate(s)');
       openExp(e.id); await sleep(60);
       const txt = document.body.innerText; if (/\{\{[^}]*\}\}/.test(txt)) bad('B61', 'tokens', 'an unfilled token on the page: ' + (txt.match(/\{\{[^}]*\}\}/) || [])[0]);
+    });
+
+    // B62 — SPARK NanoBRET screen with several pairs: pairs across, compounds down, a typed list of concentrations, MG132 first.
+    if (run('B62')) await guard('B62', 'spark nb pairs', async () => {
+      const P = (LB.data.projects || []).find(p => (p.sections || []).length);
+      const key = 'NB_SPARK_PAIRS96', tpl = LB.data.presets[key];
+      if (!tpl) { bad('B62', key, 'the preset is not in the notebook'); return; }
+      if (presetBase(key) !== 'NB' || tpl.layout !== 'nbscreenpairs96') bad('B62', 'identity', 'type ' + presetBase(key) + ', layout ' + tpl.layout);
+      const su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup || {})));
+      const mk = (code, setup) => { const before = new Set(Object.keys(LB.data.experiments));
+        buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-11-15', type: 'NB', title: 'INV pairs', code, setup, plate: true });
+        const e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); if (e) clean.push(e); return e; };
+      const e = mk('INV_B62', su); if (!e) { bad('B62', key, 'no experiment was made'); return; }
+      tick('B62');
+      const p = e.plate, W = (r, c) => p.wells[String.fromCharCode(65 + r) + (c + 1)];
+      const D = ['NL-DELE1(CTD)', 'DELE1(CTD)-NL'], A = 'HT-CRBN';
+      const PAIRS = D.map(d => 'p:' + d + '+' + A);
+      if (su.ratios !== '50' || su.acceptors !== A) bad('B62', 'setup', 'ratio ' + su.ratios + ', acceptors ' + su.acceptors + ' (1:50 against HT-CRBN only)');
+      // 2 pairs x 3 columns, 52 wells used, the rest unused: nothing is invented to fill the plate
+      const ids = Object.keys(p.wells), used = ids.filter(i => p.wells[i].typeId !== 'blank');
+      if (ids.length !== 96 || used.length !== 52) bad('B62', 'wells', used.length + ' wells used of ' + ids.length + ', expected 52 (2 pairs x 21 + 2 -substrate + 6 constructs + 2 mock)');
+      PAIRS.forEach((t, k) => { for (let n = 0; n < 3; n++) { const w = W(0, 3 * k + n);
+        if (!w || w.typeId !== t || !w.noLig) bad('B62', 'row A', 'A' + (3 * k + n + 1) + ' is ' + (w && w.typeId) + (w && w.noLig ? ' -ligand' : '') + ', expected ' + t + ' -ligand'); } });
+      const WANT_B = ['d:' + D[0], 'd:' + D[0], 'd:' + D[1], 'd:' + D[1], 'a:' + A, 'a:' + A, 'mock', 'mock', PAIRS[0], PAIRS[0]];
+      WANT_B.forEach((t, c) => { const w = W(1, c); if (!w || w.typeId !== t || (c >= 8) !== !!w.noSub) bad('B62', 'row B', 'B' + (c + 1) + ' is ' + (w && w.typeId) + (w && w.noSub ? ' -substrate' : '') + ', expected ' + t + (c >= 8 ? ' -substrate' : '')); });
+      [['DMSO', 2], ['G4', 4], ['G7', 6]].forEach(([name, r1]) => PAIRS.forEach((t, k) => { for (let rr = 0; rr < 2; rr++) for (let cc = 0; cc < 3; cc++) {
+        const w = W(r1 + rr, 3 * k + cc), id = String.fromCharCode(65 + r1 + rr) + (3 * k + cc + 1);
+        if (!w || w.typeId !== t || w.compound !== name) bad('B62', 'compound ' + name, id + ' holds ' + (w && w.compound) + ' of ' + (w && w.typeId) + ', expected ' + name + ' of ' + t);
+        else if (name === 'DMSO' ? !!w.conc : w.conc !== _fmtConc([20000, 10000, 1000][cc])) bad('B62', 'series ' + name, id + ' is ' + w.conc + ', expected ' + (name === 'DMSO' ? 'no concentration' : _fmtConc([20000, 10000, 1000][cc]))); } }));
+      for (let r = 0; r < 8; r++) for (let c = 6; c < 12; c++) if (r > 1 || c >= 6) { const w = W(r, c); if (r >= 2 && (!w || w.typeId !== 'blank')) bad('B62', 'unused', String.fromCharCode(65 + r) + (c + 1) + ' should be unused'); }
+      // the mix table counts the plate: pair 1 carries its -substrate wells too
+      const cnt = {}; used.forEach(i => { cnt[p.wells[i].typeId] = (cnt[p.wells[i].typeId] || 0) + 1; });
+      const WANT_N = { [PAIRS[0]]: 23, [PAIRS[1]]: 21, ['d:' + D[0]]: 2, ['d:' + D[1]]: 2, ['a:' + A]: 2, mock: 2 };
+      Object.keys(WANT_N).forEach(t => { if (cnt[t] !== WANT_N[t]) bad('B62', 'counts', t + ' has ' + cnt[t] + ' wells, expected ' + WANT_N[t]); });
+      // steps: MG132 an hour before the compounds on the day after seeding, the compounds onto the 111 uL it leaves
+      const by = re => e.blocks.find(b => re.test(b.title));
+      const mg = by(/^MG132/), sp = by(/^Compound addition/), i = t => e.blocks.indexOf(t);
+      if (!mg || !sp || i(mg) + 1 !== i(sp)) bad('B62', 'MG132', 'MG132 must be the step right before the compound addition');
+      else { if (mg.waitMin !== 60 || +mg.date.slice(8) - +e.startDate.slice(8) !== 1 || !mg.calc || mg.calc.inputs.finalUM !== 10 || mg.calc.inputs.wellVolUL !== 100) bad('B62', 'MG132', 'wait ' + mg.waitMin + ', day ' + (+mg.date.slice(8) - +e.startDate.slice(8)) + ', ' + JSON.stringify(mg.calc && mg.calc.inputs));
+        if (Math.abs(sp.calc.inputs.wellVolUL - 111.11) > 0.2) bad('B62', 'chain', 'the compounds go onto ' + sp.calc.inputs.wellVolUL + ' uL, expected the 111.1 the MG132 leaves'); }
+      const off = mk('INV_B62_NOMG', Object.assign({}, su, { mg132: false }));
+      if (off && off.blocks.some(b => /^MG132/.test(b.title))) bad('B62', 'MG132 off', 'the setup says no MG132 and the step is still in the plan');
+      if (!sp || /-fold/.test(sp.pub || '') || !/G4, G7/.test(sp.pub) || !/20, 10, 1/.test(sp.pub) || !/G4, G7/.test(sp.html) || !/20, 10, 1/.test(sp.html)) bad('B62', 'compound step', 'the compound step must quote the compounds and the typed concentrations and no fold: ' + (sp && sp.pub));
+      if (e.plasmids !== 'NL-DELE1(CTD), DELE1(CTD)-NL, HT-CRBN') bad('B62', 'plasmids', e.plasmids);
+      // what does not fit is said, never quietly dropped
+      const L = PLATE_LAYOUTS.find(x => x.id === 'nbscreenpairs96');
+      const big = L.build(Object.assign({}, su, { cpds: 'G4, G7, G9', concs: '20, 10, 1, 0.1, 0.01, 0.001, 0.0001' }));
+      if (!/Did not fit/.test(big.note) || !/G9/.test(big.note) || !/DELE1\(CTD\)-NL \+ HT-CRBN/.test(big.note)) bad('B62', 'overflow', 'a third compound and a second pair that do not fit are not named in the note: ' + big.note);
+      const one = L.build({ donors: 'NL-DELE1(CTD)', acceptors: 'HT-HRI', ratios: '10', cpds: 'G4', concs: '10', nReps: 2 });
+      if (Object.keys(one.wells).length !== 96 || one.wells.A1.typeId !== 'p:NL-DELE1(CTD)+HT-HRI' || !one.wells.A1.noLig) bad('B62', 'one pair', 'a single pair is not drawn');
+      // the screen it came from is as it was
+      const so = LB.data.presets.NB_SPARK_SCREEN96, sb = so.blocks.find(b => /^Compound addition/.test(b.title));
+      if (so.layout !== 'nbscreen96' || !/-fold from/.test(sb.pub) || so.blocks.some(b => /^MG132/.test(b.title))) bad('B62', 'original', 'the compound screen must keep its layout, its fold wording and no MG132');
+      openExp(e.id); await sleep(60);
+      const txt = document.body.innerText; if (/\{\{[^}]*\}\}/.test(txt)) bad('B62', 'tokens', 'an unfilled token on the page: ' + (txt.match(/\{\{[^}]*\}\}/) || [])[0]);
     });
 
     // B54 — words round the plate: what a column or a row is, written beside it.

@@ -4491,6 +4491,43 @@ function _hbSparkIsrib(){
 }
 EXTRA_PRESET_SEED.HB_SPARK_SC3_ISRIB=_hbSparkIsrib();
 
+// ── SPARK NanoBRET screen with several pairs (Jon, 2026-11-15): NL-DELE1(CTD) / DELE1(CTD)-NL × HT-CRBN, 1:50, with G4 and G7 ──
+// The compound screen (NB_SPARK_SCREEN96, live cells, no digitonin) with what a screen of four pairs needs and the original does not:
+// every donor against every acceptor, named compounds, and a typed list of concentrations (20, 10, 1 µM is not a constant fold, so
+// the series boxes of the original cannot say it). The steps are the original's, copied rather than retyped — the suspension, the
+// seeding and the read stay one text; only the counts and the compound step are this plate's. The plate map is the one that
+// counts: every number the calculators start from is corrected from it, condition by condition.
+function _nbSparkPairs(){
+  var b=JSON.parse(JSON.stringify(EXTRA_PRESET_SEED.NB_SPARK_SCREEN96));
+  var tx=b.blocks[0].calc.inputs, su=b.blocks[1].calc.inputs, sp=b.blocks[3];
+  // MG132 the morning after seeding, an hour before the compounds, exactly as the biosensor does it (the same step, the same
+  // calculator): the compounds then go onto the 111 µL it leaves. The setup question is asked again, so it can be switched off.
+  b.blocks.splice(3,0,{d:1,title:NB_COMMON.mg132.title,w:60,
+    calc:{kind:'spike',inputs:{name:'MG132',wellVolUL:100,foldX:10,finalUM:10,stockUM:10000,nWells:84,excess:1.1,diluent:'Opti-MEM'}},
+    html:NB_COMMON.mg132.html});
+  sp=b.blocks[4]; sp.calc.inputs.wellVolUL=111.1;
+  tx.donorNames='NL-DELE1(CTD), DELE1(CTD)-NL'; tx.acceptorNames='HT-CRBN'; tx.ratios='50'; tx.ctrlRatio=50;
+  tx.acceptorNg=50; tx.minVolUL=0.1;
+  // 2 pairs × (6 DMSO + 12 compound) = 36 wells + the −ligand wells (3 per pair, +2 for the first pair's −substrate), 2 of each single, 2 mock
+  tx.nPair=18; tx.nPairCtrl=3; tx.nDonor=2; tx.nAcceptor=2; tx.nMock=2; tx.excess=1.1;
+  su.nPlus=46; su.nMinus=6; su.excess=1.1;
+  sp.calc.inputs.nWells=96;
+  sp.pub='Compounds ({{cpds}}) were added directly onto the cells as 10&times; solutions in Opti-MEM to final concentrations of {{concs}} &micro;M, each in {{nReps}} technical replicates, with matched DMSO in the vehicle and control wells, and the plates incubated for {{c.wait}} at 37 &deg;C.';
+  sp.html='<ol><li>Prepare each compound ({{cpds}}) at each final concentration ({{concs}} &micro;M) at {{c.fold}} in {{c.diluent}}, one tube per compound and concentration, as on the plate map.</li><li>Add {{c.addUL}} of the {{c.fold}} to each compound well ({{c.wellVol}} already in the well &rarr; {{c.newVol}}); do not aspirate.</li><li>Add {{c.addUL}} of vehicle ({{c.diluent}} with matched DMSO) to the DMSO wells and to the &minus;ligand, &minus;substrate, mock and single-plasmid controls.</li><li>Incubate {{c.wait}} at 37 &deg;C.</li></ol>';
+  b.name='NanoBRET SPARK - Screen (pairs)';
+  b.title='NanoBRET — SPARK compound screen, donor × acceptor pairs (96-well)';
+  b.setup={format:'96',cellLine:'HeLa',donors:'NL-DELE1(CTD), DELE1(CTD)-NL',acceptors:'HT-CRBN',ratios:'50',doseSeries:true,
+           minVol:0.1,mg132:true,cpds:'G4, G7',concs:'20, 10, 1',nReps:2};
+  b.setupAdd=[{f:'cpds',t:'txt',lbl:'Compounds',d:'G4, G7',ph:'one name, or several separated by commas'},
+              {f:'concs',t:'txt',lbl:'Concentrations (µM, final)',d:'20, 10, 1',ph:'e.g. 20, 10, 1',
+               hint:'Typed, left to right across each pair. A short list that is not a constant fold needs no top and factor.'},
+              {f:'nReps',t:'num',lbl:'Technical replicates',d:2}];
+  b.setupHide=['nTransfect','ligand'];
+  b.layout='nbscreenpairs96';
+  return b;
+}
+EXTRA_PRESET_SEED.NB_SPARK_PAIRS96=_nbSparkPairs();
+
 // ── Setup parameters (asked once, up front, in the New-experiment modal) ──
 // Each experiment type declares the handful of decisions you actually make when you plan it.
 // The answers are pushed into the instantiated day-blocks: calculator inputs are rewritten and
@@ -6961,6 +6998,66 @@ var PLATE_LAYOUTS=[
          p.wells[wellIdOf(r1+rr,c1+cc)]={typeId:pt,groupId:gid,compound:name,conc:concs[cc],
            shade:Math.round((nConc>1?cc/(nConc-1):0)*0.8*1000)/1000};
      }
+     return p; }},
+  // The same screen with several donor × acceptor pairs (NL-DELE1(CTD) and DELE1(CTD)-NL against HT-CRBN
+  // is two, against HT-CRBN and CRBN-HT four), a short typed list of concentrations (20, 10, 1 µM — not a constant fold) and named
+  // compounds. The shape is nbscreen96's turned so that the pairs are what the columns are: each pair owns
+  // nConc neighbouring columns, so the dose runs left to right inside it and the controls sit over it.
+  // Row A is the −ligand of every pair, over its own columns (the corrected BRET is a pair minus its own −ligand);
+  // row B is what has no pair — each donor alone, each acceptor alone, the mock, and the −substrate of the first pair
+  // (it is background, not a property of the pair). From row C one band of nReps rows per compound, DMSO first, so the
+  // vehicle each pair is read against sits directly under its −ligand. Anything that does not fit is named in the note.
+  {id:'nbscreenpairs96', label:'NanoBRET SPARK screen — pairs across, compounds down + controls', format:'96',
+   sub:'Row A −ligand per pair · row B donors, acceptors, mock, −substrate · from row C DMSO then one band per compound, the dose across each pair',
+   build:function(o){
+     o=o||{};
+     var d=PLATE_FORMATS['96'], p=newPlate('96');
+     var cs=_nbtxConditions({donorNames:String(o.donors||'NL-DELE1(CTD)'),acceptorNames:String(o.acceptors||'HT-HRI'),
+       ratios:String(o.ratios||'10'),acceptorNg:80,nPair:1,nDonor:1,nAcceptor:1,nMock:1});
+     function kind(k){ return cs.filter(function(c){ return c.key===k; }); }
+     var pairsAll=kind('pair'), singles=kind('donor').concat(kind('acc'),kind('mock'));
+     var concsAll=_setupList(o.concs).map(function(x){ return parseFloat(String(x).replace(',','.')); })
+       .filter(function(x){ return x>0&&isFinite(x); });
+     if(!concsAll.length) concsAll=[20,10,1];
+     var nConc=Math.min(d.c,concsAll.length), concs=concsAll.slice(0,nConc).map(function(u){ return _fmtConc(u*1000); });
+     var cpdsAll=_setupList(o.cpds); if(!cpdsAll.length) cpdsAll=['Compound 1','Compound 2'];
+     var nReps=Math.max(1,Math.min(d.r-2,Math.round(+o.nReps||2)));
+     var maxPairs=Math.max(1,Math.floor(d.c/nConc)), pairs=pairsAll.slice(0,maxPairs);
+     var maxCpd=Math.max(0,Math.floor((d.r-2)/nReps)-1), cpds=cpdsAll.slice(0,maxCpd);
+     var left=[]; if(pairsAll.length>pairs.length) left.push(pairsAll.slice(pairs.length).map(function(c){ return c.name; }).join(', '));
+     if(cpdsAll.length>cpds.length) left.push(cpdsAll.slice(cpds.length).join(', '));
+     var pt=pairs.map(function(c){ return c.tid; }), mt=(kind('mock')[0]||{}).tid;
+     p.title='NanoBRET SPARK screen — '+pairs.length+' pair'+(pairs.length===1?'':'s')+' × '+cpds.length+' compound'+(cpds.length===1?'':'s')
+       +' × '+nConc+' pts × '+nReps+' replicate'+(nReps===1?'':'s')+' (96-well)';
+     p.note='Each pair owns '+nConc+' columns: '+pairs.map(function(c,i){ return (i+1)+' '+c.name; }).join(' · ')+'. '
+       +'Row A is the pair with no HaloTag ligand, over its own columns. Row B is each donor alone, each acceptor alone, the mock and the first pair with no substrate. '
+       +'From row C each band is '+nReps+' row'+(nReps===1?'':'s')+': DMSO, then '+cpds.join(', ')+', with '+concs.join(' · ')+' across each pair (dark to light). '
+       +'Every well but the mock is transfected with the pair or one of its halves, and every well but the −ligand wells carries the ligand.'
+       +(left.length?(' Did not fit and is not drawn: '+left.join('; ')+'.'):'');
+     var ci=0;
+     p.types=cs.map(function(c){ return {id:c.tid, name:c.name, no:++ci, color:PLATE_TYPE_COLORS[(ci-1)%PLATE_TYPE_COLORS.length]}; });
+     p.types.push({id:'blank', name:'Unused', color:'#b9bcc6'});
+     p.groups={};
+     for(var r=0;r<d.r;r++) for(var c=0;c<d.c;c++) p.wells[wellIdOf(r,c)]={typeId:'blank'};
+     function put(r,c,w,gid){ w.groupId=gid; p.wells[wellIdOf(r,c)]=w; }
+     // Row A — each pair's −ligand, over its own columns.
+     pairs.forEach(function(pr,k){ var gid='gpl'+k; p.groups[gid]={};
+       for(var n=0;n<nConc;n++) put(0,k*nConc+n,{typeId:pr.tid,noLig:true},gid); });
+     // Row B — the constructs on their own, then the mock, then the first pair without substrate.
+     var row=singles.map(function(c){ return {t:c.tid}; });
+     if(pt.length) row.push({t:pt[0],noSub:true});
+     var w=Math.max(1,Math.floor(d.c/row.length));
+     row.forEach(function(x,i){ var gid='gpb'+i; p.groups[gid]={};
+       for(var n=0;n<w&&i*w+n<d.c;n++){ var cell={typeId:x.t}; if(x.noSub) cell.noSub=true; put(1,i*w+n,cell,gid); } });
+     // From row C — DMSO, then each compound; per pair, nReps rows × nConc columns.
+     ['DMSO'].concat(cpds).forEach(function(name,b){
+       var r1=2+b*nReps;
+       pairs.forEach(function(pr,k){ var gid='gpc'+b+'_'+k; p.groups[gid]={};
+         for(var rr=0;rr<nReps;rr++) for(var cc=0;cc<nConc;cc++){
+           var cell={typeId:pr.tid,compound:name};
+           if(b>0){ cell.conc=concs[cc]; cell.shade=Math.round((nConc>1?cc/(nConc-1):0)*0.8*1000)/1000; }
+           put(r1+rr,k*nConc+cc,cell,gid); } });
+     });
      return p; }},
   // Jon's viability plate, drawn as he runs it: four compounds, each owning a pair of rows, the
   // dose running left to right across columns 1-11 and the vehicle control in column 12. Same
