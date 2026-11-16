@@ -740,6 +740,7 @@ B1&#9;U2OS&#9;P8&#9;2026-02-03&#9;DMEM+15%FBS+10%DMSO&#9;DMEM+10%FBS&#9;JM&#9;1&
 <div id="toast" role="status" aria-live="polite"></div>
 
 <script>
+function _localDay(ms){ var d = ms == null ? new Date() : new Date(ms); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); } /* the day on the person's clock (the ISO string of an instant is the UTC day, wrong around midnight) */
 // ═══════════════════════════════════════════════════════════════════════════
 //  CRYOSTORAGE — frozen cell line inventory
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1440,10 +1441,10 @@ function openHistAt(i){ var x = (window._histRows || [])[i]; if (x) openVialAt(c
 function exportHistoryCSV(){
   var rows = _historyRows(currentTab), cell = function(v){ v = v == null ? '' : String(v); if (/^[=+\-@]/.test(v)) v = "'" + v; return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
   var lines = [['Date', 'Event', 'Line / label', 'Kind', 'Passage', 'Storage', 'Rack', 'Box', 'Position', 'Reason', 'Moved to'].join(',')].concat(rows.map(function(x){
-    return [x.ts ? new Date(x.ts).toISOString().slice(0, 10) : '', LOG_KINDS[x.kind] || x.kind, x.what, vialKindLabel(x.vkind), x.passage, state.storages[currentTab].label || currentTab, x.rack, x.box, x.pos, x.reason, x.to].map(cell).join(',');
+    return [x.ts ? _localDay(x.ts) : '', LOG_KINDS[x.kind] || x.kind, x.what, vialKindLabel(x.vkind), x.passage, state.storages[currentTab].label || currentTab, x.rack, x.box, x.pos, x.reason, x.to].map(cell).join(',');
   }));
   var b = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv' }), a = document.createElement('a');
-  a.href = URL.createObjectURL(b); a.download = 'freezer-history-' + String(state.storages[currentTab].label || currentTab).replace(/[^A-Za-z0-9]+/g, '_') + '-' + new Date().toISOString().slice(0, 10) + '.csv';
+  a.href = URL.createObjectURL(b); a.download = 'freezer-history-' + String(state.storages[currentTab].label || currentTab).replace(/[^A-Za-z0-9]+/g, '_') + '-' + _localDay() + '.csv';
   document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 4000);
 }
 function computeDominantCellLine(box){
@@ -1482,7 +1483,7 @@ function computeStats(tab){
   });
   var topCl = null, topN = 0;
   Object.keys(cellLines).forEach(function(k){ if (cellLines[k] > topN) { topN = cellLines[k]; topCl = k; } });
-  var oldestStr = oldestDate ? oldestDate.toISOString().slice(0,10) : null;
+  var oldestStr = oldestDate ? oldestDate.toISOString().slice(0,10) /*utc-ok: a YYYY-MM-DD string parses as UTC midnight, so it round-trips*/ : null;
   var oldestAge = oldestDate ? Math.round((Date.now() - oldestDate.getTime()) / (30.44 * 24 * 3600 * 1000)) : null;
   return {
     totalVials: totalVials,
@@ -1699,7 +1700,7 @@ function boxSheetHTML(box, storageLabel, rackName, today){
 function printBoxMap(){
   var box=getCurrentBox(); if(!box) return;
   var st=state.storages[currentBoxDetail.storage]||{}; var rack=(st.racks||[]).find(function(r){ return r.id===currentBoxDetail.rackId; })||{};
-  var html=boxSheetHTML(box, st.label||currentBoxDetail.storage, rack.name||'', new Date().toISOString().slice(0,10));
+  var html=boxSheetHTML(box, st.label||currentBoxDetail.storage, rack.name||'', _localDay());
   _openSheet(html);
 }
 // ── The sheet for the freezer door: every box of a rack (or of a storage) on one page ──────────────────────────
@@ -1792,12 +1793,12 @@ function _openSheet(html){
 }
 function printRackSheet(tab, rackId){
   var st=state.storages[tab]; if(!st) return; var rk=(st.racks||[]).find(function(r){ return r.id===rackId; }); if(!rk) return;
-  _openSheet(scopeSheetHTML(st.label||tab, rk.name||'Rack', [rk], new Date().toISOString().slice(0,10), true));
+  _openSheet(scopeSheetHTML(st.label||tab, rk.name||'Rack', [rk], _localDay(), true));
 }
 function printCurrentStorageSheet(){ printStorageSheet(currentTab); }
 function printStorageSheet(tab){
   var st=state.storages[tab]; if(!st) return;
-  _openSheet(scopeSheetHTML(st.label||tab, st.label||tab, st.racks||[], new Date().toISOString().slice(0,10), false));
+  _openSheet(scopeSheetHTML(st.label||tab, st.label||tab, st.racks||[], _localDay(), false));
 }
 function getCurrentBox(){
   if (!currentBoxDetail) return null;
@@ -2135,7 +2136,7 @@ function openAddVial(){
   _vf('kind').value = (last && last.kind) || (box && box.content) || 'cells';
   _vf('cl').value = (last && (last.cellLine || last.label)) || '';
   _vf('passage').value = (last && last.passage) || '';
-  _vf('date').value = new Date().toISOString().slice(0, 10);
+  _vf('date').value = _localDay();
   _vf('fmedia').value = (last && last.freezeMedia) || '';
   _vf('culture').value = (last && last.cultureMedia) || '';
   _vf('conc').value = (last && last.conc) || '';
@@ -2560,7 +2561,7 @@ function exportAllXLSX(){
   wo['!autofilter'] = { ref: 'A1:G' + ov.length };
   XLSX.utils.book_append_sheet(wb, wo, 'Overview');
   wb.SheetNames.unshift(wb.SheetNames.pop());   // the overview first
-  XLSX.writeFile(wb, 'cryostorage_' + new Date().toISOString().slice(0, 10) + '.xlsx');
+  XLSX.writeFile(wb, 'cryostorage_' + _localDay() + '.xlsx');
   toast('Exported');
 }
 // ─── DOWNLOAD TEMPLATE ──────────────────────────────────────────────────────
@@ -2704,7 +2705,7 @@ function _storageForSheet(sheetName){
 }
 // A date a spreadsheet stored as a date is a serial number; as text it is whatever was typed.
 function _importDate(v){
-  if (typeof v === 'number' && v > 20000 && v < 80000) return new Date(Math.round((v - 25569) * 86400000)).toISOString().slice(0, 10);
+  if (typeof v === 'number' && v > 20000 && v < 80000) return new Date(Math.round((v - 25569) * 86400000)).toISOString().slice(0, 10); /*utc-ok: an Excel serial is a UTC day count*/
   return String(v == null ? '' : v);
 }
 function importXLSX(file){

@@ -26,6 +26,7 @@ run() {
 
 run "JavaScript parses in every app"   "$PY" tools/check_js.py
 run "Blob downloads keep their URL (Safari)" "$PY" tools/check_downloads.py
+run "A calendar day is the local day, not the UTC day" "$PY" tools/check_days.py
 run "Stylesheets"                      "$PY" tools/check_css.py
 run "Shared fit engine"                "$PY" tools/check_shared.py
 run "Icon set"                         "$PY" tools/sync_icons.py --check
