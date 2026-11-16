@@ -4,6 +4,66 @@ One file, newest run first. Each run is a dated section.
 
 ---
 
+## Labbook, break-it round — 2026-11-16
+
+Jon: "ronda de mejoras, check and break Labbook, find bugs and fix them, beta test everything that can be done in it". Driven against his real
+notebook of 16 Nov (37 experiments, 9 projects; `Backup/labbook-2026-11-16.json.gz`, loaded read-only into throwaway Chromium contexts, never written
+back) and against the presets alone. Nothing was found by reading; everything below was found by doing it, and each fix is guarded by an invariant that
+fails on the old source (`tools/labbook_audit_invariants.mjs`, L21–L29, every one proven by running it against `git show HEAD:` of the file before the fix).
+
+**What was run.** A click monkey (random real clicks on visible controls, hostile typing into every editable box — 26 payloads incl. `constructor`,
+`__proto__`, `<img onerror>`, `{{setup.cells}}`, `1e308`, RTL marks, 400 characters), ~25 seeds × 300–1,200 steps at 1440×900, 1280×720, 1024×768,
+844×390, 390×844 and 320×568, in both data modes, with three oracles after every step: **data coherence** (no NaN/undefined/Infinity, ids match, block
+ids unique, dates ISO, no orphan folder), **visible text** (NaN / undefined / [object …] on screen) and **undo completeness** (a step that pushes an undo
+mark must not have changed anything outside the paths it marked). Plus deterministic probes: every one of the 34 presets created through the quick window
+with hostile values and then opened on every tab; every real experiment × every tab, rendered with the escape, alignment and runtime audits at three widths
+× two themes (444 screens); every export (CSV, steps, JSON, methods, bench sheet, record) of every experiment checked for NaN and for column counts;
+export → import round trip of every experiment; delete → bin → restore of every experiment compared field by field; save → reload ×4 (idempotent after the
+first load); one field of the notebook deleted / nulled / retyped at a time (200 mutations) and the Firebase transform (every empty array, object and null
+removed) through the real normaliser; every plain string of the notebook replaced by an XSS payload (19,030 strings) and then every inline `on*` handler
+compiled against names holding `'` `"` `\` and a backtick; the pasted-HTML payloads (10) into the Journal; damaged backup files (13) into Restore; 120 mutated
+Echo picklists / compound lists into the parsers; 264 key presses in six workspaces; the experiment pulled out from under an open plate editor / Edit setup /
+Designer; a 156-step experiment's render times; the printed sheets of all 37 experiments for content past the page edge.
+
+**Fixed (all pushed; guards in brackets).**
+- **A design (or a backup) from a file could run code (L23).** Importing a `.design.json` kept `<img onerror>` / `<svg onload>` in a step and it ran the
+  moment the design was used (proved: `window.__xss` fired). Imported *experiments* were defanged in October; designs and the two restore paths were not.
+  Same `_defangDeep` now on all of them (it re-serialises only a string it had to change).
+- **The search box threw on "constructor" and "__proto__" (L21)** — the alias index and the spelling vocabulary were bare `{}`; a notebook that contained
+  the word "constructor" broke the vocabulary for good. `Object.create(null)`. (Standalone / phone app only: inside dHUB the Hub's own search answers.)
+- **Enter in any dialog opened after "Add a parameter" was swallowed and threw (L22)** — a key handler added to the one shared dialog card was never removed.
+- **A construct name with an apostrophe made its D / A buttons a syntax error (L24)** — found by compiling every inline handler on poisoned names; the name
+  now travels in `data-cn`. Every other handler on the experiment pages was already clean.
+- **A negative plate count or excess drew "-480 wells" and a negative recipe (L25)** — `_calcEff` treated 0 as blank and not −5; it does now, and says so.
+- **On a plate with dose blocks the compound's caption was written upwards through the concentrations (Compound 20 over 33.3 µM) (L26)** — real
+  data, found by the escape audit; `_fitBlockName` rotated a truncated name in a tall block, which is right for a plain block and wrong where every well
+  carries its own number. A dose caption now stays at the top and is cut (legend and tooltip have it whole).
+- **Seven things a person does were not one ⌘Z (L27):** Add a step from the library, Duplicate step, Remove calculator (it threw away typed inputs),
+  Accept as the plan (it removes the deviation from the record), Follow the steps above / the plate again (each overwrites a number you typed), a
+  construct's role, priority.
+- **The reader paste read 1,234.5 as 1.234 and 12,345,678 as 12.345 (L28)** — the Labbook port of the grid parser lagged behind Lumina's, which learnt the
+  grouped-digit rule; ported (plus the unicode minus and quoted cells). A single group ("1,234") stays a decimal comma, as in Lumina.
+- **A timestamp became a date in UTC (L29):** version list, a file's "added" date, an import's date, the photo file name, the day a version is kept for,
+  and the Steps CSV's "Completed at" used `toISOString().slice(0,10|16)`; a version saved at 00:30 in British summer time said yesterday, a step done at
+  21:00 in New York said tomorrow. `_dayOf` / `_stampOf` (local). The same pattern is in other apps — not touched, see below.
+
+**Found and left alone.** `floatImgs: []` is written into a record the first time it is drawn (harmless, but it makes a view a write); the monkey's
+"NO-UNDO" list is otherwise typed text (the browser's own undo), Create, Delete for ever and the recomputation of chained volumes when an experiment is
+opened after its plate changed; a number box accepts 1e308 and prints "Infinity wells" (nobody types it); the plate rail of an experiment with many plates
+scrolls sideways by design (the escape audit's allow-list does not know `.xp-rail`); Duplicate runs the load-time wording passes over the *whole* notebook,
+which on real data touched nothing outside the copy (checked for all 37) but would on a notebook that has not been loaded since an update; on a phone, ⌘Z
+pressed within the 200 ms fade-out of a closed Designer lands in its hidden focused box and throws once (a race, not reachable by hand).
+
+**Not done / for Jon.** Nothing was driven on a real device (the iPhone app has never been compiled) and Firebase sync was not exercised (no session); the
+other apps carry the same UTC-day pattern (`grep -n "toISOString().slice(0,10)" apps/*/*.html`) — worth one pass; whether Duplicate should run the wording
+passes on the whole notebook or on the copy only is a decision (it is a one-line scope change in `dupExperiment`).
+
+**Regression results.** `invariants.mjs`, `labbook_style_invariants`, `cellcheck_invariants` (115), `labbook_audit_invariants` (L1–L29), `journal_invariants`,
+`labbook_header_invariants`, `archive_audit_invariants` (195), `media_invariants`, `pasteproto_invariants` (60), `transfer_invariants` (54),
+`history_invariants` (77) and `labbook_desktop_sweep` (114 screens, 0 findings) all hold; `tools/static_checks.sh` passes.
+
+---
+
 ## Labbook on a laptop — 2026-10-12
 
 Jon asked for the whole app measured: functions, code, visual output. Driven the way he uses it — dHUB, with his own notebook of 12 Oct

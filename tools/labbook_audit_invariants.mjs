@@ -59,6 +59,8 @@
 //                           construct's role are each one ⌘Z. (none was marked: the typed number or the whole calculator was gone for good)
 //   L28 a read keeps its thousands  A grid pasted from a spreadsheet that groups digits reads 1,234.5 as 1234.5, 12,345,678 as 12345678, 1.234,5 as 1234.5 and 0,5 as 0.5 (the same rule as
 //                           Lumina's lmParseGrid); the unicode minus and quoted cells are numbers. (the port read 1,234.5 as 1.234: a count a thousand times too small, silently)
+//   L29 a day is the day here  A timestamp becomes a date in local time, never the UTC day: at 08:05 on 16 Nov in New Zealand (15 Nov 19:05 UTC) the version list, a file's "added" date,
+//                           an import's date and the Steps CSV's "Completed at" all say 16 Nov. (toISOString().slice(0,10): a version saved at 00:30 in British summer time read as yesterday)
 //   L7 an import is one undo step  Importing one experiment from a file is undone by one ⌘Z (the bundle had it; the single import did not)
 //
 //   node tools/labbook_audit_invariants.mjs [--url=URL] [--only=L1,L3]
@@ -772,8 +774,27 @@ try {
     if (r.c.A1 !== -5 || r.c.A2 !== 7) bad('L28', 'a unicode minus or a quoted cell is not a number: ' + JSON.stringify(r.c));
     errs.forEach(m => bad('L28', 'page error: ' + m)); await ctx.close();
   }
+
+  // ── L29 ──
+  if (run('L29')) {
+    counts.L29 = 1;
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, timezoneId: 'Pacific/Auckland', acceptDownloads: true });
+    await ctx.route(/gstatic\.com|firebaseio\.com|identitytoolkit|firebaseapp\.com|firebasestorage|fonts\.g/, r => r.abort());
+    await ctx.addInitScript(() => { try { localStorage.setItem('lb_tour_done', '1'); localStorage.setItem('lb_backup_nudged', '1'); sessionStorage.setItem('hub_intro_seen', '1'); } catch (e) {} });
+    const { page, errs } = await open(ctx);
+    const ids = await page.evaluate(`${SEED}`);
+    const r = await page.evaluate(ids => {
+      const ts = new Date(2026, 10, 16, 8, 5).getTime();   // 16 Nov 08:05 local = 15 Nov 19:05 UTC
+      const e = LB.data.experiments[ids.bio]; const b = e.blocks.find(x => x.date) || e.blocks[0]; b.completedAt = ts; b.done = true; openExp(e.id);
+      let csv = ''; const keep = window._dl; _dl = (n, t) => { if (/steps\.csv$/.test(n)) csv = t; }; try { exportStepsCSV(e.id); } finally { _dl = keep; }
+      return { day: typeof _dayOf === 'function' ? _dayOf(ts) : '(no _dayOf)', stamp: typeof _stampOf === 'function' ? _stampOf(ts) : '(no _stampOf)', csv: csv.indexOf('2026-11-16 08:05') >= 0, csvUtc: csv.indexOf('2026-11-15 19:05') >= 0 }; }, ids);
+    if (r.day !== '2026-11-16' || r.stamp !== '2026-11-16 08:05') bad('L29', 'the local day of 08:05 on 16 Nov in New Zealand is ' + r.day + ' / ' + r.stamp);
+    if (!r.csv || r.csvUtc) bad('L29', 'the Steps CSV writes "Completed at" in UTC, not in local time');
+    if (/toISOString\(\)\.slice\(0,\s*1[06]\)/.test(fs.readFileSync(path.join(ROOT, 'apps/labbook/labbook.html'), 'utf8'))) bad('L29', 'source still turns a timestamp into a date with toISOString().slice(0,10|16), which is the UTC day');
+    errs.forEach(m => bad('L29', 'page error: ' + m)); await ctx.close();
+  }
 } finally { await browser.close(); if (srv) srv.kill(); }
-for (const id of ['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8', 'L9', 'L10', 'L11', 'L12', 'L13', 'L14', 'L15', 'L16', 'L17', 'L18', 'L19', 'L20', 'L21', 'L22', 'L23', 'L24', 'L25', 'L26', 'L27', 'L28']) { if (ONLY && !ONLY.includes(id)) continue; const fs_ = findings.filter(f => f.id === id); process.stdout.write(`  ${fs_.length ? '✗' : '✓'} ${id}${fs_.length ? '  — ' + fs_.length + ' finding(s)' : ''}\n`); }
+for (const id of ['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8', 'L9', 'L10', 'L11', 'L12', 'L13', 'L14', 'L15', 'L16', 'L17', 'L18', 'L19', 'L20', 'L21', 'L22', 'L23', 'L24', 'L25', 'L26', 'L27', 'L28', 'L29']) { if (ONLY && !ONLY.includes(id)) continue; const fs_ = findings.filter(f => f.id === id); process.stdout.write(`  ${fs_.length ? '✗' : '✓'} ${id}${fs_.length ? '  — ' + fs_.length + ' finding(s)' : ''}\n`); }
 const seen = new Set(); findings.forEach(f => { const k = f.id + f.m; if (seen.has(k)) return; seen.add(k); process.stdout.write(`     [${f.id}] ${f.m}\n`); });
 if (!findings.length) process.stdout.write('\nLabbook audit invariants hold.\n');
 process.exit(findings.length ? 1 : 0);

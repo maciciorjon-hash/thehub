@@ -3769,6 +3769,9 @@ function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){retu
 function el(id){ return document.getElementById(id); }
 function uid(){ return 'lb'+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 function todayStr(){ var d=new Date(); return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2); }
+/* The calendar day a timestamp falls on HERE. the first ten characters of an ISO string are the UTC day: a version saved at 00:30 in summer (BST) read as yesterday, and a step done at 21:00 in New York as tomorrow. */
+function _dayOf(ms){ var d=new Date(ms); return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2); }
+function _stampOf(ms){ var d=new Date(ms); return _dayOf(ms)+' '+('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2); }
 function dateCompact(s){ return s? s.replace(/-/g,'') : ''; }
 // Dates on screen are `19 Oct 2026` everywhere (UI.md); records stay ISO. Anything that is not a full ISO day comes back as it was.
 var _MON3=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -12272,7 +12275,7 @@ function _verPrune(idx){
     var ks=byPath[p].sort(function(a,b){ return idx[a].t-idx[b].t; });
     ks.slice(-VER_KEEP).forEach(function(k){ keep[k]=1; });
     var day={};
-    ks.forEach(function(k){ if(idx[k].t>=cut) day[new Date(idx[k].t).toISOString().slice(0,10)]=k; });
+    ks.forEach(function(k){ if(idx[k].t>=cut) day[_dayOf(idx[k].t)]=k; });
     Object.keys(day).forEach(function(d){ keep[day[d]]=1; });
   });
   var doomed=Object.keys(idx).filter(function(k){ return !keep[k]; });
@@ -12315,7 +12318,7 @@ function _verRestore(key,asCopy){
     if(!rec||!rec.json){ toast('That version could not be read.'); return; }
     var path=rec.p, i=path.indexOf('/'), coll=path.slice(0,i), id=path.slice(i+1), val;
     try{ val=JSON.parse(rec.json); }catch(e){ toast('That version could not be read.'); return; }
-    var what=_verLabel(path), when=fmtDate(new Date(rec.t).toISOString().slice(0,10))+' '+_clock(rec.t);
+    var what=_verLabel(path), when=fmtDate(_dayOf(rec.t))+' '+_clock(rec.t);
     var q=asCopy
       ? 'Add the version from '+when+' as a separate copy? Nothing you have now is touched.'
       : 'Replace "'+what+'" with the version from '+when+'? What is there now is kept as a version, so this can be taken back.';
@@ -16208,7 +16211,7 @@ function filesPaneHtml(key,files){
       : '<span class="fx-ico fx-ico-svg">'+k.ic+'</span>';
     return '<div class="fx-row">'+thumb
       +'<div class="fx-main"><div class="fx-name" title="'+esc(f.name)+'">'+esc(f.name)+'</div>'
-      +'<div class="fx-meta">'+esc(k.label)+' · '+_fmtBytes(f.size||0)+' · '+esc(fmtDate(new Date(f.added).toISOString().slice(0,10)))+'</div>'
+      +'<div class="fx-meta">'+esc(k.label)+' · '+_fmtBytes(f.size||0)+' · '+esc(fmtDate(_dayOf(f.added)))+'</div>'
       +'<input class="fx-cap" value="'+esc(f.caption||'')+'" placeholder="Caption (appears in the PDF)" oninput="setFileCaption(\''+key+'\',\''+f.id+'\',this.value)"></div>'
       +'<div class="fx-acts">'
         +'<label class="fx-inc" title="Include this in the exported PDF"><input type="checkbox"'+(f.include!==false?' checked':'')+' onchange="toggleFilePdf(\''+key+'\',\''+f.id+'\',this.checked)"><span>in PDF</span></label>'
@@ -16384,7 +16387,7 @@ function setupSummaryHtml(e){
   // A record that came from somewhere else says so. Without it an imported experiment is
   // indistinguishable from one you ran, which is the one thing a lab notebook must never be.
   // (Overdue steps are said once, in the Steps bar under their own heading — not twice, here as well.)
-  var imp=e.imported?('<span class="exh-imported" title="Imported '+esc(new Date(e.imported.at).toISOString().slice(0,10))
+  var imp=e.imported?('<span class="exh-imported" title="Imported '+esc(_dayOf(e.imported.at))
     +(e.imported.originalId?(' · original id '+esc(e.imported.originalId)):'')+'">Imported'
     +(e.imported.project?(' from '+esc(e.imported.project)+(e.imported.folder?(' › '+esc(e.imported.folder)):'')):'')+'</span>'):'';
   // On a phone the chips are one line that opens on a tap (the phone block caps the height);
@@ -20483,7 +20486,7 @@ function phSave(){
   // Named after the title if there is one, else after the file it came from — a camera hands
   // over "image.jpg", which says nothing, and gets the date instead.
   var base=String(P.name||'').replace(/\.\w+$/,'');
-  if(!base||/^(image|photo|img_?\d*|dsc_?\d*)$/i.test(base)) base='photo-'+new Date().toISOString().slice(0,10);
+  if(!base||/^(image|photo|img_?\d*|dsc_?\d*)$/i.test(base)) base='photo-'+todayStr();
   var key=P.key, name=(cap?cap.replace(/[\\/:*?"<>|]+/g,'-'):base)+'.jpg';
   var rep=P.next&&P.next.replace;
   out.toBlob(function(blob){
@@ -25339,7 +25342,7 @@ var STEP_COLS=['Experiment','Day','Date','Step','Done','Completed at','Protocol'
 function _stepRowsOf(e){ var rows=[];
   dayGroups(e).forEach(function(g){ (g.blocks||[]).forEach(function(b){
     rows.push([e.code||'', (g.day==null?'':g.day), b.date||'', b.title||'',
-      b.done?'yes':'', b.completedAt?new Date(b.completedAt).toISOString().slice(0,16).replace('T',' '):'',
+      b.done?'yes':'', b.completedAt?_stampOf(b.completedAt):'',
       (b.proto&&b.proto.protoName)||'', (b.proto&&b.proto.name)||'', _plain(b.note||'')]);
   }); });
   return rows; }
@@ -26463,7 +26466,7 @@ function _recoverFillVersions(){
     if(!vs.length){ host.innerHTML=head+'<div class="rc-note">No versions yet'+(want?' for this record':'')+'. One is written the first time you change something after opening the app.</div>'; return; }
     host.innerHTML=head+vs.slice(0,120).map(function(v){
       var coll=v.path.slice(0,v.path.indexOf('/'));
-      var when=fmtDate(new Date(v.at).toISOString().slice(0,10))+' '+_clock(v.at);
+      var when=fmtDate(_dayOf(v.at))+' '+_clock(v.at);
       return '<div class="rc-row">'
         +'<span class="ic" style="background:'+(v.remote?'#c99a4e':'#5e87c5')+'">'+(v.remote?'R':'V')+'</span>'
         +'<span class="rc-l"><b>'+esc(_verLabel(v.path))+'</b><i>'+esc(when)+' · '+_fmtBytes(v.n||0)
