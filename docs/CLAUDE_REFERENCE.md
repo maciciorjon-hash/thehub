@@ -8887,6 +8887,11 @@ Jon (Spanish): on day 1 the medium is made complete with OA (oligomycin stock **
 - Guard B61 extended (tube volume, the three µL, plate 1 has no ISRIB, stock change follows, ISRIB 1:100); proven with the factor ×100 instead of ×1000 (4 findings).
 - **Assumptions:** media made at their final strength (so after the 10 µL PROTAC OA and ISRIB end at 0.9×, ISRIB 270 nM); one tube per plate (a single 19 mL batch would be 3.02 µL and 3.80 µL); ISRIB dilution made in medium; ISRIB's DMSO (0.003 %) not matched on plate 1.
 
+### SC3 + ISRIB, the PROTAC step is the usual manual addition (2026-11-16, B61)
+
+Jon (Spanish): the PROTAC step I wrote was a custom serial-dilution step (`serial` calculator, tube 1 / tubes 2-7 / transfer), not what he uses. **Rule: reuse the module that exists before writing a custom step.** It is now the `spike` calculator with `series:true`, 10x, `wellVolUL:90` (own: the fresh medium leaves 90), `nWells:192`, and the same wording as `NB_COMMON.cmpd` ("Prepare each concentration at 10x ... as on the plate map. {{c.seriesText}}" / add 1/10 / vehicle row H). B61 now asks for kind `spike`, series on, 10x, 90 µL.
+- **Engine:** the ISRIB final and stock used to reach *every* `spike` through `SETUP_CALC_MAP` (so the PROTAC series would have been given 0.3 µM and 10 mM). A step now names its own setup fields: `calc.setupMap={finalUM:'isribUM',stockUM:['isribStockMM',1000]}` on the day-0 ISRIB step only; `applySetupToBlocks` and the Designer's "the parameters" badge read it. I4 caught the first attempt (keyed on `series`, which the test flips).
+
 ## Lumina: a series that is not a constant fold — Type the values (L39, 2026-11-13)
 
 Jon (Spanish): a serial dilution that is not constant (1 µM, 100 nM, then threefold down to 412 pM down the rows) could not be drawn; "put the dilution by hand as text, by rows".

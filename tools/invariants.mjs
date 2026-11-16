@@ -3308,9 +3308,10 @@ async function suite(opts) {
         if (!(st.oligoStockMM === 6.3 && st.antiStockMM === 50 && st.isribStockMM === 10)) bad('B61', 'stocks', 'oligomycin ' + st.oligoStockMM + ', antimycin A ' + st.antiStockMM + ', ISRIB ' + st.isribStockMM + ' mM, expected 6.3, 50, 10');
         if (ib && ib.calc.inputs.stockUM !== 10000) bad('B61', 'ISRIB stock', 'the day-0 ISRIB step starts from ' + ib.calc.inputs.stockUM + ' uM, expected the setup\'s 10 mM');
       }
-      // the PROTAC: 7 points from 20 uM, 3-fold, 6 compounds, onto the 90 uL the fresh medium leaves
-      const Ip = (by(/^PROTAC/) || { calc: {} }).calc.inputs;
-      if (!Ip || Ip.topFinalNM !== 20000 || Ip.nPoints !== 7 || Ip.df !== 3 || Ip.nCompounds !== 6 || Ip.wellVolUL !== 90 || Ip.foldX !== 10) bad('B61', 'series', JSON.stringify(Ip));
+      // the PROTAC: the usual manual addition from 10x (the spike calculator, not a custom serial-dilution step), the series read off the plate map,
+      // onto the 90 uL the fresh medium leaves (Jon, 2026-11-16: "manual addition from 10x as we already have")
+      const pbk = by(/^PROTAC/) || { calc: {} }, Ip = pbk.calc.inputs;
+      if (pbk.calc.kind !== 'spike' || !Ip || Ip.series !== true || Ip.wellVolUL !== 90 || Ip.foldX !== 10) bad('B61', 'PROTAC addition', 'expected the manual-addition (spike) calculator, series on, 10x onto 90 uL: ' + JSON.stringify(pbk.calc));
       // the medium swap says the volume the PROTAC goes onto
       if (!/90 (µL|&micro;L)/.test((by(/Fresh medium/) || {}).html || '')) bad('B61', 'medium volume', 'the medium step does not say 90 µL, which is what the PROTAC calculator assumes');
       // two plates, the same six compounds on both, the series down the rows A-G and the vehicle in H

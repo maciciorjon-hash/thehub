@@ -4469,7 +4469,7 @@ function _hbSparkIsrib(){
     pub:'DELE1-HiBiT {{cellLine}} cells were seeded in two white {{format}}-well plates from one suspension at {{cellsPerWell}} per well in {{c.volPerWell}} ({{c.density}}).',
     html:'<ol><li>Count the cells and resuspend them in {{c.medium}} at {{c.density}} &mdash; {{c.totalVol}} for {{c.wells}}.</li><li>Add {{c.volPerWell}} of the suspension to each well ({{c.cellsPerWell}}) of both white {{format}}-well plates. Label them: plate 1 is SC3 alone, plate 2 gets the ISRIB.</li><li>Plate 2 goes straight on to the ISRIB step; plate 1 goes to 37 &deg;C, 5% CO&#8322; overnight.</li></ol>'});
   bl.push({d:0,title:'ISRIB addition (plate 2 only)',
-    calc:{kind:'spike',inputs:{name:'ISRIB',wellVolUL:90,foldX:10,series:false,finalUM:0.3,stockUM:10000,nWells:96,excess:1.1,diluent:M,minVolUL:1},own:{nWells:true}},
+    calc:{kind:'spike',inputs:{name:'ISRIB',wellVolUL:90,foldX:10,series:false,finalUM:0.3,stockUM:10000,nWells:96,excess:1.1,diluent:M,minVolUL:1},own:{nWells:true},setupMap:{finalUM:'isribUM',stockUM:['isribStockMM',1000]}},
     pub:'ISRIB, made in {{c.diluent}} from a DMSO stock, was added to every well of plate 2 straight after seeding at {{c.fold}} ({{c.addUL}} per well): {{isribUM}} &micro;M final. Plate 1 received no ISRIB.',
     html:'<ol><li>Prepare at {{c.fold}} in {{c.diluent}}: ISRIB ({{isribUM}} &micro;M final).</li><li>Add {{c.addUL}} per well to plate 2 only ({{c.wellVol}} already in the well &rarr; {{c.newVol}}); do not aspirate.</li><li>Back to 37 &deg;C, 5% CO&#8322; overnight, with plate 1.</li></ol>'});
   // The OA medium is made from the stocks and the final strengths the parameters hold: the µL per mL are the calculator's.
@@ -4484,10 +4484,12 @@ function _hbSparkIsrib(){
   bl.push({d:1,title:'Fresh medium with OA (2 h before the PROTAC)',w:120,
     pub:'Both plates had the medium aspirated and replaced with 90 &micro;L per well of fresh '+M+' containing OA ({{oligoUM}} &micro;M oligomycin + {{antiUM}} &micro;M antimycin A); on plate 2 the fresh medium also contained ISRIB ({{isribUM}} &micro;M), so that the two plates were handled alike. The PROTAC was added 2 h later.',
     html:'<ol><li>Aspirate the medium from every well of both plates &mdash; the ISRIB of the day before goes with it on plate 2.</li><li>Add 90 &micro;L per well of the OA medium to plate 1 and 90 &micro;L per well of the ISRIB + OA medium to plate 2.</li><li>Back to 37 &deg;C &mdash; note the time. OA ({{oligoUM}} &micro;M oligomycin + {{antiUM}} &micro;M antimycin A) for 2 h before the PROTAC; plate 2 stays in {{isribUM}} &micro;M ISRIB.</li></ol>'});
+  // The usual manual addition from 10x (the `spike` calculator, as every other preset): one tube a concentration as on the plate map,
+  // 1/10 of the well volume onto the 90 µL the fresh medium leaves. The plate map (both plates, the same six compounds) is the series.
   bl.push({d:1,title:'PROTAC addition',
-    calc:{kind:'serial',inputs:{name:'PROTACs',topFinalNM:20000,foldX:10,df:3,nPoints:7,volPerPoint:60,wellVolUL:90,stockUM:10000,nCompounds:6,diluent:M},own:{wellVolUL:true}},
-    pub:'PROTACs were serially diluted ({{nPoints}} points, {{df}}-fold from {{topConc}} nM, made at 10&times;) and added by hand to the wells of both plates at 1/10 of the volume, the series running down the plate with the {{vehicle}} control in the last row, and the cells were treated for {{treatH}} h in the presence of OA (and, on plate 2, ISRIB).',
-    html:'<ol><li>Tube 1 at {{c.topTube}}: {{c.stockUL}} of the {{c.stockConc}} stock + {{c.firstDiluentUL}} {{c.diluent}} ({{c.dilution}}).</li><li>Tubes 2&ndash;{{c.nPoints}}: {{c.keepUL}} {{c.diluent}} in each.</li><li>Transfer {{c.transferUL}} down the series ({{c.df}}), mixing, with a fresh tip each time. One series per compound; it serves both plates.</li><li>Add {{c.addUL}} of each point to its wells on both plates ({{c.wellVol}} already there &rarr; {{c.newVol}}) &mdash; {{c.series}} in the well, the top point in row A. Add {{c.addUL}} of {{c.diluent}} with the matched {{vehicle}} to row H.</li><li>Check the plates against the plate maps.</li><li>Incubate {{treatH}} h at 37 &deg;C, 5% CO&#8322; &mdash; note the time.</li></ol>'});
+    calc:{kind:'spike',inputs:{name:'PROTAC',wellVolUL:90,foldX:10,series:true,finalUM:0,stockUM:0,nWells:192,excess:1.1,diluent:M},own:{wellVolUL:true}},
+    pub:'PROTACs were added by hand at {{c.fold}} ({{c.addUL}} per well, made in {{c.diluent}}) to the wells of both plates, the series running down the plate with the {{vehicle}} control in the last row, and the cells were treated for {{treatH}} h in the presence of OA (and, on plate 2, ISRIB).',
+    html:'<ol><li>Prepare each concentration at {{c.fold}} in {{c.diluent}}, one tube per concentration, as on the plate map. {{c.seriesText}}</li><li>Add {{c.addUL}} of the {{c.fold}} to each treated well of both plates ({{c.wellVol}} already in the well &rarr; {{c.newVol}}); do not aspirate.</li><li>Add {{c.addUL}} of vehicle ({{c.diluent}} with matched {{vehicle}}) to the {{vehicle}} wells (row H).</li><li>Incubate {{treatH}} h at 37 &deg;C, 5% CO&#8322; &mdash; note the time.</li></ol>'});
   _hbSparkRead(1).forEach(function(b){ bl.push(b); });
   return {name:'HiBiT_SPARK_Scenario_3_ISRIB',baseType:'HB',
     title:'HiBiT degradation — SPARK NS, Scenario 3 with ISRIB: OA 2 h before the PROTAC (6 h), plate 2 pre-treated with ISRIB (96-well)',
@@ -4988,7 +4990,7 @@ function _applySetupGates(type,setup,blocks,prevSetup,presetKey,anchor){
     var nx=blocks[blocks.indexOf(o)+1]; o.waitSameDay=!!(o.waitMin&&nx&&(+nx.dayOffset||0)===off0);
     sync();
   }); }
-var SETUP_CALC_MAP={rtxmix:{ngPerWell:'dnaNg',fugeneRatio:'fugeneRatio',nWells:'nWells'}, spike:{nWells:'nSamples',finalUM:'isribUM'}, mixparts:{nWells:'nSamples'}, seed:{nWells:'nSamples'}};
+var SETUP_CALC_MAP={rtxmix:{ngPerWell:'dnaNg',fugeneRatio:'fugeneRatio',nWells:'nWells'}, spike:{nWells:'nSamples'}, mixparts:{nWells:'nSamples'}, seed:{nWells:'nSamples'}};
 function applySetupToBlocks(type,setup,blocks,prevSetup,presetKey){
   var S=setupSchema(type); if(!S||!setup) return blocks;
   // A setup field marked `wait` is a duration, not just a word for the prose. "Treatment (h)"
@@ -5043,7 +5045,9 @@ function applySetupToBlocks(type,setup,blocks,prevSetup,presetKey){
       // the setup's stocks and finals; the µL per mL are the calculator's. A list the person retyped is theirs.
       if(b.calc.kind==='mixparts'&&I.partsTpl!=null&&!_own2('parts')) I.parts=String(fillSetup(I.partsTpl,setup)).replace(/&micro;/g,'µ');
       // The ISRIB stock is the setup's too (mM there, µM in the calculator).
-      if(b.calc.kind==='spike'&&setup.isribStockMM!=null&&setup.isribStockMM!==''&&isFinite(+setup.isribStockMM)&&!_own2('stockUM')) I.stockUM=+setup.isribStockMM*1000;
+      // A step can name the setup fields that feed its own boxes ({finalUM:'isribUM', stockUM:['isribStockMM',1000]}: the field, then a factor, mM there and µM here).
+      if(b.calc.setupMap) Object.keys(b.calc.setupMap).forEach(function(ik){ var m=b.calc.setupMap[ik], sv=setup[[].concat(m)[0]], f=Array.isArray(m)?m[1]:1;
+        if(sv!=null&&sv!==''&&isFinite(+sv)&&I[ik]!==undefined&&!_own2(ik)) I[ik]=+sv*f; });
       // A run said to be N plates of a format has N × that many wells, until a plate map says otherwise.
       if(setup.nPlates!=null&&setup.nSamples==null&&fmt&&PLATE_FED[b.calc.kind]&&I.nWells!=null&&!_own2('nWells')&&(b.calc.kind!=='reagent'||+I.perWellUL>0)) I.nWells=wellsOf(fmt)*(+setup.nPlates||1);
       if(setup.nPlates!=null&&I.nPlates!=null&&!_own('nPlates')){
@@ -23446,7 +23450,7 @@ function dsOwned(kind,su,ownPlate,calc){
   if(kind==='rtxmix'&&_dsPlasmidText(su)) o.plasmid='the plasmids';
   // What a calculator takes from the setup under another name (DNA per well, the FuGENE ratio).
   var _cm=SETUP_CALC_MAP[kind]; if(_cm) Object.keys(_cm).forEach(function(ik){ var sv=su[_cm[ik]]; if(sv!=null&&sv!==''&&isFinite(+sv)) o[ik]='the parameters'; });
-  if(kind==='spike'&&su.isribStockMM!=null&&su.isribStockMM!==''&&isFinite(+su.isribStockMM)) o.stockUM='the parameters';
+  if(calc&&calc.setupMap) Object.keys(calc.setupMap).forEach(function(ik){ var sv=su[[].concat(calc.setupMap[ik])[0]]; if(sv!=null&&sv!==''&&isFinite(+sv)) o[ik]='the parameters'; });
   if(kind==='mixparts'&&calc&&calc.inputs&&calc.inputs.partsTpl!=null) o.parts='the parameters (stocks and final strengths)';
   if(kind==='nbtx'){
     if(su.donors) o.donorNames='the donor plasmids';
