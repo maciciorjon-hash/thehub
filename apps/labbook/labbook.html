@@ -5122,7 +5122,8 @@ function _calcEff(v,defs){
   for(var k in v) if(Object.prototype.hasOwnProperty.call(v,k)) o[k]=v[k];
   Object.keys(defs||{}).forEach(function(k){
     var n=+o[k];
-    if(!isFinite(n)||n===0){ o[k]=defs[k]; if(v[k]!==undefined&&v[k]!=='') sub.push(k); else if(v[k]==='') sub.push(k); }
+    if(!isFinite(n)||n<=0){ o[k]=defs[k];   /* a negative amount is no more a quantity than zero is: -5 plates drew "-480 wells" and a negative recipe */
+      if(v[k]!==undefined&&v[k]!=='') sub.push(k); else if(v[k]==='') sub.push(k); }
     else o[k]=n;
   });
   o.__sub=sub;
@@ -5132,7 +5133,7 @@ function _subNote(v,labels){
   var sub=(v&&v.__sub)||[]; if(!sub.length) return '';
   return '<div class="cc-warn">Using the default for '
     +sub.map(function(k){ return '<b>'+esc((labels&&labels[k])||k)+' = '+nfmt(v[k])+'</b>'; }).join(' and ')
-    +' &mdash; '+(sub.length===1?'that box is':'those boxes are')+' empty or zero, and the numbers above were worked out with '
+    +' &mdash; '+(sub.length===1?'that box is':'those boxes are')+' empty, zero or negative, and the numbers above were worked out with '
     +(sub.length===1?'it':'them')+'. Type the value you actually used.</div>';
 }
 // What a reagent step has to make. With a per-well volume it is that volume for every well that
@@ -6225,6 +6226,7 @@ function calcUpd(id,key){ var b=_blkById(id); if(!b||!b.calc) return; var wrap=d
   if(e) e.updated=Date.now(); queueSave(); }
 // Give a derived field back to the chain.
 function calcRelink(id,key){ var b=_blkById(id); if(!b||!b.calc||!b.calc.own) return;
+  var _e0=_curExp(); if(_e0) undoMark('Follow the steps above',['experiments.'+_e0.id]);   /* it overwrites a number you typed */
   delete b.calc.own[key];
   var e=_curExp(); if(e) syncChainedInputs(e);
   save(); renderEditor();
@@ -6232,6 +6234,7 @@ function calcRelink(id,key){ var b=_blkById(id); if(!b||!b.calc||!b.calc.own) re
 // Give a number the plate answers back to the plate.
 function calcRelinkPlate(id,key){ var b=_blkById(id), e=_curExp(); if(!b||!b.calc||!e) return;
   var n=plateWellsFor(e,b); if(n==null) return;
+  undoMark('Follow the plate',['experiments.'+e.id]);   /* it overwrites a number you typed */
   if(b.calc.own) delete b.calc.own[key];
   if(b.calcSeed) b.calcSeed[key]=n;
   b.calc.inputs[key]=n; e.updated=Date.now(); save(); renderEditor();
@@ -6256,7 +6259,7 @@ function refreshPlateCards(e){
 function calcCellLine(id,clid){ var b=_blkById(id); if(!b||!b.calc) return; b.calc.inputs.cellLine=clid;
   if(b.calc.inputs.cellsPerWell!=null){ var n=lineCells(clid,b.calc.inputs.format); if(n) b.calc.inputs.cellsPerWell=n; }
   save(); renderEditor(); }
-function calcRemove(id){ var b=_blkById(id); if(!b) return; lbConfirm('Remove the prep calculator from this step? (Your written notes stay.)',{title:'Remove calculator'}).then(function(ok){ if(!ok) return; delete b.calc; save(); renderEditor(); }); }
+function calcRemove(id){ var b=_blkById(id); if(!b) return; lbConfirm('Remove the prep calculator from this step? (Your written notes stay.)',{title:'Remove calculator'}).then(function(ok){ if(!ok) return; var _e=_curExp(); if(_e) undoMark('Remove calculator',['experiments.'+_e.id]); delete b.calc; save(); renderEditor(); }); }
 function addCalcToBlock(id,kind){ var b=_blkById(id); if(!b) return; b.calc={kind:kind,inputs:calcDefaults(kind)}; save(); renderEditor(); }
 function addArchiveCalcToBlock(id,pid){ var b=_blkById(id); if(!b) return; b.calc={kind:'archive',pid:pid,inputs:{},recipe:''}; save(); renderEditor(); }
 // Render an Archive calculator inline (generic form from ARCHIVE_CALC_SCHEMA + live recipe).
@@ -6419,6 +6422,7 @@ var STEP_LIBRARY=[
 // a step dropped into the middle of a run belongs to that day, not to the last one.
 function insertStepBlock(spec, at){
   var e=_curExp(); if(!e) return;
+  undoMark('Add step',['experiments.'+e.id]);
   var n=(e.blocks||[]).length;
   var idx=(at==null||at<0||at>n) ? n : at;
   var prev=(idx>0)?e.blocks[idx-1]:null;
@@ -7294,6 +7298,7 @@ function expConstructs(e){
 }
 function setConstructRole(id,name,role){
   var e=LB.data.experiments[id]; if(!e) return;
+  undoMark('Set construct role',['experiments.'+id]);
   e.roles=e.roles||{};
   if(e.roles[name]===role) delete e.roles[name]; else e.roles[name]=role;
   e.updated=Date.now(); save(); renderEditor();
@@ -9010,7 +9015,13 @@ function plParseValues(text,fmt){
   var _sep=_hasTab?'\t':(_hasSemi?';':(_spaced?/\s+/:','));
   var _decComma=(_sep!==',');
   var grid=lines.map(function(l){ return (_spaced?l.trim():l).split(_sep).map(function(x){
-    x=x.trim(); return _decComma?x.replace(/(\d),(\d)/g,'$1.$2'):x; }); });
+    x=x.trim().replace(/^"(.*)"$/,'$1').replace(/\u2212/g,'-');
+    if(!_decComma) return x;
+    /* Grouped digits are copied as displayed (Lumina's lmParseGrid, ported): 12,345,678 and 1,234.5 are thousands, 1.234,5 is European. Left to the
+       decimal-comma rule below, 1,234.5 read as 1.234 - a count a thousand times too small with nothing to say so. */
+    if(/^[-+]?\d{1,3}(,\d{3})+(\.\d+)?$/.test(x) && (x.split(',').length>2 || /\./.test(x))) return x.replace(/,/g,'');
+    if(/^[-+]?\d{1,3}(\.\d{3})+,\d+$/.test(x)) return x.replace(/\./g,'').replace(',','.');
+    return x.replace(/(\d),(\d)/g,'$1.$2'); }); });
   function isColHeader(c){
     var off=(/^[A-P]$/i.test(c[0]||'')||(c[0]||'')==='')?1:0;
     for(var i=0;i<cols;i++){ if(parseInt(c[off+i],10)!==i+1) return false; }
@@ -9670,6 +9681,8 @@ function plRenderGrid(){ var p=plCur(), host=el('pl-grid'); if(!p||!host) return
 // to the page, and again when the window changes size.
 function _fitBlockName(g){ var s=g.firstElementChild; if(!s||s.tagName!=='SPAN') return;
   g.classList.remove('rot'); var w=g.clientWidth, h=g.clientHeight; if(!w||!h) return;
+  /* A dose block's wells each carry their concentration: a name written upwards runs straight through those numbers (Compound 20 over 33.3µM), so it stays at the top and is cut; the legend and the tooltip have it whole. */
+  if(g.classList.contains('pp-gl-dose')) return;
   if(s.scrollWidth>s.clientWidth+1 && h>w) g.classList.add('rot'); }
 function _fitBlockNames(root){ if(!root||!root.querySelectorAll) return;
   if(root.matches&&root.matches('.pl-gl,.pp-gl')) _fitBlockName(root);
@@ -16145,8 +16158,8 @@ function constructRolesHtml(e){
   var cs=expConstructs(e); if(!cs.length) return '';
   return '<div class="exh-roles">'+cs.map(function(c){
     return '<span class="exh-role"><b>'+esc(c.name)+'</b>'
-      +'<button class="rl'+(c.role==='donor'?' on d':'')+'" title="NanoLuc donor" onclick="setConstructRole(\''+e.id+'\',\''+esc(c.name)+'\',\'donor\')">D</button>'
-      +'<button class="rl'+(c.role==='acceptor'?' on a':'')+'" title="HaloTag acceptor" onclick="setConstructRole(\''+e.id+'\',\''+esc(c.name)+'\',\'acceptor\')">A</button></span>';
+      +'<button class="rl'+(c.role==='donor'?' on d':'')+'" title="NanoLuc donor" data-cn="'+esc(c.name)+'" onclick="setConstructRole(\''+e.id+'\',this.getAttribute(\'data-cn\'),\'donor\')">D</button>'
+      +'<button class="rl'+(c.role==='acceptor'?' on a':'')+'" title="HaloTag acceptor" data-cn="'+esc(c.name)+'" onclick="setConstructRole(\''+e.id+'\',this.getAttribute(\'data-cn\'),\'acceptor\')">A</button></span>';
   }).join('')+'</div>';
 }
 // One line, under the title: what you are asking. It is the question the steps cannot answer
@@ -17104,7 +17117,7 @@ function deviationsHtml(e){
 // one was intentional" are different statements.
 function acceptDeviation(expId,blkId,key){
   var e=LB.data.experiments[expId]; if(!e) return;
-  var n=0;
+  var todo=[];
   (e.blocks||[]).forEach(function(b){
     if(blkId&&b.id!==blkId) return;
     if(!b.calc||!b.calc.inputs||!b.calcSeed) return;
@@ -17112,10 +17125,13 @@ function acceptDeviation(expId,blkId,key){
       if(key&&k!==key) return;
       if(b.calcSeed[k]===undefined) return;
       if(String(b.calcSeed[k])===String(b.calc.inputs[k])) return;
-      b.calcSeed[k]=b.calc.inputs[k]; n++;
+      todo.push([b,k]);
     });
   });
-  if(!n) return;
+  if(!todo.length) return;
+  undoMark('Accept as the plan',['experiments.'+expId]);   /* it removes the deviation from the record: one ⌘Z brings it back */
+  todo.forEach(function(t){ t[0].calcSeed[t[1]]=t[0].calc.inputs[t[1]]; });
+  var n=todo.length;
   e.updated=Date.now(); save(); renderEditor();
   toast(n+' change'+(n===1?'':'s')+' accepted as the plan');
 }
@@ -20046,7 +20062,7 @@ function delBlock(id){ var e=_curExp(); if(!e) return; var _tid=uid(); undoMark(
   var i=e.blocks.map(function(b){return b.id;}).indexOf(id);
   if(i>=0) lbTrash('block',(e.blocks[i].title||'Step')+' · '+(e.code||e.title||''),{expId:e.id,index:i,block:e.blocks[i]},null,_tid);
   e.blocks=e.blocks.filter(function(b){return b.id!==id;}); syncChainedInputs(e); save(); renderEditor(); }
-function dupBlock(id){ var e=_curExp(); if(!e) return; var i=e.blocks.map(function(b){return b.id;}).indexOf(id); if(i<0) return; var c=JSON.parse(JSON.stringify(e.blocks[i])); c.id=uid(); e.blocks.splice(i+1,0,c); save(); renderEditor(); }
+function dupBlock(id){ var e=_curExp(); if(!e) return; var i=e.blocks.map(function(b){return b.id;}).indexOf(id); if(i<0) return; undoMark('Duplicate step',['experiments.'+e.id]); var c=JSON.parse(JSON.stringify(e.blocks[i])); c.id=uid(); e.blocks.splice(i+1,0,c); save(); renderEditor(); }
 function moveBlock(id,dir){ var e=_curExp(); if(!e) return; undoMark('Move step',['experiments.'+e.id]); var i=e.blocks.map(function(b){return b.id;}).indexOf(id); var j=i+dir; if(i<0||j<0||j>=e.blocks.length) return; var t=e.blocks[i]; e.blocks[i]=e.blocks[j]; e.blocks[j]=t; syncChainedInputs(e); save(); renderEditor(); }
 // Creates the day on first edit — renderDayView deliberately doesn't, so that merely
 // looking at a day never adds it to the Notebook list.
@@ -21058,7 +21074,7 @@ function _backdropTap(){ if(Date.now()-_lastPopClose<400) return; toggleMobileNa
 
 // ── Custom dialogs (replace native confirm/prompt + searchable picker) ──
 function _closeMenus(){ ['ctxmenu','addmenu','tbl-grid'].forEach(function(id){ var p=el(id); if(p) _popClose(p); }); }
-function _lbDlg(){ _closeMenus(); var d=el('lb-dialog'); if(d) return d; d=document.createElement('div'); d.className='modal-back'; d.id='lb-dialog'; d.innerHTML='<div class="modal" id="lb-dialog-card"></div>'; document.body.appendChild(d); if(window._lbWatchModal) _lbWatchModal(d); d.addEventListener('mousedown',function(e){ if(e.target===d && d._onCancel) d._onCancel(); }); return d; }
+function _lbDlg(){ _closeMenus(); var d=el('lb-dialog'); if(d){ var c0=el('lb-dialog-card'); if(c0) c0.onkeydown=null; return d; }  /* the card is one element for every dialog: a key handler one dialog set must not outlive it (Enter in the next dialog hit a stale 'Add a parameter' handler, was swallowed, and threw) */  d=document.createElement('div'); d.className='modal-back'; d.id='lb-dialog'; d.innerHTML='<div class="modal" id="lb-dialog-card"></div>'; document.body.appendChild(d); if(window._lbWatchModal) _lbWatchModal(d); d.addEventListener('mousedown',function(e){ if(e.target===d && d._onCancel) d._onCancel(); }); return d; }
 function _lbDlgClose(){ var d=el('lb-dialog'); if(d){ d.classList.remove('open'); d._onCancel=null; } }
 function _saveSel(){ var s=window.getSelection(); return (s&&s.rangeCount)?s.getRangeAt(0).cloneRange():null; }
 function _restoreSel(r){ if(!r) return; try{ var s=window.getSelection(); s.removeAllRanges(); s.addRange(r); }catch(e){} }
@@ -21154,6 +21170,7 @@ function expPrio(e){ return (e && PRIO[e.prio]) ? e.prio : ''; }
 // High first, low last, and everything else keeps the order it already had.
 function prioRank(e){ var x=expPrio(e); return x==='high' ? 0 : (x==='low' ? 2 : 1); }
 function setExpPrio(id,v){ var e=LB.data.experiments[id]; if(!e) return;
+  undoMark('Set priority',['experiments.'+id]);
   if(v) e.prio=v; else delete e.prio;
   e.updated=Date.now(); save(); renderAll(); }
 function prioMark(e){ return expPrio(e)==='high'
@@ -21978,14 +21995,14 @@ var SPOT_ALIASES = [
 ];
 // word → the set of rows it appears in, built once.
 var _SPOT_ALIAS_IDX = (function(){
-  var m={};
+  var m=Object.create(null);   // a bare {} answers "constructor" / "__proto__" with a function: the search box threw on those words
   SPOT_ALIASES.forEach(function(row,ri){ row.forEach(function(w){ (m[w]=m[w]||[]).push(ri); }); });
   return m;
 })();
 // Every phrase this query could also mean — the query itself first, so a literal hit always
 // wins. Only whole-token matches expand: "ip" must not fire on "recipe".
 function spotExpand(q){
-  var out=[q], seen={}; seen[q]=1;
+  var out=[q], seen=Object.create(null); seen[q]=1;
   var words=_spotWords(q);
   function add(p){ if(p && !seen[p]){ seen[p]=1; out.push(p); } }
   // the whole query as one alias key
@@ -22140,7 +22157,7 @@ function _spotSnip(x,q,toks){
 function spotVocab(){
   var ix=spotIndex();
   if(ix.vocab) return ix.vocab;
-  var seen={}, v=[];
+  var seen=Object.create(null), v=[];
   function eat(str,weight){
     var ws=_spotWords(str);
     for(var i=0;i<ws.length;i++){
@@ -23092,7 +23109,7 @@ function qParamDlg(h,idx){
   }
   function key(){ el('dsp-k').innerHTML=L.value.trim()?('Quoted in a step as <code>{{'+esc(cur?cur.f:_paramKey(Q,L.value))+'}}</code> — the <b>Insert a parameter</b> chips on each module put it in for you.'):''; }
   T.onchange=defCtl; L.oninput=key; defCtl();
-  card.addEventListener('keydown',function(ev){ if(ev.key==='Enter'&&ev.target.tagName==='INPUT'){ ev.preventDefault(); el('dsp-ok').click(); } });
+  card.onkeydown=function(ev){ if(ev.key==='Enter'&&ev.target.tagName==='INPUT'){ ev.preventDefault(); var ok=el('dsp-ok'); if(ok) ok.click(); } };
   setTimeout(function(){ L.focus(); },40);
   el('dsp-ok').onclick=function(){
     var lbl=L.value.trim(); if(!lbl){ L.focus(); return; }
@@ -23970,6 +23987,7 @@ function dgImport(){
       undoMark('Import a design',['presets']);
       var names=[];
       list.forEach(function(x){ var c=JSON.parse(JSON.stringify(x)); delete c._seedSig;
+        _defangDeep(c);   /* a design somebody else wrote is HTML somebody else wrote: an <img onerror> in a step ran when the design was used, exactly as in an imported experiment */
         var taken=allPresetKeys().some(function(k){ return (LB.data.presets[k].name||k)===c.name; });
         c.name=String(c.name||'Imported design')+(taken?' (imported)':'');
         LB.data.presets[_presetKeyFor(c.name)]=c; names.push(c.name); });
@@ -25914,6 +25932,7 @@ function _restoreInputChange(inp){ var f=(inp.files||[])[0]; inp.value=''; var p
   reader.onload=function(){ var parsed; try{ parsed=JSON.parse(reader.result); }catch(e){ toast('Could not parse that file — not valid JSON.'); return; }
     var data=(parsed&&parsed._lbBackup&&parsed.data)?parsed.data:(parsed&&parsed.journal&&parsed.journal.labbook)?parsed.journal.labbook:parsed;
     if(!data||typeof data!=='object'||!('projects' in data)){ toast('That file doesn\u2019t look like a Labbook backup.'); return; }
+    _defangDeep(data);   /* a backup that came from somebody else is HTML somebody else wrote */
     restoreProjectsFrom(data,'backup'); }; }
 function restoreFromBackupFile(file){
   var reader={};
@@ -25931,6 +25950,7 @@ function restoreFromBackupFile(file){
     if(parsed && (parsed._lbBundle || parsed._lbExperiment)){ lbAlert('That is an experiment export, not a backup. Use <b>Import</b> (Export → Data) to add it as new experiments — nothing already here is replaced that way.',{title:'Not a backup',html:true}); return; }
     if(!data || typeof data!=='object' || Array.isArray(data) || !data.experiments || typeof data.experiments!=='object' || Array.isArray(data.experiments)
        || (data.projects!=null && typeof data.projects!=='object')){ toast('That file doesn\'t look like a Labbook backup.'); return; }
+    _defangDeep(data);   /* same as an imported experiment: nothing in a file runs when the notebook it holds is opened */
     var nExp=Object.keys(data.experiments).length, nProj=_lbList(data.projects,true).length, nDays=Object.keys(data.notebook||{}).length;
     var nBlob=blobs?Object.keys(blobs).length:0;
     var nVer=(parsed&&parsed.versions)?Object.keys(parsed.versions).length:0;

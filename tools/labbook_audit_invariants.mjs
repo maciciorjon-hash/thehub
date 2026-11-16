@@ -45,6 +45,20 @@
 //   L18 the incubation is an input  The by-hand compound addition quotes its wait ("Incubate {{c.wait}}") and its calculator has an Incubation (h) box that writes that wait, so
 //                           the sentence, the chip and the timer say one number; a step still to be done that carries the old fixed "3 h" is brought up to it. (added to the AlphaLISA run the
 //                           chip said 16 h and the sentence 3 h, and the hours could not be changed where the other numbers are)
+//   L21 the search takes any word  Typing constructor, __proto__, toString or valueOf into the search box does not throw, even when a title in the notebook
+//                           is one of them. (the alias index and the spelling vocabulary were bare objects: "constructor" came back as a function and `.forEach` / `.n` failed)
+//   L22 a dialog's keys die with it  Enter in a dialog opened after "Add a parameter" is not caught by that dialog's handler. (it was added to the one shared card and never
+//                           removed: Enter was swallowed and threw `null.click`)
+//   L23 a file cannot run code  A design imported from a file, and a backup restored from one, carry no <img onerror> / <svg onload> / javascript: into the notebook, and
+//                           using the design runs nothing. (imported experiments were defanged; designs and restores were not)
+//   L24 a name with a quote is still a button  With an apostrophe, a quote, a backslash and a backtick in every name of the notebook, every inline handler of the experiment
+//                           pages still compiles. (setConstructRole('id','O'Neil','donor') was a syntax error: the D / A buttons of a construct did nothing)
+//   L25 an amount is above zero  A negative number of plates / excess in a calculator is treated like a blank one (the default, said out loud), not drawn as "-480 wells".
+//   L26 a dose caption stays on its wells' top  The name over a dose block is never written upwards through the concentrations in its wells; a plain block's name still is.
+//   L27 undo reaches these  Adding a step from the library, duplicating a step, removing a calculator, accepting a deviation as the plan, following the steps above again and setting a
+//                           construct's role are each one ⌘Z. (none was marked: the typed number or the whole calculator was gone for good)
+//   L28 a read keeps its thousands  A grid pasted from a spreadsheet that groups digits reads 1,234.5 as 1234.5, 12,345,678 as 12345678, 1.234,5 as 1234.5 and 0,5 as 0.5 (the same rule as
+//                           Lumina's lmParseGrid); the unicode minus and quoted cells are numbers. (the port read 1,234.5 as 1.234: a count a thousand times too small, silently)
 //   L7 an import is one undo step  Importing one experiment from a file is undone by one ⌘Z (the bundle had it; the single import did not)
 //
 //   node tools/labbook_audit_invariants.mjs [--url=URL] [--only=L1,L3]
@@ -621,8 +635,145 @@ try {
     }
     errs.forEach(m => bad('L13', 'page error: ' + m)); await ctx.close();
   }
+
+  // ── L21 ──
+  if (run('L21')) {
+    counts.L21 = 1;
+    const ctx = await newCtx(); const { page, errs } = await open(ctx);
+    await page.evaluate(`${SEED}`);
+    await page.evaluate(() => { const k = Object.keys(LB.data.experiments); LB.data.experiments[k[0]].title = 'constructor'; LB.data.experiments[k[1]].title = 'valueOf toString __proto__ hasOwnProperty'; LB.data.experiments[k[2]].setup = Object.assign({}, LB.data.experiments[k[2]].setup, { note: 'constructor prototype' }); save(); });
+    for (const w of ['constructor', '__proto__', 'toString', 'valueOf', 'hasOwnProperty', 'constructor toString', 'prototype']) {
+      await page.evaluate(() => { SPOT.idx = null; openSpot(); }); await page.waitForTimeout(80);
+      await page.fill('#spot-in', w); await page.waitForTimeout(160);
+      if (!(await page.evaluate(() => !!document.querySelector('#spot-back.open')))) bad('L21', 'the search closed on "' + w + '"');
+      await page.evaluate(() => closeSpot());
+    }
+    errs.forEach(m => bad('L21', 'page error: ' + m)); await ctx.close();
+  }
+  // ── L22 ──
+  if (run('L22')) {
+    counts.L22 = 1;
+    const ctx = await newCtx(); const { page, errs } = await open(ctx);
+    await page.evaluate(`${SEED}`);
+    await page.evaluate(() => { const p = LB.data.projects.find(p => (p.sections || []).length); dsOpen({ mode: 'exp', pid: p.id, sid: p.sections[0].id }); dsLoadPreset('KD_TC_SPARKNS'); qParamDlg('ds'); });
+    await page.waitForSelector('#dsp-l', { timeout: 4000 });
+    await page.click('#lb-dlg-cancel'); await page.waitForTimeout(250);
+    const got = await page.evaluate(() => { window.__pr = 'pending'; lbPrompt('Name it', 'abc').then(v => { window.__pr = v; }); return true; });
+    await page.waitForSelector('#lb-dialog.open input', { timeout: 4000 });
+    await page.press('#lb-dialog.open input', 'Enter'); await page.waitForTimeout(300);
+    const r = await page.evaluate(() => window.__pr);
+    if (r !== 'abc') bad('L22', 'Enter in a prompt opened after "Add a parameter" did not accept it (got ' + JSON.stringify(r) + ')');
+    errs.forEach(m => bad('L22', 'page error: ' + m)); await ctx.close();
+  }
+  // ── L23 ──
+  if (run('L23')) {
+    counts.L23 = 1;
+    const ctx = await newCtx(); const { page, errs } = await open(ctx);
+    await page.evaluate(`${SEED}`);
+    const base = await page.evaluate(() => { const k = Object.keys(LB.data.presets).find(k => LB.data.presets[k] && Array.isArray(LB.data.presets[k].blocks) && LB.data.presets[k].blocks.length); const c = JSON.parse(JSON.stringify(LB.data.presets[k])); c.baseType = c.baseType || presetBase(k); return c; });
+    base.name = 'Shared design <img src=x onerror=window.__xss=1>';
+    base.blocks[0].html = '<ol><li>Step <img src=x onerror="window.__xss=2"></li></ol>';
+    base.blocks[0].pub = '<svg onload="window.__xss=3"></svg>';
+    const f = path.join(os.tmpdir(), 'lb-audit-hostile-' + process.pid + '.design.json'); fs.writeFileSync(f, JSON.stringify({ _lbDesign: 1, design: base }));
+    const fc = page.waitForEvent('filechooser'); await page.evaluate(() => { dgImport(); }); (await fc).setFiles(f); await page.waitForTimeout(700);
+    const key = await page.evaluate(() => Object.keys(LB.data.presets).find(k => /Shared design/.test(String(LB.data.presets[k].name))));
+    if (!key) bad('L23', 'the design was not imported (the test is void)');
+    else {
+      if (await page.evaluate(k => /onerror|onload/i.test(JSON.stringify(LB.data.presets[k])), key)) bad('L23', 'an imported design keeps its event handlers');
+      await page.evaluate(k => { const P = LB.data.projects.find(p => (p.sections || []).length), S = P.sections[0]; const tpl = LB.data.presets[k]; const su = Object.assign({}, setupDefaultsFor(k), JSON.parse(JSON.stringify(tpl.setup || {}))); buildExperimentFrom({ pid: P.id, sid: S.id, key: k, tpl: tpl, startDate: todayStr(), type: presetBase(k), title: 'x', code: 'HX', setup: su, plate: true }); const e = Object.values(LB.data.experiments).find(x => x.code === 'HX'); openExp(e.id); ['steps', 'res', 'files', 'pub'].forEach(t => { EXP_TAB = t; renderEditor(); }); selectNode('design'); dgUse(k); }, key);
+      await page.waitForTimeout(800);
+    }
+    // a backup from somebody else
+    const bk = await page.evaluate(() => { const d = JSON.parse(JSON.stringify(LB.data)); const e = Object.values(d.experiments)[0]; e.blocks[0].html = '<p>ok</p><img src=x onerror="window.__xss=4">'; return JSON.stringify({ _lbBackup: 3, savedAt: Date.now(), data: d, blobs: {}, versions: {} }); });
+    const bf = path.join(os.tmpdir(), 'lb-audit-hostile-bk-' + process.pid + '.json'); fs.writeFileSync(bf, bk);
+    await page.setInputFiles('#lb-restore-input', bf);
+    await page.waitForSelector('#lb-dialog.open', { timeout: 5000 }); await page.click('#lb-dlg-ok'); await page.waitForTimeout(3500);
+    await page.waitForFunction(() => typeof LB !== 'undefined' && LB.data, null, { timeout: 15000 });
+    const after = await page.evaluate(() => ({ xss: window.__xss || 0, raw: /onerror/i.test(JSON.stringify(LB.data.experiments)) }));
+    if (after.raw) bad('L23', 'a restored backup keeps an onerror in its steps');
+    if (after.xss) bad('L23', 'something in a file ran: window.__xss = ' + after.xss);
+    errs.forEach(m => bad('L23', 'page error: ' + m)); await ctx.close(); fs.rmSync(f, { force: true }); fs.rmSync(bf, { force: true });
+  }
+  // ── L24 ──
+  if (run('L24')) {
+    counts.L24 = 1;
+    const ctx = await newCtx(); const { page, errs } = await open(ctx);
+    await page.evaluate(`${SEED}`);
+    const broken = await page.evaluate(() => {
+      const PAY = "O'Neil \"q\" \\ back `tick` ${x} </script>", D = LB.data;
+      const skip = /^(id|projectId|sectionId|status|type|key|date|startDate|created|updated|color|kind|noteType|format|baseType|_seedSig|prio|unit|mode|fid|gid|plateId|att|src|url)$/i;
+      (function walk(o, d) { if (d > 7 || !o || typeof o !== 'object') return; Object.keys(o).forEach(k => { const v = o[k]; if (typeof v === 'string') { if (skip.test(k) || /^\d{4}-\d\d-\d\d/.test(v) || /^(att|lb)[a-z0-9]{6,}/i.test(v) || /^data:/.test(v) || /^(html|pub)$/i.test(k)) return; if (v.length > 0 && v.length < 200) o[k] = v + ' ' + PAY; } else walk(v, d + 1); }); })(D.experiments, 0);
+      D.tags = (D.tags || []).map(t => t + ' ' + PAY); renderAll();
+      const bad = new Map();
+      const chk = where => document.querySelectorAll('*').forEach(el => { for (const a of el.attributes) if (a.name.indexOf('on') === 0 && a.value) { try { new Function('event', a.value); } catch (e) { const fn = (a.value.match(/^\s*([A-Za-z_$][\w$.]*)\(/) || [])[1] || a.value.slice(0, 30); if (!bad.has(fn)) bad.set(fn, where); } } });
+      chk('start');
+      for (const id of Object.keys(D.experiments)) { openExp(id); for (const t of ['steps', 'res', 'files', 'pub']) { EXP_TAB = t; renderEditor(); chk('exp ' + t); } }
+      for (const nk of ['journal', 'week', 'exps', 'design']) { try { selectNode(nk); chk(nk); } catch (e) {} }
+      return [...bad.entries()].map(([k, v]) => k + ' (' + v + ')');
+    });
+    if (broken.length) bad('L24', 'an inline handler is a syntax error once a name holds a quote: ' + broken.join(', '));
+    errs.forEach(m => bad('L24', 'page error: ' + m)); await ctx.close();
+  }
+  // ── L25 ──
+  if (run('L25')) {
+    counts.L25 = 1;
+    const ctx = await newCtx(); const { page, errs } = await open(ctx);
+    const r = await page.evaluate(() => { const plain = h => { const d = document.createElement('div'); d.innerHTML = h; return d.textContent.replace(/\s+/g, ' '); };
+      const v = Object.assign({}, calcDefaults('seed'), { cellsPerWell: 3000, volPerWell: 30, format: '96', nPlates: -5, excess: -2 });
+      return plain(CALC_KINDS.seed.compute(v)); });
+    if (/-\d|−\d/.test(r)) bad('L25', 'a negative plate count / excess still draws a negative number: ' + r.slice(0, 260));
+    if (!/Using the default for/.test(r)) bad('L25', 'a negative amount is replaced by the default silently (no "Using the default for"): ' + r.slice(0, 200));
+    errs.forEach(m => bad('L25', 'page error: ' + m)); await ctx.close();
+  }
+  // ── L26 ──
+  if (run('L26')) {
+    counts.L26 = 1;
+    const ctx = await newCtx(); const { page, errs } = await open(ctx);
+    const r = await page.evaluate(() => {
+      const mk = cls => { const g = document.createElement('div'); g.className = cls; g.style.cssText = 'position:fixed;left:0;top:0;width:30px;height:200px;display:flex'; g.innerHTML = '<span style="white-space:nowrap">Compound 20 and a long name</span>'; document.body.appendChild(g); _fitBlockName(g); const rot = g.classList.contains('rot'); g.remove(); return rot; };
+      return { dose: mk('pp-gl pp-gl-dose'), plain: mk('pp-gl') }; });
+    if (r.dose) bad('L26', 'a dose block\'s caption is written upwards, through the concentrations in its wells');
+    if (!r.plain) bad('L26', 'a plain block\'s long name is no longer written upwards (the test is void, or the rule was lost)');
+    errs.forEach(m => bad('L26', 'page error: ' + m)); await ctx.close();
+  }
+  // ── L27 ──
+  if (run('L27')) {
+    counts.L27 = 1;
+    const ctx = await newCtx(); const { page, errs } = await open(ctx);
+    const ids = await page.evaluate(`${SEED}`);
+    const r = await page.evaluate(async ids => {
+      const out = []; const e = LB.data.experiments[ids.bio]; openExp(e.id);
+      const live = () => LB.data.experiments[e.id];   // an undo puts back a new object: never hold the old one
+      const snap = () => JSON.stringify(LB.data.experiments[e.id], (k, v) => k === 'updated' ? undefined : v);
+      const sleep = ms => new Promise(r => setTimeout(r, ms));
+      async function step(label, fn) { await sleep(10); UNDO.last = 0; const before = snap(); fn(); await sleep(60); const mid = snap(); if (mid === before) { out.push(label + ': did nothing (test void)'); return; } lbUndo(); await sleep(60); if (snap() !== before) out.push(label + ': one ⌘Z did not put it back'); }
+      await step('Add step', () => insertStepBlock({ title: 'Probe', html: '<p>x</p>' }));
+      await step('Duplicate step', () => dupBlock(live().blocks[0].id));
+      const devB = live().blocks.find(b => b.calc && b.calc.inputs && b.calcSeed && Object.keys(b.calc.inputs).some(k => typeof b.calcSeed[k] === 'number' && typeof b.calc.inputs[k] === 'number'));
+      if (devB) { const k = Object.keys(devB.calc.inputs).find(k => typeof devB.calcSeed[k] === 'number' && typeof devB.calc.inputs[k] === 'number'); devB.calc.inputs[k] = devB.calcSeed[k] + 7; await step('Accept as the plan', () => acceptDeviation(e.id)); }
+      else out.push('Accept as the plan: no step with a plan to deviate from (test void)');
+      const calcB = live().blocks.find(b => b.calc && b.calc.kind !== 'archive');
+      if (calcB) { lbConfirm = () => Promise.resolve(true); await step('Remove calculator', () => calcRemove(calcB.id)); }
+      const cn = (expConstructs(live())[0] || {}).name; if (cn) await step('Construct role', () => setConstructRole(e.id, cn, 'donor'));
+      await step('Priority', () => setExpPrio(e.id, 'high'));
+      return out; }, ids);
+    r.forEach(m => bad('L27', m));
+    errs.forEach(m => bad('L27', 'page error: ' + m)); await ctx.close();
+  }
+
+  // ── L28 ──
+  if (run('L28')) {
+    counts.L28 = 1;
+    const ctx = await newCtx(); const { page, errs } = await open(ctx);
+    const r = await page.evaluate(() => { const g = t => plParseValues(t, '96') || {}; return {
+      a: g('A\t1,234.5\t12,345,678\t0,5\n'), b: g('1.234,5\t99,5\n'), c: g('−5\t"7"\t3\n') }; });
+    if (r.a.A1 !== 1234.5 || r.a.A2 !== 12345678 || r.a.A3 !== 0.5) bad('L28', 'grouped digits read wrong: ' + JSON.stringify(r.a));
+    if (r.b.A1 !== 1234.5 || r.b.A2 !== 99.5) bad('L28', 'a European grid reads wrong: ' + JSON.stringify(r.b));
+    if (r.c.A1 !== -5 || r.c.A2 !== 7) bad('L28', 'a unicode minus or a quoted cell is not a number: ' + JSON.stringify(r.c));
+    errs.forEach(m => bad('L28', 'page error: ' + m)); await ctx.close();
+  }
 } finally { await browser.close(); if (srv) srv.kill(); }
-for (const id of ['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8', 'L9', 'L10', 'L11', 'L12', 'L13', 'L14', 'L15', 'L16', 'L17', 'L18', 'L19', 'L20']) { if (ONLY && !ONLY.includes(id)) continue; const fs_ = findings.filter(f => f.id === id); process.stdout.write(`  ${fs_.length ? '✗' : '✓'} ${id}${fs_.length ? '  — ' + fs_.length + ' finding(s)' : ''}\n`); }
+for (const id of ['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8', 'L9', 'L10', 'L11', 'L12', 'L13', 'L14', 'L15', 'L16', 'L17', 'L18', 'L19', 'L20', 'L21', 'L22', 'L23', 'L24', 'L25', 'L26', 'L27', 'L28']) { if (ONLY && !ONLY.includes(id)) continue; const fs_ = findings.filter(f => f.id === id); process.stdout.write(`  ${fs_.length ? '✗' : '✓'} ${id}${fs_.length ? '  — ' + fs_.length + ' finding(s)' : ''}\n`); }
 const seen = new Set(); findings.forEach(f => { const k = f.id + f.m; if (seen.has(k)) return; seen.add(k); process.stdout.write(`     [${f.id}] ${f.m}\n`); });
 if (!findings.length) process.stdout.write('\nLabbook audit invariants hold.\n');
 process.exit(findings.length ? 1 : 0);
