@@ -4457,8 +4457,9 @@ function _hbSparkOA(n){
 
 // ── SPARK NS, Scenario 3 with ISRIB (Jon, 2026-11-15): SC3 turned into an A/B on one day ─────────────────────────────────────
 // Two 96-well plates seeded from one suspension, 20,000 cells in 90 µL. Plate 2 gets ISRIB (a 10×, 10 µL onto the 90) straight after
-// seeding and overnight; the next morning BOTH plates have their medium aspirated and get the same fresh medium with OA, so the
-// ISRIB goes with the medium and the two plates are handled alike. OA 2 h, then the PROTAC 6 h, then the multiplex read as in SC3.
+// seeding and overnight; the next morning BOTH plates have their medium aspirated and get fresh medium with OA (plate 2's with the ISRIB
+// again, 300 nM, Jon 2026-11-16), so the two plates are handled alike. The OA medium is made from the stocks (oligomycin 6.3 mM,
+// antimycin A 50 mM, ISRIB 10 mM: setup fields) and the final strengths, one tube a plate. OA 2 h, then the PROTAC 6 h, then the multiplex read as in SC3.
 // Every plate carries the same six compounds in duplicate: seven concentrations from 20 µM, 3-fold, DOWN the rows A-G, DMSO in row H
 // (layout `drcols`, `plateNames` = one plate per condition). One series per compound serves both plates.
 function _hbSparkIsrib(){
@@ -4471,12 +4472,21 @@ function _hbSparkIsrib(){
     calc:{kind:'spike',inputs:{name:'ISRIB',wellVolUL:90,foldX:10,series:false,finalUM:0.3,stockUM:10000,nWells:96,excess:1.1,diluent:M,minVolUL:1},own:{nWells:true}},
     pub:'ISRIB, made in {{c.diluent}} from a DMSO stock, was added to every well of plate 2 straight after seeding at {{c.fold}} ({{c.addUL}} per well): {{isribUM}} &micro;M final. Plate 1 received no ISRIB.',
     html:'<ol><li>Prepare at {{c.fold}} in {{c.diluent}}: ISRIB ({{isribUM}} &micro;M final).</li><li>Add {{c.addUL}} per well to plate 2 only ({{c.wellVol}} already in the well &rarr; {{c.newVol}}); do not aspirate.</li><li>Back to 37 &deg;C, 5% CO&#8322; overnight, with plate 1.</li></ol>'});
+  // The OA medium is made from the stocks and the final strengths the parameters hold: the µL per mL are the calculator's.
+  // One tube a plate (96 wells x 90 µL, with 1.1x), so what goes into a tube is what that plate gets; plate 2's also carries the ISRIB.
+  var mm=function(title,name,parts,tail){ return {d:1,title:title,
+    calc:{kind:'mixparts',inputs:{name:name,parts:parts.replace(/\{\{(\w+)\}\}/g,function(m,k){ return ({oligoStockMM:6.3,oligoUM:1,antiStockMM:50,antiUM:10,isribStockMM:10,isribUM:0.3})[k]; }),partsTpl:parts,diluent:M,volPerWell:90,nWells:96,excess:1.1,minVolUL:1},own:{nWells:true}},
+    html:'<ol><li>Make {{c.total}} of {{c.name}} ({{c.perWell}} for each of the {{c.wells}} of '+tail+'): {{c.partsText}} in {{c.diluentUL}} of {{c.diluent}}.</li>'
+      +(tail==='plate 2'?'<li>Make the ISRIB dilution first (the {{isribStockMM}} mM stock in {{c.diluent}}, the 1:X named above) and take the amount of it that is named above &mdash; the stock alone is too little to pipette.</li>':'')
+      +'<li>Mix by inversion and warm to 37 &deg;C. This is the medium for '+tail+(tail==='plate 2'?', ISRIB included':', no ISRIB')+'.</li></ol>'}; };
+  bl.push(mm('OA medium for plate 1','OA medium','Oligomycin {{oligoStockMM}} mM>{{oligoUM}} µM, Antimycin A {{antiStockMM}} mM>{{antiUM}} µM','plate 1'));
+  bl.push(mm('ISRIB + OA medium for plate 2','ISRIB + OA medium','Oligomycin {{oligoStockMM}} mM>{{oligoUM}} µM, Antimycin A {{antiStockMM}} mM>{{antiUM}} µM, ISRIB {{isribStockMM}} mM>{{isribUM}} µM','plate 2'));
   bl.push({d:1,title:'Fresh medium with OA (2 h before the PROTAC)',w:120,
-    pub:'Both plates, the ISRIB plate included, had the medium aspirated and replaced with 90 &micro;L of fresh '+M+' containing OA ({{oligoUM}} &micro;M oligomycin + {{antiUM}} &micro;M antimycin A), so that the plates were handled alike; the PROTAC was added 2 h later.',
-    html:'<ol><li>Make fresh '+M+' with OA at its final strength ({{oligoUM}} &micro;M oligomycin + {{antiUM}} &micro;M antimycin A), enough for 90 &micro;L in every well of both plates.</li><li>Aspirate the medium from every well of both plates &mdash; the ISRIB goes with it on plate 2.</li><li>Add 90 &micro;L of the OA medium per well, the same on both plates.</li><li>Back to 37 &deg;C &mdash; note the time. OA alone for 2 h.</li></ol>'});
+    pub:'Both plates had the medium aspirated and replaced with 90 &micro;L per well of fresh '+M+' containing OA ({{oligoUM}} &micro;M oligomycin + {{antiUM}} &micro;M antimycin A); on plate 2 the fresh medium also contained ISRIB ({{isribUM}} &micro;M), so that the two plates were handled alike. The PROTAC was added 2 h later.',
+    html:'<ol><li>Aspirate the medium from every well of both plates &mdash; the ISRIB of the day before goes with it on plate 2.</li><li>Add 90 &micro;L per well of the OA medium to plate 1 and 90 &micro;L per well of the ISRIB + OA medium to plate 2.</li><li>Back to 37 &deg;C &mdash; note the time. OA ({{oligoUM}} &micro;M oligomycin + {{antiUM}} &micro;M antimycin A) for 2 h before the PROTAC; plate 2 stays in {{isribUM}} &micro;M ISRIB.</li></ol>'});
   bl.push({d:1,title:'PROTAC addition',
     calc:{kind:'serial',inputs:{name:'PROTACs',topFinalNM:20000,foldX:10,df:3,nPoints:7,volPerPoint:60,wellVolUL:90,stockUM:10000,nCompounds:6,diluent:M},own:{wellVolUL:true}},
-    pub:'PROTACs were serially diluted ({{nPoints}} points, {{df}}-fold from {{topConc}} nM, made at 10&times;) and added by hand to the wells of both plates at 1/10 of the volume, the series running down the plate with the {{vehicle}} control in the last row, and the cells were treated for {{treatH}} h in the presence of OA.',
+    pub:'PROTACs were serially diluted ({{nPoints}} points, {{df}}-fold from {{topConc}} nM, made at 10&times;) and added by hand to the wells of both plates at 1/10 of the volume, the series running down the plate with the {{vehicle}} control in the last row, and the cells were treated for {{treatH}} h in the presence of OA (and, on plate 2, ISRIB).',
     html:'<ol><li>Tube 1 at {{c.topTube}}: {{c.stockUL}} of the {{c.stockConc}} stock + {{c.firstDiluentUL}} {{c.diluent}} ({{c.dilution}}).</li><li>Tubes 2&ndash;{{c.nPoints}}: {{c.keepUL}} {{c.diluent}} in each.</li><li>Transfer {{c.transferUL}} down the series ({{c.df}}), mixing, with a fresh tip each time. One series per compound; it serves both plates.</li><li>Add {{c.addUL}} of each point to its wells on both plates ({{c.wellVol}} already there &rarr; {{c.newVol}}) &mdash; {{c.series}} in the well, the top point in row A. Add {{c.addUL}} of {{c.diluent}} with the matched {{vehicle}} to row H.</li><li>Check the plates against the plate maps.</li><li>Incubate {{treatH}} h at 37 &deg;C, 5% CO&#8322; &mdash; note the time.</li></ol>'});
   _hbSparkRead(1).forEach(function(b){ bl.push(b); });
   return {name:'HiBiT_SPARK_Scenario_3_ISRIB',baseType:'HB',
@@ -4486,6 +4496,9 @@ function _hbSparkIsrib(){
     setupAdd:[{f:'oligoUM',t:'num',lbl:'OA — oligomycin (µM, final)',d:1,step:'0.05'},
               {f:'antiUM',t:'num',lbl:'OA — antimycin A (µM, final)',d:10,step:'0.05'},
               {f:'isribUM',t:'num',lbl:'ISRIB on plate 2 (µM, final)',d:0.3,step:'0.05'},
+              {f:'oligoStockMM',t:'num',lbl:'Oligomycin stock (mM)',d:6.3,step:'0.1'},
+              {f:'antiStockMM',t:'num',lbl:'Antimycin A stock (mM)',d:50,step:'0.5'},
+              {f:'isribStockMM',t:'num',lbl:'ISRIB stock (mM)',d:10,step:'0.5'},
               {f:'afcUM',t:'num',lbl:'AFC reagent in PBS (µM)',d:80}],
     plateOn:true, layout:'drcols', blocks:bl};
 }
@@ -5026,6 +5039,11 @@ function applySetupToBlocks(type,setup,blocks,prevSetup,presetKey){
       var _mp=SETUP_CALC_MAP[b.calc.kind];
       if(_mp) Object.keys(_mp).forEach(function(ik){ var sv=setup[_mp[ik]];
         if(sv!=null&&sv!==''&&isFinite(+sv)&&I[ik]!==undefined&&!_own2(ik)) I[ik]=+sv; });
+      // A working solution whose components are written as stock>final ("Oligomycin {{oligoStockMM}} mM>{{oligoUM}} µM") follows
+      // the setup's stocks and finals; the µL per mL are the calculator's. A list the person retyped is theirs.
+      if(b.calc.kind==='mixparts'&&I.partsTpl!=null&&!_own2('parts')) I.parts=String(fillSetup(I.partsTpl,setup)).replace(/&micro;/g,'µ');
+      // The ISRIB stock is the setup's too (mM there, µM in the calculator).
+      if(b.calc.kind==='spike'&&setup.isribStockMM!=null&&setup.isribStockMM!==''&&isFinite(+setup.isribStockMM)&&!_own2('stockUM')) I.stockUM=+setup.isribStockMM*1000;
       // A run said to be N plates of a format has N × that many wells, until a plate map says otherwise.
       if(setup.nPlates!=null&&setup.nSamples==null&&fmt&&PLATE_FED[b.calc.kind]&&I.nWells!=null&&!_own2('nWells')&&(b.calc.kind!=='reagent'||+I.perWellUL>0)) I.nWells=wellsOf(fmt)*(+setup.nPlates||1);
       if(setup.nPlates!=null&&I.nPlates!=null&&!_own('nPlates')){
@@ -5372,7 +5390,7 @@ var CALC_VALUES={
   mixparts:function(v){ var M=_mixParts(v), o;
     o={name:esc(String(v.name||'working solution')), total:mlfmt(M.totUL), perWell:nfmt(v.volPerWell)+' µL', wells:nfmt(M.wells)+' wells', nPlates:nfmt(M.nPlates), format:String(M.format||'')+'-well',
       diluent:esc(M.diluent), diluentUL:nfmt(M.dilUL)+' µL', medium:esc(M.diluent), mediumUL:_volTxt(M.dilUL),
-      partsText:_pubList(M.parts.map(function(p){ return nfmt(p.ph?p.ph.ul:p.ul)+' µL '+(p.ph?('of a 1:'+nfmt(p.ph.f)+' dilution of '):'')+esc(p.name); }))};
+      partsText:_pubList(M.parts.map(function(p){ return nfmt(p.ph?p.ph.ul:p.ul)+' µL '+(p.ph?('of a 1:'+nfmt(p.ph.f)+' dilution of '):'')+esc(p.name)+(p.stockUM>0?(' ('+_fmtConc(p.stockUM*1000)+' stock, '+_fmtConc(p.finUM*1000)+' final)'):''); }))};
     if(M.pre){ o.preBuffer=esc(M.pre.name); o.preBufUL=_volTxt(M.pre.complexUL); o.topUL=_volTxt(Math.max(0,M.pre.topUL)); }
     return o; }
 };
@@ -5800,15 +5818,23 @@ function rtxMixRecipe(v){
 // a name may contain digits ("Compound 2 1.5"); an item with no number is skipped rather than
 // guessed at. A component too small to pipette is taken as a dilution and the diluent leaves
 // room for the diluted volume — the same rule spikeRecipe and rtxMixRecipe follow.
+function _uMul(u){ u=String(u||'').toLowerCase(); return u==='m'?1e6:u==='mm'?1e3:u==='nm'?1e-3:1; }
+// What a component is made from and made to, when it was given as a stock and a final strength.
+function _partNote(p){ return p.stockUM>0?(_fmtConc(p.stockUM*1000)+' stock &rarr; '+_fmtConc(p.finUM*1000)+' final'):(nfmt(p.perMl)+' µL per mL'); }
 function _mixParts(v){
   var e=_calcEff(v,{nPlates:1,excess:1});
   // A solution made for a counted number of wells or samples (the plate map's, or the setup's) rather than for N plates.
   var wells=(+v.nWells>0)?+v.nWells:wellsOf(e.format)*e.nPlates, totUL=(+e.volPerWell||0)*wells*e.excess, parts=[], sum=0;
   String(v.parts||'').split(',').forEach(function(s){
-    var m=/^\s*(.*?)[\s:=]*([0-9]*\.?[0-9]+)\s*$/.exec(s); if(!m||!m[1].trim()) return;
-    var perMl=parseFloat(m[2]); if(!(perMl>0)) return;
+    // "Oligomycin 6.3 mM>1 µM": a stock and the strength it has to reach, so the µL per mL are worked out, not typed.
+    var sf=/^\s*(.*?)[\s:=]*([0-9]*\.?[0-9]+)\s*(mM|µM|μM|uM|nM|M)\s*(?:>|→|->)\s*([0-9]*\.?[0-9]+)\s*(mM|µM|μM|uM|nM|M)\s*$/i.exec(s);
+    var m=sf||/^\s*(.*?)[\s:=]*([0-9]*\.?[0-9]+)\s*$/.exec(s), stockUM=0, finUM=0; if(!m||!m[1].trim()) return;
+    var perMl;
+    if(sf){ stockUM=parseFloat(sf[2])*_uMul(sf[3]); finUM=parseFloat(sf[4])*_uMul(sf[5]); if(!(stockUM>0)||!(finUM>0)) return; perMl=finUM/stockUM*1000; }
+    else perMl=parseFloat(m[2]);
+    if(!(perMl>0)) return;
     var ul=perMl*totUL/1000, ph=_pipHint(ul,v.minVolUL);
-    parts.push({name:m[1].trim(), perMl:perMl, ul:ul, ph:ph}); sum+=ph?ph.ul:ul; });
+    parts.push({name:m[1].trim(), perMl:perMl, ul:ul, ph:ph, stockUM:stockUM, finUM:finUM}); sum+=ph?ph.ul:ul; });
   // Reagents that are first complexed in a small volume of buffer (mRNA + ViaScript: 4x their volume, 15-30 min) and
   // then topped up to a fixed share of the finished solution before they go into the medium. The medium is what is left.
   var pre=null, buf=String(v.preBuffer||'').trim();
@@ -5829,7 +5855,7 @@ function mixpartsRecipe(v){
   if(!(M.totUL>0)) return '<b>'+nm+'</b> — set the volume per well and the number of plates.';
   if(!M.parts.length) return '<b>'+nm+'</b> — type the components as a name and an amount, comma-separated, in µL of stock per mL.';
   var rows=M.parts.map(function(p){
-    return '<tr><td>'+esc(p.name)+'</td><td>'+(p.ph?_amt(p.ph.ul,nfmt(p.perMl)+' µL per mL',p.ph.f,p.ul):_amt(p.ul,nfmt(p.perMl)+' µL per mL'))+'</td></tr>'; }).join('');
+    return '<tr><td>'+esc(p.name)+'</td><td>'+(p.ph?_amt(p.ph.ul,_partNote(p),p.ph.f,p.ul):_amt(p.ul,_partNote(p)))+'</td></tr>'; }).join('');
   return '<b>Prepare '+mlfmt(M.totUL)+' of '+nm+'</b> — '+nfmt(v.volPerWell)+' µL per well × '+nfmt(M.wells)+' wells'+_ovxL(M.excess)+'.'
     +'<div class="cc-tblwrap"><table class="cc-tbl"><tr><th>Component</th><th>Amount</th></tr>'+rows
     +(M.pre?('<tr><td>'+esc(M.pre.name)+', to complex</td><td>'+_amt(M.pre.complexUL,nfmt(M.pre.fold)+'× the volume of the components')+'</td></tr>'
@@ -14414,7 +14440,7 @@ var CALC_PUB={
   reagent:function(v){ return (v.name||'The reagent')+' was prepared at a 1:'+nfmt(v.dilution)+' dilution in '+(v.diluent||'buffer')+'.'; },
   mixparts:function(v){ var M=_mixParts(v), nm=esc(v.name||'The working solution');
     if(!M.parts.length) return nm+' was prepared in '+esc(M.diluent)+'.';
-    return nm+' was prepared by adding '+_pubList(M.parts.map(function(p){ return esc(p.name)+' at '+nfmt(p.perMl)+' µL/mL'; }))+' to '+esc(M.diluent)+'.'; },
+    return nm+' was prepared by adding '+_pubList(M.parts.map(function(p){ return esc(p.name)+' at '+(p.finUM>0?_fmtConc(p.finUM*1000):(nfmt(p.perMl)+' µL/mL')); }))+' to '+esc(M.diluent)+'.'; },
   // A recipe table is a bench artefact. Methods want the design: what went in a well and why
   // the controls exist — which is exactly what the inputs already say.
   nbtx:function(v){
@@ -17344,7 +17370,7 @@ var CALC_NEEDS={
   },
   mixparts:function(v){
     var M=_mixParts(v);
-    return M.parts.map(function(p){ return {k:'compound', name:p.name, qty:p.ul, unit:'µL', note:nfmt(p.perMl)+' µL per mL of '+(v.name||'the solution')}; })
+    return M.parts.map(function(p){ return {k:'compound', name:p.name, qty:p.ul, unit:'µL', note:(p.stockUM>0?(_fmtConc(p.stockUM*1000)+' stock to '+_fmtConc(p.finUM*1000)+' in '+(v.name||'the solution')):(nfmt(p.perMl)+' µL per mL of '+(v.name||'the solution')))}; })
       .concat(M.pre?[{k:'reagent', name:M.pre.name, qty:(M.pre.topUL>=0?M.pre.complexUL+M.pre.topUL:null), unit:'µL', note:'to complex and to dilute'}]:[])
       .concat([{k:'reagent', name:M.diluent, qty:(M.dilUL>0?M.dilUL:null), unit:'µL'}]);
   }
@@ -23407,7 +23433,7 @@ function dsPick(at){
 // Which calculator inputs the setup owns. applySetupToBlocks writes these over whatever the
 // module carries, so offering them as editable boxes here would be the defect the preset
 // editor's own comment records: "changing the calculator looked like it worked and never did".
-function dsOwned(kind,su,ownPlate){
+function dsOwned(kind,su,ownPlate,calc){
   var o={};
   if(ownPlate){ if(su.cellLine!=null&&su.cellLine!=='') o.cellLine='the cell line'; return o; }
   if(su.format!=null&&su.format!=='') o.format='the plate format';
@@ -23420,6 +23446,8 @@ function dsOwned(kind,su,ownPlate){
   if(kind==='rtxmix'&&_dsPlasmidText(su)) o.plasmid='the plasmids';
   // What a calculator takes from the setup under another name (DNA per well, the FuGENE ratio).
   var _cm=SETUP_CALC_MAP[kind]; if(_cm) Object.keys(_cm).forEach(function(ik){ var sv=su[_cm[ik]]; if(sv!=null&&sv!==''&&isFinite(+sv)) o[ik]='the parameters'; });
+  if(kind==='spike'&&su.isribStockMM!=null&&su.isribStockMM!==''&&isFinite(+su.isribStockMM)) o.stockUM='the parameters';
+  if(kind==='mixparts'&&calc&&calc.inputs&&calc.inputs.partsTpl!=null) o.parts='the parameters (stocks and final strengths)';
   if(kind==='nbtx'){
     if(su.donors) o.donorNames='the donor plasmids';
     if(su.acceptors) o.acceptorNames='the acceptor plasmids';
@@ -23548,7 +23576,7 @@ function dsWaitH(i,val){ var D=DS; if(!D||!D.mods[i]) return;
 function dsCalcHtml(m,i){
   if(!m.calc||!CALC_KINDS[m.calc.kind])
     return '<div class="ds-fld"><button type="button" class="ps-calc-add" onclick="dsAddCalc('+i+')">'+tbIco(P_SIGMA,13)+' add a prep calculator</button></div>';
-  var D=DS, C=CALC_KINDS[m.calc.kind], owned=dsOwned(m.calc.kind,D.setup||{},_calcOwnPlate(m.calc));
+  var D=DS, C=CALC_KINDS[m.calc.kind], owned=dsOwned(m.calc.kind,D.setup||{},_calcOwnPlate(m.calc),m.calc);
   var hasFmt=C.fields.some(function(f){ return f.t==='format'; });
   // The EFFECTIVE inputs — what applySetupToBlocks and the chain will have written by the time
   // this block exists. Reading the module's own showed "384-well" under a state strip that said

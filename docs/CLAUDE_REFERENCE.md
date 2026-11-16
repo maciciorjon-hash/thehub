@@ -8879,6 +8879,14 @@ Jon (Spanish): duplicate SC3_HB20261030_OA High into `SC3_HB20261115` (SPARK NS 
 - **Assumptions Jon has not confirmed:** fresh medium is 90 µL (so the PROTAC is a plain 10 µL onto 90, as SC6; OA ends at 0.9× like SC3); OA medium made at its final strength; 10 mM PROTAC stock (as SC1–6); ISRIB 10× made in medium (DMSO carried by the stock, not matched on plate 1).
 - Written into Jon's live Labbook with Claude in Chrome (see the memory note), status planned, start 2026-11-15.
 
+### SC3 + ISRIB, day 1: the OA medium from the stocks (2026-11-16, B61)
+
+Jon (Spanish): on day 1 the medium is made complete with OA (oligomycin stock **6.3 mM**, antimycin A **50 mM**, finals 1 and 10 µM), the old medium aspirated and replaced; plate 2 gets **ISRIB + OA** (so the ISRIB is *kept*, not removed with the medium as first assumed). Preset `HB_SPARK_SC3_ISRIB` day 1 is now three steps: **OA medium for plate 1** · **ISRIB + OA medium for plate 2** (both `mixparts`, one tube a plate: 96 wells × 90 µL × 1.1 = 9,504 µL, `own.nWells`) · **Fresh medium with OA** (the swap, 2 h). Numbers per tube: oligomycin 1.51 µL (1:6300), antimycin A 1.90 µL (1:5000), ISRIB 0.285 µL → taken as 28.5 µL of a 1:100 dilution (`minVolUL` 1, 10 mM → 300 nM).
+- **Engine (generic):** a `mixparts` component may be written **`Name 6.3 mM>1 µM`** (stock>final; M/mM/µM/nM): µL per mL = final/stock × 1000 (`_mixParts`, `_uMul`, `_partNote`; the table, `partsText`, Methods sentence and prep sheet say "6.3 mM stock → 1 µM final"). `partsTpl` on the calculator is the same list with `{{setup}}` fields; `applySetupToBlocks` fills `parts` from it unless the list was retyped (`dsOwned` says so in the Designer).
+- **New setup fields:** `oligoStockMM` 6.3, `antiStockMM` 50, `isribStockMM` 10 (the day-0 ISRIB spike's `stockUM` now follows it ×1000). Finals stay `oligoUM`, `antiUM`, `isribUM`.
+- Guard B61 extended (tube volume, the three µL, plate 1 has no ISRIB, stock change follows, ISRIB 1:100); proven with the factor ×100 instead of ×1000 (4 findings).
+- **Assumptions:** media made at their final strength (so after the 10 µL PROTAC OA and ISRIB end at 0.9×, ISRIB 270 nM); one tube per plate (a single 19 mL batch would be 3.02 µL and 3.80 µL); ISRIB dilution made in medium; ISRIB's DMSO (0.003 %) not matched on plate 1.
+
 ## Lumina: a series that is not a constant fold — Type the values (L39, 2026-11-13)
 
 Jon (Spanish): a serial dilution that is not constant (1 µM, 100 nM, then threefold down to 412 pM down the rows) could not be drawn; "put the dilution by hand as text, by rows".

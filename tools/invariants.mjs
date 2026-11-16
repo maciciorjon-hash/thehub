@@ -642,7 +642,7 @@ async function suite(opts) {
       if (f0) setFormat(f0 === '384' ? '96' : '384');                  // the plate moves after the module is in
       DS.step = 3; DS.cur = 0; dsDraw();
       const m = DS.mods[0], C = CALC_KINDS[m.calc.kind];
-      const typed = typeAll(0, dsOwned(m.calc.kind, DS.setup || {}));
+      const typed = typeAll(0, dsOwned(m.calc.kind, DS.setup || {}, false, m.calc));
       dsSetWait(0, '2 h 15');
       const e = await created(() => dsCreate());
       if (!e) { bad('I4', cs, 'dsCreate made no experiment'); continue; }
@@ -657,7 +657,7 @@ async function suite(opts) {
       const typedBy = [];
       DS.mods.forEach((m, i) => {
         DS.cur = i;
-        const typed = m.calc && CALC_KINDS[m.calc.kind] ? typeAll(i, dsOwned(m.calc.kind, DS.setup || {})) : null;
+        const typed = m.calc && CALC_KINDS[m.calc.kind] ? typeAll(i, dsOwned(m.calc.kind, DS.setup || {}, false, m.calc)) : null;
         dsSetWait(i, String(100 + i) + ' min');
         typedBy.push({ title: m.label, typed, kind: m.calc && m.calc.kind, wait: 100 + i });
       });
@@ -3274,7 +3274,7 @@ async function suite(opts) {
       const e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); if (!e) { bad('B61', key, 'no experiment was made'); return; }
       clean.push(e); tick('B61');
       // the steps, their days and the two waits
-      const WANT = [['Cell seeding', 0], ['ISRIB addition (plate 2 only)', 0], ['Fresh medium with OA (2 h before the PROTAC)', 1], ['PROTAC addition', 1], ['AFC viability reagent', 1], ['HiBiT Lytic + read', 1]];
+      const WANT = [['Cell seeding', 0], ['ISRIB addition (plate 2 only)', 0], ['OA medium for plate 1', 1], ['ISRIB + OA medium for plate 2', 1], ['Fresh medium with OA (2 h before the PROTAC)', 1], ['PROTAC addition', 1], ['AFC viability reagent', 1], ['HiBiT Lytic + read', 1]];
       if (e.blocks.length !== WANT.length) bad('B61', 'steps', e.blocks.length + ' steps: ' + e.blocks.map(b => b.title).join(' | '));
       WANT.forEach(([t, d], i) => { const b = e.blocks[i]; if (!b) return;
         if (b.title !== t) bad('B61', 'step ' + (i + 1), '"' + b.title + '", expected "' + t + '"');
@@ -3286,6 +3286,28 @@ async function suite(opts) {
       const ib = by(/ISRIB/), Ii = ib && ib.calc.inputs;
       if (!Ii || Ii.nWells !== 96 || !(ib.calc.own && ib.calc.own.nWells)) bad('B61', 'ISRIB wells', 'ISRIB goes into ' + (Ii && Ii.nWells) + ' wells, expected plate 2 alone (96)');
       if (!Ii || Ii.foldX !== 10 || Math.abs(Ii.finalUM - 0.3) > 1e-9 || Ii.stockUM !== 10000 || Ii.wellVolUL !== 90) bad('B61', 'ISRIB', JSON.stringify(Ii));
+      // the OA medium (Jon, 2026-11-16: oligomycin 6.3 mM, antimycin A 50 mM, finals 1 and 10 uM): one tube a plate, 96 x 90 x 1.1 = 9,504 uL,
+      // the uL worked out from stock and final (1:6300 and 1:5000), plate 2's tube carrying the ISRIB too (10 mM -> 0.3 uM, taken as a dilution)
+      const m1 = by(/^OA medium for plate 1/), m2 = by(/^ISRIB \+ OA medium/);
+      const ulOf = (b, name) => { const M = _mixParts(Object.assign({}, CALC_KINDS.mixparts.defaults, b.calc.inputs)); const q = M.parts.find(x => x.name === name); return { M, q }; };
+      if (!m1 || !m2) bad('B61', 'OA media', 'the two media steps are missing');
+      else {
+        const a = ulOf(m1, 'Oligomycin'), c = ulOf(m1, 'Antimycin A'), d = ulOf(m2, 'ISRIB');
+        if (Math.abs(a.M.totUL - 9504) > 1e-6 || a.M.wells !== 96) bad('B61', 'OA tube', 'plate 1 tube is ' + a.M.totUL + ' uL for ' + a.M.wells + ' wells, expected 9504 for 96 (90 uL x 1.1)');
+        if (!a.q || Math.abs(a.q.ul - 9504 / 6300) > 1e-6) bad('B61', 'oligomycin', 'oligomycin is ' + (a.q && a.q.ul) + ' uL, expected ' + 9504 / 6300 + ' (6.3 mM to 1 uM = 1:6300)');
+        if (!c.q || Math.abs(c.q.ul - 9504 / 5000) > 1e-6) bad('B61', 'antimycin', 'antimycin A is ' + (c.q && c.q.ul) + ' uL, expected ' + 9504 / 5000 + ' (50 mM to 10 uM = 1:5000)');
+        if (m1.calc.inputs.parts.indexOf('ISRIB') >= 0 || a.M.parts.length !== 2) bad('B61', 'plate 1 medium', 'plate 1 must get OA and nothing else: ' + m1.calc.inputs.parts);
+        if (!d.q || Math.abs(d.q.ul - 9504 / 33333.33333) > 1e-6 || !d.q.ph || d.q.ph.f !== 100) bad('B61', 'ISRIB in the medium', 'ISRIB is ' + (d.q && d.q.ul) + ' uL (' + (d.q && d.q.ph && d.q.ph.txt) + '), expected 0.285 uL taken as 1:100');
+        if (d.M.parts.length !== 3) bad('B61', 'plate 2 medium', 'plate 2 must get OA and ISRIB: ' + m2.calc.inputs.parts);
+        if (!m1.calc.own || !m1.calc.own.nWells || !m2.calc.own || !m2.calc.own.nWells || m1.calc.inputs.nWells !== 96 || m2.calc.inputs.nWells !== 96) bad('B61', 'tube wells', 'each tube is one plate (96), not the 192 the map has');
+        // the stocks are the setup's: change one and the amount follows; a list retyped by hand is left alone
+        const st = e.setup, was = st.oligoStockMM; st.oligoStockMM = 12.6;
+        applySetupToBlocks('HB', st, e.blocks, Object.assign({}, st, { oligoStockMM: was }), key);
+        const a2 = ulOf(m1, 'Oligomycin'); st.oligoStockMM = was; applySetupToBlocks('HB', st, e.blocks, Object.assign({}, st, { oligoStockMM: 12.6 }), key);
+        if (!a2.q || Math.abs(a2.q.ul - 9504 / 12600) > 1e-6) bad('B61', 'stock follows', 'oligomycin stock 12.6 mM gave ' + (a2.q && a2.q.ul) + ' uL, expected ' + 9504 / 12600);
+        if (!(st.oligoStockMM === 6.3 && st.antiStockMM === 50 && st.isribStockMM === 10)) bad('B61', 'stocks', 'oligomycin ' + st.oligoStockMM + ', antimycin A ' + st.antiStockMM + ', ISRIB ' + st.isribStockMM + ' mM, expected 6.3, 50, 10');
+        if (ib && ib.calc.inputs.stockUM !== 10000) bad('B61', 'ISRIB stock', 'the day-0 ISRIB step starts from ' + ib.calc.inputs.stockUM + ' uM, expected the setup\'s 10 mM');
+      }
       // the PROTAC: 7 points from 20 uM, 3-fold, 6 compounds, onto the 90 uL the fresh medium leaves
       const Ip = (by(/^PROTAC/) || { calc: {} }).calc.inputs;
       if (!Ip || Ip.topFinalNM !== 20000 || Ip.nPoints !== 7 || Ip.df !== 3 || Ip.nCompounds !== 6 || Ip.wellVolUL !== 90 || Ip.foldX !== 10) bad('B61', 'series', JSON.stringify(Ip));
