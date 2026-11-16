@@ -101,6 +101,14 @@ var SetupKit = (function(){
     if (!paintEsc) { paintEsc = true; window.addEventListener('keydown', function(e){ if (e.key !== 'Escape') return; var m = document.querySelector('.sx-mini.paint'), r = m && m.parentNode; if (r && r._sxStop && r._sxStop()) { e.stopPropagation(); e.preventDefault(); } }, true); }
   }
   var paintEsc = false;
+  // "1 well", "8 wells", nothing for none: the count on the right of a control row.
+  function nWells(n){ return n ? n + (n === 1 ? ' well' : ' wells') : ''; }
+  // The control a drag on the plate paints, the same in every app: each row of root (.sx-ctl[data-k]) can be picked, the one for key is lit,
+  // and the line over the plate says what a drag does. The app keeps which one is picked and calls this when it changes.
+  function brush(root, hint, key, label){
+    if (root) Array.prototype.forEach.call(root.querySelectorAll('.sx-ctl[data-k]'), function(r){ r.classList.add('pick'); r.classList.toggle('on', r.dataset.k === key); });
+    if (hint) hint.innerHTML = 'Drag over the wells that are <b>' + esc(label) + '</b>';
+  }
   // items [[colour, text, count]]
   function legend(items, empty){
     return items.length ? '<div class="sx-legend">' + items.map(function(x){ return '<div><i style="background:' + x[0] + '"></i>' + esc(x[1]) + '<em>' + x[2] + '</em></div>'; }).join('') + '</div>'
@@ -269,6 +277,6 @@ var SetupKit = (function(){
     };
     return K;
   }
-  return { create: create, esc: esc, group: group, field: field, seg: seg, drop: drop, plateRow: plateRow, mini: mini, paint: paint, legend: legend, ctlRow: ctlRow, issues: issues, rangeStr: rangeStr, pos: pos, rc: rc,
+  return { create: create, esc: esc, group: group, field: field, seg: seg, drop: drop, plateRow: plateRow, mini: mini, paint: paint, brush: brush, nWells: nWells, legend: legend, ctlRow: ctlRow, issues: issues, rangeStr: rangeStr, pos: pos, rc: rc,
            dropFiles: dropFiles, handGrid: handGrid, handKeys: handKeys, handPaste: handPaste, OK: OK, WARN: WARN, X: X, CHL: CHL, CHR: CHR };
 })();

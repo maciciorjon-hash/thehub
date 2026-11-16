@@ -33,6 +33,8 @@
 //                            own control; every value is divided by the mean of its rule's wells (else the vehicle's), so the figure, the Prism copy and the workbook follow; the Normalisation tab exists only while a rule does; undo, History keep it.
 //   B23 a reading can be left out  Results › Data lists every reading of the selected compound; picking one and pressing X (or right-click) takes it out of the fit, the curve, the Prism copy and the Graph's
 //                              numbers, marks it in the workbook, and puts it back with the same key; ⌘Z undoes it. Send to Labbook names no experiment (Labbook asks) and carries the flag and the curve.
+//   B25 controls are painted   Setup › Controls works like Lumina's and Tempo's: pick a control, drag a box on the small plate (a row letter / column number takes the line, a drag that starts on a marked well clears, Esc cancels, ⌘Z undoes), the typed box follows, and "the same wells on every plate" paints every plate.
+//   B26 a table shows its columns  Results › Dose–response has no column behind a sideways scroll at 1101–1680 px (Plates was cut at 1280); under 1240 the table has the width of the page.
 //   B22 the panel meets the plate  The side panel (Select wells…) starts level with the first row of wells, not with the size dropdown and readings strip above the plate: the plate column is a subgrid
 //                              of two rows, and the panel follows the plate when the column labels above the wells grow (concentrations) or the format changes.
 //
@@ -770,6 +772,50 @@ if (run('B24')) await guard('B24', async () => {
   check('B24', 'the Prism sheet reads top to bottom: relative to the vehicle, then corrected mBU, each under its own title with its X column in column A and its merged names on its own rows', r.titles === 'PRISM \u2014 BRET RELATIVE TO THE VEHICLE|PRISM \u2014 CORRECTED mBU' && r.heads === 'Concentration (nM)|Concentration (nM)' && r.mergeRowsOk && r.merges.split(',').length === 8 && r.wide <= r.widest, r);
   check('B24', 'Curve PDFs: one PDF, a page per six curves, every compound named on it, the figures drawn into it', r.files.length >= 1 && r.head === '%PDF-1.4' && r.pages === Math.ceil(r.names.length / 6) && r.has && r.cm >= r.names.length, r);
   await ctx.close();
+});
+
+if (run('B25')) await guard('B25', async () => {
+  const { ctx, pg } = await open('/apps/beacon/beacon.html');
+  await pg.evaluate(async () => { bsOpen(2); await new Promise(r => setTimeout(r, 200)); });
+  const mid = async id => { const b = await (await pg.$('#bs-mini-c .w[data-p="' + id + '"]')).boundingBox(); return [b.x + b.width / 2, b.y + b.height / 2]; };
+  const dr = async (a, z, esc) => { const [ax, ay] = await mid(a), [zx, zy] = await mid(z); await pg.mouse.move(ax, ay); await pg.mouse.down(); await pg.mouse.move(zx, zy, { steps: 5 }); if (esc) await pg.keyboard.press('Escape'); await pg.mouse.up(); await pg.waitForTimeout(80); };
+  const st = () => pg.evaluate(() => { const w = k => Object.keys(bPl().map).filter(p => bPl().map[p].k === k).sort().join(); return { veh: w('veh'), nl: w('noLigand'), nlBox: document.querySelector('#bs-ctls input[data-role=noLigand]').value, hint: document.getElementById('bs-brush').textContent, on: [...document.querySelectorAll('#bs-ctls .sx-ctl.on')].map(x => x.dataset.k).join() }; });
+  const r = {};
+  r.start = await st();
+  await dr('A1', 'B2'); r.nl = await st();
+  await pg.click('#bs-ctls .sx-ctl[data-k="veh"] .t'); r.pick = await st();
+  await dr('H11', 'H12'); r.veh = await st();
+  await dr('A1', 'A2'); r.take = await st();                                   // a well painted for another control moves to it
+  await pg.click('#bs-ctls .sx-ctl[data-k="noLigand"] .t'); await dr('B1', 'B2'); r.erase = await st();   // a drag that starts on a marked well clears
+  await dr('D3', 'D4', true); r.esc = await st();                              // Esc leaves it as it was
+  await pg.click('#bs-mini-c .l[data-col="12"]'); r.col = (await st()).nl;
+  await pg.keyboard.press('Control+z'); await pg.waitForTimeout(120); r.undo = (await st()).nl;
+  await pg.evaluate(() => { bAddPlate(); state.plate = 0; BS.all = true; bsRenderStep(); });
+  await pg.waitForTimeout(200);
+  await pg.click('#bs-ctls .sx-ctl[data-k="veh"] .t'); await dr('C5', 'C6');
+  r.both = await pg.evaluate(() => state.plates.map(pl => Object.keys(pl.map).filter(p => pl.map[p].k === 'veh').sort().join()));
+  check('B25', 'Controls opens with a control picked and says what a drag paints', r.start.on === 'noLigand' && /Drag over the wells that are/.test(r.start.hint) && /No (HaloTag )?(ligand|tracer)/i.test(r.start.hint), r.start);
+  check('B25', 'a drag over the plate marks the wells of the picked control and its box follows', r.nl.nl === 'A1,A2,B1,B2' && r.nl.nlBox === 'A1:B2', r.nl);
+  check('B25', 'clicking another control picks it, and a drag then marks that one', r.pick.on === 'veh' && /Vehicle/.test(r.pick.hint) && r.veh.veh === 'H11,H12', [r.pick, r.veh]);
+  check('B25', 'a well painted for another control moves to it', r.take.veh.indexOf('A1') >= 0 && r.take.nl === 'B1,B2', r.take);
+  check('B25', 'a drag that starts on a marked well clears them; Esc cancels a drag', r.erase.nl === '' && r.esc.nl === '', [r.erase.nl, r.esc.nl]);
+  check('B25', 'a column number takes the whole column; ⌘Z takes the last drag back', r.col.split(',').length === 8 && /H12/.test(r.col) && r.undo === '', [r.col, r.undo]);
+  check('B25', '"The same wells on every plate" paints every plate', r.both.length === 2 && r.both[0] === r.both[1] && /C5,C6/.test(r.both[0]), r.both);
+  await ctx.close();
+});
+
+if (run('B26')) await guard('B26', async () => {
+  const sizes = {};
+  for (const w of [1101, 1180, 1280, 1366, 1440, 1680]) {
+    const ctx = await browser.newContext({ viewport: { width: w, height: 860 } }), pg = await ctx.newPage();
+    await pg.addInitScript(() => { try { localStorage.setItem('assist_seen', '1'); } catch (e) {} });
+    await pg.goto(BASE + '/apps/beacon/beacon.html'); await pg.waitForTimeout(500);
+    await pg.evaluate("loadTestData('gain')"); await pg.waitForTimeout(400);
+    await pg.evaluate("switchTab('results')"); await pg.waitForTimeout(800);
+    sizes[w] = await pg.evaluate(() => { const t = document.querySelector('.rs-tbl'); return { cw: t.clientWidth, sw: t.scrollWidth, page: document.documentElement.scrollWidth - document.documentElement.clientWidth }; });
+    await ctx.close();
+  }
+  check('B26', 'the dose–response table shows every column at every laptop width (it hid the Plates column behind a sideways scroll nobody sees at 1280 px), and the page never scrolls sideways', Object.values(sizes).every(s => s.sw <= s.cw + 1 && s.page <= 1), sizes);
 });
 
 if (run('B18')) await guard('B18', async () => {

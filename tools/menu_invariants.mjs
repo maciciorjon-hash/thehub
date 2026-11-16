@@ -16,6 +16,7 @@
 // M8  the tab row is one component: the open tab is the one stop (roving tabindex), ← → Home End move along it, wrap at both ends and open the tab they land on, and every tab
 //     names its pane (aria-controls → role=tabpanel) — Lumina moved the focus without opening, Beacon could not wrap to the left, Tempo had seven stops and no panes named
 // M9  the Setup dialog takes the focus when it opens (onto its open step when no box is to be typed in) and gives it back to the Setup button when it closes
+// M17 Setup › Controls is painted in all three: every control row can be picked, one is lit, the plate is drawn to be dragged on, a real drag changes the wells (Beacon's could only be typed)
 // M7  Tempo's results table: a compound's name is never broken over two lines, a row is one line, and a unit's exponent is a superscript
 // M10 the tab row stays at the top while the page scrolls, in all three (Tempo's and Lumina's scrolled away, Beacon's stayed): under the header when the app shows it, at 0 inside
 //     the Hub (which hides the header); what else sticks (Lumina's well panel, Tempo's compound list) sits under it, not behind it
@@ -180,6 +181,27 @@ for (const [id, A] of Object.entries(APPS)) {
     check(`M9 ${id}: Setup opens with the focus inside it`, inside);
     await pg.keyboard.press('Escape'); await pg.waitForTimeout(300);
     check(`M9 ${id}: Esc closes it and the focus is back on the Setup button`, await pg.evaluate(o => !([...document.querySelectorAll('.setup-card')].some(c => c.getBoundingClientRect().width > 1)) && document.activeElement === document.querySelector(o), open));
+    await ctx.close();
+  }
+}
+{   // M17 ── Setup › Controls: every control row can be picked and the plate beside it dragged on, in all three
+  for (const [id, open] of [['lumina', 'lsOpen(2)'], ['beacon', 'bsOpen(2)'], ['tempo', 'tpsOpen(2)']]) {
+    const { ctx, pg } = await boot(id);
+    await run(pg, open); await pg.waitForTimeout(500);
+    const st = await pg.evaluate(() => { const rows = [...document.querySelectorAll('.sx-ctl[data-k]')].filter(r => r.getBoundingClientRect().width > 1 && r.querySelector('input[data-role]')), mini = [...document.querySelectorAll('.sx-mini')].find(m => m.getBoundingClientRect().width > 1);
+      return { rows: rows.length, picks: rows.filter(r => r.classList.contains('pick')).length, on: rows.filter(r => r.classList.contains('on')).length, paint: !!mini && mini.classList.contains('paint'), cursor: mini ? getComputedStyle(mini.querySelector('.w')).cursor : '', hint: [...document.querySelectorAll('.sx-hint')].filter(h => h.getBoundingClientRect().width > 1).map(h => h.textContent).join(' | ') }; });
+    check(`M17 ${id}: every control row can be picked (${st.rows} rows), one is lit, and the plate beside them is drawn to be dragged on`, st.rows >= 1 && st.picks === st.rows && st.on === 1 && st.paint && st.cursor === 'crosshair', st);
+    check(`M17 ${id}: the line over the plate says what a drag paints`, /Drag over the wells that are/.test(st.hint), st.hint.slice(0, 200));
+    const before = await pg.evaluate(() => [...document.querySelectorAll('.sx-ctl[data-k] .n')].map(n => n.textContent).join('|'));
+    const wells = await pg.$$('.sx-mini.paint .w'); const b1 = await wells[0].boundingBox(), b2 = await wells[27].boundingBox();
+    await pg.mouse.move(b1.x + b1.width / 2, b1.y + b1.height / 2); await pg.mouse.down(); await pg.mouse.move(b2.x + b2.width / 2, b2.y + b2.height / 2, { steps: 5 }); await pg.mouse.up(); await pg.waitForTimeout(250);
+    const after = await pg.evaluate(() => ({ counts: [...document.querySelectorAll('.sx-ctl[data-k] .n')].map(n => n.textContent).join('|'), box: [...document.querySelectorAll('.sx-ctl[data-k] input[data-role]')].map(i => i.value).join('|') }));
+    check(`M17 ${id}: a real drag over the plate changes the picked control's wells (and its typed box and count follow)`, after.counts !== before || after.box !== '', { before, after });
+    await ctx.close();
+  }
+  {   // one word for the count
+    const { ctx, pg } = await boot('beacon');
+    check('M17 "1 well", never "1 wells", on a control row (the kit writes it, in all three)', await pg.evaluate(() => SetupKit.nWells(1) === '1 well' && SetupKit.nWells(2) === '2 wells' && SetupKit.nWells(0) === ''));
     await ctx.close();
   }
 }

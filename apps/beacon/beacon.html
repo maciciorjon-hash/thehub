@@ -299,7 +299,7 @@ button:focus-visible,summary:focus-visible,[role=button]:focus-visible,[role=tab
 .rs-tbl tbody tr.on td{background:var(--accent-dim);}
 .rs-tbl tbody tr.on td:first-child{box-shadow:inset 3px 0 0 var(--accent);}
 .rs-tbl td.num,.rs-tbl th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;}
-.rs-tbl td.pl{color:var(--text2);font-size:var(--fs-2);max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.rs-tbl td.pl{color:var(--text2);font-size:var(--fs-2);max-width:96px;overflow:hidden;text-overflow:ellipsis;}   /* "Plate 1 + Plate 2" breaks at the plus: on a laptop the table is a column wide, and a cell that cannot wrap put the last column behind a scroll nobody sees */
 .rs-tbl .ci{color:var(--text2);}
 .rs-note{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;margin-bottom:10px;padding:10px 14px;border:1px solid var(--border2);border-left:3px solid var(--accent);border-radius:var(--r-2);background:var(--accent-dim);font-size:var(--fs-3);line-height:1.5;color:var(--text);}
 .rs-note[hidden]{display:none;}
@@ -537,10 +537,10 @@ button:focus-visible,summary:focus-visible,[role=button]:focus-visible,[role=tab
 .bn-empty .bn-empty-alt{margin-top:4px;}
 /* Results: the numbers on the left, what they look like on the right */
 .rs-head{margin-bottom:14px;}
-.rs-grid{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:16px;align-items:start;}
+.rs-grid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:16px;align-items:start;}
 .rs-col{display:flex;flex-direction:column;gap:16px;min-width:0;}
 .rs-col>.card{margin:0;}
-@media (max-width:1100px){.rs-grid{grid-template-columns:minmax(0,1fr);}}
+@media (max-width:1240px){.rs-grid{grid-template-columns:minmax(0,1fr);}}   /* the table needs ~620 px of its own; under 1240 the two columns are too narrow for it */
 .rs-card .card-hdr{display:flex;align-items:center;justify-content:space-between;gap:10px;}
 .rs-card .card-hdr .sub{font-weight:500;letter-spacing:0;text-transform:none;color:var(--text3);font-size:var(--fs-2);}
 .rs-tbl tbody tr:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;}
@@ -1203,6 +1203,14 @@ var SetupKit = (function(){
     if (!paintEsc) { paintEsc = true; window.addEventListener('keydown', function(e){ if (e.key !== 'Escape') return; var m = document.querySelector('.sx-mini.paint'), r = m && m.parentNode; if (r && r._sxStop && r._sxStop()) { e.stopPropagation(); e.preventDefault(); } }, true); }
   }
   var paintEsc = false;
+  // "1 well", "8 wells", nothing for none: the count on the right of a control row.
+  function nWells(n){ return n ? n + (n === 1 ? ' well' : ' wells') : ''; }
+  // The control a drag on the plate paints, the same in every app: each row of root (.sx-ctl[data-k]) can be picked, the one for key is lit,
+  // and the line over the plate says what a drag does. The app keeps which one is picked and calls this when it changes.
+  function brush(root, hint, key, label){
+    if (root) Array.prototype.forEach.call(root.querySelectorAll('.sx-ctl[data-k]'), function(r){ r.classList.add('pick'); r.classList.toggle('on', r.dataset.k === key); });
+    if (hint) hint.innerHTML = 'Drag over the wells that are <b>' + esc(label) + '</b>';
+  }
   // items [[colour, text, count]]
   function legend(items, empty){
     return items.length ? '<div class="sx-legend">' + items.map(function(x){ return '<div><i style="background:' + x[0] + '"></i>' + esc(x[1]) + '<em>' + x[2] + '</em></div>'; }).join('') + '</div>'
@@ -1371,7 +1379,7 @@ var SetupKit = (function(){
     };
     return K;
   }
-  return { create: create, esc: esc, group: group, field: field, seg: seg, drop: drop, plateRow: plateRow, mini: mini, paint: paint, legend: legend, ctlRow: ctlRow, issues: issues, rangeStr: rangeStr, pos: pos, rc: rc,
+  return { create: create, esc: esc, group: group, field: field, seg: seg, drop: drop, plateRow: plateRow, mini: mini, paint: paint, brush: brush, nWells: nWells, legend: legend, ctlRow: ctlRow, issues: issues, rangeStr: rangeStr, pos: pos, rc: rc,
            dropFiles: dropFiles, handGrid: handGrid, handKeys: handKeys, handPaste: handPaste, OK: OK, WARN: WARN, X: X, CHL: CHL, CHR: CHR };
 })();
 /* setup-kit-js:end */
@@ -5456,7 +5464,7 @@ function bhWhen(t){ return HistoryKit.when(t); }
 // on screen is the plate being set up), so nothing here is a second model: anything done on the plate is already in the dialog when
 // it opens, and anything done in the dialog is already on the plate when it closes.
 // ═════════════════════════════════════════════════════════════════════════════════════════════
-var BS = { step: 0, built: false, all: true, dist: 'order', assign: null, hand: false, ch: 'donor', mode: 'cpd', form: { top: 10, unit: 'µM', fac: 3, pts: null, reps: 2, dir: 'right', run: 'rows', start: '', names: '' }, from: null };
+var BS = { step: 0, built: false, brush: 'veh', all: true, dist: 'order', assign: null, hand: false, ch: 'donor', mode: 'cpd', form: { top: 10, unit: 'µM', fac: 3, pts: null, reps: 2, dir: 'right', run: 'rows', start: '', names: '' }, from: null };
 // The dialog, its tabs, Back / Next and Escape are the Setup kit's (tools/setupkit); Beacon says what the steps are.
 var bsK = null;
 function bsKit(){
@@ -5465,7 +5473,7 @@ function bsKit(){
     steps: [
       { key: 'assay', label: 'Assay', render: function(){ bsAssay(); }, done: function(){ return !!bAnalysisName(); } },
       { key: 'readings', label: 'Readings', render: function(){ bsReadings(); }, live: function(){ bsPlatesList(); }, focus: false, done: function(){ return bReadyPlates().length > 0; } },
-      { key: 'controls', label: 'Controls', render: function(){ bsControls(); }, live: function(){ bsMiniInto('bs-mini-c'); bsCtlCounts(); }, done: function(){ var pl = bPl(), kd = bKinds(); return !!(pl && bBase(pl)) || kd.flat > 0; } },
+      { key: 'controls', label: 'Controls', render: function(){ bsControls(); }, live: function(){ bsMiniInto('bs-mini-c'); bsCtlFill(); }, done: function(){ var pl = bPl(), kd = bKinds(); return !!(pl && bBase(pl)) || kd.flat > 0; } },
       { key: 'compounds', label: 'Compounds', render: function(){ bsCompounds(); }, live: function(){ bsMiniInto('bs-mini-p'); bsPlanText(); bsCpdList(); }, done: function(){ return state.series.length > 0; } },
       { key: 'review', label: 'Review', render: function(){ bsReview(); }, live: function(){ bsReview(); } }
     ],
@@ -5569,9 +5577,9 @@ function bsHandKey(e, inp){ SetupKit.handKeys(bsEl('bs-hand'), e, inp); }
 // ── the plate, small: what the layout is, as it is typed ───────────────────────────────────
 function bsMiniInto(id){
   var el = bsEl(id); if (!el) return;
-  el.innerHTML = bMiniHtml(bPl());
+  el.innerHTML = bMiniHtml(bPl(), false, id === 'bs-mini-c');
 }
-function bMiniHtml(pl, norm){
+function bMiniHtml(pl, norm, paint){
   var lg = [];
   if (pl && norm) bRules(pl).forEach(function(r, i){ var c = NM_COL[i % NM_COL.length]; lg.push([c + '66', 'Rule ' + (i + 1) + ' · normalised', r.x.length], [c, 'Rule ' + (i + 1) + ' · divided by', r.y.length]); });
   else if (pl) {
@@ -5579,7 +5587,7 @@ function bMiniHtml(pl, norm){
     bSeriesOnPlate(pl).forEach(function(x){ lg.push(['rgb(' + bColor(x.s.id).join(',') + ')', x.s.name, x.wells.length]); });
     var tr = Object.keys(pl.map).filter(function(p){ return pl.map[p].k === 'trc'; }).length; if (tr) lg.push([BM_TRACER_COLOR, 'Tracer', tr]);
   }
-  return !pl ? '' : SetupKit.mini({ rows: pl.rows, cols: pl.cols, title: bPlateName(state.plates.indexOf(pl)), sub: (pl.cols > 12 ? '384' : '96') + '-well · readings in blue', legend: lg, cell: function(r, c){
+  return !pl ? '' : SetupKit.mini({ paint: !!paint, rows: pl.rows, cols: pl.cols, title: bPlateName(state.plates.indexOf(pl)), sub: (pl.cols > 12 ? '384' : '96') + '-well · readings in blue', legend: lg, cell: function(r, c){
     var p = bPos(r, c), m = pl.map[p], bg = '';
     if (norm) { var rs = bRules(pl), hit = ''; rs.forEach(function(q, i){ if (q.y.indexOf(p) >= 0) hit = NM_COL[i % NM_COL.length]; }); var ru = bRuleFor(pl, p); if (ru) hit = NM_COL[rs.indexOf(ru) % NM_COL.length] + '66'; return { bg: hit, rd: pl.donor[p] !== undefined && pl.acceptor[p] !== undefined, t: p }; }
     if (m && bIsFlat(m.k)) bg = bRole(m.k).color; else if (m && m.k === 'trc') bg = BM_TRACER_COLOR; else if (m && m.k === 'cpd') bg = 'rgb(' + bColor(m.s).join(',') + ')';
@@ -5596,12 +5604,26 @@ function bsControls(){
       (multi ? '<div class="sx-f">' + bsPlateChips() + '<label style="margin-top:8px;gap:8px;cursor:pointer"><input type="checkbox" id="bs-all"' + (BS.all ? ' checked' : '') + '> The same wells on every plate</label></div>' : '') +
       '<div id="bs-ctls">' + BM_ROLES.map(function(r){
         return '<div class="sx-ctl" data-k="' + r.key + '"><i style="background:' + r.color + '"></i><div class="t"><b>' + esc(bRoleLabel(r.key)) + '</b><span>' + esc(r.hint) + '</span></div><input type="text" data-role="' + r.key + '" placeholder="e.g. A1:D1" aria-label="Wells of ' + esc(bRoleLabel(r.key)) + '" spellcheck="false" autocomplete="off"><span class="n"></span></div>';
-      }).join('') + '</div><div class="sx-hint">Type wells or ranges — <b>A1:D1</b>, <b>E1:F1, H2</b> — and press Enter or leave the box. Empty clears that control. Drag on the plate itself for anything irregular.</div></div></section></div>' +
-    '<div class="sx-side"><div class="sx-mini-wrap" id="bs-mini-c"></div></div></div>';
-  bsCtlFill(); bsMiniInto('bs-mini-c');
+      }).join('') + '</div><div class="sx-hint">Type wells or ranges — <b>A1:D1</b>, <b>E1:F1, H2</b> — and press Enter or leave the box. Empty clears that control.</div><div class="sx-hint"><b>Drag on the plate</b> to mark wells: pick a control on the left, then drag a box over its wells (a row letter or a column number takes the whole line; a drag that starts on a well already marked clears them; Esc cancels the drag).</div></div></section></div>' +
+    '<div class="sx-side"><div class="sx-hint" id="bs-brush" style="margin:0 0 8px"></div><div class="sx-mini-wrap" id="bs-mini-c"></div></div></div>';
+  bsCtlFill(); bsMiniInto('bs-mini-c'); bsBrush(BS.brush);
+  SetupKit.paint(bsEl('bs-mini-c'), { rows: bPl().rows, cols: bPl().cols, has: function(id){ var m = bPl().map[id]; return !!(m && m.k === bsBrushKey()); }, apply: function(ids, add){ bsPaint(ids, add); } });
+}
+// The control a drag on the plate paints: one of the rows, highlighted; clicking a row or its box picks it.
+function bsBrushKey(){ return bRole(BS.brush) ? BS.brush : BM_ROLES[0].key; }
+function bsBrush(k){
+  BS.brush = bRole(k) ? k : BM_ROLES[0].key; var root = bsEl('bs-ctls'); if (!root) return;
+  SetupKit.brush(root, bsEl('bs-brush'), BS.brush, bRoleLabel(BS.brush));
+}
+function bsPaint(ids, add){
+  var pl = bPl(), key = bsBrushKey(); if (!pl) return;
+  var ae = document.activeElement; if (ae && ae.dataset && ae.dataset.role) ae.blur();   // a drag does not move focus; a box still focused would not show the new wells
+  var set = new Set(Object.keys(pl.map).filter(function(p){ return pl.map[p].k === key; }));
+  ids.forEach(function(id){ if (add) set.add(id); else set.delete(id); });
+  bsAssign(key, function(o){ return Array.from(set).filter(function(p){ var q = PlateEngine.rc(p); return q && q.r < o.rows && q.c < o.cols; }); });
 }
 function bsCtlFill(){
-  var pl = bPl(); if (!pl) return;
+  var pl = bPl(); if (!pl || !bsEl('bs-ctls')) return;
   bsEl('bs-ctls').querySelectorAll('input[data-role]').forEach(function(inp){
     if (document.activeElement === inp) return;
     var w = Object.keys(pl.map).filter(function(p){ return pl.map[p].k === inp.dataset.role; });
@@ -5611,23 +5633,30 @@ function bsCtlFill(){
 }
 function bsCtlCounts(){
   var pl = bPl(); if (!pl || !bsEl('bs-ctls')) return;
-  bsEl('bs-ctls').querySelectorAll('.sx-ctl').forEach(function(row){ var n = Object.keys(pl.map).filter(function(p){ return pl.map[p].k === row.dataset.k; }).length; row.querySelector('.n').textContent = n ? n + ' wells' : ''; });
+  bsEl('bs-ctls').querySelectorAll('.sx-ctl').forEach(function(row){ var n = Object.keys(pl.map).filter(function(p){ return pl.map[p].k === row.dataset.k; }).length; row.querySelector('.n').textContent = SetupKit.nWells(n); });
 }
 function bsSetRole(key, text, inp){
-  var txt = String(text || '').trim(), row = inp.parentNode, targets = bsTargets();
+  var txt = String(text || '').trim(), row = inp.parentNode;
   if (txt) { var chk = PlateEngine.parseRange(txt, { r: bPl().rows, c: bPl().cols }); if (!chk || !chk.length) { row.classList.add('bad'); beaconToast('Write a well or a range such as A1:D1 — “' + txt + '” names no well on this plate.', 'err'); return; } }
   row.classList.remove('bad');
   var un = txt ? PlateEngine.unread(txt, { r: bPl().rows, c: bPl().cols }) : []; if (un.length) beaconToast('Not a well on this plate: ' + un.join(', ') + ' — the rest is used.', 'err');
-  var cur = bsRangeStr(Object.keys(bPl().map).filter(function(p){ return bPl().map[p].k === key; }));
   var norm = txt ? bsRangeStr(PlateEngine.parseRange(txt, { r: bPl().rows, c: bPl().cols })) : '';
-  if (norm === cur && !(BS.all && state.plates.length > 1)) { inp.value = cur; return; }
+  bsAssign(key, function(o){ return txt ? (PlateEngine.parseRange(txt, { r: o.rows, c: o.cols }) || []) : []; });
+  inp.value = norm;
+}
+// Exactly these wells are that control (what is typed in its box, or dragged on the plate; wellsOf(plate) says which on each plate);
+// a well takes the place of whatever it was. One ⌘Z step. The same wells on every plate when that is asked for.
+function bsAssign(key, wellsOf){
+  var multi = BS.all && state.plates.length > 1, pl0 = bPl();
+  var cur = bsRangeStr(Object.keys(pl0.map).filter(function(p){ return pl0.map[p].k === key; }));
+  if (!multi && bsRangeStr(wellsOf(pl0)) === cur) return false;
   bMark();
-  targets.forEach(function(pl){
+  bsTargets().forEach(function(pl){
     Object.keys(pl.map).forEach(function(p){ if (pl.map[p].k === key) delete pl.map[p]; });
-    if (!txt) return;
-    (PlateEngine.parseRange(txt, { r: pl.rows, c: pl.cols }) || []).forEach(function(p){ pl.map[p] = { k: key }; });
+    wellsOf(pl).forEach(function(p){ pl.map[p] = { k: key }; });
   });
-  bPruneSeries(); bAfterChange(); inp.value = norm; bsRefresh();
+  bPruneSeries(); bAfterChange(); bsRefresh();
+  return true;
 }
 // ── 4 · Compounds ───────────────────────────────────────────────────────────────────────────
 function bsCompounds(){
@@ -5822,7 +5851,9 @@ function bsWire(d){
     if (t.id === 'bs-drop' && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); bPickFiles(state.plate); }
   });
   d.addEventListener('paste', function(e){ var t = e.target; if (t.closest && t.closest('#bs-hand') && t.dataset.p) bsHandPaste(e, t); });
+  d.addEventListener('focusin', function(e){ var r = e.target.closest && e.target.closest('#bs-ctls .sx-ctl[data-k]'); if (r) bsBrush(r.dataset.k); });
   d.addEventListener('click', function(e){
+    var row = e.target.closest('#bs-ctls .sx-ctl[data-k]'); if (row) bsBrush(row.dataset.k);
     var t = e.target.closest('button, .sx-drop, [data-plate]'); if (!t) return;
     if (t.id === 'bs-drop') { bPickFiles(state.plate); return; }
     if (t.dataset.plate !== undefined && !t.classList.contains('sx-pl')) { state.plate = +t.dataset.plate; BM_SEL = new Set(); bAfterChange(); bsRenderStep(); return; }
