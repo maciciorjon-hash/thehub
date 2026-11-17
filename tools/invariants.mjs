@@ -203,6 +203,7 @@
 //   B61 spark isrib        SC3 with ISRIB (HB_SPARK_SC3_ISRIB): the series DOWN the rows (layout drcols, a compound per pair of columns, 7 points A-G, DMSO in row H), one plate per condition with the same six compounds, ISRIB for plate 2 only, the medium swapped on both.
 //   B62 spark nb pairs     NanoBRET SPARK screen with several pairs (NB_SPARK_PAIRS96, layout nbscreenpairs96): NL-DELE1(CTD)/DELE1(CTD)-NL against HT-CRBN at 1:50 with G4 and G7 at 20, 10, 1 µM in duplicate, MG132 an hour first - row A the −ligand of each pair over its own three columns, row B each construct alone + mock + the first pair without substrate, DMSO then one band per compound from row C; what does not fit is named; the screen it came from is untouched
 //   B63 cell lines        A plate says which cell line it is for; "+ Add cell line" copies every plate (layout and compound names) for the new line, the header lists the lines, the compounds list and the plate count belong to the first line's plates and the copies follow (an added plate or a renamed compound reaches every line), a copy's names are read-only, the first time asks which line the plates you have are for, an experiment that never names a line is unchanged
+//   B65 seeding per line   With two or more cell lines the cell seeding is one step per line (first keeps its place, titled and worded for its line, each counts the plates of its line), the incubation wait sits on the last one only, the read prep follows the number of lines until a number is typed over it, a re-applied setup keeps all of it, a seeding already ticked is left as it was, one undo takes the lines and the split back
 //   B64 echo step         The Echo compound step has inputs and says only what they say: every preset and the library carry the echo calculator (plates, compounds, concentrations, replicates, DMSO — fed by the setup), the words quote its boxes, and no step names a time or a rule nobody recorded ("allow about 3 h", "working window", "first thing", "keep DMSO at or below", a backfill to load). A box left empty reads "—", never a hidden default. A run not started takes the new step; a ticked, noted, typed-wait or finished one is left as written.
 //   B54 plate labels      Words round the plate: select wells and a dashed + sits beside the plate on all four sides over exactly the selected columns/rows; a label
 //                            is typed, edited, removed and undone; a wider one stacks outside a narrower one; nothing written round the plate sits on a well, a header or
@@ -3457,6 +3458,66 @@ async function suite(opts) {
       // Add cell line is one step back
       const n0 = L().length; plAddCellLine(); await ask('HEK293 BRD5-HB'); const n1 = L().length; lbUndo(); await sleep(80);
       if (n1 !== n0 + 4 || L().length !== n0) bad('B63', 'undo', 'a fourth line made ' + (n1 - n0) + ' plates and one undo left ' + (L().length - n0) + ' of them');
+      closePlateEditor();
+    });
+
+    // B65 — one cell seeding per cell line: the suspension is made for a line, so the step is too.
+    if (run('B65')) await guard('B65', 'seeding per line', async () => {
+      const P = (LB.data.projects || []).find(p => (p.sections || []).length);
+      const key = 'D2B_SCREEN384', tpl = LB.data.presets[key];
+      if (!tpl) { bad('B65', 'setup', 'the screen preset is not in the notebook'); return; }
+      const mk = (code) => { const su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup || {})));
+        const before = new Set(Object.keys(LB.data.experiments));
+        buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-11-17', type: 'D2B', title: 'INV seed lines', code, setup: su, plate: true });
+        const x = Object.values(LB.data.experiments).find(y => !before.has(y.id)); clean.push(x); return x; };
+      const ask = async (txt) => { await sleep(80); const i = document.getElementById('lb-dlg-input'); if (!i) { bad('B65', 'dialog', 'no question was asked'); return; } i.value = txt; document.getElementById('lb-dlg-ok').click(); await sleep(120); };
+      const E = (id) => LB.data.experiments[id];
+      const seeds = (id) => E(id).blocks.filter(b => b.calc && b.calc.kind === 'seed');
+      const lyt = (id) => E(id).blocks.find(b => b.calc && b.calc.kind === 'lytic');
+      const plain = (b) => String(b.pub || '') + ' ' + String(b.html || '').replace(/<[^>]+>/g, ' ');
+      const e = mk('INV_B65A'); tick('B65'); openExp(e.id); openPlateEditor('exp:' + e.id); await sleep(60);
+      if (seeds(e.id).length !== 1 || seeds(e.id)[0].line) { bad('B65', 'one line', 'an experiment with no cell lines has ' + seeds(e.id).length + ' seeding steps, line "' + seeds(e.id)[0].line + '"'); return; }
+      const t0 = seeds(e.id)[0].title, n0 = E(e.id).blocks.length;
+      plAddCellLine(); await ask('HEK293 BRD2-HB'); await ask('HEK293 BRD3-HB');
+      let S = seeds(e.id);
+      if (S.length !== 2) { bad('B65', 'two lines', 'two lines should give 2 seeding steps, got ' + S.length); return; }
+      if (S[0].title !== t0 + ' — HEK293 BRD2-HB' || S[1].title !== t0 + ' — HEK293 BRD3-HB') bad('B65', 'titles', 'the steps are called ' + S.map(b => b.title).join(' | '));
+      if (E(e.id).blocks.indexOf(S[1]) !== E(e.id).blocks.indexOf(S[0]) + 1) bad('B65', 'order', 'the second seeding is not right after the first');
+      if (!/HEK293 BRD2-HB cells were seeded/.test(plain(S[0])) || !/HEK293 BRD3-HB cells were seeded/.test(plain(S[1]))) bad('B65', 'words', 'the Methods sentence does not name the line: ' + plain(S[1]).slice(0, 120));
+      if (/each reporter line/.test(plain(S[0]) + plain(S[1])) || !/resuspend HEK293 BRD3-HB in/.test(plain(S[1]))) bad('B65', 'suspension', 'the step still speaks of every line: ' + plain(S[1]).slice(0, 200));
+      if (/Other \/ custom/.test(plain(S[0]) + plain(S[1]))) bad('B65', 'custom', 'a line that is not in the list reads "Other / custom"');
+      if (S[0].calc.inputs.nPlates !== 16 || S[1].calc.inputs.nPlates !== 16) bad('B65', 'plates', 'each line should count the setup\'s plates (16): ' + S.map(b => b.calc.inputs.nPlates).join(','));
+      const waits = (a) => a.map(b => +b.waitMin || 0).join(',');
+      if (waits(S) !== '0,' + (S[1].waitMin || 0) || !(S[1].waitMin > 0)) bad('B65', 'wait', 'the incubation wait must sit on the last seeding only: ' + waits(S));
+      if (lyt(e.id).calc.inputs.nPlates !== 32) bad('B65', 'lytic 2', 'the read prep for two lines should be 32 plates, got ' + lyt(e.id).calc.inputs.nPlates);
+      // a third line
+      plAddCellLine(); await ask('HEK293 BRD4-HB'); S = seeds(e.id);
+      if (S.length !== 3 || S[2].line !== 'HEK293 BRD4-HB') { bad('B65', 'three lines', 'three lines should give 3 seeding steps, got ' + S.length); return; }
+      if (waits(S).split(',').slice(0, 2).join() !== '0,0' || !(S[2].waitMin > 0)) bad('B65', 'wait 3', 'the wait must move to the new last seeding: ' + waits(S));
+      if (lyt(e.id).calc.inputs.nPlates !== 48) bad('B65', 'lytic 3', 'the read prep for three lines should be 48 plates, got ' + lyt(e.id).calc.inputs.nPlates);
+      // a setup saved again keeps the lines, the titles and the single wait
+      const su2 = JSON.parse(JSON.stringify(E(e.id).setup)); su2.cellsPerWell = 2500;
+      const prev = JSON.parse(JSON.stringify(E(e.id).setup)); E(e.id).setup = su2; E(e.id).blocks = applySetupToBlocks('D2B', su2, E(e.id).blocks, prev, key); S = seeds(e.id);
+      if (S.map(b => b.line).join('|') !== 'HEK293 BRD2-HB|HEK293 BRD3-HB|HEK293 BRD4-HB' || S.some(b => b.calc.inputs.cellsPerWell !== 2500)) bad('B65', 'setup', 'saving the setup again lost the lines or missed a seeding: ' + S.map(b => b.line + ':' + b.calc.inputs.cellsPerWell).join(' | '));
+      if (S.some(b => !new RegExp('— ' + b.line + '$').test(b.title))) bad('B65', 'setup titles', 'saving the setup again changed the titles: ' + S.map(b => b.title).join(' | '));
+      if (S.some(b => !new RegExp('resuspend ' + b.line + ' in').test(plain(b)))) bad('B65', 'setup words', 'saving the setup again lost the line in the words');
+      if (waits(S).split(',').slice(0, 2).join() !== '0,0') bad('B65', 'setup wait', 'saving the setup again put the wait back on every seeding: ' + waits(S));
+      // a number typed over the read prep is theirs
+      lyt(e.id).calc.inputs.nPlates = 20; lyt(e.id).calc.own = { nPlates: 1 };
+      plAddCellLine(); await ask('HEK293 BRD5-HB');
+      if (lyt(e.id).calc.inputs.nPlates !== 20) bad('B65', 'own', 'a number typed over the read prep was rewritten: ' + lyt(e.id).calc.inputs.nPlates);
+      // a seeding counted from the plate map counts its own line's wells, not every line's
+      const wl = plateWellsFor(E(e.id), { calc: { kind: 'seed', inputs: { nWells: 5 } }, line: 'HEK293 BRD2-HB' }), wa = plateWellsFor(E(e.id), { calc: { kind: 'seed', inputs: { nWells: 5 } } });
+      if (!(wl > 0) || wa !== wl * 4) bad('B65', 'wells', 'a line\'s seeding counts ' + wl + ' wells and the whole experiment ' + wa + ' (4 lines expected to be 4x)');
+      // one undo takes the line and its seeding back
+      lbUndo(); await sleep(80);
+      if (seeds(e.id).length !== 3 || E(e.id).blocks.length !== n0 + 2) bad('B65', 'undo', 'one undo left ' + seeds(e.id).length + ' seeding steps and ' + (E(e.id).blocks.length - n0) + ' extra blocks');
+      closePlateEditor();
+      // a seeding already ticked is not split after the fact
+      const f = mk('INV_B65B'); openExp(f.id); openPlateEditor('exp:' + f.id); await sleep(60);
+      seeds(f.id)[0].done = true; seeds(f.id)[0].completedAt = Date.now();
+      plAddCellLine(); await ask('HEK293 BRD2-HB'); await ask('HEK293 BRD3-HB');
+      if (seeds(f.id).length !== 1 || seeds(f.id)[0].line) bad('B65', 'done', 'a seeding that was ticked was split: ' + seeds(f.id).length + ' steps');
       closePlateEditor();
     });
 

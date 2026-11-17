@@ -5052,7 +5052,7 @@ function setupDefaultsFor(presetKey){
 function fillSetup(s,setup){ if(!s) return s;
   return String(s).replace(/\{\{(\w+)\}\}/g,function(m,k){
     var v=setup[k]; if(v==null||v==='') return '';
-    if(k==='cellLine'){ var d=cellLineDef(v); return esc((d&&d.label)||v); }
+    if(k==='cellLine'){ var d=cellLineDef(v); return esc((d&&d.id!==''&&d.label)||v); }   // a line that is not in the list is called what it was typed as, not "Other / custom"
     if(typeof v==='number') return nfmt(v);
     if(v===true) return 'yes'; if(v===false) return 'no';
     return esc(String(v)); });
@@ -5241,17 +5241,17 @@ function applySetupToBlocks(type,setup,blocks,prevSetup,presetKey){
     // and a second pass has nothing left to fill. Keep the original the first time through.
     // Protocol blocks are excluded: their html is a cache rebuilt by refreshProtoHtml, not prose.
     if(!b.proto && !b.tpl) b.tpl={title:b.title, html:b.html, pub:b.pub||''};
-    if(b.pub && b.tpl && b.tpl.pub) b.pub=fillSetup(b.tpl.pub,setup);
+    if(b.pub && b.tpl && b.tpl.pub) b.pub=fillSetup(b.tpl.pub,_lineSu(b,setup));
     if(b.proto){ /* protocol prose is owned by the snapshot, not by the setup */ }
     else if(prevSetup===undefined){
-      b.title=fillSetup(b.tpl.title,setup);
-      b.html=fillSetup(b.tpl.html,setup);
+      b.title=fillSetup(b.tpl.title,_lineSu(b,setup));
+      b.html=_lineHtml(b,setup);
     } else {
       // Re-applying. Only re-render prose that is still exactly what the template produced —
       // anything you have typed into is yours and silently regenerating it would be data loss.
       if(b.tpl){
-        if(b.title===fillSetup(b.tpl.title,prevSetup)) b.title=fillSetup(b.tpl.title,setup);
-        if(b.html===fillSetup(b.tpl.html,prevSetup))  b.html=fillSetup(b.tpl.html,setup);
+        if(b.title===(b.line?_lineTitle({lineBase:fillSetup(b.tpl.title,prevSetup),line:b.line}):fillSetup(b.tpl.title,prevSetup))){ b.title=fillSetup(b.tpl.title,setup); if(b.line){ b.lineBase=b.title; b.title=_lineTitle(b); } }
+        if(b.html===_lineHtml(b,prevSetup))  b.html=_lineHtml(b,setup);
       }
     }
   });
@@ -5260,6 +5260,7 @@ function applySetupToBlocks(type,setup,blocks,prevSetup,presetKey){
   (blocks||[]).forEach(function(b){ if(_anchor==null&&b.date&&b.dayOffset!=null) _anchor=addDays(b.date,-(+b.dayOffset||0)); });
   if(S.apply){ try{ blocks=S.apply(setup,blocks)||blocks; }catch(e){} }
   blocks=_normBlocks(blocks,_anchor);
+  _lineWaits(blocks);
   _applySetupGates(type,setup,blocks,prevSetup,presetKey,_anchor);
   // The planned value of every calculator input, so a later hand edit is visible as a
   // deviation. Captured after the setup is applied — answering the setup panel is planning,
@@ -8344,15 +8345,61 @@ function _plLineMirror(e){ var changed=[]; if(!e||!e.plate) return changed;
   return changed; }
 // The mirror made or changed other plates: they are saved like any plate edit.
 function _plMirrorPersist(e){ if(!e) return; _plLineMirror(e).forEach(function(k){ platePersist(k); }); }
+// A cell seeding is one suspension per line (its own count, its own tube), so with two or more lines the seeding step is one
+// step per line: the first keeps its place and its text, the others are copies of it after it, each titled and counted for its
+// line. A seeding already ticked stays what was done (it is not split after the fact), and nothing is ever removed here.
+function _lineSu(b,su){ if(!b||!b.line||!su) return su; var o={}; for(var k in su) o[k]=su[k]; o.cellLine=b.line; return o; }
+// The step's text as its template makes it for this step's line; "each reporter line" (a suspension per line) is this one.
+function _lineHtml(b,su){ var h=fillSetup(b.tpl.html,_lineSu(b,su)); return b.line?h.replace(/each reporter line/g,esc(b.line)):h; }
+function _lineTitle(b){ return String(b.lineBase||'')+' \u2014 '+b.line; }
+// The words of a step that quote the cell line say this step's line, as long as nobody has typed over them.
+function _lineWords(b,su,from){ if(!b.tpl||!su) return; var was=from||{};
+  if(b.tpl.pub&&b.pub===fillSetup(b.tpl.pub,_lineSu(was,su))) b.pub=fillSetup(b.tpl.pub,_lineSu(b,su));
+  if(b.html===_lineHtml({tpl:b.tpl,line:was.line},su)) b.html=_lineHtml(b,su); }
+function _lineSeedSplit(e,dry){ if(!e||!e.blocks) return false;
+  var lines=expLineNames(e); if(lines.length<2) return false;
+  var ch=false, gids=[], seen={};
+  e.blocks.forEach(function(b){ if(!(b.calc&&b.calc.kind==='seed')||_calcOwnPlate(b.calc)) return;
+    if(!b.lineOf&&(b.done||b.completedAt)) return;
+    var g=b.lineOf||b.id; if(!seen[g]){ seen[g]=1; gids.push(g); } });
+  gids.forEach(function(g){
+    var mem=e.blocks.filter(function(b){ return (b.lineOf||b.id)===g&&b.calc&&b.calc.kind==='seed'; }), lead=mem[0]; if(!lead) return;
+    if(!lead.lineOf){ if(dry){ ch=true; return; } lead.lineOf=g; lead.line=lines[0]; lead.lineBase=lead.title; lead.title=_lineTitle(lead); _lineWords(lead,e.setup); ch=true; }
+    lines.forEach(function(ln){ if(mem.some(function(m){ return _sameLine(m.line,ln); })) return;
+      if(dry){ ch=true; return; }
+      var c=JSON.parse(JSON.stringify(lead)); c.id=uid(); c.line=ln; c.title=_lineTitle(c);
+      _lineWords(c,e.setup,lead);
+      ['done','completedAt','stepDone','log','floatImgs'].forEach(function(k){ delete c[k]; });
+      e.blocks.splice(e.blocks.indexOf(mem[mem.length-1])+1,0,c); mem.push(c); ch=true; }); });
+  if(ch&&!dry){ _lineWaits(e.blocks); _lineLytic(e,lines.length); syncChainedInputs(e); }
+  return ch; }
+// A read prep made for "both lines in one" (twice the seeding's plates) is made for all the lines: it follows their number,
+// until somebody types a number of their own over it.
+function _lineLytic(e,n){ var lead=e.blocks.filter(function(b){ return b.lineOf&&b.calc&&b.calc.kind==='seed'&&b.calc.inputs; })[0];
+  var per=lead?+lead.calc.inputs.nPlates:0; if(!(per>0)) return;
+  e.blocks.forEach(function(b){ if(!(b.calc&&b.calc.kind==='lytic'&&b.calc.inputs)||b.done||plateFedOwn(b,'nPlates')) return;
+    var was=+b.linesFor||2; if(+b.calc.inputs.nPlates!==per*was) return;
+    _plateFedSet(b,'nPlates',per*n); b.linesFor=n; }); }
+// The incubation after a seeding is one wait for all the lines (they sit in the incubator together): it belongs to the last
+// seeding of the group, or the clock would add it up once per line.
+function _lineWaits(blocks){ var by={};
+  (blocks||[]).forEach(function(b){ if(b.lineOf) (by[b.lineOf]=by[b.lineOf]||[]).push(b); });
+  Object.keys(by).forEach(function(g){ var m=by[g]; if(m.length<2) return; var w=0, same=false;
+    m.forEach(function(b){ if(+b.waitMin>w){ w=+b.waitMin; same=!!b.waitSameDay; } });
+    if(!w) return;
+    m.forEach(function(b,i){ if(i<m.length-1){ if(!b.waitOwn){ delete b.waitMin; delete b.waitSameDay; } } else { b.waitMin=w; if(same) b.waitSameDay=true; } }); }); }
 function _plLineField(p,ex){
   var seen={}, opts=[];
   CELL_LINES.forEach(function(c){ if(c.id&&!seen[c.label]){ seen[c.label]=1; opts.push(c.label); } });
   String((ex&&ex.cellLines)||'').split(/[,;]+/).forEach(function(n){ n=n.trim(); if(n&&!seen[n]){ seen[n]=1; opts.push(n); } });
-  return '<label class="ci-f"><span>Cell line</span><input list="pl-line-dl" value="'+esc(plateLine(p))+'" placeholder="e.g. HEK293 BRD2-HB" autocomplete="off" oninput="plSetLine(this.value)">'
+  return '<label class="ci-f"><span>Cell line</span><input list="pl-line-dl" value="'+esc(plateLine(p))+'" placeholder="e.g. HEK293 BRD2-HB" autocomplete="off" oninput="plSetLine(this.value)" onchange="plLineCommit()">'
     +'<datalist id="pl-line-dl">'+opts.map(function(o){ return '<option value="'+esc(o)+'">'; }).join('')+'</datalist></label>'; }
 function plSetLine(v){ var p=plCur(), e=_plExp(); if(!p||!e) return;
   plMark('Plate cell line',true); v=String(v||'').trim(); if(v) p.cellLine=v; else delete p.cellLine;
   _syncExpLines(e); platePersist(PL.key); plRenderPlates(); }
+// Once the name is settled (not on every key) the seeding follows the lines.
+function plLineCommit(){ var e=_plExp(); if(!e||!_lineSeedSplit(e,true)) return;
+  undoMark('Seeding per cell line',['experiments.'+e.id]); _lineSeedSplit(e); e.updated=Date.now(); save(); toast('The seeding is one step per cell line · \u2318Z undoes it'); }
 // The same compounds in another cell line: a copy of every plate of the first line, compound names and all, tagged with the
 // line. Asked in two steps only the first time (what the plates you have are for); after that one name.
 function plAddCellLine(){ var o=_plateOwner(PL.key); if(!o||o.ds||!o.exp) return; var e=o.exp, have=expLineNames(e);
@@ -8368,9 +8415,10 @@ function plAddCellLine(){ var o=_plateOwner(PL.key); if(!o||o.ds||!o.exp) return
       var first=e.morePlates.length+2;
       design.forEach(function(d){ var np=JSON.parse(JSON.stringify(d.p)); delete np.values; np.cellLine=nm; e.morePlates.push(np); });
       _syncExpLines(e); var key='exp:'+e.id+':'+first;
+      var split=_lineSeedSplit(e);
       platePersist(key); e.updated=Date.now(); save();
       PL.mode=_plMode(); plSwitchPlate(key);
-      toast(design.length+' plate'+(design.length===1?'':'s')+' copied for '+nm+' · ⌘Z undoes it'); }); }); }
+      toast(design.length+' plate'+(design.length===1?'':'s')+' copied for '+nm+(split?' · the seeding is one step per line':'')+' · ⌘Z undoes it'); }); }); }
 function addMorePlate(expId,fromEditor){ var e=LB.data.experiments[expId]; if(!e) return;
   if(!e.plate){ addPlateTo('exp:'+e.id); return; }
   undoMark('Add plate',['experiments.'+e.id]);
@@ -8459,8 +8507,8 @@ function plateConditionCounts(e){
 // is ticked (what was pipetted is what the step says). The plan moves with it, so following the map
 // is not a deviation from the plan — the map IS the plan.
 var PLATE_FED={spike:['nWells'], rtxmix:['nWells'], reagent:['nWells'], mixparts:['nWells'], seed:['nWells']};
-function plateDosedWells(e,any){ var n=0;
-  expPlates(e).forEach(function(p){ Object.keys(p.wells||{}).forEach(function(k){ var w=p.wells[k]; if(w&&w.typeId&&w.typeId!=='blank'&&(any||w.conc)) n++; }); });
+function plateDosedWells(e,any,line){ var n=0;
+  expPlates(e).filter(function(p){ return !line||_sameLine(plateLine(p),line); }).forEach(function(p){ Object.keys(p.wells||{}).forEach(function(k){ var w=p.wells[k]; if(w&&w.typeId&&w.typeId!=='blank'&&(any||w.conc)) n++; }); });
   return n; }
 // How many wells this block's addition goes into, counted over every plate of the experiment: all of
 // them for a spike, the dosed ones for a compound series, the transfected ones for a transfection
@@ -8477,7 +8525,7 @@ function plateWellsFor(e,b){ var k=b&&b.calc&&b.calc.kind; if(!PLATE_FED[k]||!e)
   // no-reagent control: a read of "no substrate" is a well that never got it.
   else if(k==='reagent'){ if(!(+(b.calc.inputs&&b.calc.inputs.perWellUL)>0)) return null; n=plateReagentWells(e); }
   // A solution counted per well or sample is made for every well that holds something.
-  else if(k==='mixparts'||k==='seed'){ if(!(+(b.calc.inputs&&b.calc.inputs.nWells)>0)) return null; n=plateDosedWells(e,true); }   // a seeding counts its wells too, when the step has a count (not N plates of a format)
+  else if(k==='mixparts'||k==='seed'){ if(!(+(b.calc.inputs&&b.calc.inputs.nWells)>0)) return null; n=plateDosedWells(e,true,b.line); }   // a seeding counts its wells too, when the step has a count (not N plates of a format)
   return n>0?n:null; }
 // A number typed over the plan is the number that run used: either the box said so (own) or it no
 // longer equals what the plan last planted (the same test the setup's own values pass).
