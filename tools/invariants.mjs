@@ -202,6 +202,7 @@
 //                            seeding, OA and AFC counted over both plates, and the layouts that do not ask for empty outer rows left as they were
 //   B61 spark isrib        SC3 with ISRIB (HB_SPARK_SC3_ISRIB): the series DOWN the rows (layout drcols, a compound per pair of columns, 7 points A-G, DMSO in row H), one plate per condition with the same six compounds, ISRIB for plate 2 only, the medium swapped on both.
 //   B62 spark nb pairs     NanoBRET SPARK screen with several pairs (NB_SPARK_PAIRS96, layout nbscreenpairs96): NL-DELE1(CTD)/DELE1(CTD)-NL against HT-CRBN at 1:50 with G4 and G7 at 20, 10, 1 µM in duplicate, MG132 an hour first - row A the −ligand of each pair over its own three columns, row B each construct alone + mock + the first pair without substrate, DMSO then one band per compound from row C; what does not fit is named; the screen it came from is untouched
+//   B63 cell lines        A plate says which cell line it is for; "+ Add cell line" copies every plate (layout and compound names) for the new line, the header lists the lines, the compounds list and the plate count belong to the first line's plates and the copies follow (an added plate or a renamed compound reaches every line), a copy's names are read-only, the first time asks which line the plates you have are for, an experiment that never names a line is unchanged
 //   B54 plate labels      Words round the plate: select wells and a dashed + sits beside the plate on all four sides over exactly the selected columns/rows; a label
 //                            is typed, edited, removed and undone; a wider one stacks outside a narrower one; nothing written round the plate sits on a well, a header or
 //                            another label; the card, the PNG, the print table and a copied layout all carry it. (the plate map could not say what a column was)
@@ -3393,6 +3394,69 @@ async function suite(opts) {
       if (so.layout !== 'nbscreen96' || !/-fold from/.test(sb.pub) || so.blocks.some(b => /^MG132/.test(b.title))) bad('B62', 'original', 'the compound screen must keep its layout, its fold wording and no MG132');
       openExp(e.id); await sleep(60);
       const txt = document.body.innerText; if (/\{\{[^}]*\}\}/.test(txt)) bad('B62', 'tokens', 'an unfilled token on the page: ' + (txt.match(/\{\{[^}]*\}\}/) || [])[0]);
+    });
+
+    // B63 — the same compounds in several cell lines: a plate says which line it is for, and "+ Add cell line" copies the plates.
+    if (run('B63')) await guard('B63', 'cell lines', async () => {
+      const P = (LB.data.projects || []).find(p => (p.sections || []).length);
+      const key = 'NB_SPARK_SCREEN96', tpl = LB.data.presets[key];
+      if (!tpl) { bad('B63', 'setup', 'the SPARK screen preset is not in the notebook'); return; }
+      const su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup || {})), { nConc: 3, nReps: 2, topUM: 100, df: 3 });
+      const before = new Set(Object.keys(LB.data.experiments));
+      buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-11-17', type: presetBase(key), title: 'INV lines', code: 'INV_B63', setup: su, plate: true });
+      const e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); if (!e) { bad('B63', 'setup', 'no experiment was made'); return; }
+      clean.push(e); openExp(e.id); tick('B63');
+      const names = (p) => _plSlots(p).map(s => s.name), L = () => expPlateList(LB.data.experiments[e.id]);
+      const type = async (txt, commit) => { const ta = document.getElementById('pl-cpd-ta'); ta.value = txt; plCpdList(ta, commit); await sleep(40); };
+      const ask = async (txt) => { await sleep(80); const i = document.getElementById('lb-dlg-input'); if (!i) { bad('B63', 'dialog', 'no question was asked'); return null; }
+        const q = (document.querySelector('#lb-dialog-card label') || {}).textContent; i.value = txt; document.getElementById('lb-dlg-ok').click(); await sleep(120); return q; };
+      openPlateEditor('exp:' + e.id); await sleep(60);
+      const p1 = e.plate; PL.sel = {}; Object.keys(p1.wells).forEach(id => { if (p1.wells[id].conc) PL.sel[id] = 1; }); PL.reps = 2; plSetMode('dose'); plRender(); plMakeCompounds(); await sleep(40); PL.sel = {}; plRender();
+      const cap = _plSlots(p1).length; if (cap < 2) { bad('B63', 'blocks', 'the plate has ' + cap + ' compound blocks'); return; }
+      const list = Array.from({ length: cap * 2 + 1 }, (_, i) => 'Cmp' + (i + 1));
+      await type(list.join('\n'), true);
+      if (L().length !== 3) { bad('B63', 'plates', 'expected 3 plates before any cell line, got ' + L().length); return; }
+      // no line named: nothing says one, nothing changed
+      if (L().some(x => plateLine(x.p)) || /BRD/.test(plateLabel('exp:' + e.id, e.plate))) bad('B63', 'no line', 'a plate has a line before anyone named one');
+      if (!document.querySelector('#pl-plates .pl-pchip.add + .pl-pchip.add, #pl-plates .pl-pchip.add') || !/Add cell line/.test(document.getElementById('pl-plates').textContent)) bad('B63', 'button', 'the plate chips have no + Add cell line');
+      // the first time: which line are the plates you have, then the new one
+      plAddCellLine(); const q1 = await ask('HEK293 BRD2-HB'); const q2 = await ask('HEK293 BRD3-HB');
+      if (!/which cell line/i.test(q1 || '') || !/new cell line/i.test(q2 || '')) bad('B63', 'questions', 'the first time must ask about the plates you have, then the new line: ' + q1 + ' / ' + q2);
+      if (L().length !== 6) { bad('B63', 'copies', 'three plates in a second line should make 6 plates, got ' + L().length); return; }
+      const line = (i) => plateLine(L()[i].p);
+      if ([0, 1, 2].some(i => line(i) !== 'HEK293 BRD2-HB') || [3, 4, 5].some(i => line(i) !== 'HEK293 BRD3-HB')) bad('B63', 'lines', 'the plates say ' + L().map(x => plateLine(x.p)).join(' | '));
+      if (e.cellLines !== 'HEK293 BRD2-HB, HEK293 BRD3-HB') bad('B63', 'header', 'the experiment lists the cell lines as "' + e.cellLines + '"');
+      [0, 1, 2].forEach(i => { if (names(L()[i].p).join() !== names(L()[i + 3].p).join()) bad('B63', 'names', 'plate ' + (i + 1) + ' and its copy hold different names'); if (L()[i + 3].p.values) bad('B63', 'values', 'a copy carries reader values'); if (Object.keys(L()[i].p.wells).length !== Object.keys(L()[i + 3].p.wells).length) bad('B63', 'layout', 'a copy has another layout'); });
+      if (!/HEK293 BRD3-HB/.test(plateLabel('exp:' + e.id + ':4', L()[3].p))) bad('B63', 'label', 'the label of a copy does not say its line: ' + plateLabel('exp:' + e.id + ':4', L()[3].p));
+      if (L()[3].p.title !== L()[0].p.title || L()[4].p.title !== 'Plate 2' || L()[5].p.title !== 'Plate 3') bad('B63', 'titles', 'plates are numbered within their line: ' + L().map(x => x.p.title).join(','));
+      // a third line: one name asked, the design plates copied (not the copies)
+      plAddCellLine(); const q3 = await ask('HEK293 BRD4-HB');
+      if (/which cell line/i.test(q3 || '')) bad('B63', 'ask twice', 'the plates you have were asked about again');
+      if (L().length !== 9 || e.cellLines !== 'HEK293 BRD2-HB, HEK293 BRD3-HB, HEK293 BRD4-HB') bad('B63', 'three lines', L().length + ' plates, header "' + e.cellLines + '"');
+      // the same line twice is refused
+      plAddCellLine(); await ask('hek293 brd3-hb'); if (L().length !== 9) bad('B63', 'duplicate', 'a line that is there already was added again (' + L().length + ' plates)');
+      // the list belongs to the first line's plates: 3 plates, not 9
+      plSwitchPlate('exp:' + e.id); await sleep(40); plSetMode('compounds'); await sleep(40);
+      const plan = (document.getElementById('pl-cpd-plan') || {}).textContent || '';
+      if (!/3 plates/.test(plan)) bad('B63', 'plan', 'the plan counts the copies: ' + plan.slice(0, 120));
+      // a renamed compound reaches every line
+      const l2 = list.slice(); l2[0] = 'Renamed'; await type(l2.join('\n'), true);
+      [0, 3, 6].forEach(i => { if (names(L()[i].p)[0] !== 'Renamed') bad('B63', 'rename', 'line ' + (i / 3 + 1) + ' still says ' + names(L()[i].p)[0]); });
+      // a longer list adds a plate to every line
+      const l3 = list.concat(Array.from({ length: cap }, (_, i) => 'More' + (i + 1))); await type(l3.join('\n'), true);
+      if (L().length !== 12) bad('B63', 'added plates', 'one more plate per line should make 12, got ' + L().length);
+      else { const d4 = L().filter(x => /BRD2/.test(plateLine(x.p))), c4 = L().filter(x => /BRD4/.test(plateLine(x.p)));
+        if (d4.length !== 4 || c4.length !== 4 || names(d4[3].p).join() !== names(c4[3].p).join()) bad('B63', 'added plates', 'the lines hold ' + d4.length + ' / ' + c4.length + ' plates, the new ones with different names'); }
+      // a copy's names are not typed over
+      const k = 'exp:' + e.id + ':5'; plSwitchPlate(k); await sleep(40); plSetMode('compounds'); await sleep(40);
+      const inp = document.querySelector('#pl-side .pl-nm'); if (!inp) bad('B63', 'names box', 'a copy plate has no list of its compounds');
+      else if (!inp.disabled) bad('B63', 'names read-only', 'the names of a copy plate can be typed over, and would be undone at once');
+      // the plate map file says the line
+      if (!/HEK293 BRD3-HB/.test(plateToCSV(plateOf(k)))) bad('B63', 'csv', 'the plate map file does not say which cell line');
+      // Add cell line is one step back
+      const n0 = L().length; plAddCellLine(); await ask('HEK293 BRD5-HB'); const n1 = L().length; lbUndo(); await sleep(80);
+      if (n1 !== n0 + 4 || L().length !== n0) bad('B63', 'undo', 'a fourth line made ' + (n1 - n0) + ' plates and one undo left ' + (L().length - n0) + ' of them');
+      closePlateEditor();
     });
 
     // B54 — words round the plate: what a column or a row is, written beside it.

@@ -1651,6 +1651,8 @@ details.pl-sec>*:not(summary):last-child{padding-bottom:11px;}
 .pl-pchip:hover{color:var(--text);}
 .pl-pchip.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent);}
 .pl-pchip.add{border-style:dashed;color:var(--accent-ink);background:none;}
+.pl-pline{align-self:center;font-size:var(--fs-2);font-weight:600;color:var(--text2);margin:0 2px 0 8px;}
+.pl-pline:first-child{margin-left:0;}
 /* The plasmid list of the experiment, edited where the plate is painted. */
 .pl-sec-pls{margin:0 0 12px;}
 .pl-pls{display:flex;flex-direction:column;gap:5px;margin-bottom:8px;}
@@ -7765,7 +7767,7 @@ function plateCount(p){ return Object.keys(p.wells||{}).length; }
 function plateToCSV(p){ var d=plateDims(p), out=['Well,Type,Cell line,Compound,Concentration,Label'];
   for(var r=0;r<d.r;r++) for(var c=0;c<d.c;c++){ var id=wellIdOf(r,c), w=(p.wells||{})[id]; if(!w) continue;
     var t=plateTypeById(p,w.typeId);
-    out.push([id,(t?t.name:''),(w.cellLine||''),(w.compound||''),(w.conc||''),(w.label||'')]
+    out.push([id,(t?t.name:''),(w.cellLine||plateLine(p)||''),(w.compound||''),(w.conc||''),(w.label||'')]
       .map(_csvCell).join(',')); }
   return out.join('\n'); }
 // ── Layout summary ──
@@ -8284,7 +8286,64 @@ function expPlates(e){ return expPlateList(e).map(function(x){ return x.p; }); }
 // "Plate 2" for a plate nobody has titled, once there is more than one to tell apart.
 function plateLabel(key,p){ var o=_plateOwner(key), n=o&&o.exp?expPlateList(o.exp).length:1;
   var no=(String(key).split(':')[0]==='exp')?(+String(key).split(':')[2]||1):0;
-  return (p&&p.title)||(n>1&&no?('Plate '+no):'Plate map'); }
+  var t=(p&&p.title)||(n>1&&no?('Plate '+no):'Plate map'), ln=plateLine(p);
+  return ln?(ln+' \u00b7 '+t):t; }
+// The cell line a plate is for. A screen is the same compounds on the same plate in several lines, so the line is a
+// property of the plate (what was dosed and read on it), not of the experiment: three copies of one layout, each saying
+// which line it is. Plates with no line are the experiment's first line, and an experiment that never names one is unchanged.
+function plateLine(p){ return String((p&&p.cellLine)||'').trim(); }
+function _sameLine(a,b){ return String(a||'').trim().toLowerCase()===String(b||'').trim().toLowerCase(); }
+function expLineNames(e){ var seen={}, out=[]; expPlateList(e).forEach(function(x){ var l=plateLine(x.p), k=l.toLowerCase(); if(l&&!seen[k]){ seen[k]=1; out.push(l); } }); return out; }
+// The plates of the first line are the design: the compounds list, the plate count and the layout belong to them, and the
+// other lines' plates are copies that follow (_plLineMirror).
+function _plBaseLine(e){ var L=expPlateList(e); return L.length?plateLine(L[0].p):''; }
+function _plDesignList(e){ var b=_plBaseLine(e); return expPlateList(e).filter(function(x){ return _sameLine(plateLine(x.p),b); }); }
+// The header names the lines the plates are for, once any plate says so.
+function _syncExpLines(e){ var ls=expLineNames(e); if(ls.length) e.cellLines=ls.join(', '); }
+// Another line's plate for every plate of the first line, same layout and same compound names; a plate that is there already
+// only has its names brought into line (never its layout, which may be edited on purpose). Returns the keys that changed.
+function _plLineMirror(e){ var changed=[]; if(!e||!e.plate) return changed;
+  var lines=expLineNames(e); if(lines.length<2) return changed;
+  var design=_plDesignList(e), base=_plBaseLine(e);
+  lines.forEach(function(ln){ if(_sameLine(ln,base)) return;
+    var mine=expPlateList(e).filter(function(x){ return _sameLine(plateLine(x.p),ln); });
+    design.forEach(function(d,i){ var c=mine[i];
+      if(!c){ var np=JSON.parse(JSON.stringify(d.p)); delete np.values; np.cellLine=ln;
+        if(!e.morePlates) e.morePlates=[]; e.morePlates.push(np);
+        c={p:np,key:'exp:'+e.id+':'+(e.morePlates.length+1)}; mine.push(c); changed.push(c.key); return; }
+      var ds=_plSlots(d.p), ch=false;
+      _plSlots(c.p).forEach(function(s,j){ if(_plSlotName(c.p,s,ds[j]?ds[j].name:'',j)) ch=true; });
+      if(ch){ _plRenumberCpds(c.p); changed.push(c.key); } }); });
+  return changed; }
+// The mirror made or changed other plates: they are saved like any plate edit.
+function _plMirrorPersist(e){ if(!e) return; _plLineMirror(e).forEach(function(k){ platePersist(k); }); }
+function _plLineField(p,ex){
+  var seen={}, opts=[];
+  CELL_LINES.forEach(function(c){ if(c.id&&!seen[c.label]){ seen[c.label]=1; opts.push(c.label); } });
+  String((ex&&ex.cellLines)||'').split(/[,;]+/).forEach(function(n){ n=n.trim(); if(n&&!seen[n]){ seen[n]=1; opts.push(n); } });
+  return '<label class="ci-f"><span>Cell line</span><input list="pl-line-dl" value="'+esc(plateLine(p))+'" placeholder="e.g. HEK293 BRD2-HB" autocomplete="off" oninput="plSetLine(this.value)">'
+    +'<datalist id="pl-line-dl">'+opts.map(function(o){ return '<option value="'+esc(o)+'">'; }).join('')+'</datalist></label>'; }
+function plSetLine(v){ var p=plCur(), e=_plExp(); if(!p||!e) return;
+  plMark('Plate cell line',true); v=String(v||'').trim(); if(v) p.cellLine=v; else delete p.cellLine;
+  _syncExpLines(e); platePersist(PL.key); plRenderPlates(); }
+// The same compounds in another cell line: a copy of every plate of the first line, compound names and all, tagged with the
+// line. Asked in two steps only the first time (what the plates you have are for); after that one name.
+function plAddCellLine(){ var o=_plateOwner(PL.key); if(!o||o.ds||!o.exp) return; var e=o.exp, have=expLineNames(e);
+  var ask1=have.length?Promise.resolve(have[0]):lbPrompt('Which cell line are the plates you have now for?',String(e.cellLines||'').split(/[,;]+/)[0].trim(),{title:'Add cell line',ok:'Next'});
+  ask1.then(function(l1){ if(l1==null) return; l1=String(l1).trim();
+    if(!l1){ toast('Say which cell line the plates you have are for'); return; }
+    lbPrompt('Name of the new cell line','',{title:'Add cell line',ok:'Add'}).then(function(nm){
+      if(nm==null) return; nm=String(nm).trim(); if(!nm) return;
+      if(_sameLine(nm,l1)||have.some(function(x){ return _sameLine(x,nm); })){ toast('There are plates for '+nm+' already'); return; }
+      undoMark('Add cell line',['experiments.'+e.id]);
+      if(!have.length) expPlateList(e).forEach(function(x){ x.p.cellLine=l1; });
+      var design=_plDesignList(e); if(!e.morePlates) e.morePlates=[];
+      var first=e.morePlates.length+2;
+      design.forEach(function(d){ var np=JSON.parse(JSON.stringify(d.p)); delete np.values; np.cellLine=nm; e.morePlates.push(np); });
+      _syncExpLines(e); var key='exp:'+e.id+':'+first;
+      platePersist(key); e.updated=Date.now(); save();
+      PL.mode=_plMode(); plSwitchPlate(key);
+      toast(design.length+' plate'+(design.length===1?'':'s')+' copied for '+nm+' · ⌘Z undoes it'); }); }); }
 function addMorePlate(expId,fromEditor){ var e=LB.data.experiments[expId]; if(!e) return;
   if(!e.plate){ addPlateTo('exp:'+e.id); return; }
   undoMark('Add plate',['experiments.'+e.id]);
@@ -8294,7 +8353,11 @@ function addMorePlate(expId,fromEditor){ var e=LB.data.experiments[expId]; if(!e
   if(e.plate.types&&e.plate.types.length) np.types=JSON.parse(JSON.stringify(e.plate.types));
   if(e.plate.colTitle) np.colTitle=e.plate.colTitle;
   if(!e.morePlates) e.morePlates=[];
-  e.morePlates.push(np); var no=e.morePlates.length+1; np.title='Plate '+no;
+  var cur=fromEditor?plCur():null, ln=cur?plateLine(cur):plateLine(e.plate);
+  if(ln) np.cellLine=ln;
+  e.morePlates.push(np); var no=e.morePlates.length+1;
+  np.title='Plate '+expPlateList(e).filter(function(x){ return _sameLine(plateLine(x.p),ln); }).length;
+  _plLineMirror(e);
   e.updated=Date.now(); save();
   var key='exp:'+e.id+':'+no;
   if(fromEditor){ PL.mode='plate'; plSwitchPlate(key); toast('Plate '+no+' added'); }
@@ -9721,6 +9784,7 @@ function _plAppendPlateFrom(e,src){
   if(!e.morePlates) e.morePlates=[]; e.morePlates.push(tgt);
   var no=e.morePlates.length+1; tgt.title='Plate '+no;
   _plCopyLayout(src,tgt);
+  if(plateLine(src)){ tgt.cellLine=plateLine(src); tgt.title='Plate '+expPlateList(e).filter(function(x){ return _sameLine(plateLine(x.p),tgt.cellLine); }).length; }
   if(!_plCpdList(tgt).length&&slots.length){ if(!tgt.groups) tgt.groups={};
     slots.forEach(function(sl,i){ var gid='c'+Date.now().toString(36)+'x'+no+'_'+i; tgt.groups[gid]={label:'',cpd:true};
       sl.ids.forEach(function(id){ if(tgt.wells[id]) tgt.wells[id].groupId=gid; }); });
@@ -9736,6 +9800,7 @@ function plDuplicateToNext(){ var key=PL.key, o=_plateOwner(key); if(!o||o.ds||!
     var tgt, tkey;
     if(nx){ tgt=nx.p; tkey=nx.key; _plCopyLayout(src,tgt); }
     else { var a=_plAppendPlateFrom(e,src); tgt=a.p; tkey=a.key; }
+    _plMirrorPersist(e);
     platePersist(tkey); e.updated=Date.now(); save();
     var lab=plateLabel(tkey,tgt);
     PL.mode=_plMode(); plSwitchPlate(tkey);
@@ -9750,9 +9815,18 @@ function plSwitchPlate(key){ var p=plateOf(key); if(!p) return;
 function plRenderPlates(){ var host=el('pl-plates'); if(!host) return;
   var o=_plateOwner(PL.key), parts=String(PL.key||'').split(':');
   if(!o||o.ds||parts[0]!=='exp'){ host.innerHTML=''; return; }
-  var L=expPlateList(o.exp);
-  host.innerHTML=L.map(function(x){ return '<button class="pl-pchip'+(x.key===PL.key?' on':'')+'" onclick="plSwitchPlate(\''+x.key+'\')" title="'+esc(plateLabel(x.key,x.p))+'">'+esc(plateLabel(x.key,x.p))+'</button>'; }).join('')
-    +'<button class="pl-pchip add" onclick="addMorePlate(\''+o.exp.id+'\',true)" title="Another plate for this experiment — more compounds, a repeat of the layout">+ Add plate</button>'; }
+  var L=expPlateList(o.exp), lines=expLineNames(o.exp), seenAt={}, lastLine=null;
+  if(lines.length>1){ var at=function(x){ for(var i=0;i<lines.length;i++) if(_sameLine(lines[i],plateLine(x.p))) return i; return -1; };
+    L=L.map(function(x,i){ return {x:x,i:i}; }).sort(function(a,b){ return at(a.x)-at(b.x)||a.i-b.i; }).map(function(w){ return w.x; }); }
+  // Several cell lines: the line is said once, in front of its plates, and each chip is just "Plate n" within it.
+  host.innerHTML=L.map(function(x){ var chip=function(txt){ return '<button class="pl-pchip'+(x.key===PL.key?' on':'')+'" onclick="plSwitchPlate(\''+x.key+'\')" title="'+esc(plateLabel(x.key,x.p))+'">'+esc(txt)+'</button>'; };
+      if(lines.length<2) return chip(plateLabel(x.key,x.p));
+      var ln=plateLine(x.p), k=ln.toLowerCase(), h='';
+      seenAt[k]=(seenAt[k]||0)+1;
+      if(ln!==lastLine){ h='<span class="pl-pline">'+esc(ln||'No cell line')+'</span>'; lastLine=ln; }
+      return h+chip('Plate '+seenAt[k]); }).join('')
+    +'<button class="pl-pchip add" onclick="addMorePlate(\''+o.exp.id+'\',true)" title="Another plate for this experiment — more compounds, a repeat of the layout">+ Add plate</button>'
+    +'<button class="pl-pchip add" onclick="plAddCellLine()" title="The same plates and compounds in another cell line — a copy of every plate, tagged with the line">+ Add cell line</button>'; }
 function closePlateEditor(){ var wasDs=/^ds:/.test(String(PL.key||'')); if(PLE.open) plEdgeCommit(); el('plate-modal').classList.remove('open'); _plHideBand(); PL.key=null; PL.sel={}; PL.band=null;
   if(wasDs&&DS){ DS_PLEXP=null; dsDraw(); } else renderEditor(); }
 // Every plate mutation restores through the experiment that owns the map — a plate lives inside
@@ -10190,7 +10264,7 @@ function plNameSet(gid,v){ var p=plCur(); if(!p||!p.groups||!p.groups[gid]) retu
   if(_plNameEditing!==gid){ plMark('Name compound'); _plNameEditing=gid; }
   var g=p.groups[gid]; v=String(v||'').trim();
   if(v){ g.label=v; g.named=true; } else { delete g.named; }
-  _plRenumberCpds(p); _plCpdAdopt(_plExp()); platePersist(PL.key); plRenderGrid(); plRenderSum(); }
+  _plRenumberCpds(p); _plCpdAdopt(_plExp()); _plMirrorPersist(_plExp()); platePersist(PL.key); plRenderGrid(); plRenderSum(); }
 function plNameKey(ev,inp){ if(ev.key!=='Enter'&&ev.key!=='ArrowDown'&&ev.key!=='ArrowUp') return; ev.preventDefault();
   var all=Array.prototype.slice.call(document.querySelectorAll('#pl-side .pl-nm')), i=all.indexOf(inp);
   var nx=all[i+(ev.key==='ArrowUp'?-1:1)]; if(nx){ nx.focus(); nx.select(); } }
@@ -10202,13 +10276,15 @@ function plNamesPaste(ev,inp){ var txt=(ev.clipboardData||window.clipboardData).
   plMark('Paste names'); _plNameEditing=null;
   lines.forEach(function(l,i){ var c=list[from+i]; if(!c) return; var g=p.groups[c.gid];
     if(l){ g.label=l; g.named=true; } else delete g.named; n++; });
-  _plRenumberCpds(p); _plCpdAdopt(_plExp()); platePersist(PL.key); plRender();
+  _plRenumberCpds(p); _plCpdAdopt(_plExp()); _plMirrorPersist(_plExp()); platePersist(PL.key); plRender();
   toast(n+' name'+(n===1?'':'s')+' filled from #'+(from+1)+(lines.length>n?(' · '+(lines.length-n)+' had no compound block'):'')); }
 function _plNamesHtml(p){ var list=_plCpdList(p); if(!list.length) return '';
+  // A copy for another cell line takes its names from the first line's plate; typing here would be undone at once.
+  var ex=_plExp(), follow=ex&&expLineNames(ex).length>1&&!_plDesignList(ex).some(function(x){ return x.p===p; })?_plBaseLine(ex):null;
   return '<div class="pl-sec pl-sec-names"><div class="pl-sec-t">'+list.length+' compound'+(list.length===1?'':'s')
-    +' <span class="pl-sec-sub">type or paste names — a column from Excel fills downwards</span></div><div class="pl-names">'
+    +' <span class="pl-sec-sub">'+(follow!=null?('the names follow the '+esc(follow||'first line')+' plates'):'type or paste names — a column from Excel fills downwards')+'</span></div><div class="pl-names">'
     +list.map(function(c){ return '<div class="pl-nrow"><button class="pl-nno" title="Select this compound’s wells" onclick="plSelectBlockOf(\''+c.wells[0]+'\')">'+c.no+'</button>'
-      +'<input class="pl-nm" data-no="'+c.no+'" value="'+esc(c.named?c.name:'')+'" placeholder="Compound '+c.no+'" aria-label="Name of compound '+c.no+'"'
+      +'<input class="pl-nm" data-no="'+c.no+'" value="'+esc(c.named?c.name:'')+'" placeholder="Compound '+c.no+'" aria-label="Name of compound '+c.no+'"'+(follow!=null?' disabled':'')
       +' oninput="plNameSet(\''+c.gid+'\',this.value)" onchange="_plNameEditing=null" onkeydown="plNameKey(event,this)" onpaste="plNamesPaste(event,this)">'
       +'<span class="pl-nwh">'+esc(PlateEngine.rangeText(c.wells))+'</span></div>'; }).join('')
     +'</div></div>'; }
@@ -10240,13 +10316,13 @@ function _plSlotName(p,s,name,idx){
   return ch; }
 // What the plates already say, in order, up to the first block with no name: the list a person would have typed.
 function _plCpdFromPlates(e){ var out=[], stop=false;
-  expPlateList(e).forEach(function(x){ _plSlots(x.p).forEach(function(s){ if(stop) return; if(s.name) out.push(s.name); else stop=true; }); });
+  _plDesignList(e).forEach(function(x){ _plSlots(x.p).forEach(function(s){ if(stop) return; if(s.name) out.push(s.name); else stop=true; }); });
   return out; }
 function _plCpdText(e){ var d=PL.cpdDraft; if(d&&d.id===e.id) return d.text; var t=expCpdText(e); return t||_plCpdFromPlates(e).join('\n'); }
 // Which names go on which plate. In order: each plate takes what its layout holds and the next plate the rest; `extra` is
 // how many more plates of the last layout the rest needs. The same: every plate takes the same compounds.
 function _plCpdPlanAll(e,names){
-  var L=expPlateList(e), same=(e.cpdMode==='same'&&L.length>1);
+  var L=_plDesignList(e), same=(e.cpdMode==='same'&&L.length>1);
   var slots=L.map(function(x){ return _plSlots(x.p); }), caps=slots.map(function(s){ return s.length; });
   var ref=-1; caps.forEach(function(c,i){ if(c) ref=i; });
   var R={L:L,slots:slots,caps:caps,ref:ref,per:ref>=0?caps[ref]:0,same:same,assign:[],left:[],extra:0};
@@ -10261,8 +10337,9 @@ function _plCpdPlace(e,R){ var changed=[];
   R.L.forEach(function(x,i){ var a=R.assign[i], ch=false;
     R.slots[i].forEach(function(s,j){ if(j<a.length){ if(_plSlotName(x.p,s,a[j],j)) ch=true; } else if(s.name){ if(_plSlotName(x.p,s,'',j)) ch=true; } });
     _plRenumberCpds(x.p); if(ch) changed.push(x.key); });
+  _plLineMirror(e).forEach(function(k){ changed.push(k); });
   return changed; }
-function _plCpdAddPlates(e,n){ var ref=null; expPlateList(e).forEach(function(x){ if(_plSlots(x.p).length) ref=x; });
+function _plCpdAddPlates(e,n){ var ref=null; _plDesignList(e).forEach(function(x){ if(_plSlots(x.p).length) ref=x; });
   if(!ref) return 0; for(var i=0;i<n;i++) _plAppendPlateFrom(e,ref.p); return n; }
 // The list changed. While typing (commit false) the names flow onto the plates there are; on a paste or when you leave the
 // box (commit true) the plates the list needs are added too, and the setup hears about it through its own path.
@@ -10566,7 +10643,8 @@ function _plPlateCard(p,dosing,ex,inExp,many){
   return '<div class="pl-sec pl-sec-plate"><div class="pl-sec-t">'+(many?esc(plateLabel(PL.key,p)):'Plate')+'</div>'
     +'<div class="cc-inputs"><label class="ci-f"><span>Format</span><select onchange="plSetFormat(this.value)">'
       +Object.keys(PLATE_FORMATS).sort(function(a,b){return a-b;}).map(function(k){ return '<option value="'+k+'"'+(String(p.format)===k?' selected':'')+'>'+k+'-well</option>'; }).join('')
-    +'</select></label><label class="ci-f"><span>Title</span><input value="'+esc(p.title||'')+'" placeholder="'+esc(many?plateLabel(PL.key,{}):'e.g. Dose–response')+'" oninput="plSetTitle(this.value)"></label></div>'
+    +'</select></label><label class="ci-f"><span>Title</span><input value="'+esc(p.title||'')+'" placeholder="'+esc(many?plateLabel(PL.key,{}):'e.g. Dose–response')+'" oninput="plSetTitle(this.value)"></label>'
+    +(inExp?_plLineField(p,ex):'')+'</div>'
     +'<div class="pl-row2"><button class="pl-btn" onclick="plLayoutMenu()">'+tbIco(P_GRID,13)+' Start from a layout…</button>'
       +(_plExpTypes().length?'<button class="pl-btn" onclick="plUseExpTypes()" title="Replace the palette with the conditions this experiment is made of">Use this experiment\'s conditions</button>':'')
     +'</div>'
@@ -16576,6 +16654,7 @@ function applySetupEdit(){
   e.setupHide=ES_HIDE.slice();
   e.setupAdd=JSON.parse(JSON.stringify(ES_ADD));
   if(ES_SETUP.cellLine!=null){ var d=cellLineDef(ES_SETUP.cellLine); e.cellLines=(d&&d.label)||String(ES_SETUP.cellLine); }
+  _syncExpLines(e);   // plates that say which line they are for are the record of it
   e.updated=Date.now(); save(); closeSetupEditor(); renderAll();
   toast('Setup applied.');
 }
