@@ -3381,26 +3381,52 @@ const _WP_ECHO = /Destination\s*Well/i;
 async function _looksLikeEchoReport(f) { try { return _WP_ECHO.test(await f.slice(0, 16384).text()); } catch (e) { return false; } }
 function _wpClose() {
   const o = document.getElementById('wp-overlay'); if (!o) return;
-  o.remove(); window._wpItems = [];
+  o.remove(); window._wpItems = []; window._wpPicked = {};
   const b = window._wpBack; window._wpBack = null; if (b && document.contains(b)) { try { b.focus(); } catch (e) {} }
+}
+// Wording: a few variants for each case, one picked at random (never the one shown last) and kept while the notice
+// stays open. Every variant names the file and says which box it goes in (Echo CSV left, reader files right).
+// a = files from the reader sitting in the Echo box, b = Echo reports sitting in the reader box, n = how many of each.
+const _WP_V = {
+  rdrInEcho: [
+    { t: 'Hmm, wrong box?', p: (a, n) => ['<b>' + a + '</b> ' + (n > 1 ? 'look' : 'looks') + ' like a plate-reader export, not an Echo transfer report. This box wants the Echo’s CSV, the one that says what went into every well.', 'Reader files (PHERAstar, GloMax) go in the box on the right.'] },
+    { t: 'Nice try, wrong box', p: (a, n) => ['<b>' + a + '</b> ' + (n > 1 ? 'are' : 'is') + ' fresh off the plate reader, and this box is Echo-only. Bold of ' + (n > 1 ? 'them' : 'it') + ' to walk in here.', 'Echo CSV on the left, reader files on the right. I’ve shown ' + (n > 1 ? 'them' : 'it') + ' to the other door.'] },
+    { t: 'Wrong door!', p: (a, n) => ['<b>' + a + '</b> walked into the Echo box wearing a plate-reader badge. Cute, but only the Echo’s transfer CSV gets in here.', 'The reader’s files live in the box on the right.'] },
+    { t: 'Plate reader detected', p: (a, n) => ['Pretty sure <b>' + a + '</b> ' + (n > 1 ? 'were' : 'was') + ' born on a PHERAstar or a GloMax, and this box is for the Echo’s CSV. No judgement, it happens to everyone.', 'Reader files go in the box on the right.'] },
+    { t: 'Somebody’s lost', p: (a, n) => ['<b>' + a + '</b> ' + (n > 1 ? 'are' : 'is') + ' a reader file hanging out in the Echo box, looking confused.', 'Echo CSV stays here on the left; the reader files go in the box on the right.'] }
+  ],
+  echoInRdr: [
+    { t: 'Hmm, wrong box?', p: (b, n) => ['<b>' + b + '</b> ' + (n > 1 ? 'look' : 'looks') + ' like the Echo transfer report, and this box is for the reader’s XLS/XLSX: one file per plate, the barcode in its name.', 'The Echo CSV goes in the box on the left.'] },
+    { t: 'That’s not a plate', p: (b, n) => ['Bold move putting <b>' + b + '</b> here: that’s the Echo’s transfer report, and no plate reader ever wrote it. This box wants the reader’s XLS/XLSX.', 'Echo CSV on the left, reader files on the right.'] },
+    { t: 'Wrong door!', p: (b, n) => ['<b>' + b + '</b> ' + (n > 1 ? 'are' : 'is') + ' the Echo’s CSV pretending to be a plate. Nope: this box takes the reader’s XLS/XLSX, one per plate, barcode in the name.', 'The Echo CSV belongs in the box on the left.'] },
+    { t: 'Echo spotted', p: (b, n) => ['I can smell the Echo on <b>' + b + '</b> (the Destination Well column gives ' + (n > 1 ? 'them' : 'it') + ' away). Readers get XLS/XLSX in this box.', 'The Echo CSV goes in the box on the left.'] },
+    { t: 'Somebody’s lost', p: (b, n) => ['<b>' + b + '</b> ' + (n > 1 ? 'are' : 'is') + ' an Echo report wandering around the reader box.', 'Reader files stay here on the right; the Echo CSV goes in the box on the left.'] }
+  ],
+  swapped: [
+    { t: 'Looks like they swapped places', p: (a, b, na, nb) => ['Plot twist: <b>' + b + '</b> ' + (nb > 1 ? 'look' : 'looks') + ' like the Echo transfer report, and <b>' + a + '</b> ' + (na > 1 ? 'are reader files' : 'is a reader file') + '. Easy mix-up.', 'The Echo CSV goes in the box on the left, the PHERAstar / GloMax files in the one on the right.'] },
+    { t: 'Left, meet right', p: (a, b) => ['Classic. <b>' + a + '</b> sat down in the Echo seat and <b>' + b + '</b> took the reader seat: each in the other’s place.', 'Echo CSV on the left, reader files on the right, and everyone’s happy again.'] },
+    { t: 'Mirror day?', p: (a, b) => ['Everything is here, just on the wrong sides: <b>' + b + '</b> where the reader files go, <b>' + a + '</b> where the Echo CSV goes.', 'Left is for the Echo, right is for the reader. Try again, no hard feelings.'] },
+    { t: 'The great file swap', p: (a, b) => ['Left and right got confused today. <b>' + b + '</b> is the Echo’s, <b>' + a + '</b> is the reader’s.', 'Echo CSV in the box on the left, PHERAstar / GloMax in the box on the right, and we’re friends again.'] },
+    { t: 'Well, that’s backwards', p: (a, b) => ['Wrong way round, champion: the Echo transfer report (<b>' + b + '</b>) went in the reader box and the reader file (<b>' + a + '</b>) in the Echo box.', 'The Echo CSV belongs on the left, the reader files on the right.'] }
+  ]
+};
+let _wpLast = {};
+function _wpPick(kind) {
+  const n = _WP_V[kind].length; let k = window._wpForce != null ? window._wpForce % n : Math.floor(Math.random() * n);
+  if (window._wpForce == null && n > 1 && k === _wpLast[kind]) k = (k + 1 + Math.floor(Math.random() * (n - 1))) % n;
+  _wpLast[kind] = k; return k;
 }
 // items: [{ name, box: 'echo' | 'reader' }] — the box the file was dropped in. Calls while the notice is open add to it.
 function echoWrongBox(items) {
   const have = window._wpItems = window._wpItems || [];
   items.forEach(i => { if (!have.some(h => h.name === i.name && h.box === i.box)) have.push(i); });
   const inEcho = have.filter(i => i.box === 'echo'), inRdr = have.filter(i => i.box === 'reader');
-  const list = a => a.map(i => '<b>' + esc(i.name) + '</b>').join(', ');
-  const swapped = inEcho.length && inRdr.length;
-  const title = swapped ? 'Looks like they swapped places' : 'Hmm, wrong box?';
-  let body = '';
-  if (swapped) body = '<p>Plot twist: ' + list(inRdr) + (inRdr.length > 1 ? ' look' : ' looks') + ' like the Echo transfer report, and ' + list(inEcho) + (inEcho.length > 1 ? ' are' : ' is') + ' a reader file. Easy mix-up.</p>'
-    + '<p>The Echo CSV goes in the box on the left, the PHERAstar / GloMax files in the one on the right.</p>';
-  else {
-    if (inEcho.length) body += '<p>' + list(inEcho) + (inEcho.length > 1 ? ' look' : ' looks') + ' like a plate-reader export, not an Echo transfer report. This box wants the Echo’s CSV, the one that says what went into every well.</p>'
-      + '<p>Reader files (PHERAstar, GloMax) go in the box on the right.</p>';
-    if (inRdr.length) body += '<p>' + list(inRdr) + (inRdr.length > 1 ? ' look' : ' looks') + ' like the Echo transfer report, and this box is for the reader’s XLS/XLSX: one file per plate, the barcode in its name.</p>'
-      + '<p>The Echo CSV goes in the box on the left.</p>';
-  }
+  const list = a => a.map(i => esc(i.name)).join(', ');
+  const kind = inEcho.length && inRdr.length ? 'swapped' : inEcho.length ? 'rdrInEcho' : 'echoInRdr';
+  const pk = window._wpPicked = window._wpPicked || {}; if (pk[kind] == null) pk[kind] = _wpPick(kind);
+  const v = _WP_V[kind][pk[kind]], A = list(inEcho), B = list(inRdr);
+  const title = v.t;
+  let body = (kind === 'swapped' ? v.p(A, B, inEcho.length, inRdr.length) : kind === 'rdrInEcho' ? v.p(A, inEcho.length) : v.p(B, inRdr.length)).map(x => '<p>' + x + '</p>').join('');
   let o = document.getElementById('wp-overlay');
   if (!o) {
     o = document.createElement('div'); o.id = 'wp-overlay'; o.className = 'setup-overlay';

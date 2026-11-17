@@ -3118,7 +3118,7 @@ if (run('E83')) await guard('E83', async () => {
     const rdrF = n => new File([Uint8Array.from(atob(_TEST_READERS[0].b64), ch => ch.charCodeAt(0))], n, { type: mime });
     const ownCsv = new File(['A,B\n1,2\n'], 'plate_values.csv', { type: 'text/csv' });
     const drop = async (zone, files) => { const dt = new DataTransfer(); files.forEach(f => dt.items.add(f)); document.getElementById(zone).dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true })); await new Promise(r => setTimeout(r, 120)); };
-    const reset = () => { echoFile = null; echoFiles = []; readerFiles = {}; const o = document.getElementById('wp-overlay'); if (o) o.remove(); window._wpItems = []; };
+    const reset = () => { echoFile = null; echoFiles = []; readerFiles = {}; _wpClose(); };
     const note = () => { const o = document.getElementById('wp-overlay'); return o ? { title: o.querySelector('#wp-title').textContent, text: o.querySelector('#wp-body').textContent, n: document.querySelectorAll('#wp-overlay').length, dlg: !!o.querySelector('[role=dialog][aria-modal=true]') } : null; };
     const o = {};
     reset(); await drop('echo-zone', [rdrF('E5XX-0001.xlsx')]); o.rdrInEcho = { files: echoFiles.length, note: note() };
@@ -3130,8 +3130,21 @@ if (run('E83')) await guard('E83', async () => {
     reset(); await drop('echo-zone', [rdrF('a.xlsx')]); const ok = document.getElementById('wp-ok'); o.focus = document.activeElement === ok; window.__drop = drop; window.__rdr = rdrF;
     const rect = (await (async () => { const cd = document.querySelector('.wp-card'); if (!cd) return { l: -1, t: -1, r: 0, b: 0, w: 0, h: 0 }; const r = cd.getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom, w: innerWidth, h: innerHeight }; })());
     o.inView = rect.l >= 0 && rect.t >= 0 && rect.r <= rect.w && rect.b <= rect.h;
+    // every wording variant, each case: names the file, says which box it goes in, nothing left blank
+    o.variants = [];
+    for (let k = 0; k < 5; k++) {
+      window._wpForce = k;
+      for (const [kind, run] of [['rdrInEcho', async () => drop('echo-zone', [rdrF('V-one.xlsx'), rdrF('V-two.xlsx')])], ['echoInRdr', async () => drop('reader-zone', [echoF('V-one.csv')])], ['swapped', async () => { await drop('echo-zone', [rdrF('V-one.xlsx')]); await drop('reader-zone', [echoF('V-two.csv')]); }]]) {
+        reset(); await run(); const n = note(); o.variants.push({ k, kind, title: n && n.title, text: n && n.text });
+      }
+    }
+    window._wpForce = null; reset();
+    // the wording is chosen once per notice: a second file dropped while it is open does not reshuffle it
+    window._wpForce = null; await drop('echo-zone', [rdrF('S1.xlsx')]); const t1 = note().title; await drop('echo-zone', [rdrF('S2.xlsx')]); o.stable = { t1, t2: note().title, n: document.querySelectorAll('#wp-overlay').length }; reset(); await drop('echo-zone', [rdrF('a.xlsx')]);
     return o;
   });
+  check('E83', 'every wording variant (5 per case) names its file(s), says which box it goes in, is not blank or undefined', R.variants.length === 15 && R.variants.every(v => v.title && v.text && /V-/.test(v.text) && (v.kind === 'rdrInEcho' ? /right/i : v.kind === 'echoInRdr' ? /left/i : /left[\s\S]*right|right[\s\S]*left/i).test(v.text) && !/undefined|NaN/.test(v.title + v.text)) && new Set(R.variants.filter(v => v.kind === 'swapped').map(v => v.title)).size === 5, { n: R.variants.length, titles: R.variants.filter(v => v.kind === 'swapped').map(v => v.title), bad: R.variants.filter(v => !v.title || !v.text || !/V-/.test(v.text)).map(v => v.kind + v.k) });
+  check('E83', 'the wording stays the same while one notice is open', R.stable.t1 === R.stable.t2 && R.stable.n === 1, R.stable);
   // real key presses: the Setup dialog is open behind the notice and listens for Esc and Tab on the document too
   const open = () => q.evaluate(() => ({ note: !!document.getElementById('wp-overlay'), setup: !document.getElementById('setup-modal').classList.contains('hidden') }));
   const K = {}; K.start = await open();
@@ -3143,7 +3156,7 @@ if (run('E83')) await guard('E83', async () => {
   check('E83', 'Esc, Enter, the button and a click outside each close the notice and leave Setup open; Tab stays on the button', K.start.note && K.start.setup && !K.esc.note && K.esc.setup && !K.enter.note && K.enter.setup && K.tab.note && K.tab.onOk && !K.click.note && K.click.setup && !K.back.note && K.back.setup, K);
   check('E83', 'a reader workbook in the Echo box is left out and the notice names it and says where it goes', R.rdrInEcho.files === 0 && R.rdrInEcho.note && /E5XX-0001\.xlsx/.test(R.rdrInEcho.note.text) && /right/.test(R.rdrInEcho.note.text) && R.rdrInEcho.note.dlg, R.rdrInEcho);
   check('E83', 'the Echo transfer CSV in the reader box is left out and the notice says it goes on the left', R.echoInRdr.files === 0 && R.echoInRdr.note && /1777972507\.csv/.test(R.echoInRdr.note.text) && /left/.test(R.echoInRdr.note.text), R.echoInRdr);
-  check('E83', 'both swapped is ONE notice that says so, and neither file is loaded', R.swapped.echo === 0 && R.swapped.rdr === 0 && R.swapped.note && R.swapped.note.n === 1 && /swapped/i.test(R.swapped.note.title), R.swapped);
+  check('E83', 'both swapped is ONE notice that says so, and neither file is loaded', R.swapped.echo === 0 && R.swapped.rdr === 0 && R.swapped.note && R.swapped.note.n === 1 && R.swapped.note.title.length > 3, R.swapped);
   check('E83', 'each file in its own box: loaded, and no notice', R.right.echo === 1 && R.right.rdr >= 1 && !R.right.note, R.right);
   check('E83', 'a mixed drop keeps what belongs and flags only the rest', R.mixed.echo.length === 1 && R.mixed.echo[0] === 'Transfer.csv' && R.mixed.note && /E5XX-0001\.xlsx/.test(R.mixed.note.text) && !/Transfer\.csv/.test(R.mixed.note.text), R.mixed);
   check('E83', 'a reader’s own CSV (no Echo columns) is not mistaken for the Echo report: it is read as before, no notice', R.ownCsv.rdr.length === 1 && !R.ownCsv.note, R.ownCsv);
