@@ -3377,7 +3377,7 @@ function setupDrop(zoneId, inputId, onFiles) {
 // Echo report in the reader box only fails later, in the Console. Say so at the door, leave the file out, and keep
 // it to a light word. A CSV in the reader box is flagged only when it reads as an Echo report (a reader's own CSV
 // is still read), a workbook in the Echo box always.
-const _WP_ECHO = /Destination\s*Well/i;
+const _WP_ECHO = /destination.?(well|plate)/i;
 async function _looksLikeEchoReport(f) { try { return _WP_ECHO.test(await f.slice(0, 16384).text()); } catch (e) { return false; } }
 function _wpClose() {
   const o = document.getElementById('wp-overlay'); if (!o) return;
@@ -3402,6 +3402,13 @@ const _WP_V = {
     { t: 'Echo spotted', p: (b, n) => ['I can smell the Echo on <b>' + b + '</b> (the Destination Well column gives ' + (n > 1 ? 'them' : 'it') + ' away). Readers get XLS/XLSX in this box.', 'The Echo CSV goes in the box on the left.'] },
     { t: 'Somebody’s lost', p: (b, n) => ['<b>' + b + '</b> ' + (n > 1 ? 'are' : 'is') + ' an Echo report wandering around the reader box.', 'Reader files stay here on the right; the Echo CSV goes in the box on the left.'] }
   ],
+  other: [
+    { t: 'Hmm, what is that?', p: (a, n, w) => ['I don’t know what <b>' + a + '</b> ' + (n > 1 ? 'are' : 'is') + ', but ' + (n > 1 ? 'they are' : 'it is') + ' not a data file I can read here.', w] },
+    { t: 'Not on the guest list', p: (a, n, w) => ['<b>' + a + '</b> ' + (n > 1 ? 'are' : 'is') + ' not on the guest list, and everything else gets turned away at the door.', w] },
+    { t: 'Random file alert', p: (a, n, w) => ['<b>' + a + '</b> look' + (n > 1 ? '' : 's') + ' like ' + (n > 1 ? 'random files' : 'a random file') + ' that wandered in by mistake.', w] },
+    { t: 'That’s… not it', p: (a, n, w) => ['I looked at <b>' + a + '</b> from every angle and ' + (n > 1 ? 'none of them is' : 'it is not') + ' what ' + (n > 1 ? 'these boxes' : 'this box') + ' is after.', w] },
+    { t: 'Nothing personal, but no', p: (a, n, w) => ['<b>' + a + '</b>, you’re lovely, but you are not what ' + (n > 1 ? 'these boxes are' : 'this box is') + ' looking for.', w] }
+  ],
   swapped: [
     { t: 'Looks like they swapped places', p: (a, b, na, nb) => ['Plot twist: <b>' + b + '</b> ' + (nb > 1 ? 'look' : 'looks') + ' like the Echo transfer report, and <b>' + a + '</b> ' + (na > 1 ? 'are reader files' : 'is a reader file') + '. Easy mix-up.', 'The Echo CSV goes in the box on the left, the PHERAstar / GloMax files in the one on the right.'] },
     { t: 'Left, meet right', p: (a, b) => ['Classic. <b>' + a + '</b> sat down in the Echo seat and <b>' + b + '</b> took the reader seat: each in the other’s place.', 'Echo CSV on the left, reader files on the right, and everyone’s happy again.'] },
@@ -3420,13 +3427,18 @@ function _wpPick(kind) {
 function echoWrongBox(items) {
   const have = window._wpItems = window._wpItems || [];
   items.forEach(i => { if (!have.some(h => h.name === i.name && h.box === i.box)) have.push(i); });
-  const inEcho = have.filter(i => i.box === 'echo'), inRdr = have.filter(i => i.box === 'reader');
+  const inEcho = have.filter(i => i.box === 'echo' && i.what === 'reader'), inRdr = have.filter(i => i.box === 'reader' && i.what === 'echo'), other = have.filter(i => i.what === 'other');
   const list = a => a.map(i => esc(i.name)).join(', ');
-  const kind = inEcho.length && inRdr.length ? 'swapped' : inEcho.length ? 'rdrInEcho' : 'echoInRdr';
+  const kind = inEcho.length && inRdr.length ? 'swapped' : inEcho.length ? 'rdrInEcho' : inRdr.length ? 'echoInRdr' : 'other';
   const pk = window._wpPicked = window._wpPicked || {}; if (pk[kind] == null) pk[kind] = _wpPick(kind);
-  const v = _WP_V[kind][pk[kind]], A = list(inEcho), B = list(inRdr);
+  const v = _WP_V[kind][pk[kind]], A = list(inEcho), B = list(inRdr), O = list(other);
   const title = v.t;
-  let body = (kind === 'swapped' ? v.p(A, B, inEcho.length, inRdr.length) : kind === 'rdrInEcho' ? v.p(A, inEcho.length) : v.p(B, inRdr.length)).map(x => '<p>' + x + '</p>').join('');
+  const wantE = 'This box wants the Echo’s transfer CSV, the one that says what went into every well.', wantR = 'This box wants the plate reader’s XLS/XLSX files: one per plate, the barcode in the file name.';
+  const wants = other.every(i => i.box === 'echo') ? wantE : other.every(i => i.box === 'reader') ? wantR : 'The Echo’s transfer CSV goes in the box on the left, the plate reader’s XLS/XLSX files in the box on the right.';
+  const paras = kind === 'swapped' ? v.p(A, B, inEcho.length, inRdr.length) : kind === 'rdrInEcho' ? v.p(A, inEcho.length) : kind === 'echoInRdr' ? v.p(B, inRdr.length) : v.p(O, other.length, wants);
+  // something that is neither alongside a right-but-misplaced file: one plain extra line
+  if (kind !== 'other' && other.length) paras.push('<b>' + O + '</b> ' + (other.length > 1 ? 'aren’t' : 'isn’t') + ' something I can read in either box.');
+  let body = paras.map(x => '<p>' + x + '</p>').join('');
   let o = document.getElementById('wp-overlay');
   if (!o) {
     o = document.createElement('div'); o.id = 'wp-overlay'; o.className = 'setup-overlay';
@@ -3443,9 +3455,10 @@ function echoWrongBox(items) {
   o.querySelector('#wp-body').innerHTML = body;
 }
 setupDrop('echo-zone','echo-input', files => {
-  // A workbook here is a reader file: say so and leave it out; whatever is right in the same drop still goes in.
-  { const all = Array.from(files), bad = all.filter(f => /\.xlsx?$/i.test(f.name));
-    if (bad.length) { echoWrongBox(bad.map(f => ({ name: f.name, box: 'echo' }))); files = all.filter(f => !bad.includes(f)); } }
+  // A workbook here is a reader file, anything that is not a CSV/text file is a stranger: say so and leave it out;
+  // whatever is right in the same drop still goes in.
+  { const all = Array.from(files), what = f => /\.xlsx?$/i.test(f.name) ? 'reader' : /\.(csv|txt|tsv)$/i.test(f.name) ? null : 'other', bad = all.filter(f => what(f));
+    if (bad.length) { echoWrongBox(bad.map(f => ({ name: f.name, box: 'echo', what: what(f) }))); files = all.filter(f => !bad.includes(f)); } }
   if (!files.length) return;
   Array.from(files).forEach(f => { if (!echoFiles.find(e=>e.name===f.name)) echoFiles.push(f); });
   // An analysis has a name (History keeps it under that name): suggest one from the transfer file, to be edited.
@@ -3457,9 +3470,10 @@ setupDrop('echo-zone','echo-input', files => {
   checkReady();
 });
 setupDrop('reader-zone','reader-input', async files => {
+  // The reader box takes XLS/XLSX only. A CSV that reads as an Echo report is the swap; any other file is a stranger.
   { const all = Array.from(files), bad = [];
-    for (const f of all) if (/\.csv$/i.test(f.name) && await _looksLikeEchoReport(f)) bad.push(f);
-    if (bad.length) { echoWrongBox(bad.map(f => ({ name: f.name, box: 'reader' }))); files = all.filter(f => !bad.includes(f)); if (!files.length) return; } }
+    for (const f of all) if (!/\.xlsx?$/i.test(f.name)) bad.push({ name: f.name, box: 'reader', what: /\.(csv|txt|tsv)$/i.test(f.name) && await _looksLikeEchoReport(f) ? 'echo' : 'other', f });
+    if (bad.length) { echoWrongBox(bad.map(b => ({ name: b.name, box: b.box, what: b.what }))); files = all.filter(f => !bad.some(b => b.f === f)); if (!files.length) return; } }
   // One workbook holding several plates (a PHERAstar run exported whole) becomes one reader file per plate, named
   // for its ID1, so everything below — names, pairing, protocol — sees plates exactly as when they came one by one.
   const all = await RDR.expand(Array.from(files));
