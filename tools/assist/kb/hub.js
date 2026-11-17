@@ -85,7 +85,7 @@ assistRegister('hub', {
       a: 'No. Sign-in is only for the lab’s admin: it switches on the private notebook and syncs it to that account. Every public tool works without it.' },
     { id: 'workspace', t: 'The rail: Journal, Planner and the rest', group: 'Signed in', admin: true, on: ['ws-planner', 'ws-experiments', 'ws-notebook', 'ws-analysis', 'ws-archive', 'ws-cells', 'ws-more'],
       q: ['rail', 'sidebar', 'menu', 'planner', 'journal', 'designer', 'workspaces', 'barra lateral', 'menu lateral'],
-      a: ['Signed in, the rail down the left names the workspaces: **Journal**, **Planner**, **Experiments** and **Designer** (all Labbook), then **Data Analysis**, **Archive**, **Cells** and **More apps**.',
+      a: ['Signed in, the rail down the left names the workspaces: **Journal**, **Planner**, **Experiments**, **Meetings** and **Designer** (all Labbook), then **Data Analysis**, **Archive**, **Cells** and **More apps**.',
           'On a phone it becomes the tab bar along the bottom.'],
       show: { sel: '#ws-rail', say: 'The workspaces.' } },
     { id: 'sync', t: 'Is it on my other computer?', group: 'Signed in', admin: true,

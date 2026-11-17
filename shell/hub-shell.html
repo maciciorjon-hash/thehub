@@ -3349,14 +3349,15 @@ function _replayDeepLink(){
 // labbook-standalone. Rendering a second copy here from Labbook's localStorage snapshot is
 // exactly the duplication this rework exists to remove.
 // ══════════════════════════════════════════════════════════════════════════
-// Labbook is four workspaces in one frame — the Journal, the Planner (Today · Week), Experiments
-// (projects, folders, every experiment) and the Designer — so the rail names the WORKSPACE and
+// Labbook is five workspaces in one frame — the Journal, the Planner (Today · Week), Experiments
+// (projects, folders, every experiment), Meetings (filed by project or topic) and the Designer — so the rail names the WORKSPACE and
 // Labbook's own left column names the surface inside it. The Journal comes first (2026-10-12):
 // the day is written there, and the Planner's Today is one step along.
 var WS_NAV = [
   { id:'notebook',    name:'Journal',     icon:'notebook',   kind:'labbook', view:'notebook' },
   { id:'planner',     name:'Planner',     icon:'planner',    kind:'labbook', view:'planner' },
   { id:'experiments', name:'Experiments', short:'Exps', icon:'experiments',kind:'labbook', view:'experiments' },   // 'Experiments' does not fit the compact rail
+  { id:'meetings',    name:'Meetings',    icon:'meetings',   kind:'labbook', view:'meetings' },
   // Last of the Labbook surfaces on purpose: you author a design occasionally and plan,
   // record and analyse against it every day, so it must not push the daily ones down.
   { id:'designer',    name:'Designer',    icon:'designer',   kind:'labbook', view:'designer' },
@@ -3371,6 +3372,7 @@ var WS_NAV = [
 var WS_ICONS = {
   cloud:'<svg class="ic ui-cloud" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" shape-rendering="geometricPrecision" aria-hidden="true"><path class="fl" fill="currentColor" stroke="none" opacity=".16" d="M7.5 18.5h9.2a3.8 3.8 0 0 0 .4-7.58A5.4 5.4 0 0 0 6.8 9.9 4.3 4.3 0 0 0 7.5 18.5z"/><path d="M7.5 18.5h9.2a3.8 3.8 0 0 0 .4-7.58A5.4 5.4 0 0 0 6.8 9.9 4.3 4.3 0 0 0 7.5 18.5z"/></svg>',
   planner:'<svg class="ic ui-planner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" shape-rendering="geometricPrecision" aria-hidden="true"><path class="fl" fill="currentColor" stroke="none" opacity=".16" d="M3.5 9.5V7.5A2.5 2.5 0 0 1 6 5h12a2.5 2.5 0 0 1 2.5 2.5v2z"/><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 9.5h17M8 3v4M16 3v4"/><path class="m1" d="M8.8 15l2.2 2.2 4.2-4.4" pathLength="1"/></svg>',
+  meetings:'<svg class="ic ui-meetings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" shape-rendering="geometricPrecision" aria-hidden="true"><circle class="fl" fill="currentColor" stroke="none" opacity=".16" cx="9" cy="8.2" r="3.2"/><circle cx="9" cy="8.2" r="3.2"/><path d="M3.5 19.5c.5-3.3 2.7-5 5.5-5s5 1.7 5.5 5"/><circle class="m1" cx="17.2" cy="9.4" r="2.3"/><path class="m1" d="M16.3 14.4c2.5-.2 4.2 1.2 4.7 4.1"/></svg>',
   experiments:'<svg class="ic ui-experiments" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" shape-rendering="geometricPrecision" aria-hidden="true"><path class="fl" fill="currentColor" stroke="none" opacity=".16" d="M6.9 15.3h10.2l2 3.4a1.6 1.6 0 0 1-1.4 2.3H6.3a1.6 1.6 0 0 1-1.4-2.3z"/><path d="M9.5 3.5h5"/><path d="M10.2 3.5v6.1L4.9 18.7A1.6 1.6 0 0 0 6.3 21h11.4a1.6 1.6 0 0 0 1.4-2.3L13.8 9.6V3.5"/><path class="m1" d="M8.4 15.3h7.2" pathLength="1"/><circle class="m1" cx="12" cy="18.1" r=".95" fill="currentColor" stroke="none"/></svg>',
   fold:'<svg class="ic ui-fold" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" shape-rendering="geometricPrecision" aria-hidden="true"><path class="fl" fill="currentColor" stroke="none" opacity=".16" d="M6 4.5h3v15H6a2.5 2.5 0 0 1-2.5-2.5V7A2.5 2.5 0 0 1 6 4.5z"/><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M9 4.5v15"/><path class="cv" d="M15.5 9.5 13 12l2.5 2.5"/></svg>',
   antibody:'<svg class="ic ui-antibody" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" shape-rendering="geometricPrecision" aria-hidden="true"><path d="M12 20.5V14L6.5 7.5M12 14l5.5-6.5"/><path class="m1" d="M5.1 10.6l2.6 3M18.9 10.6l-2.6 3" opacity=".55"/><circle cx="6.5" cy="7.5" r="1.2" fill="currentColor" stroke="none"/><circle cx="17.5" cy="7.5" r="1.2" fill="currentColor" stroke="none"/></svg>',
@@ -3932,7 +3934,7 @@ window.addEventListener('message', function(e) {
   // experiment from the Designer, following a link out of the Journal — and the rail, which is
   // set by the button you pressed, went stale every time.
   if (e.data && e.data.type === 'lb:ws' && currentApp === 'labbook') {
-    var _m = {planner:'planner', experiments:'experiments', notebook:'notebook', designer:'designer'}[e.data.ws];
+    var _m = {planner:'planner', experiments:'experiments', meetings:'meetings', notebook:'notebook', designer:'designer'}[e.data.ws];
     var _n = _m && WS_NAV.filter(function(x){ return x.id===_m; })[0];
     if (_n && _wsSection !== _m) { _wsSection = _m; renderRail(); wsSetWhere(_n.name); }
   }
@@ -5202,7 +5204,7 @@ assistRegister('hub', {
       a: 'No. Sign-in is only for the lab’s admin: it switches on the private notebook and syncs it to that account. Every public tool works without it.' },
     { id: 'workspace', t: 'The rail: Journal, Planner and the rest', group: 'Signed in', admin: true, on: ['ws-planner', 'ws-experiments', 'ws-notebook', 'ws-analysis', 'ws-archive', 'ws-cells', 'ws-more'],
       q: ['rail', 'sidebar', 'menu', 'planner', 'journal', 'designer', 'workspaces', 'barra lateral', 'menu lateral'],
-      a: ['Signed in, the rail down the left names the workspaces: **Journal**, **Planner**, **Experiments** and **Designer** (all Labbook), then **Data Analysis**, **Archive**, **Cells** and **More apps**.',
+      a: ['Signed in, the rail down the left names the workspaces: **Journal**, **Planner**, **Experiments**, **Meetings** and **Designer** (all Labbook), then **Data Analysis**, **Archive**, **Cells** and **More apps**.',
           'On a phone it becomes the tab bar along the bottom.'],
       show: { sel: '#ws-rail', say: 'The workspaces.' } },
     { id: 'sync', t: 'Is it on my other computer?', group: 'Signed in', admin: true,
@@ -5409,7 +5411,7 @@ assistRegister('hub', {
       { id: 'start', t: 'How Labbook fits together', group: 'Getting started', on: ['journal'],
         q: ['how does it work', 'overview', 'get started', 'how to use', 'tutorial', 'where do i begin', 'planner', 'journal', 'como funciona', 'como se usa', 'empezar', 'por donde empiezo', 'primeros pasos'],
         a: 'The unit of Labbook is the **experiment**. You design one; it expands into dated steps; each day shows the steps due that day. Four areas:',
-        steps: ['**Journal:** one page per day, written from what you ticked, plus free Notes.', '**Planner:** Today and the Week — what to do, day by day.', '**Experiments:** every project, folder and experiment, and how each is going.', '**Designer:** build an experiment out of modules and save it to reuse.'],
+        steps: ['**Journal:** one page per day, written from what you ticked, plus free Notes.', '**Planner:** Today and the Week — what to do, day by day.', '**Experiments:** every project, folder and experiment, and how each is going.', '**Meetings:** every meeting filed by project or topic, with the regulars, agenda, notes, decisions, actions and a PDF of the minutes.', '**Designer:** build an experiment out of modules and save it to reuse.'],
         tip: 'Take the tour any time from the gear → Help.',
         go: [{ l: 'Take the tour', fn: 'startTour' }], see: ['new-exp', 'today', 'journal'] },
       { id: 'new-exp', t: 'Create an experiment', group: 'Getting started', on: ['journal', 'exps', 'folder'],

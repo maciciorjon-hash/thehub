@@ -1,10 +1,10 @@
-// Meetings invariants — every Labbook project has a Meetings section, written in the Journal's own editor.
+// Meetings invariants — Meetings is a Labbook workspace of its own (filed by project or topic), written in the Journal's own editor.
 //
 // A meeting is a record in LB.data.meetings (a cloud map), not a Journal page: the Journal migration files any page that
 // is not a Note into a day and deletes it, so a meeting kept as a page would have gone. Drives labbook.html itself.
 //
-//   MT1  nav       Meetings is its own entry beside All experiments (not one per project); it opens the overview across every
-//                  project and topic; the node is in Experiments, the crumb says where
+//   MT1  nav       Meetings is its own workspace (one entry in Labbook's own switcher, none per project, none in the Experiments column);
+//                  it opens the overview across every project and topic and remembers where you left it; the crumb says where
 //   MT2  create    each of the eight kinds makes a record under the project, with its agenda and notes skeleton; place and
 //                  times come from the last meeting of that kind, people from the project's regulars; dated ahead = Planned
 //   MT12 dialog    "+ New" asks for the project or topic (dropdown, with "new project or topic"), the kind and the date, and
@@ -66,11 +66,15 @@ try {
   {
     await E(() => { selectNode('exps'); LB.data.projects.forEach(x => EXPANDED[x.id] = true); renderSections(); });
     const leaves = await E(() => [...document.querySelectorAll('#pane-sec .sec-item')].filter(x => /^Meetings/.test(x.textContent.trim()) && !x.classList.contains('sub')).length);
-    eq('MT1', 'one Meetings entry in the Experiments column, not one per project', leaves, 1);
+    eq('MT1', 'one Meetings entry in the workspace switcher, not one per project', leaves, 1);
+    eq('MT1', 'and none below the Experiments heading', await E(() => { const c = document.getElementById('pane-sec'), l = [...c.querySelectorAll('.pane-lbl')].filter(x => /^Experiments/.test(x.textContent.trim()))[0]; return l ? [...c.querySelectorAll('.sec-item')].filter(x => l.compareDocumentPosition(x) & 4 && !x.classList.contains('sub') && /^Meetings/.test(x.textContent.trim())).length : -1; }), 0);
     await p.locator('#pane-sec .sec-item', { hasText: /^Meetings/ }).first().click(); await p.waitForTimeout(300);
     const s = await E(() => ({ k: SEL.node.kind, ws: lbWorkspace(), crumb: [...document.querySelectorAll('#topbar .crumb-s')].map(x => x.textContent), home: !!document.querySelector('#pane-ed .mtg-home'), list: !!document.querySelector('#pane-pages .pages-hd'), active: [...document.querySelectorAll('#pane-sec .sec-item.active')].some(x => /^Meetings/.test(x.textContent.trim())) }));
-    eq('MT1', 'the entry opens the overview in Experiments', [s.k, s.ws, s.home, s.list, s.active], ['meetings', 'experiments', true, true, true]);
+    eq('MT1', 'the entry opens the overview in its own workspace', [s.k, s.ws, s.home, s.list, s.active], ['meetings', 'meetings', true, true, true]);
     yes('MT1', 'the crumb names Meetings', s.crumb.includes('Meetings'));
+    const back = await E(() => { const pj = LB.data.projects[0].id; mtgOpen(pj, null); selectNode('exps'); const inExps = lbWorkspace(); openMeetingsWs(); return [inExps, lbWorkspace(), MTG_PROJ === pj]; });
+    eq('MT1', 'Experiments is left, and coming back to Meetings finds the project you were looking at', back, ['experiments', 'meetings', true]);
+    await E(() => { MTG_PROJ = ''; });
   }
 
   // ── MT2 create

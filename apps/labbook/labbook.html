@@ -12967,6 +12967,7 @@ var LB_TABS=[
 ];
 function _tabFor(node){ var k=node.kind, surf=lbSurface();
   if(k==='journal') return 'today';
+  if(k==='meetings') return '';   // its own workspace; on a phone it is reached from More
   if(surf==='exps'||k==='expsec') return 'exps';
   if(k==='nb') return 'notebook';
   if(k==='cells') return 'cells';
@@ -13049,6 +13050,7 @@ function lbMoreMenu(ev){
     {label:'Search', sub:'experiments, steps, protocols, wells…', fn:function(){ openSpot(); }},
     (archiveEmbedded()?{label:'Protocols', sub:'the Archive, with its calculators', fn:function(){ selectNode('archive'); }}:null),
     (cellsEmbedded()?{label:'Journal', sub:'free notes, by day', fn:function(){ openJournalWs(); }}:null),
+    {label:'Meetings', sub:'by project or topic, with actions and minutes', fn:function(){ openMeetingsWs(); }},
     {label:'Week planner', fn:function(){ selectNode('week'); }},
     {label:'What you need today', sub:'every material the steps due today consume', fn:function(){ openPrepSheet({date:todayStr()}); }},
     {sep:true},
@@ -13078,7 +13080,7 @@ function journalSurface(k){ return k==='journal'||k==='week'; }
 function expsSurface(k){ return k==='exps'||k==='expsec'||k==='meetings'; }
 function nbSurface(k){ return k==='nb'; }
 function lbSurface(){ var k=SEL.node.kind; return expsSurface(k)?'exps':journalSurface(k)?'journal':nbSurface(k)?'notebook':k; }
-function lbWorkspace(){ var k=SEL.node.kind; return k==='design'?'designer':nbSurface(k)?'notebook':expsSurface(k)?'experiments':'planner'; }
+function lbWorkspace(){ var k=SEL.node.kind; return k==='design'?'designer':nbSurface(k)?'notebook':k==='meetings'?'meetings':expsSurface(k)?'experiments':'planner'; }
 function selectPage(id){ if(id!==SEL.page) EXP_TAB=_defaultExpTab(); SEL.page=id; renderAll(); }
 // ── Notebook navigation ──
 // The node's projectId slot carries the notebook id (so nodeEq/secLeaf/selectNode keep their
@@ -13087,8 +13089,8 @@ function selectPage(id){ if(id!==SEL.page) EXP_TAB=_defaultExpTab(); SEL.page=id
 // time (OneNote reopens the page you were on). Per device, in localStorage, never in LB.data:
 // where *you* were is not a fact about the notebook. A saved node whose record no longer
 // exists falls back to Today.
-function _wsLastFrom(v){ var o={notebook:null, planner:null, experiments:null, ws:null};
-  if(v&&typeof v==='object'){ o.notebook=v.notebook||null; o.planner=v.planner||null; o.experiments=v.experiments||null; o.ws=v.ws||null;
+function _wsLastFrom(v){ var o={notebook:null, planner:null, experiments:null, meetings:null, ws:null};
+  if(v&&typeof v==='object'){ o.notebook=v.notebook||null; o.planner=v.planner||null; o.experiments=v.experiments||null; o.meetings=v.meetings||null; o.ws=v.ws||null;
     // Experiments was a corner of the Planner until 2026-10-12: what it saved sits under the planner's key.
     var pk=o.planner&&o.planner.node&&o.planner.node.kind;
     if(pk==='exps'||pk==='expsec'){ if(!o.experiments) o.experiments=o.planner; o.planner=null; if(o.ws==='planner') o.ws='experiments'; } }
@@ -13099,7 +13101,7 @@ function _wsTellHost(ws){
   if(ws===_wsToldHost) return; _wsToldHost=ws;
   try{ if(window.parent&&window.parent!==window) window.parent.postMessage({type:'lb:ws',ws:ws},'*'); }catch(e){}
 }
-function _wsRemember(){ try{ localStorage.setItem('lb_last',JSON.stringify({notebook:WS_LAST.notebook, planner:WS_LAST.planner, experiments:WS_LAST.experiments, ws:WS_LAST.ws})); }catch(e){} }
+function _wsRemember(){ try{ localStorage.setItem('lb_last',JSON.stringify({notebook:WS_LAST.notebook, planner:WS_LAST.planner, experiments:WS_LAST.experiments, meetings:WS_LAST.meetings, ws:WS_LAST.ws})); }catch(e){} }
 function _wsRestoreNode(ws){
   var p=ws==='experiments'?WS_LAST.experiments:WS_LAST.planner; if(!p||!p.node) return null;
   var n=p.node;
@@ -13107,7 +13109,6 @@ function _wsRestoreNode(ws){
     if(n.kind==='expsec'){ var pr=projById(n.projectId); if(!pr) return null;
       if(p.page&&!LB.data.experiments[p.page]) return null; return {node:n,page:p.page||null}; }
     if(n.kind==='exps') return {node:{kind:'exps'},page:null};
-    if(n.kind==='meetings'){ var mg=p.page&&(LB.data.meetings||{})[p.page]; return {node:{kind:'meetings',projectId:null,sectionId:null},page:mg?p.page:null}; }
     return null; }
   if(n.kind==='journal'||n.kind==='week') return {node:{kind:n.kind},page:null};
   if(n.kind==='home') return {node:{kind:'journal'},page:null};   // saved before Home went
@@ -13131,6 +13132,9 @@ function openSection(nbId,secId){ openJournalWs(); }
 function openPlannerWs(){ var r=_wsRestoreNode('planner'); if(r){ SEL.node=r.node; SEL.page=r.page; renderAll(); } else selectNode('journal'); }
 // Experiments, where you left it: the list, or the folder and experiment you were in.
 function openExperimentsWs(){ var r=_wsRestoreNode('experiments'); if(r){ SEL.node=r.node; SEL.page=r.page; renderAll(); } else selectNode('exps'); }
+// Meetings, where you left it: the project you were filtering by and the meeting you had open (if it still exists).
+function openMeetingsWs(){ var l=WS_LAST.meetings||{}, m=l.page&&(LB.data.meetings||{})[l.page], pj=l.proj&&projById(l.proj)?l.proj:'';
+  if(m) mtgOpen(m.projectId,m.id); else mtgOpen(pj,null); }
 function openJournalWs(){
   var last=WS_LAST.notebook;
   if(last && last.page){ if(_isDateKey(last.page)) return openDayPage(last.page); if(LB.data.pages[last.page]) return openPage(last.page); }
@@ -13167,12 +13171,13 @@ function _colFootRender(){ var f=el('col-foot'); if(!f) return; if(_phoneTabs())
   // the top bar — this foot used to repeat all three.
   f.innerHTML='<button title="Export — PDF, Word, the clipboard, the numbers, a report" onmousedown="event.preventDefault();exportMenu()">'+tbSvg('<path d="M12 3v12"/><path d="M8 11l4 4 4-4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/>')+'</button>'
     +'<button title="Recover — deleted items, versions, snapshots and backup files" onmousedown="event.preventDefault();openRecover()">'+tbSvg('<path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8"/><path d="M3 3v5h5"/><circle cx="12" cy="12" r="2.5"/>')+'</button>'; }
-// The four workspaces, in the order the dHUB rail lists them.
+// The five workspaces, in the order the dHUB rail lists them.
 function _wsSwitchHtml(ws){
   return '<div class="pane-lbl">Workspaces</div>'
     +secLeaf({kind:'nb'},'Journal',NB_ICON,null,null,ws==='notebook',{onclick:'openJournalWs()'})
     +secLeaf({kind:'journal'},'Planner',HOME_ICON,null,null,ws==='planner',{onclick:'openPlannerWs()'})
     +secLeaf({kind:'exps'},'Experiments',EXPS_ICON,null,null,ws==='experiments',{onclick:'openExperimentsWs()'})
+    +mtgLeafHtml()
     +secLeaf({kind:'design'},'Designer',DESIGN_ICON,null,null,ws==='designer');
 }
 function renderSections(){
@@ -13184,7 +13189,7 @@ function renderSections(){
   // inside dHUB the rail names the workspace, so outside those two the column goes; on a phone the tab bar
   // does that job. Standalone it is the only way between workspaces, so it opens with the four of them and
   // yours lit.
-  if(ws==='notebook'||ws==='designer'){
+  if(ws==='notebook'||ws==='designer'||ws==='meetings'){
     if(hosted||phone){ host.innerHTML=''; return false; }
     host.innerHTML=_wsSwitchHtml(ws); return true;
   }
@@ -13197,7 +13202,7 @@ function renderSections(){
       h+=secLeaf({kind:'week'},'Week',WK_ICON,null,null,k==='week');
       if(archiveEmbedded()) h+=secLeaf({kind:'archive'},'Archive',ARC_ICON,null);
       if(cellsEmbedded()) h+=secLeaf({kind:'cells'},'Cells',CELLS_ICON,null);
-    } else { h+=secLeaf({kind:'exps'},'All experiments',EXPS_ICON,null,null,k==='exps'); h+=mtgLeafHtml(); }
+    } else { h+=secLeaf({kind:'exps'},'All experiments',EXPS_ICON,null,null,k==='exps'); }
   }
   if(phone||ws==='experiments'){
   h+='<div class="pane-lbl">Projects</div>';
@@ -14115,6 +14120,7 @@ function renderPages(){
   document.body.classList.toggle('lb-ws-notebook', ws==='notebook');
   document.body.classList.toggle('lb-ws-planner', ws==='planner');
   document.body.classList.toggle('lb-ws-experiments', ws==='experiments');
+  document.body.classList.toggle('lb-ws-meetings', ws==='meetings');
   document.body.classList.toggle('lb-ws-designer', ws==='designer');
   document.body.classList.toggle('lb-nb-nopage', node.kind==='nb' && !SEL.page);
   // The folder's list stays beside an open experiment (Jon, 2026-09-16: "al abrir un experimento
@@ -14122,6 +14128,7 @@ function renderPages(){
   if(ws==='notebook') WS_LAST.notebook={page:SEL.page};
   else if(ws==='planner' && node.kind!=='archive') WS_LAST.planner={node:{kind:node.kind,projectId:node.projectId||null,sectionId:node.sectionId||null},page:SEL.page};
   else if(ws==='experiments') WS_LAST.experiments={node:{kind:node.kind,projectId:node.projectId||null,sectionId:node.sectionId||null},page:SEL.page};
+  else if(ws==='meetings') WS_LAST.meetings={page:SEL.page,proj:SEL.page?'':MTG_PROJ};
   WS_LAST.ws=ws; _wsRemember();
   // The rail is set by the button you pressed, and Labbook navigates itself all the time —
   // create an experiment from the Designer and the screen is the Planner while the rail still
@@ -19349,7 +19356,7 @@ function mtgSchedule(){ var m=mtgCur(); if(!m) return; var n=m.next||{}; if(!n.d
 
 // ── The sections column and the list ─────────────────────────────────────────────────────────────────
 function mtgLeafHtml(){ var n=mtgAll().length;
-  return secLeaf({kind:'meetings'},'Meetings',MTG_ICON,null,null,(SEL.node&&SEL.node.kind==='meetings'),{meta:n?String(n):''}); }
+  return secLeaf({kind:'meetings'},'Meetings',MTG_ICON,null,null,lbWorkspace()==='meetings',{onclick:'openMeetingsWs()',meta:n?String(n):''}); }
 function _mtgItemHtml(m,showProj){ var t=mtgType(m.type), n=_mtgOpenCount(m), pp=_mtgPresent(m).length, col=NB_COLORS[t.c], D=m.date||'';
   var day=D?String(+D.slice(8,10)):'\u2013', mon=D?['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'][+D.slice(5,7)-1]:'';
   var up=m.status==='planned'&&D>=todayStr(), cx=m.status==='cancelled', pr=showProj?projById(m.projectId):null;
@@ -20377,6 +20384,8 @@ function crumbHtml(){
   } else if(ws==='notebook'){
     S('Journal',"openJournalWs()",!SEL.page);
     if(SEL.page){ if(_isDateKey(SEL.page)) S(fmtDate(SEL.page),null,true); else { var pg=_curPage(); S(pg?pgTitle(pg):'Note',null,true); } }
+  } else if(ws==='meetings'){
+    var m2=mtgCur(), p2=m2?projById(m2.projectId):(MTG_PROJ?projById(MTG_PROJ):null); S('Meetings',"mtgOpen('',null)",!m2&&!p2); if(p2) S(p2.name,"mtgOpen('"+p2.id+"',null)",!m2); if(m2) S(mtgTitle(m2),null,true);
   } else if(ws==='experiments'){
     S('Experiments',"selectNode('exps')",k==='exps');
     if(k==='expsec'){
@@ -20385,8 +20394,6 @@ function crumbHtml(){
       if(p) S(p.name,"selectNode('exps')",false);
       if(sc) S(sc.name,"selectNode('expsec','"+p.id+"','"+sc.id+"')",!e);
       if(e) S(e.code||e.title||'Experiment',null,true);
-    }
-    if(k==='meetings'){ var m2=mtgCur(), p2=m2?projById(m2.projectId):(MTG_PROJ?projById(MTG_PROJ):null); S('Meetings',"mtgOpen('',null)",!m2&&!p2); if(p2) S(p2.name,"mtgOpen('"+p2.id+"',null)",!m2); if(m2) S(mtgTitle(m2),null,true);
     }
   } else {
     S('Planner',"openPlannerWs()",false);
@@ -27588,6 +27595,7 @@ function _restoreWhereLeft(){
   var nb=WS_LAST.notebook;
   if(WS_LAST.ws==='notebook' && nb && nb.page && (_isDateKey(nb.page)||LB.data.pages[nb.page])){ SEL.node=_jrNode(); SEL.page=nb.page; return; }
   if(WS_LAST.ws==='designer'){ SEL.node={kind:'design'}; return; }
+  if(WS_LAST.ws==='meetings'){ openMeetingsWs(); return; }
   var r=_wsRestoreNode(WS_LAST.ws==='experiments'?'experiments':'planner'); if(r){ SEL.node=r.node; SEL.page=r.page; }
 }
 _restoreWhereLeft();
@@ -27838,7 +27846,8 @@ window.addEventListener('message', function(e){
     // wherever the last session ended. Later Planner clicks still return to where you were.
     if(v==='planner'){ if(_first) selectNode('journal'); else if(!journalSurface(SEL.node.kind)) openPlannerWs(); }
     else if(v==='notebook'){ if(lbWorkspace()!=='notebook') openJournalWs(); }
-    else if(v==='experiments'){ if(!expsSurface(SEL.node.kind)) openExperimentsWs(); }
+    else if(v==='experiments'){ if(!expsSurface(SEL.node.kind)||SEL.node.kind==='meetings') openExperimentsWs(); }
+    else if(v==='meetings'){ if(lbWorkspace()!=='meetings') openMeetingsWs(); }
   else if(v==='visualize') openPlannerWs();
     else if(v==='designer') selectNode('design');
     else if(v==='home') selectNode('home');
@@ -28403,7 +28412,7 @@ var assistRegister, assistOpen, assistClose, assistAsk, assistToggle;
       { id: 'start', t: 'How Labbook fits together', group: 'Getting started', on: ['journal'],
         q: ['how does it work', 'overview', 'get started', 'how to use', 'tutorial', 'where do i begin', 'planner', 'journal', 'como funciona', 'como se usa', 'empezar', 'por donde empiezo', 'primeros pasos'],
         a: 'The unit of Labbook is the **experiment**. You design one; it expands into dated steps; each day shows the steps due that day. Four areas:',
-        steps: ['**Journal:** one page per day, written from what you ticked, plus free Notes.', '**Planner:** Today and the Week — what to do, day by day.', '**Experiments:** every project, folder and experiment, and how each is going.', '**Designer:** build an experiment out of modules and save it to reuse.'],
+        steps: ['**Journal:** one page per day, written from what you ticked, plus free Notes.', '**Planner:** Today and the Week — what to do, day by day.', '**Experiments:** every project, folder and experiment, and how each is going.', '**Meetings:** every meeting filed by project or topic, with the regulars, agenda, notes, decisions, actions and a PDF of the minutes.', '**Designer:** build an experiment out of modules and save it to reuse.'],
         tip: 'Take the tour any time from the gear → Help.',
         go: [{ l: 'Take the tour', fn: 'startTour' }], see: ['new-exp', 'today', 'journal'] },
       { id: 'new-exp', t: 'Create an experiment', group: 'Getting started', on: ['journal', 'exps', 'folder'],

@@ -187,6 +187,10 @@ UI_ICONS = {
                     '<path d="M9.5 3.5h5"/><path d="M10.2 3.5v6.1L4.9 18.7A1.6 1.6 0 0 0 6.3 21h11.4a1.6 1.6 0 0 0 1.4-2.3L13.8 9.6V3.5"/>'
                     '<path class="m1" d="M8.4 15.3h7.2" pathLength="1"/>'
                     '<circle class="m1" cx="12" cy="18.1" r=".95" fill="currentColor" stroke="none"/>'),
+    # two people at a table's edge: the one speaking soft-filled, the other (class m1) the part that moves
+    'meetings':  ('<circle '+FL+' cx="9" cy="8.2" r="3.2"/>'
+                  '<circle cx="9" cy="8.2" r="3.2"/><path d="M3.5 19.5c.5-3.3 2.7-5 5.5-5s5 1.7 5.5 5"/>'
+                  '<circle class="m1" cx="17.2" cy="9.4" r="2.3"/><path class="m1" d="M16.3 14.4c2.5-.2 4.2 1.2 4.7 4.1"/>'),
     # a dose response in its frame
     'analysis':  ('<rect '+FL+' x="3.5" y="3.5" width="17" height="17" rx="3.5"/>'
                   '<rect x="3.5" y="3.5" width="17" height="17" rx="3.5"/>'
@@ -266,7 +270,7 @@ APP_FILES = {
     'blot':'apps/western-blot/western-blot.html',
 }
 SHELL = 'shell/hub-shell.html'
-WS_KEYS = ['planner', 'fold', 'cloud', 'antibody', 'primer', 'plasmid', 'notebook', 'designer', 'experiments', 'cells']
+WS_KEYS = ['planner', 'fold', 'cloud', 'antibody', 'primer', 'plasmid', 'notebook', 'designer', 'experiments', 'meetings', 'cells']
 SUITE_KEYS = ['analysis', 'archive', 'apps']
 
 # The tile: neutral, the faintest wash of the app's hue, the glyph in ink and one accent in the

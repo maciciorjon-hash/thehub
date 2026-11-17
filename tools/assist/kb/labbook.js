@@ -23,7 +23,7 @@
       { id: 'start', t: 'How Labbook fits together', group: 'Getting started', on: ['journal'],
         q: ['how does it work', 'overview', 'get started', 'how to use', 'tutorial', 'where do i begin', 'planner', 'journal', 'como funciona', 'como se usa', 'empezar', 'por donde empiezo', 'primeros pasos'],
         a: 'The unit of Labbook is the **experiment**. You design one; it expands into dated steps; each day shows the steps due that day. Four areas:',
-        steps: ['**Journal:** one page per day, written from what you ticked, plus free Notes.', '**Planner:** Today and the Week — what to do, day by day.', '**Experiments:** every project, folder and experiment, and how each is going.', '**Designer:** build an experiment out of modules and save it to reuse.'],
+        steps: ['**Journal:** one page per day, written from what you ticked, plus free Notes.', '**Planner:** Today and the Week — what to do, day by day.', '**Experiments:** every project, folder and experiment, and how each is going.', '**Meetings:** every meeting filed by project or topic, with the regulars, agenda, notes, decisions, actions and a PDF of the minutes.', '**Designer:** build an experiment out of modules and save it to reuse.'],
         tip: 'Take the tour any time from the gear → Help.',
         go: [{ l: 'Take the tour', fn: 'startTour' }], see: ['new-exp', 'today', 'journal'] },
       { id: 'new-exp', t: 'Create an experiment', group: 'Getting started', on: ['journal', 'exps', 'folder'],

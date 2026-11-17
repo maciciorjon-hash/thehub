@@ -13,8 +13,10 @@
 //   S5  no pinned apps    the rail carries the sections and nothing else: opening Echo or Blueprint adds no entry to it
 //                         (it used to keep the last three opened and let you pin four), no "Pin to the rail" is offered, and an
 //                         open app lights the landing it belongs to
-//   S6  the rail's order      Journal, Planner, Experiments, Designer, then the landings; Experiments has its own entry and icon, an old
+//   S6  the rail's order      Journal, Planner, Experiments, Meetings, Designer, then the landings; Experiments has its own entry and icon, an old
 //                         "exps" link lights it, and Labbook telling the Hub it is in Experiments lights it
+//   S11 Meetings on the rail   its own entry (icon, ⌥4): a click lands Labbook on the Meetings overview and lights it, Experiments is
+//                         left lit by Experiments only, and Labbook moving itself into Meetings lights the rail
 //   S8  lands on Today     an admin opening dHUB starts on Labbook's Today, whatever the last session left (Week, Designer, Experiments)
 //   S7  opaque links      a public app's link is an opaque slug, never its name: opening Echo writes the slug to the URL, the
 //                         slug opens it for anyone, and #echo opens only for the admin or a visitor who typed Echo's word
@@ -202,13 +204,43 @@ if (run('S6')) {
     try { backToHub({ plain: true }); } catch (e) {}
     return out;
   });
-  const want = 'notebook,planner,experiments,designer,analysis,archive,cells,more';
+  const want = 'notebook,planner,experiments,meetings,designer,analysis,archive,cells,more';
   if (r.order.join() !== want || r.nav.join() !== want) bad('S6', 'the rail reads ' + r.order.join(', ') + ' (want ' + want + ')'); else ok();
   if (r.tabs.join() !== 'notebook,planner,experiments,analysis,archive,cells') bad('S6', 'the phone bar reads ' + r.tabs.join(', ')); else ok();
   if (!r.icon) bad('S6', 'Experiments has no rail icon'); else ok();
   if (r.afterExps !== 'experiments' || r.section !== 'experiments') bad('S6', 'the old Experiments link lit ' + r.afterExps + ' (section ' + r.section + '), expected Experiments'); else ok();
   if (r.afterPlanner !== 'planner') bad('S6', 'Planner lit ' + r.afterPlanner); else ok();
   if (r.afterTold !== 'experiments') bad('S6', 'Labbook said it is in Experiments and the rail lit ' + r.afterTold); else ok();
+}
+
+if (run('S11')) {
+  const r = await page.evaluate(async () => {
+    isAdmin = true; document.body.classList.add('ws'); renderRail();
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    const lit = () => (document.querySelector('#ws-rail .ws-item.on') || {}).dataset ? document.querySelector('#ws-rail .ws-item.on').dataset.ws : null;
+    const fw = () => (document.getElementById('frame-labbook') || {}).contentWindow;
+    const it = document.querySelector('#ws-rail .ws-item[data-ws="meetings"]');
+    const out = { item: !!it, icon: !!(it && it.querySelector('svg.ui-meetings path, svg.ui-meetings circle')), title: it ? it.title : '' };
+    wsGo('meetings'); await wait(2500);
+    const w = fw(); out.lit = lit(); out.node = w && w.SEL.node.kind; out.ws = w && w.lbWorkspace(); out.home = !!(w && w.document.querySelector('#pane-ed .mtg-home'));
+    out.where = (document.getElementById('ws-where') || {}).textContent;
+    out.col = w ? w.document.getElementById('pane-sec').textContent.trim() : null;
+    wsGo('experiments'); await wait(900);
+    out.expLit = lit(); out.expWs = w && w.lbWorkspace(); out.expMeet = w ? [...w.document.querySelectorAll('#pane-sec .sec-item')].some(x => /^Meetings/.test(x.textContent.trim())) : null;
+    w.selectNode('journal'); await wait(300);
+    w.mtgOpen('', null); await wait(500); out.told = lit();
+    wsGo('planner'); await wait(600); wsGo('meetings'); await wait(900); out.back = lit() + ':' + (w && w.lbWorkspace());
+    try { backToHub({ plain: true }); } catch (e) {}
+    return out;
+  });
+  if (!r.item || !r.icon) bad('S11', 'Meetings has no rail entry or no icon: ' + JSON.stringify({ item: r.item, icon: r.icon })); else ok();
+  if (!/4/.test(r.title)) bad('S11', 'its tooltip should carry its shortcut (4): ' + r.title); else ok();
+  if (r.lit !== 'meetings' || r.node !== 'meetings' || r.ws !== 'meetings' || !r.home) bad('S11', 'a click on Meetings lit ' + r.lit + ' and Labbook is at ' + r.node + '/' + r.ws + ' (overview ' + r.home + ')'); else ok();
+  if (r.where !== 'Meetings') bad('S11', 'the header says ' + JSON.stringify(r.where)); else ok();
+  if (r.col) bad('S11', 'inside dHUB the Labbook column is the rail\'s job, yet it holds ' + JSON.stringify(r.col)); else ok();
+  if (r.expLit !== 'experiments' || r.expWs !== 'experiments' || r.expMeet) bad('S11', 'Experiments after Meetings: lit ' + r.expLit + ', workspace ' + r.expWs + ', still lists a Meetings entry ' + r.expMeet); else ok();
+  if (r.told !== 'meetings') bad('S11', 'Labbook moved itself into Meetings and the rail lit ' + r.told); else ok();
+  if (r.back !== 'meetings:meetings') bad('S11', 'back to Meetings from the Planner: ' + r.back); else ok();
 }
 
 if (run('S8')) {
