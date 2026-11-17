@@ -2255,7 +2255,7 @@ async function suite(opts) {
       addMorePlate(e.id); await sleep(80);
       if (!e.morePlates || e.morePlates.length !== 1 || expPlateList(e).length !== 2) { bad('B36', 'added', 'Add plate did not make a second plate'); return; }
       if (PL.key !== 'exp:' + e.id + ':2') bad('B36', 'opens', 'the new plate did not open for editing (key ' + PL.key + ')');
-      if (chips().length !== 3) bad('B36', 'chips', 'the editor does not show the two plates and a way to add: ' + chips().join(' | '));
+      if (chips().length !== 4) bad('B36', 'chips', 'the editor does not show the two plates and the two ways to add (plate, cell line): ' + chips().join(' | '));
       if (Object.keys(e.morePlates[0].wells).length) bad('B36', 'blank', 'the new plate is not empty');
       if (JSON.stringify(e.morePlates[0].types.map(t => t.id)) !== JSON.stringify(e.plate.types.map(t => t.id))) bad('B36', 'conditions', 'the new plate does not carry the first one\'s conditions');
       if (on() !== 'Plate') bad('B36', 'first step', 'a new plate did not start on the Plate step: ' + on());

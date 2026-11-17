@@ -11520,6 +11520,7 @@ function _blockFromTpl(t,su,at,calc){
   if(calc) o.calc=calc; else if(t.calc) o.calc=JSON.parse(JSON.stringify(t.calc));
   var wm=(t.waitMin!=null?t.waitMin:t.w); if(wm) o.waitMin=wm;
   return o; }
+var _splitFin=0;
 function _stepSplits(){
   var ex=(LB.data&&LB.data.experiments)||{}, made=[]; _splitFin=0;
   Object.keys(ex).forEach(function(id){ var e=ex[id];
@@ -11527,6 +11528,7 @@ function _stepSplits(){
     var runFin=(e.status==='done'||e.status==='archived');
     var tpl=LB.data.presets[e.presetKey]; if(!tpl||!tpl.blocks) return;
     STEP_SPLITS.forEach(function(sp){ if(sp.preset!==e.presetKey) return;
+      if(runFin&&!sp.fin) return;
       var i=-1; e.blocks.forEach(function(b,n){ if(i<0&&!b.proto&&String((b.tpl&&b.tpl.title)||b.title||'')===sp.old) i=n; });
       if(i<0) return;
       var b=e.blocks[i];
@@ -11542,6 +11544,11 @@ function _stepSplits(){
       var n1=_blockFromTpl(t1,su,at,b.calc?JSON.parse(JSON.stringify(b.calc)):null); n1.id=b.id;
       if(b.calcSeed) n1.calcSeed=JSON.parse(JSON.stringify(b.calcSeed));
       var n2=_blockFromTpl(t2,su,at,null);
+      if(fin){
+        // what the old step recorded: done at that time, and the wait it was given (the incubation belongs to the first half)
+        [n1,n2].forEach(function(n){ n.done=!!b.done; n.completedAt=b.completedAt||null; });
+        ['waitMin','waitOwn','waitSameDay'].forEach(function(k){ if(b[k]!==undefined) n1[k]=b[k]; });
+        _splitFin++; }
       e.blocks.splice(i,1,n1,n2);
       try{ syncChainedInputs(e); }catch(_e){}
       e.updated=Date.now(); made.push(e.code||e.title||'an experiment'); }); });
@@ -11553,14 +11560,12 @@ function _stepSplits(){
 // calculator knew about dose series becomes one. A value a person typed is the run's: nothing that
 // is already there is rewritten, and a finished step is a record.
 // A finished step is a record, and so is a finished run, but the words that name what went into it are not a number: for those
-var _splitFin=0;
 // (Jon, 2026-10-21: "cambia los protocolos que ya están escritos así, experimentos ya hechos y en marcha") only the two labels of
 // the LgBiT transfection, a diluent that is just "medium", and the structure keys the new wording reads (the buffer, its multiples,
 // the cell line that names the medium) are brought up. Plate count, volume, overage, every typed value stay. _calcKeysFin counts them.
 var _calcKeysFin=0, _FIN_KEYS={preBuffer:1,preFold:1,premixPct:1,cellLine:1};
 function _calcKeysFromPresets(){
   var ex=(LB.data&&LB.data.experiments)||{}, made=[]; _calcKeysFin=0;
-      if(runFin&&!sp.fin) return;
   Object.keys(ex).forEach(function(id){ var e=ex[id];
     if(!e||!e.blocks||!e.presetKey) return;
     var tpl=LB.data.presets[e.presetKey]; if(!tpl||!tpl.blocks) return;
@@ -11572,11 +11577,6 @@ function _calcKeysFromPresets(){
       if(!t) return;
       // The two labels the LgBiT transfection step shipped with said "transfection medium" and "medium", which name nothing.
       // Only the words move; the plate count, the volume and the overage are the run's own.
-      if(fin){
-        // what the old step recorded: done at that time, and the wait it was given (the incubation belongs to the first half)
-        [n1,n2].forEach(function(n){ n.done=!!b.done; n.completedAt=b.completedAt||null; });
-        ['waitMin','waitOwn','waitSameDay'].forEach(function(k){ if(b[k]!==undefined) n1[k]=b[k]; });
-        _splitFin++; }
       var I0=b.calc.inputs;
       if(b.calc.kind==='mixparts'&&t.calc.inputs.preBuffer&&I0.preBuffer===undefined&&I0.name==='transfection medium'&&I0.parts==='LgBiT mRNA 1, ViaScript 1'){
         I0.name=t.calc.inputs.name; I0.parts=t.calc.inputs.parts; if(/^medium$/i.test(String(I0.diluent||'').trim())) I0.diluent=''; ch=true; }
