@@ -215,6 +215,8 @@
 //       what its drops make  30 uL pre-fill (ideal 3.0 nL) is made with 2.5 nL and comes out 0.83 uM (-17 %), warned about; 10 uM (30.03 nL -> 30 nL) is exact and is not.
 //   E80 a fit stops where  The curve of a compound is drawn from its first to its last tested dose (Curves tab, PNG/PDF), not across the whole axis: the polyline's ends sit on _xmin and _xmax even when
 //       the points stop    the axis is wider (zoomed out); the thumbnail's curve ends on its first and last point instead of 15 % past them.
+//   E83 the wrong box says so  An Echo transfer CSV dropped in the reader box (or a reader workbook in the Echo box) is left out and a small notice says which file is
+//                             in the wrong place and where it goes; both swapped is one notice; a right drop shows nothing; a reader's own CSV is not mistaken for the Echo report; Esc/Got it closes it.
 //
 // Usage (repo root):  node tools/echo_invariants.mjs [--only=E1,E7] [--file=path/to/echo.html] [--verbose]
 import { chromium } from 'playwright';
@@ -3099,6 +3101,54 @@ if (run('E82')) await guard('E82', async () => {
   check('E82', 'leave out the outer ring: the ring vehicle wells and ring compounds are not used, and the curves are the undistorted ones', /outer ring is left out/.test(R.omit.log) && R.dOmit.n > 20 && R.dOmit.foldMed < 1.02 && R.dOmit.fold95 < 1.1 && R.dOmit.dm95 < 4, { d: R.dOmit });
   check('E82', 'Setup has the choice (Off, Correct, Leave out), History describes it, and "No normalisation" switches it off', R.ui.sel && R.ui.opts === 'off,correct,omit' && R.ui.plain && R.skipDisabled === true, R.ui);
   check('E82', 'no page errors', !errs.length, errs);
+  await c.close();
+});
+
+// E83 — files dropped in the wrong box. Dragging ignores the file pickers' `accept`, so the Echo report and a reader workbook get swapped; a workbook in the Echo box can never be
+// read and the Echo CSV in the reader box only fails later, in the Console. Both are now said at the door, in one light notice, and left out. A reader's own CSV (not an Echo report) is
+// still read, so only a CSV with the Echo's "Destination Well" column counts as the wrong thing in the reader box.
+if (run('E83')) await guard('E83', async () => {
+  const c = await browser.newContext({ viewport: { width: 1440, height: 900 } }); const q = await c.newPage(); const errs = []; q.on('pageerror', e => errs.push(e.message));
+  await q.goto('file://' + FILE); await q.waitForTimeout(1200);
+  const R = await q.evaluate(async () => {
+    await _ensureTestData();
+    const mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    const echoTxt = new TextDecoder().decode(Uint8Array.from(atob(_TEST_ECHO_B64), ch => ch.charCodeAt(0)));
+    const echoF = n => new File([echoTxt], n, { type: 'text/csv' });
+    const rdrF = n => new File([Uint8Array.from(atob(_TEST_READERS[0].b64), ch => ch.charCodeAt(0))], n, { type: mime });
+    const ownCsv = new File(['A,B\n1,2\n'], 'plate_values.csv', { type: 'text/csv' });
+    const drop = async (zone, files) => { const dt = new DataTransfer(); files.forEach(f => dt.items.add(f)); document.getElementById(zone).dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true })); await new Promise(r => setTimeout(r, 120)); };
+    const reset = () => { echoFile = null; echoFiles = []; readerFiles = {}; const o = document.getElementById('wp-overlay'); if (o) o.remove(); window._wpItems = []; };
+    const note = () => { const o = document.getElementById('wp-overlay'); return o ? { title: o.querySelector('#wp-title').textContent, text: o.querySelector('#wp-body').textContent, n: document.querySelectorAll('#wp-overlay').length, dlg: !!o.querySelector('[role=dialog][aria-modal=true]') } : null; };
+    const o = {};
+    reset(); await drop('echo-zone', [rdrF('E5XX-0001.xlsx')]); o.rdrInEcho = { files: echoFiles.length, note: note() };
+    reset(); await drop('reader-zone', [echoF('E5XX-1409_Transfer_1777972507.csv')]); o.echoInRdr = { files: Object.keys(readerFiles).length, note: note() };
+    reset(); await drop('echo-zone', [rdrF('E5XX-0001.xlsx')]); await drop('reader-zone', [echoF('Transfer.csv')]); o.swapped = { echo: echoFiles.length, rdr: Object.keys(readerFiles).length, note: note() };
+    reset(); await drop('echo-zone', [echoF('Transfer.csv')]); await drop('reader-zone', [rdrF('E5XX-0001.xlsx')]); o.right = { echo: echoFiles.length, rdr: Object.keys(readerFiles).length, note: note() };
+    reset(); await drop('echo-zone', [echoF('Transfer.csv'), rdrF('E5XX-0001.xlsx')]); o.mixed = { echo: echoFiles.map(f => f.name), note: note() };
+    reset(); await drop('reader-zone', [ownCsv]); o.ownCsv = { rdr: Object.keys(readerFiles), note: note() };
+    reset(); await drop('echo-zone', [rdrF('a.xlsx')]); const ok = document.getElementById('wp-ok'); o.focus = document.activeElement === ok; window.__drop = drop; window.__rdr = rdrF;
+    const rect = (await (async () => { const cd = document.querySelector('.wp-card'); if (!cd) return { l: -1, t: -1, r: 0, b: 0, w: 0, h: 0 }; const r = cd.getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom, w: innerWidth, h: innerHeight }; })());
+    o.inView = rect.l >= 0 && rect.t >= 0 && rect.r <= rect.w && rect.b <= rect.h;
+    return o;
+  });
+  // real key presses: the Setup dialog is open behind the notice and listens for Esc and Tab on the document too
+  const open = () => q.evaluate(() => ({ note: !!document.getElementById('wp-overlay'), setup: !document.getElementById('setup-modal').classList.contains('hidden') }));
+  const K = {}; K.start = await open();
+  await q.keyboard.press('Escape'); await q.waitForTimeout(80); K.esc = await open();
+  await q.evaluate(() => window.__drop('echo-zone', [window.__rdr('b.xlsx')])); await q.keyboard.press('Enter'); await q.waitForTimeout(80); K.enter = await open();
+  await q.evaluate(() => window.__drop('echo-zone', [window.__rdr('c.xlsx')])); await q.keyboard.press('Tab'); await q.waitForTimeout(80); K.tab = await q.evaluate(() => ({ note: !!document.getElementById('wp-overlay'), onOk: document.activeElement && document.activeElement.id === 'wp-ok' }));
+  await q.click('#wp-ok'); await q.waitForTimeout(80); K.click = await open();
+  await q.evaluate(() => window.__drop('echo-zone', [window.__rdr('d.xlsx')])); await q.mouse.click(5, 5); await q.waitForTimeout(80); K.back = await open();
+  check('E83', 'Esc, Enter, the button and a click outside each close the notice and leave Setup open; Tab stays on the button', K.start.note && K.start.setup && !K.esc.note && K.esc.setup && !K.enter.note && K.enter.setup && K.tab.note && K.tab.onOk && !K.click.note && K.click.setup && !K.back.note && K.back.setup, K);
+  check('E83', 'a reader workbook in the Echo box is left out and the notice names it and says where it goes', R.rdrInEcho.files === 0 && R.rdrInEcho.note && /E5XX-0001\.xlsx/.test(R.rdrInEcho.note.text) && /right/.test(R.rdrInEcho.note.text) && R.rdrInEcho.note.dlg, R.rdrInEcho);
+  check('E83', 'the Echo transfer CSV in the reader box is left out and the notice says it goes on the left', R.echoInRdr.files === 0 && R.echoInRdr.note && /1777972507\.csv/.test(R.echoInRdr.note.text) && /left/.test(R.echoInRdr.note.text), R.echoInRdr);
+  check('E83', 'both swapped is ONE notice that says so, and neither file is loaded', R.swapped.echo === 0 && R.swapped.rdr === 0 && R.swapped.note && R.swapped.note.n === 1 && /swapped/i.test(R.swapped.note.title), R.swapped);
+  check('E83', 'each file in its own box: loaded, and no notice', R.right.echo === 1 && R.right.rdr >= 1 && !R.right.note, R.right);
+  check('E83', 'a mixed drop keeps what belongs and flags only the rest', R.mixed.echo.length === 1 && R.mixed.echo[0] === 'Transfer.csv' && R.mixed.note && /E5XX-0001\.xlsx/.test(R.mixed.note.text) && !/Transfer\.csv/.test(R.mixed.note.text), R.mixed);
+  check('E83', 'a reader’s own CSV (no Echo columns) is not mistaken for the Echo report: it is read as before, no notice', R.ownCsv.rdr.length === 1 && !R.ownCsv.note, R.ownCsv);
+  check('E83', 'the notice takes focus on its button and sits inside the window', R.focus && R.inView, { focus: R.focus, inView: R.inView });
+  check('E83', 'no page errors', !errs.length, errs);
   await c.close();
 });
 
