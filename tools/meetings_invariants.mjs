@@ -13,6 +13,8 @@
 //                  apologies change nothing, "Add the regulars" puts them back, the overview edits the list
 //   MT14 list      the list is grouped by project (a header per project that has meetings), filters by project, and can be
 //                  read by date; a meeting moved to another project follows
+//   MT15 fold      each project's group folds to its header (remembered on the device); a search or a project filter never hides a result;
+//                  one button folds or opens them all
 //   MT3  fields    people (Enter, a comma list, apologies), agenda (tick, minutes, Enter adds, Backspace on empty removes),
 //                  decisions, actions (owner, due, done) all land in the record and survive a reload
 //   MT4  carry     "Open from earlier meetings" lists the open actions of EARLIER meetings only, never a cancelled one's,
@@ -253,8 +255,8 @@ try {
   }
   await p.setViewportSize({ width: 1280, height: 900 }); await p.waitForTimeout(300);
   {
-    const r = await E(a => { mtgOpen(a.pid, a.mid); return { rows: [...document.querySelectorAll('#pane-pages .mtg-item')].map(x => x.querySelector('.mtg-ty').textContent.trim() + '|' + x.querySelector('.mtg-d').textContent.trim()), txt: _mtgText(LB.data.meetings[a.mid]) }; }, { pid, mid });
-    yes('MT10', 'every list row names its kind and its date: ' + r.rows.join(' ; '), r.rows.length >= 4 && r.rows.every(x => /^[A-Za-z0-9:\/ ]+\|\d{1,2}[A-Z]{3}$/.test(x)));
+    const r = await E(a => { mtgOpen(a.pid, a.mid); return { rows: [...document.querySelectorAll('#pane-pages .mtg-item')].map(x => { var m = LB.data.meetings[x.dataset.m]; return [x.querySelector('.page-body').textContent.toLowerCase().includes(mtgType(m.type).name.toLowerCase()), /^\d{1,2}[A-Z]{3}$/.test(x.querySelector('.mtg-d').textContent.trim())].join(); }), txt: _mtgText(LB.data.meetings[a.mid]) }; }, { pid, mid });
+    yes('MT10', 'every list row names its kind (as its title or beside it) and its date: ' + r.rows.join(' ; '), r.rows.length >= 4 && r.rows.every(x => x === 'true,true'));
     for (const w of ['Weekly catch-up', 'Present: Ana Ruiz', 'Apologies: Bo Li', 'Decisions', 'D1. Use the new antibody lot', '[x] Repeat the blot', 'Blot is clean']) yes('MT11', 'the plain text carries "' + w + '"', r.txt.includes(w));
   }
   // ── MT12 dialog, MT13 regulars, MT14 list
@@ -296,15 +298,32 @@ try {
     await p.locator('#mtg-nd-p').selectOption('__new'); await p.locator('#mtg-nd-new').fill('Zeta topic'); await p.locator('#lb-dialog-card .modal-act .btn', { hasText: 'Create' }).click(); await p.waitForTimeout(500);
     eq('MT12', 'a new project or topic is made and the meeting is filed under it', await E(() => [LB.data.projects[LB.data.projects.length - 1].name, mtgCur().projectId === LB.data.projects[LB.data.projects.length - 1].id]), ['Zeta topic', true]);
     await E(() => { MTG_PROJ = ''; MTG_VIEW = 'project'; mtgOpen('', null); }); await p.waitForTimeout(300);
-    const L = await E(() => ({ heads: [...document.querySelectorAll('#mtg-rows .mtg-grp span')].map(x => x.textContent), withMeet: LB.data.projects.filter(x => mtgList(x.id).length).map(x => x.name) }));
+    const L = await E(() => ({ heads: [...document.querySelectorAll('#mtg-rows .mtg-grp .mtg-gn')].map(x => x.textContent), withMeet: LB.data.projects.filter(x => mtgList(x.id).length).map(x => x.name) }));
     eq('MT14', 'one header per project that has meetings, in project order', L.heads, L.withMeet);
     await p.locator('#mtg-fp').selectOption(B); await p.waitForTimeout(250);
     eq('MT14', 'the project filter shows only that project', await E(a => [...document.querySelectorAll('#mtg-rows .mtg-item')].length === mtgList(a.B).length && document.querySelectorAll('#mtg-rows .mtg-grp').length === 1, { B }), true);
-    await p.locator('#mtg-fp').selectOption(''); await p.locator('.mtg-seg-s button', { hasText: 'By date' }).click(); await p.waitForTimeout(250);
+    await p.locator('#mtg-fp').selectOption(''); await p.locator('.mtg-seg-s button', { hasText: 'Date' }).click(); await p.waitForTimeout(250);
     yes('MT14', 'by date, rows carry their project and there are no project headers', await E(() => document.querySelectorAll('#mtg-rows .mtg-grp').length === 0 && document.querySelectorAll('#mtg-rows .mtg-pj').length > 0));
     await E(() => { MTG_VIEW = 'project'; });
     const mv = await E(a => { const m = mtgAll().filter(x => x.projectId === a.B)[0]; mtgOpen(a.B, m.id); mtgProject(a.A); return LB.data.meetings[m.id].projectId === a.A && mtgList(a.A).some(x => x.id === m.id); }, { A, B });
     eq('MT14', 'a meeting moved to another project is listed there', mv, true);
+
+    // ── MT15 fold: a project's group folds to its header, remembered; a search or filter never hides a result
+    await E(() => { Object.keys(MTG_FOLD).forEach(k => delete MTG_FOLD[k]); MTG_PROJ = ''; MTG_Q = ''; MTG_VIEW = 'project'; mtgOpen('', null); }); await p.waitForTimeout(250);
+    const heads = await E(() => [...document.querySelectorAll('#mtg-rows .mtg-grp')].map(x => x.getAttribute('aria-expanded')));
+    yes('MT15', 'every project starts open, with a button for each header', heads.length >= 2 && heads.every(x => x === 'true'));
+    const rowsBefore = await E(() => document.querySelectorAll('#mtg-rows .mtg-item').length);
+    await p.locator('#mtg-rows .mtg-grp').first().click(); await p.waitForTimeout(150);
+    const f1 = await E(() => ({ exp: document.querySelector('#mtg-rows .mtg-grp').getAttribute('aria-expanded'), rows: document.querySelectorAll('#mtg-rows .mtg-item').length, heads: document.querySelectorAll('#mtg-rows .mtg-grp').length, saved: Object.keys(JSON.parse(localStorage.getItem('lb_mtg_fold') || '{}')).length }));
+    eq('MT15', 'clicking a header folds that project only (its rows go, the header stays) and the fold is stored', [f1.exp, f1.rows < rowsBefore, f1.heads, f1.saved], ['false', true, heads.length, 1]);
+    await p.locator('#mtg-q').fill('a'); await p.waitForTimeout(200);
+    yes('MT15', 'a search opens every group that has a match', await E(() => [...document.querySelectorAll('#mtg-rows .mtg-grp')].every(x => x.getAttribute('aria-expanded') === 'true')));
+    await p.locator('#mtg-q').fill(''); await p.waitForTimeout(200);
+    await p.locator('#mtg-foldall').click(); await p.waitForTimeout(150);
+    eq('MT15', 'fold-all folds every project', await E(() => document.querySelectorAll('#mtg-rows .mtg-item').length), 0);
+    await p.locator('#mtg-foldall').click(); await p.waitForTimeout(150);
+    eq('MT15', 'and a second click opens them all again', await E(() => document.querySelectorAll('#mtg-rows .mtg-item').length), rowsBefore);
+    await E(() => { Object.keys(MTG_FOLD).forEach(k => delete MTG_FOLD[k]); MTG_Q = ''; try { localStorage.removeItem('lb_mtg_fold'); } catch (e) {} });
     await E(() => { Object.keys(LB.data.meetings).forEach(k => delete LB.data.meetings[k]); MTG_PROJ = ''; });
   }
 
