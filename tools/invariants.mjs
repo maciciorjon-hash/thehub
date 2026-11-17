@@ -203,6 +203,7 @@
 //   B61 spark isrib        SC3 with ISRIB (HB_SPARK_SC3_ISRIB): the series DOWN the rows (layout drcols, a compound per pair of columns, 7 points A-G, DMSO in row H), one plate per condition with the same six compounds, ISRIB for plate 2 only, the medium swapped on both.
 //   B62 spark nb pairs     NanoBRET SPARK screen with several pairs (NB_SPARK_PAIRS96, layout nbscreenpairs96): NL-DELE1(CTD)/DELE1(CTD)-NL against HT-CRBN at 1:50 with G4 and G7 at 20, 10, 1 µM in duplicate, MG132 an hour first - row A the −ligand of each pair over its own three columns, row B each construct alone + mock + the first pair without substrate, DMSO then one band per compound from row C; what does not fit is named; the screen it came from is untouched
 //   B63 cell lines        A plate says which cell line it is for; "+ Add cell line" copies every plate (layout and compound names) for the new line, the header lists the lines, the compounds list and the plate count belong to the first line's plates and the copies follow (an added plate or a renamed compound reaches every line), a copy's names are read-only, the first time asks which line the plates you have are for, an experiment that never names a line is unchanged
+//   B64 echo step         The Echo compound step has inputs and says only what they say: every preset and the library carry the echo calculator (plates, compounds, concentrations, replicates, DMSO — fed by the setup), the words quote its boxes, and no step names a time or a rule nobody recorded ("allow about 3 h", "working window", "first thing", "keep DMSO at or below", a backfill to load). A box left empty reads "—", never a hidden default. A run not started takes the new step; a ticked, noted, typed-wait or finished one is left as written.
 //   B54 plate labels      Words round the plate: select wells and a dashed + sits beside the plate on all four sides over exactly the selected columns/rows; a label
 //                            is typed, edited, removed and undone; a wider one stacks outside a narrower one; nothing written round the plate sits on a well, a header or
 //                            another label; the card, the PNG, the print table and a copied layout all carry it. (the plate map could not say what a column was)
@@ -3457,6 +3458,58 @@ async function suite(opts) {
       const n0 = L().length; plAddCellLine(); await ask('HEK293 BRD5-HB'); const n1 = L().length; lbUndo(); await sleep(80);
       if (n1 !== n0 + 4 || L().length !== n0) bad('B63', 'undo', 'a fourth line made ' + (n1 - n0) + ' plates and one undo left ' + (L().length - n0) + ' of them');
       closePlateEditor();
+    });
+
+    // B64 — the Echo compound step has inputs, its figures are those inputs, and it names no time or rule nobody recorded.
+    if (run('B64')) await guard('B64', 'echo step', async () => {
+      const P = (LB.data.projects || []).find(p => (p.sections || []).length);
+      const FORBID = /allow about|working window|first thing|backfill and the intermediates|Check the picklist|keep DMSO at or below|at or below \d|the cells go on when/i;
+      const NUM = /\b\d+(\.\d+)?\s?(h|min)\b/;
+      const strip = h => String(h || '').replace(/\{\{[^}]*\}\}/g, '');
+      const steps = [];
+      Object.keys(EXTRA_PRESET_SEED).forEach(k => EXTRA_PRESET_SEED[k].blocks.forEach(b => { if (/\(Echo\)$/.test(b.title)) steps.push([k, b]); }));
+      steps.push(['library', STEP_LIBRARY.find(x => x.id === 'lib:compound')]);
+      if (steps.length < 5) bad('B64', 'coverage', 'only ' + steps.length + ' Echo steps found (4 presets + the library expected)');
+      steps.forEach(([k, b]) => {
+        const kind = k === 'library' ? b.calc : (b.calc && b.calc.kind);
+        if (kind !== 'echo') bad('B64', k, 'the Echo step has no echo calculator (' + kind + '): nothing to type in');
+        if (!/\{\{c\.plates\}\}/.test(b.html) || !/\{\{c\.compounds\}\}/.test(b.html) || !/\{\{c\.dmso\}\}/.test(b.html)) bad('B64', k, 'the words do not quote the calculator\'s boxes');
+        if (FORBID.test(b.html) || FORBID.test(b.pub || '') || NUM.test(strip(b.html))) bad('B64', k, 'a time or a rule nobody recorded is in the words: ' + strip(b.html).replace(/<[^>]+>/g, ' ').slice(0, 200));
+        if (k !== 'library' && b.w && !/\{\{treatH\}\}/.test(b.html) && !/OA/.test(b.html)) bad('B64', k, 'a wait of ' + b.w + ' min the words do not quote');
+      });
+      const key = 'D2B_SEED1', tpl = LB.data.presets[key];
+      if (!tpl) { bad('B64', key, 'the preset is not in the notebook'); return; }
+      const mk = (code, mut) => {
+        const su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup || {})));
+        const before = new Set(Object.keys(LB.data.experiments));
+        buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-11-17', type: 'D2B', title: 'INV echo', code, setup: su, plate: true });
+        const e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); clean.push(e); return e; };
+      const echo = e => e.blocks.find(b => b.title === 'Compound addition (Echo)');
+      const text = (e, b) => String(fillCalcText(b.html, b, e)).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+      const e = mk('INV_B64A'); tick('B64'); const b = echo(e);
+      if (!b || !b.calc || b.calc.kind !== 'echo') { bad('B64', 'made', 'the experiment\'s Echo step carries no calculator'); return; }
+      const t0 = text(e, b);
+      if (!/16 assay plates/.test(t0) || !/20 compounds per plate/.test(t0) || !/7 concentrations/.test(t0) || !/2 technical replicates/.test(t0) || !/at most 0\.25%/.test(t0)) bad('B64', 'figures', 'the words do not say the setup\'s numbers: ' + t0.slice(0, 260));
+      if (FORBID.test(t0) || NUM.test(t0.replace(new RegExp('\\b' + e.setup.treatH + ' h\\b'), ''))) bad('B64', 'invented', 'the step still names a time or a rule: ' + t0.slice(0, 260));
+      b.calc.inputs.nPlates = 9; b.calc.inputs.nConc = 5; if (!/9 assay plates/.test(text(e, b)) || !/5 concentrations/.test(text(e, b))) bad('B64', 'follows', 'the words did not follow the boxes: ' + text(e, b).slice(0, 200));
+      b.calc.inputs.nConc = ''; if (/7 concentrations|5 concentrations/.test(text(e, b)) || !/—/.test(text(e, b))) bad('B64', 'empty', 'an empty box stood in with a number: ' + text(e, b).slice(0, 200));
+      // the setup feeds the boxes (and the wait the words quote)
+      const e2 = mk('INV_B64B'); e2.setup.nConc = 11; e2.setup.treatH = 18; e2.blocks = applySetupToBlocks('D2B', e2.setup, e2.blocks, undefined, key);
+      if (echo(e2).calc.inputs.nConc !== 11) bad('B64', 'setup', 'the setup\'s # concentrations did not reach the step: ' + echo(e2).calc.inputs.nConc);
+      if (echo(e2).waitMin !== 1080) bad('B64', 'wait', 'the step quoting {{treatH}} has a wait of ' + echo(e2).waitMin + ' min, expected 1080');
+      // a run made before: the words only, no calculator, the invented 3 h wait
+      const OLD = '<ol><li>Check the picklist.</li><li>Load the backfill and the intermediates; keep DMSO at or below {{dmsoMax}}%.</li><li>Run the Echo onto the seeded plates, first thing &mdash; allow about 3 h.</li><li>Back to 37 &deg;C for {{treatH}} h &mdash; note the time (20&ndash;24 h is the working window).</li><li>Attach the run\'s CSV to this experiment on the Files tab.</li></ol>';
+      const old = (code, status, mut) => { const x = mk(code), q = echo(x);
+        q.tpl = { title: q.title, html: OLD, pub: '' }; q.html = fillSetup(OLD, x.setup); delete q.calc; delete q.calcSeed; q.waitMin = 180; x.status = status || 'planned'; if (mut) mut(x, q); return x; };
+      const plan = old('INV_B64C'); seedPresets(); const pq = echo(plan);
+      if (!pq.calc || pq.calc.kind !== 'echo' || FORBID.test(text(plan, pq))) bad('B64', 'old run', 'a run not started kept the old step: ' + text(plan, pq).slice(0, 200));
+      if (pq.waitMin === 180) bad('B64', 'old wait', 'the invented 3 h wait stayed');
+      const h1 = pq.html; seedPresets(); if (pq.html !== h1) bad('B64', 'idempotent', 'a second pass changed the step again');
+      const ticked = old('INV_B64D', 'planned', (x, q) => { q.stepDone = { 0: true }; }); seedPresets();
+      const noted = old('INV_B64E', 'planned', (x, q) => { q.notes = 'used the other picklist'; }); seedPresets();
+      const typed = old('INV_B64F', 'planned', (x, q) => { q.waitOwn = true; q.waitMin = 200; }); seedPresets();
+      const fin = old('INV_B64G', 'done'); seedPresets();
+      [['ticked', ticked], ['noted', noted], ['typed wait', typed], ['finished run', fin]].forEach(([w, x]) => { if (echo(x).calc) bad('B64', 'kept ' + w, 'a step with records or a finished run was rewritten'); });
     });
 
     // B54 — words round the plate: what a column or a row is, written beside it.
