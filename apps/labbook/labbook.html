@@ -4518,9 +4518,12 @@ var EXTRA_PRESET_SEED={
     {d:2,title:'Prepare Donor mix',
      calc:{kind:'mixparts',inputs:{name:'Donor mix',parts:'Donor Beads 19.6',diluent:'Dilution Buffer',volPerWell:5,format:'384',nPlates:1,nWells:384,excess:1.1}},
      html:'<ol><li>Make {{c.total}} of {{c.name}} ({{c.wells}} at {{c.perWell}} per well): combine {{c.partsText}} with {{c.diluentUL}} of {{c.diluent}} &mdash; 6 &micro;L of beads in 300 &micro;L of {{c.diluent}}. Donor beads are light sensitive: make it and use it in the dark.</li></ol>'},
-    {d:2,title:'Donor beads and read',w:240,
-     pub:'{{c.perWell}} of Donor bead mix was added to each well in the dark and the plate incubated for at least 4 h at room temperature before reading on an AlphaScreen / AlphaLISA-compatible plate reader.',
-     html:'<ol><li>Add {{c.perWell}} of Donor mix to each well, in the dark.</li><li>Incubate for at least 4 h (4 h to overnight) at room temperature.</li><li>Read on a plate reader compatible with AlphaScreen / AlphaLISA; save the data.</li></ol><p><b>Results</b></p><p></p>'}]},
+    {d:2,title:'Donor beads',w:240,
+     pub:'{{c.perWell}} of Donor bead mix was added to each well in the dark and the plate incubated for at least 4 h (4 h to overnight) at room temperature.',
+     html:'<ol><li>Add {{c.perWell}} of Donor mix to each well, in the dark.</li><li>Incubate for at least 4 h (4 h to overnight) at room temperature.</li></ol>'},
+    {d:2,title:'AlphaLISA read',
+     pub:'The plate was read on an AlphaScreen / AlphaLISA-compatible plate reader.',
+     html:'<ol><li>Read on a plate reader compatible with AlphaScreen / AlphaLISA; save the data.</li></ol><p><b>Results</b></p><p></p>'}]},
   'CLONE_HIFI':{name:'Cloning — Restriction + HiFi (PX458)',baseType:'CLONE',title:'Cloning — Restriction + HiFi (PX458)',
    setup:{method:'NEBuilder HiFi'}, blocks:[
     {d:0,title:'Vector linearization',w:30,pub:'PX458 was linearized with BbsI for 30 min at 37 &deg;C, gel-purified and quantified.',html:'<ol><li>Linearize: digest 1 &micro;g PX458 with BbsI (NEB), 37 &deg;C for 30 min.</li><li>Confirm on a 1% gel (~9.3 kb); excise, NucleoSpin, NanoDrop.</li></ol>'},
@@ -11266,7 +11269,10 @@ function presetFromSeed(seed,name,baseType){ return {name:name,baseType:baseType
 var STEP_SPLITS=[
   {preset:'NB_BIO_RTX96', old:'Cell suspension \u00b1 HaloTag ligand + seed', to:['Cell suspension \u00b1 HaloTag ligand','Seed onto the transfection mix']},
   {preset:'NB_SPARK_RTX96', old:'Cell suspension \u00b1 ligand 618 + seed', to:['Cell suspension \u00b1 HaloTag ligand','Seed onto the transfection mix']},
-  {preset:'NB_SPARK_SCREEN96', old:'Cell suspension + HaloTag ligand + seed', to:['Cell suspension \u00b1 HaloTag ligand','Seed onto the transfection mix']}
+  {preset:'NB_SPARK_SCREEN96', old:'Cell suspension + HaloTag ligand + seed', to:['Cell suspension \u00b1 HaloTag ligand','Seed onto the transfection mix']},
+  // Jon, 2026-11-17: the last AlphaLISA step is two \u2014 the Donor beads (ending in the 4 h or overnight incubation) and the read. Runs already
+  // finished are split too (`fin`): both halves keep the tick and the time of the step they came from, nothing typed is lost.
+  {preset:'AL_SUREFIRE384', old:'Donor beads and read', to:['Donor beads','AlphaLISA read'], fin:true}
 ];
 // \u2500\u2500 The suspension-and-seed step, in the words of today, for every run (Jon, 2026-10-26) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 // "se editen todos los experimentos futuros y tambi\u00e9n los pasados". The step the biosensor and the SPARK runs
@@ -11340,8 +11346,8 @@ function _alphaWells(){
     if(ch) e.updated=Date.now(); });
   return n; }
 var _STEP_PLAIN_KEYS={id:1,date:1,dayOffset:1,done:1,completedAt:1,html:1,title:1,tpl:1,calc:1,calcSeed:1,floatImgs:1,stepDone:1,pub:1,waitMin:1,waitSameDay:1};
-function _stepHasRecords(b){
-  if(b.done||b.completedAt) return true;
+function _stepHasRecords(b,tickOk){
+  if(!tickOk&&(b.done||b.completedAt)) return true;
   if((b.floatImgs||[]).length) return true;
   if(b.stepDone&&Object.keys(b.stepDone).some(function(k){ return b.stepDone[k]; })) return true;
   return Object.keys(b).some(function(k){ if(_STEP_PLAIN_KEYS[k]) return false; var v=b[k];
@@ -11354,15 +11360,20 @@ function _blockFromTpl(t,su,at,calc){
   var wm=(t.waitMin!=null?t.waitMin:t.w); if(wm) o.waitMin=wm;
   return o; }
 function _stepSplits(){
-  var ex=(LB.data&&LB.data.experiments)||{}, made=[];
+  var ex=(LB.data&&LB.data.experiments)||{}, made=[]; _splitFin=0;
   Object.keys(ex).forEach(function(id){ var e=ex[id];
-    if(!e||!e.blocks||!e.presetKey||e.status==='done'||e.status==='archived') return;
+    if(!e||!e.blocks||!e.presetKey) return;
+    var runFin=(e.status==='done'||e.status==='archived');
     var tpl=LB.data.presets[e.presetKey]; if(!tpl||!tpl.blocks) return;
     STEP_SPLITS.forEach(function(sp){ if(sp.preset!==e.presetKey) return;
       var i=-1; e.blocks.forEach(function(b,n){ if(i<0&&!b.proto&&String((b.tpl&&b.tpl.title)||b.title||'')===sp.old) i=n; });
       if(i<0) return;
       var b=e.blocks[i];
-      if(_stepHasRecords(b)||!_expBlockUntouched(e,b)) return;
+      // A finished step is split only when it carries nothing but its tick, its time and the preset's own words: a tick and a
+      // time are shared by both halves (the step was done as a whole), anything typed in it has no obvious half to go to.
+      var fin=!!(b.done||b.completedAt);
+      if(_stepHasRecords(b,!!sp.fin)||!_expBlockUntouched(e,b)) return;
+      if(fin&&!sp.fin) return;
       var t1=(tpl.blocks||[]).filter(function(x){ return _tplTitleIs(x,sp.to[0]); })[0], t2=(tpl.blocks||[]).filter(function(x){ return _tplTitleIs(x,sp.to[1]); })[0];
       if(!t1||!t2) return;
       var su=e.setup||{}, at={date:b.date, dayOffset:b.dayOffset};
@@ -11381,12 +11392,14 @@ function _stepSplits(){
 // calculator knew about dose series becomes one. A value a person typed is the run's: nothing that
 // is already there is rewritten, and a finished step is a record.
 // A finished step is a record, and so is a finished run, but the words that name what went into it are not a number: for those
+var _splitFin=0;
 // (Jon, 2026-10-21: "cambia los protocolos que ya están escritos así, experimentos ya hechos y en marcha") only the two labels of
 // the LgBiT transfection, a diluent that is just "medium", and the structure keys the new wording reads (the buffer, its multiples,
 // the cell line that names the medium) are brought up. Plate count, volume, overage, every typed value stay. _calcKeysFin counts them.
 var _calcKeysFin=0, _FIN_KEYS={preBuffer:1,preFold:1,premixPct:1,cellLine:1};
 function _calcKeysFromPresets(){
   var ex=(LB.data&&LB.data.experiments)||{}, made=[]; _calcKeysFin=0;
+      if(runFin&&!sp.fin) return;
   Object.keys(ex).forEach(function(id){ var e=ex[id];
     if(!e||!e.blocks||!e.presetKey) return;
     var tpl=LB.data.presets[e.presetKey]; if(!tpl||!tpl.blocks) return;
@@ -11398,6 +11411,11 @@ function _calcKeysFromPresets(){
       if(!t) return;
       // The two labels the LgBiT transfection step shipped with said "transfection medium" and "medium", which name nothing.
       // Only the words move; the plate count, the volume and the overage are the run's own.
+      if(fin){
+        // what the old step recorded: done at that time, and the wait it was given (the incubation belongs to the first half)
+        [n1,n2].forEach(function(n){ n.done=!!b.done; n.completedAt=b.completedAt||null; });
+        ['waitMin','waitOwn','waitSameDay'].forEach(function(k){ if(b[k]!==undefined) n1[k]=b[k]; });
+        _splitFin++; }
       var I0=b.calc.inputs;
       if(b.calc.kind==='mixparts'&&t.calc.inputs.preBuffer&&I0.preBuffer===undefined&&I0.name==='transfection medium'&&I0.parts==='LgBiT mRNA 1, ViaScript 1'){
         I0.name=t.calc.inputs.name; I0.parts=t.calc.inputs.parts; if(/^medium$/i.test(String(I0.diluent||'').trim())) I0.diluent=''; ch=true; }
@@ -11427,7 +11445,9 @@ function seedPresets(){
     setTimeout(function(){ try{ toast('Reworded '+_lw+' NanoBRET step'+(_lw===1?'':'s')+' to the preset’s words — the numbers now follow each step’s calculator. Nothing recorded was changed.'); }catch(e){} },2400); }
   if(_calcKeysFin&&!_sp.length) setTimeout(function(){ try{ save(); }catch(e){} },0);
   if(_sp.length){ setTimeout(function(){ try{ save(); }catch(e){} },0);
-    setTimeout(function(){ try{ toast('Brought the steps of '+_sp.filter(function(x,i,a){ return a.indexOf(x)===i; }).join(', ')+' up to the preset — nothing in it had been started. The numbers are the run\u2019s own.'); }catch(e){} },1800); }
+    var _spf=_splitFin;
+    setTimeout(function(){ try{ toast(_spf?'Split the last AlphaLISA step into Donor beads and AlphaLISA read in '+_spf+' run'+(_spf===1?'':'s')+' — ticks, times and numbers kept.'
+      :'Brought the steps of '+_sp.filter(function(x,i,a){ return a.indexOf(x)===i; }).join(', ')+' up to the preset — nothing in it had been started. The numbers are the run\u2019s own.'); }catch(e){} },1800); }
   _rewordFromPresets(_before);
   _nbRename();
   _gatesFromSetup();
@@ -11594,7 +11614,7 @@ function _seedPresetsInner(){
   // you have changed is left alone. (This upgrade itself is still a blunt refresh — no built-in
   // can have been edited through the new field before the field existed — and it is what stamps
   // the signatures that make every later bump safe.)
-  var upgrade=!LB.data._presetV27;
+  var upgrade=!LB.data._presetV28;
   EXP_TYPES.forEach(function(t){
     var cur=LB.data.presets[t.id];
     var edited = cur && cur._seedSig && !_sigSame(cur._seedSig,_presetSig(cur)) && !_presetWordsUnedited(cur);
@@ -11608,7 +11628,7 @@ function _seedPresetsInner(){
       if(!cur._seedSig) cur._seedSig=_presetSig(cur);   // stamp what is there, whatever it is
     }
   });
-  if(upgrade) LB.data._presetV27=true;
+  if(upgrade) LB.data._presetV28=true;
   // The one-time flag meant a preset added later could never reach an existing notebook. The
   // inner check is what makes this safe to run every load: it only fills in what is missing and
   // never touches a preset you have edited.

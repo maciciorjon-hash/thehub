@@ -26,7 +26,7 @@
 //   AR17 no glyphs as text       no emoji, warning sign or check mark in the Archive source (UI.md: the drawn icon set, or words)
 //   AR18 the bench checklist     checklist mode: a named role=checkbox on every step (Space ticks), progress, a timer on every duration of 3 h or less whose length IS the parameter,
 //                                the wake lock taken on and released (one the person switched on is left alone), ticks kept over a reload and cleared by Reset, step notes survive the repaint, 44px on the phone
-//   AR19 alphalisa               the AlphaLISA p-Rab10 protocol: its five calculators against hand arithmetic (Revvity's 300 uL Acceptor mix = 141 + 141 + 12 + 6), four stages on days 0,1,1,1, five boxes
+//   AR19 alphalisa               the AlphaLISA p-Rab10 protocol: its five calculators against hand arithmetic (Revvity's 300 uL Acceptor mix = 141 + 141 + 12 + 6), five stages on days 0,1,1,1,1 (the Donor beads and the Read are two), five boxes
 //   AR20 one type                every protocol x Protocol/Calculate/Output x every method tab draws its words in the ten roles of docs/UI.md > Protocol type
 //                                (title, heading, subhead, body, caption, label, data, control, badge) and nothing else; no inline font-size/font-family in the source
 //   AR21 stored notes            a stored sticky-notes record missing half of its shape (only `steps`, only `floating`, an array, a string) does not stop Archive starting: it still publishes
@@ -729,13 +729,13 @@ if (run('AR19')) await guard('AR19', 'alphalisa', async () => {
     return { inDays: days('inhouse'), rvDays: days('revvity'), cat: c && c.category, boxes: document.querySelectorAll('#detail-alphalisa .calc-box:not(.calc-wells)').length,
              tokens: JSON.stringify(D).match(/\{\{[^}]*\}\}/g).length > 0, rv, ih, rvBoxes, ihBoxes, tabs: document.querySelectorAll('#detail-alphalisa .vtab-btn').length,
              variants: (D.variants || []).map(x => x.label), untagged: (D.stages || []).filter(s => !s.variant).length }; });
-  if (d.inDays.join() !== '0,1,1,1') bad('AR19', 'the in-house stages fall on days ' + d.inDays.join() + ', not 0,1,1,1'); else ok();
-  if (d.rvDays.join() !== '0,1,1,1,1') bad('AR19', 'the Revvity stages fall on days ' + d.rvDays.join() + ', not 0,1,1,1,1'); else ok();
+  if (d.inDays.join() !== '0,1,1,1,1') bad('AR19', 'the in-house stages fall on days ' + d.inDays.join() + ', not 0,1,1,1,1'); else ok();
+  if (d.rvDays.join() !== '0,1,1,1,1,1') bad('AR19', 'the Revvity stages fall on days ' + d.rvDays.join() + ', not 0,1,1,1,1,1'); else ok();
   if (d.untagged) bad('AR19', d.untagged + ' stage(s) belong to neither tab'); else ok();
   if (d.tabs !== 2 || d.variants.join('|') !== 'In house protocol (Zher Yin)|Revvity') bad('AR19', 'the tabs are ' + d.variants.join('|') + ' (' + d.tabs + ' buttons)'); else ok();
   if (d.rv.on.join() !== 'Revvity' || d.ih.on.join() !== 'In house protocol (Zher Yin)') bad('AR19', 'the active tab is not the one picked: ' + d.rv.on + ' / ' + d.ih.on); else ok();
-  if (d.rv.names.some(n => /MEF|chloroquine/i.test(n)) || !d.rv.names.some(n => /Acceptor beads/.test(n)) || d.rv.names.length !== 5) bad('AR19', 'the Revvity tab shows ' + d.rv.names.join(' | ')); else ok();
-  if (d.ih.names.length !== 4 || d.ih.names.some(n => /^Assay/.test(n))) bad('AR19', 'the in-house tab shows ' + d.ih.names.join(' | ')); else ok();
+  if (d.rv.names.some(n => /MEF|chloroquine/i.test(n)) || !d.rv.names.some(n => /Acceptor beads/.test(n)) || d.rv.names.length !== 6 || !/Donor beads/.test(d.rv.names.join('|')) || !/Read/.test(d.rv.names[5])) bad('AR19', 'the Revvity tab shows ' + d.rv.names.join(' | ')); else ok();
+  if (d.ih.names.length !== 5 || d.ih.names.some(n => /^Assay/.test(n)) || !/Donor beads$/.test(d.ih.names[3]) || !/Read$/.test(d.ih.names[4])) bad('AR19', 'the in-house tab shows ' + d.ih.names.join(' | ')); else ok();
   Object.entries(d.rvBoxes).concat(Object.entries(d.ihBoxes)).forEach(([k, [step, box]]) => { if (step !== box) bad('AR19', 'a step says ' + step + ' but its calculator box holds ' + box + ' (' + k + ')'); else ok(); });
   if (d.cat !== 'cellbio') bad('AR19', 'the card is under ' + d.cat); else ok();
   if (d.boxes !== 5) bad('AR19', d.boxes + ' calculator boxes, not 5'); else ok();

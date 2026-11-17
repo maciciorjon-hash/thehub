@@ -34,7 +34,8 @@
 //                           cut mid-way, e.g. a recipe table with its header on one page and its rows on the next)
 //   L16 the sheet's diluent is what is left  "What you need" lists the diluent of a spike-in as the intermediate minus the stock that goes into it, not the whole
 //                           intermediate. (100 mM biotin at 1:4 for 7 wells listed 62 µL of DMSO for a 23 µL dilution)
-//   L17 the AlphaLISA run is a notebook run  The AlphaLISA preset is written in the notebook's own shape, not as Archive stages: eight steps over three days, a calculator for the
+//   L30 the last AlphaLISA step is two  Donor beads (ending in the 4 h or overnight incubation) and the read are two steps in the preset and in both Archive tabs; a run made with the one old step is split (not started: by the preset; ticked or finished: both halves keep the tick, the time and the wait; typed words are never split).
+//   L17 the AlphaLISA run is a notebook run  The AlphaLISA preset is written in the notebook's own shape, not as Archive stages: nine steps over three days, a calculator for the
 //                           seeding and for every mix, and the numbers come out by hand (21,120 µL of cells at 0.08 M/mL; lysis 4,224 µL = 845 Lysis Buffer 5X + 3,379 water (Revvity's, no inhibitors); Acceptor mix
 //                           470 / 470 / 40 / 20 per mL = Revvity's 141 / 141 / 12 / 6 in 300 µL; Donor beads 6 in 300 µL of buffer); the plate has a kit on each half; the treatment
 //                           hours are the step's wait; no step shows a token it cannot answer. (the run made from the Archive stages had no recipes, a clipped tick and a bare plate)
@@ -413,7 +414,7 @@ try {
     });
     if (r.gone) bad('L17', 'the AlphaLISA preset is gone (the test is void)');
     else {
-      const want = 'Seeding@0|Compound treatment@1|Prepare lysis buffer@2|Lysis@2|Prepare Acceptor mix@2|Acceptor beads@2|Prepare Donor mix@2|Donor beads and read@2';
+      const want = 'Seeding@0|Compound treatment@1|Prepare lysis buffer@2|Lysis@2|Prepare Acceptor mix@2|Acceptor beads@2|Prepare Donor mix@2|Donor beads@2|AlphaLISA read@2';
       if (r.titles.join('|') !== want) bad('L17', 'the steps are ' + r.titles.join(' | ') + ', not ' + want);
       if (r.proto || r.protocols) bad('L17', 'the run is built from Archive stages again (a protocol snapshot or a protocol on the record)');
       if (r.unresolved.length) bad('L17', 'a step shows a token it cannot answer or an empty number: ' + r.unresolved.join(', '));
@@ -428,7 +429,7 @@ try {
       if (r.plate.types !== 'SMARCA2 kit|SMARCA4 kit' || r.plate.groups !== 'SMARCA2 kit|SMARCA4 kit') bad('L17', 'the plate names its kits ' + r.plate.types + ' / ' + r.plate.groups);
       if (r.wait !== 1080 || r.wait20 !== 1200) bad('L17', 'the treatment wait is ' + r.wait + ' min at 18 h and ' + r.wait20 + ' min at 20 h, not 1080 and 1200 (the setup hours are the wait)');
       if (!/36 µL/.test(r.text['Compound treatment']) || !/18 h/.test(r.text['Compound treatment']) || !/20 h/.test(r.text20)) bad('L17', 'the treatment step does not quote the setup (36 µL, 18 h, then 20 h): ' + r.text['Compound treatment'] + ' / ' + r.text20);
-      if (!/10 µL of lysis buffer per well/.test(r.text['Lysis']) || !/10 min/.test(r.text['Lysis']) || !/5 µL of Acceptor mix/.test(r.text['Acceptor beads']) || !/5 µL of Donor mix/.test(r.text['Donor beads and read'])) bad('L17', 'a bead or lysis step does not say the volume its mix is made for: ' + [r.text['Lysis'], r.text['Acceptor beads'], r.text['Donor beads and read']].join(' / '));
+      if (!/10 µL of lysis buffer per well/.test(r.text['Lysis']) || !/10 min/.test(r.text['Lysis']) || !/5 µL of Acceptor mix/.test(r.text['Acceptor beads']) || !/5 µL of Donor mix/.test(r.text['Donor beads']) || /read on a plate reader/i.test(r.text['Donor beads']) || !/read on a plate reader/i.test(r.text['AlphaLISA read'])) bad('L17', 'a bead or lysis step does not say the volume its mix is made for: ' + [r.text['Lysis'], r.text['Acceptor beads'], r.text['Donor beads'], r.text['AlphaLISA read']].join(' / '));
     }
     errs.forEach(m => bad('L17', 'page error: ' + m));
     await ctx.close();
@@ -793,8 +794,45 @@ try {
     if (/toISOString\(\)\.slice\(0,\s*1[06]\)/.test(fs.readFileSync(path.join(ROOT, 'apps/labbook/labbook.html'), 'utf8'))) bad('L29', 'source still turns a timestamp into a date with toISOString().slice(0,10|16), which is the UTC day');
     errs.forEach(m => bad('L29', 'page error: ' + m)); await ctx.close();
   }
+  // ── L30 ──
+  if (run('L30')) {
+    counts.L30 = 1;
+    const ctx = await newCtx(); const { page, errs } = await open(ctx);
+    await page.evaluate(`${SEED}`);
+    const r = await page.evaluate(() => {
+      const key = 'AL_SUREFIRE384', tpl = LB.data.presets[key]; if (!tpl) return { gone: true };
+      const P = LB.data.projects.find(p => (p.sections || []).length), S = P.sections[0], before = Object.assign({}, LB.data.experiments);
+      buildExperimentFrom({ pid: P.id, sid: S.id, key, tpl, startDate: '2026-11-10', type: presetBase(key), title: tpl.title, code: 'AU_L30', setup: setupDefaultsFor(key), plate: true });
+      const e = Object.values(LB.data.experiments).find(x => !before[x.id]);
+      const out = { fresh: e.blocks.slice(-2).map(b => b.title) };
+      const OLD_H = '<ol><li>Add {{c.perWell}} of Donor mix to each well, in the dark.</li><li>Incubate for at least 4 h (4 h to overnight) at room temperature.</li><li>Read on a plate reader compatible with AlphaScreen / AlphaLISA; save the data.</li></ol><p><b>Results</b></p><p></p>';
+      const OLD_P = '{{c.perWell}} of Donor bead mix was added to each well in the dark and the plate incubated for at least 4 h at room temperature before reading on an AlphaScreen / AlphaLISA-compatible plate reader.';
+      const oldRun = (code, f) => { const o = JSON.parse(JSON.stringify(e)); o.id = uid(); o.code = code; const n = o.blocks.length;
+        const a = o.blocks[n - 2]; o.blocks.splice(n - 2, 2, Object.assign({}, a, { title: 'Donor beads and read', html: fillSetup(OLD_H, o.setup), pub: fillSetup(OLD_P, o.setup), tpl: { title: 'Donor beads and read', html: OLD_H, pub: OLD_P }, waitMin: 240, waitSameDay: false }));
+        if (f) f(o); LB.data.experiments[o.id] = o; return o; };
+      const a = oldRun('AU_L30_open', null);
+      const b = oldRun('AU_L30_done', o => { o.status = 'done'; o.blocks.forEach(x => { x.done = true; x.completedAt = 1794486301721; }); });
+      const c = oldRun('AU_L30_typed', o => { const x = o.blocks[o.blocks.length - 1]; x.html = x.html.replace('<p></p>', '<p>Signal 120,000 counts</p>'); });
+      const d = oldRun('AU_L30_tick', o => { o.blocks[o.blocks.length - 1].done = true; o.blocks[o.blocks.length - 1].completedAt = 1794486301721; });   // a step ticked in a run still going
+      const made = _stepSplits();
+      const last = o => o.blocks.slice(-2).map(x => ({ t: x.title, done: !!x.done, at: x.completedAt || null, w: x.waitMin || 0, html: x.html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() }));
+      out.open = last(a); out.done = last(b); out.typed = c.blocks.slice(-1).map(x => x.title); out.tick = last(d); out.made = made.length; out.nOpen = a.blocks.length; out.nDone = b.blocks.length;
+      return out;
+    });
+    if (r.gone) bad('L30', 'the AlphaLISA preset is gone (the test is void)');
+    else {
+      if (r.fresh.join('|') !== 'Donor beads|AlphaLISA read') bad('L30', 'a new AlphaLISA run ends with ' + r.fresh.join(' | ') + ', not Donor beads | AlphaLISA read');
+      if (r.nOpen !== 9 || r.open.map(x => x.t).join('|') !== 'Donor beads|AlphaLISA read') bad('L30', 'a run not started is not split: it ends with ' + r.open.map(x => x.t).join(' | '));
+      else if (/read on a plate reader/i.test(r.open[0].html) || !/Incubate for at least 4 h \(4 h to overnight\)/.test(r.open[0].html) || !/read on a plate reader/i.test(r.open[1].html) || r.open[0].w !== 240) bad('L30', 'the halves do not carry the right words / the 4 h wait: ' + JSON.stringify(r.open));
+      if (r.done.map(x => x.t).join('|') !== 'Donor beads|AlphaLISA read') bad('L30', 'a finished run keeps the one step (' + r.done.map(x => x.t).join(' | ') + '): the already-made runs are not split');
+      else if (!r.done.every(x => x.done && x.at === 1794486301721) || r.done[0].w !== 240) bad('L30', 'a finished run lost the tick or the time of the step it was split from: ' + JSON.stringify(r.done));
+      if (r.typed.join('|') !== 'Donor beads and read') bad('L30', 'a step with words typed in it was split (' + r.typed.join(' | ') + '): the results typed in it would have to go to one half');
+      if (r.tick.map(x => x.t).join('|') !== 'Donor beads|AlphaLISA read' || !r.tick.every(x => x.done && x.at === 1794486301721)) bad('L30', 'a ticked step of a run still going is not split with its tick kept: ' + JSON.stringify(r.tick));
+    }
+    errs.forEach(m => bad('L30', 'page error: ' + m)); await ctx.close();
+  }
 } finally { await browser.close(); if (srv) srv.kill(); }
-for (const id of ['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8', 'L9', 'L10', 'L11', 'L12', 'L13', 'L14', 'L15', 'L16', 'L17', 'L18', 'L19', 'L20', 'L21', 'L22', 'L23', 'L24', 'L25', 'L26', 'L27', 'L28', 'L29']) { if (ONLY && !ONLY.includes(id)) continue; const fs_ = findings.filter(f => f.id === id); process.stdout.write(`  ${fs_.length ? '✗' : '✓'} ${id}${fs_.length ? '  — ' + fs_.length + ' finding(s)' : ''}\n`); }
+for (const id of ['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8', 'L9', 'L10', 'L11', 'L12', 'L13', 'L14', 'L15', 'L16', 'L17', 'L18', 'L19', 'L20', 'L21', 'L22', 'L23', 'L24', 'L25', 'L26', 'L27', 'L28', 'L29', 'L30']) { if (ONLY && !ONLY.includes(id)) continue; const fs_ = findings.filter(f => f.id === id); process.stdout.write(`  ${fs_.length ? '✗' : '✓'} ${id}${fs_.length ? '  — ' + fs_.length + ' finding(s)' : ''}\n`); }
 const seen = new Set(); findings.forEach(f => { const k = f.id + f.m; if (seen.has(k)) return; seen.add(k); process.stdout.write(`     [${f.id}] ${f.m}\n`); });
 if (!findings.length) process.stdout.write('\nLabbook audit invariants hold.\n');
 process.exit(findings.length ? 1 : 0);
