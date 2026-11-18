@@ -67,6 +67,8 @@
 //                                      panel that is a number, a laneX of true) opens as a figure and renders and exports; a figure that cannot be read opens blank
 //   BL38 lanes by hand, measured       densitometry reads the strip between the marked lanes (bands at uneven lanes give their own ratios, where equal columns
 //                                      mix them), Find lanes honours a letterboxed picture, presets and portable copies carry positions, text rows and dots
+//   BL39 snap to lanes and bands       a lane handle dragged near a band settles on its centre (Alt, the checkbox, or nothing within reach: it stays where
+//                                      it is dropped); a label, a condition dot and a text annotation dragged near a lane's centre settle on it, any lane's
 //   BL12 layout                        escape, runtime and alignment audits on the figure and every dialog, 1440/1024/390,
 //                                      both themes
 //
@@ -1156,7 +1158,7 @@ if (run('BL31')) await guard('BL31', async () => {
 
 if (run('BL32')) await guard('BL32', async () => {
   const p = await open(); await p.evaluate(SEED + ';__seed()');
-  await p.evaluate(() => { document.getElementById('rb-tab-home').click(); lnStart(); });
+  await p.evaluate(() => { document.getElementById('rb-tab-home').click(); LN.snap = false; lnStart(); });   // BL32 is about the drag itself; BL39 is about snapping
   await sleep(200);
   let st = await p.evaluate(() => ({ tool: AN.tool, tab: document.getElementById('rb-tab-format').textContent, done: !document.getElementById('rb-done').hidden, hs: document.querySelectorAll('.an-ln-h').length, xs: document.querySelectorAll('.an-ln-x').length, n: FIG.laneCount, div: document.querySelectorAll('.lane-divider').length }));
   st.tool === 'ln' && st.tab === 'Lanes' && st.done && st.hs === 12 && st.xs === 12 && st.div === 0 ? ok() : bad('BL32', 'the tool did not open with a handle per lane: ' + JSON.stringify(st));
@@ -1402,6 +1404,67 @@ if (run('BL38')) await guard('BL38', async () => {
   const pre = await p.evaluate(() => { var list = [{ name: 'x', fig: JSON.parse(JSON.stringify(_bFigRefs(FIG))) }]; savePresetsList(list); FIG.laneX = null; FIG.condRows = []; loadPreset(0); return JSON.stringify([FIG.laneX, FIG.condRows[0] && FIG.condRows[0].txt, FIG.condRows[0] && FIG.condRows[0].dx, FIG.condRows[0] && FIG.condRows[0].dy, FIG.laneLabelOffsetX, FIG.laneLabelDY]); });
   pre === snap ? ok() : bad('BL38', 'a preset lost the lanes, text row or offsets: ' + pre + ' vs ' + snap);
   p.errs.length ? bad('BL38', 'errors: ' + p.errs.join(' | ')) : ok();
+  await p.context().close();
+});
+
+if (run('BL39')) await guard('BL39', async () => {
+  const p = await open();
+  const g = await p.evaluate(GEL + `;(() => { var W = 600, H = 120, c = document.createElement('canvas'); c.width = W; c.height = H; var x = c.getContext('2d'); x.fillStyle = '#f4f4f4'; x.fillRect(0, 0, W, H);
+    [.1, .3, .55, .85].forEach(function (b, k) { for (var yy = 0; yy < 120; yy++) { var gg = Math.exp(-((yy - 60) * (yy - 60)) / 50); x.fillStyle = 'rgba(0,0,0,' + (0.5 * gg) + ')'; x.fillRect(b * W - 15, yy, 30, 1); } }); return c.toDataURL('image/png'); })()`);
+  const BANDS = [.1, .3, .55, .85];
+  await p.evaluate(() => { window.__cen = e => { const b = e.getBoundingClientRect(); return b.left + b.width / 2; }; });
+  await p.evaluate(([g0, bands]) => { FIG.panels[0].src = g0; FIG.panels[0].cropped = g0; FIG.laneCount = 4; FIG.lanes = ['a', 'b', 'c', 'd']; FIG.laneX = [.14, .27, .6, .8]; FIG.laneWeights = null; FIG.condRows = [{ label: 'T', kind: 'text', txt: ['1', '2', '3', '4'] }, { label: 'D', on: [] }]; migrateFig(FIG); save(); render(); lnStart(); }, [g, BANDS]);
+  await sleep(300);
+  const handle = i => p.evaluate(i => { const b = document.querySelector('.an-ln-h[data-i="' + i + '"] circle').getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; }, i);
+  const box = await picBox(p);
+  // within reach of a band: it lands on the band's centre
+  let h0 = await handle(0); await MV(p, h0, { x: box.l + box.w * .11 + 0, y: h0.y });
+  let lx = await p.evaluate(() => FIG.laneX.slice());
+  Math.abs(lx[0] - .1) < 0.006 ? ok() : bad('BL39', `a handle dropped at .11 did not settle on the band at .1: ${lx[0]}`);
+  // Alt: exactly where it is dropped
+  h0 = await handle(1); await p.keyboard.down('Alt'); await MV(p, h0, { x: box.l + box.w * .31, y: h0.y }); await p.keyboard.up('Alt');
+  lx = await p.evaluate(() => FIG.laneX.slice());
+  Math.abs(lx[1] - .31) < 0.004 ? ok() : bad('BL39', `Alt did not place the handle exactly: ${lx[1]}`);
+  // out of reach (more than 5 % from any band): stays
+  h0 = await handle(2); await MV(p, h0, { x: box.l + box.w * .42, y: h0.y });
+  lx = await p.evaluate(() => FIG.laneX.slice());
+  Math.abs(lx[2] - .42) < 0.006 ? ok() : bad('BL39', `a handle far from a band was moved: ${lx[2]}`);
+  // the checkbox turns it off
+  await p.evaluate(() => lnSnapSet(false)); h0 = await handle(3); await MV(p, h0, { x: box.l + box.w * .86, y: h0.y });
+  lx = await p.evaluate(() => FIG.laneX.slice());
+  Math.abs(lx[3] - .86) < 0.006 ? ok() : bad('BL39', `with Snap to band off the handle still moved: ${lx[3]}`);
+  // a click that adds a lane snaps too (a lane at .55 is wanted: it is the band)
+  await p.evaluate(() => { lnSnapSet(true); FIG.laneX = [.1, .3, .7, .85]; render(); anTool('ln'); });
+  await p.mouse.click(box.l + box.w * .57, box.t + box.h * .6); await sleep(200);
+  const added = await p.evaluate(() => FIG.laneX.slice());
+  added.length === 5 && added.some(x => Math.abs(x - .55) < 0.006) ? ok() : bad('BL39', 'a click near a band did not add the lane on the band: ' + added.map(x => x.toFixed(3)));
+  // labels and dots settle on the centre of a lane, theirs or another
+  await p.evaluate(() => { anTool('select'); FIG.laneX = [.1, .3, .55, .85]; FIG.laneCount = 4; FIG.lanes = ['a', 'b', 'c', 'd']; FIG.laneLabelOffsetX = null; FIG.laneLabelDY = null; migrateFig(FIG); render(); });
+  const cen = sel => i => p.evaluate(([sel, i]) => { const b = document.querySelectorAll(sel)[i].getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; }, [sel, i]);
+  const lab = cen('.lane-cell .lbl-in'), txt = cen('.cond-cell.txt'), dot = cen('.cond-cell.cm');
+  const wantx = k => box.l + box.w * [.1, .3, .55, .85][k];
+  let a = await lab(0); await MV(p, a, { x: wantx(2) + 6, y: a.y });
+  let o = await p.evaluate(() => __cen(document.querySelectorAll('.lane-cell .lbl-in')[0]) - __cen(document.querySelectorAll('.lane-cell .lbl-in')[2]));
+  Math.abs(o) < 1.5 ? ok() : bad('BL39', `a label dropped 6px from lane 3 did not settle on it (${o.toFixed(1)}px off)`);
+  a = await lab(1); await MV(p, a, { x: wantx(3) + 20, y: a.y });
+  o = await p.evaluate(() => Math.abs(__cen(document.querySelectorAll('.lane-cell .lbl-in')[1]) - __cen(document.querySelectorAll('.lane-cell .lbl-in')[3])));
+  o > 12 ? ok() : bad('BL39', 'a label 20px from a lane was pulled in');
+  a = await lab(3); await p.keyboard.down('Alt'); await MV(p, a, { x: a.x - 60 + 5, y: a.y }); await p.keyboard.up('Alt');
+  o = await p.evaluate(() => FIG.laneLabelOffsetX[3]); Math.abs(o + 55) <= 1 ? ok() : bad('BL39', 'Alt did not place a label exactly: ' + o);
+  let d0 = await txt(1); await MV(p, d0, { x: wantx(0) + 5, y: d0.y });
+  o = Math.abs(await p.evaluate(() => __cen(document.querySelectorAll('.cond-cell.txt')[1])) - wantx(0));
+  o < 1.5 ? ok() : bad('BL39', 'a text cell dropped near another lane did not settle on it');
+  d0 = await dot(3); await MV(p, d0, { x: wantx(1) - 4, y: d0.y + 2 });
+  o = await p.evaluate(() => ({ x: __cen(document.querySelectorAll('.cond-cell.cm')[3]), dy: FIG.condRows[1].dy[3] })); o.dx = Math.abs(o.x - wantx(1));
+  o.dx < 1.5 && o.dy === 0 ? ok() : bad('BL39', 'a dot dropped near another lane did not settle on it and on its line: ' + JSON.stringify(o));
+  // a text annotation settles on a lane too, Alt places it exactly
+  await p.evaluate(() => { FIG.panels[0].shapes = []; var c = anAdd(0, anNew('text', { x: .2, y: .3, s: 'hello', fs: 14 })); window.__tid = c && c.id; anSelect([window.__tid]); });
+  const tcen = () => p.evaluate(() => { const f = anFind(window.__tid), img = document.querySelector('.panel-blot .blot-img').getBoundingClientRect(), b = anLocalBox(f.s, img.width, img.height); return { x: img.left + b.cx, y: img.top + b.cy, f: (b.cx) / img.width }; });
+  const t0 = await tcen(); await MV(p, t0, { x: t0.x + (box.w * .3 - t0.f * box.w) + 5, y: t0.y });
+  let t1 = await tcen(); Math.abs(t1.f - .3) < 0.004 ? ok() : bad('BL39', `a text annotation dropped near a lane did not settle on its centre: ${t1.f.toFixed(3)}`);
+  await p.keyboard.down('Alt'); await MV(p, t1, { x: t1.x + 5, y: t1.y }); await p.keyboard.up('Alt');
+  const t2 = await tcen(); Math.abs(t2.f - .3 - 5 / box.w) < 0.004 ? ok() : bad('BL39', 'Alt did not place the text exactly');
+  p.errs.length ? bad('BL39', 'errors: ' + p.errs.join(' | ')) : ok();
   await p.context().close();
 });
 

@@ -2944,6 +2944,16 @@ var _laneRepositionMode=false;
 function toggleLaneRepositionMode(){ _laneRepositionMode=!_laneRepositionMode; render(); }
 function resetLaneLabelPos(){ FIG.laneLabelOffsetX=null; FIG.laneLabelOffsetY=0; FIG.laneLabelDY=null; FIG.condRows.forEach(function(cr){ cr.dx=_numArr(null,FIG.laneCount); cr.dy=_numArr(null,FIG.laneCount); }); FIG.panels.forEach(function(p){ p.kdaOffsetY=0; p.protOffsetY=0; }); save(); render(); toast('Label positions reset'); closeMenus(); }
 
+// Where a label or dot dragged to offset (nx,ny) from lane i settles: on the centre of the nearest lane (its own or another), within 8 px, and on
+// the row's own line, or on the line of a label already moved to a height, within 5 px.
+function _laneSnap(i,lines){
+  return function(nx,ny){
+    var row=el('lane-row'), W=row?row.offsetWidth:0, cen=laneCentersPct(FIG), own=(cen[i]||0)/100*W, bx=nx, bd=8;
+    cen.forEach(function(c){ var off=c/100*W-own, d=Math.abs(nx-off); if(d<bd){ bd=d; bx=off; } });
+    var by=ny, yd=5; (lines||[0]).forEach(function(l){ var d=Math.abs(ny-l); if(d<yd){ yd=d; by=l; } });
+    return [bx,by];
+  };
+}
 // A label or a condition dot is dragged by a press that MOVES: a press that stays put is a click (the caret for a label,
 // the toggle for a dot). Both axes are free; Shift keeps to one axis; it settles on the lane's centre and the row's line
 // when it passes within 5px of them (Alt turns that off).
@@ -2956,7 +2966,7 @@ function _blDragBind(st){
     e.preventDefault(); try{ getSelection().removeAllRanges(); }catch(_){}
     if(e.shiftKey){ if(Math.abs(dx)>=Math.abs(dy)) dy=0; else dx=0; }
     var nx=st.ox+dx, ny=st.oy+dy;
-    if(!e.altKey){ if(Math.abs(nx)<5) nx=0; if(Math.abs(ny)<5) ny=0; }
+    if(!e.altKey){ if(st.snap){ var sn=st.snap(nx,ny); nx=sn[0]; ny=sn[1]; } else { if(Math.abs(nx)<5) nx=0; if(Math.abs(ny)<5) ny=0; } }
     st.set(Math.round(nx*2)/2, Math.round(ny*2)/2);
   }
   function up(){
@@ -2969,14 +2979,15 @@ function _blDragBind(st){
 function laneCellDown(ev,i){
   if(ev.button>0||_bDrag||_laneDrag) return;
   var cell=ev.currentTarget; if(_laneRepositionMode) ev.preventDefault();   // in Move mode a press never puts a caret in the label
-  _blDragBind({cell:cell,x0:ev.clientX,y0:ev.clientY,ox:laneLabelOffsetXArr(FIG)[i]||0,oy:laneLabelDYArr(FIG)[i]||0,moved:false,
+  var lines=[0].concat(laneLabelDYArr(FIG).filter(function(v,k){ return k!==i&&v; }));
+  _blDragBind({cell:cell,x0:ev.clientX,y0:ev.clientY,ox:laneLabelOffsetXArr(FIG)[i]||0,oy:laneLabelDYArr(FIG)[i]||0,moved:false,snap:_laneSnap(i,lines),
     set:function(nx,ny){ var a=laneLabelOffsetXArr(FIG).slice(), b=laneLabelDYArr(FIG).slice(); a[i]=nx; b[i]=ny; FIG.laneLabelOffsetX=a; FIG.laneLabelDY=b; applyGeometry(); }});
 }
 function condCellDown(ev,ri,i){
   if(ev.button>0||_bDrag) return; var cr=FIG.condRows[ri]; if(!cr) return;
   var cell=ev.currentTarget, text=cr.kind==='text';
   if(text&&!ev.target.closest('.lbl-in')) ev.preventDefault();
-  _blDragBind({cell:cell,x0:ev.clientX,y0:ev.clientY,ox:(cr.dx&&cr.dx[i])||0,oy:(cr.dy&&cr.dy[i])||0,moved:false,
+  _blDragBind({cell:cell,x0:ev.clientX,y0:ev.clientY,ox:(cr.dx&&cr.dx[i])||0,oy:(cr.dy&&cr.dy[i])||0,moved:false,snap:_laneSnap(i),
     set:function(nx,ny){ cr.dx=_numArr(cr.dx,FIG.laneCount); cr.dy=_numArr(cr.dy,FIG.laneCount); cr.dx[i]=nx; cr.dy[i]=ny; applyGeometry(); },
     click:text?null:function(){ toggleCond(ri,i); }});
 }
@@ -4755,6 +4766,8 @@ function anDragMove(ev){
     if(ev.shiftKey){ if(Math.abs(dx)>Math.abs(dy)) dy=0; else dx=0; }
     d.orig.forEach(function(o){ var f=anFind(o.id); if(!f) return; var s=f.s;
       if(s.t==='line'){ s.x1=o.x1+dx/W; s.x2=o.x2+dx/W; s.y1=o.y1+dy/H; s.y2=o.y2+dy/H; } else { s.x=o.x+dx/W; s.y=o.y+dy/H; } });
+    if(d.orig.length===1&&!ev.altKey){ var f1=anFind(d.orig[0].id); if(f1&&f1.s.t==='text'){   // a text settles on the centre of a lane (within 8 px): Alt places it exactly
+      var bb=anLocalBox(f1.s,W,H), bd=8, tx=null; laneCentersPct(FIG).forEach(function(c){ var e2=Math.abs(c/100*W-bb.cx); if(e2<bd){ bd=e2; tx=c/100*W-bb.cx; } }); if(tx!=null) f1.s.x+=tx/W; } }
     anDraw(d.pi); return;
   }
   var f2=anFind(d.id); if(!f2) return; var sh=f2.s, o0=d.orig[0]; d.moved=true;
@@ -5212,7 +5225,7 @@ function anMkGripDown(ev,grip){
    numbered handle on every lane (drag it to the middle of the lane), a click on the blot adds one, the cross removes one,
    Find lanes reads them off the picture. They are stored as fractions of the blot's width (FIG.laneX, ascending), and the lane
    labels, the condition rows, the group brackets and the densitometry all follow them. The guides are drawn on the screen only. ═══ */
-var LN={pi:null,dirty:false,wasNull:false};
+var LN={pi:null,dirty:false,wasNull:false,snap:true};
 function lnStart(){
   if(AN.tool==='ln'){ anTool('select'); return; }
   var pi=-1; FIG.panels.some(function(p,i){ if(_bIsData(p.cropped)){ pi=i; return true; } return false; });
@@ -5230,12 +5243,45 @@ function lnSvg(pi,W,H){
       +'<g class="an-ln-x" data-i="'+i+'"><circle cx="'+px+'" cy="'+by+'" r="'+(r-2)+'"/><path d="M-2.6 -2.6l5.2 5.2M2.6 -2.6l-5.2 5.2" transform="translate('+px+' '+by+')"/><title>Remove lane '+(i+1)+'</title></g>'; });
   return out;
 }
+// A lane handle settles on the band under it: the column profile of the band rows (the box Quantify uses, or the one it would find),
+// the nearest peak within 5 % of the width (never past the half way to a neighbour) that stands out by a tenth of the range, and
+// the centre of mass of that peak above its half height. No such peak, no move. Alt places exactly.
+function lnSnapX(pi,xf,lim){
+  var c=mkGrey(pi); if(!c) return xf;
+  var p=FIG.panels[pi], G=c.G, sp=lnPicSpan(p,G), f=(xf-sp.x0)/sp.w; if(!(f>0&&f<1)) return xf;
+  var q=p.quant, bk=q?q.y0+':'+q.y1+':'+q.dark:'auto', w=G.w, x, y;
+  if(!c.cols||c.colsKey!==bk){
+    var dk=q?q.dark!==false:c.dark, r=q?{y0:q.y0,y1:q.y1}:_dnAuto(G,dk), y0=Math.max(0,Math.floor(r.y0*G.h)), y1=Math.min(G.h,Math.ceil(r.y1*G.h)), rows=Math.max(1,y1-y0), P0=new Float64Array(w);
+    for(x=0;x<w;x++){ var t=0; for(y=y0;y<y1;y++){ var v=G.g[y*w+x]; t+=dk?255-v:v; } P0[x]=t/rows; }
+    c.cols=P0; c.colsKey=bk;
+  }
+  var P=c.cols, k=Math.max(1,Math.round(w*0.004)), S=new Float64Array(w);
+  for(x=0;x<w;x++){ var a=0,n=0; for(var d=-k;d<=k;d++){ var xx=x+d; if(xx>=0&&xx<w){ a+=P[xx]; n++; } } S[x]=a/n; }
+  var srt=Array.prototype.slice.call(S).sort(function(m,o){ return m-o; }), range=srt[Math.floor(w*0.95)]-srt[Math.floor(w*0.05)]; if(!(range>1)) return xf;
+  var W=Math.max(3,Math.round(w*Math.min(0.05,(lim==null?0.05:lim)/sp.w))), xc=Math.round(f*w), lo=Math.max(1,xc-W), hi=Math.min(w-2,xc+W), cand=[];
+  for(x=lo;x<=hi;x++){
+    if(!(S[x]>=S[x-1]&&S[x]>S[x+1])) continue;
+    var l=S[x], rr=S[x], j;
+    for(j=x-1;j>=Math.max(0,x-3*W)&&S[j]<=S[x];j--) l=Math.min(l,S[j]);
+    for(j=x+1;j<=Math.min(w-1,x+3*W)&&S[j]<=S[x];j++) rr=Math.min(rr,S[j]);
+    var prom=S[x]-Math.max(l,rr); if(prom>=range*0.10) cand.push({x:x,prom:prom,base:Math.max(l,rr)});
+  }
+  if(!cand.length) return xf;
+  var best=0; cand.forEach(function(o){ best=Math.max(best,o.prom); });
+  var pk=cand.filter(function(o){ return o.prom>=0.15*best; }).sort(function(m,o){ return Math.abs(m.x-xc)-Math.abs(o.x-xc)||o.prom-m.prom; })[0];
+  var h=pk.base+(S[pk.x]-pk.base)/2, a1=pk.x, b1=pk.x; while(a1>0&&S[a1-1]>h) a1--; while(b1<w-1&&S[b1+1]>h) b1++;
+  var sw=0,sx=0; for(x=a1;x<=b1;x++){ var wt=S[x]-h; if(wt>0){ sw+=wt; sx+=wt*x; } }
+  var cx=sw>0?sx/sw:pk.x; return sp.x0+((cx+0.5)/w)*sp.w;
+}
+function lnSnapSet(on){ LN.snap=!!on; anFormat(); }
+function _lnLim(lx,i){ var m=0.05; if(i>0) m=Math.min(m,(lx[i]-lx[i-1])*0.45); if(i<lx.length-1) m=Math.min(m,(lx[i+1]-lx[i])*0.45); return Math.max(0.004,m); }
 function _lnChanged(){ LN.dirty=true; save(); }
 function lnDown(ev,h){
   var host=h.closest('.panel-blot'), pi=+host.getAttribute('data-pi'), i=+h.getAttribute('data-i'), box=anBox(pi), lx=laneXArr(FIG); if(!box||!lx) return;
   ev.preventDefault(); var moved=false;
   function mv(e){
     var x=(e.clientX-box.left)/box.W, lo=i>0?lx[i-1]+0.003:0, hi=i<lx.length-1?lx[i+1]-0.003:1;
+    if(LN.snap&&!e.altKey) x=lnSnapX(pi,x,_lnLim(lx,i));
     lx[i]=+Math.max(lo,Math.min(hi,x)).toFixed(4); moved=true; applyGeometry(); FIG.panels.forEach(function(p,k){ anDraw(k); });
   }
   function up(){ document.removeEventListener('pointermove',mv); document.removeEventListener('pointerup',up); document.removeEventListener('pointercancel',up); if(moved){ _lnChanged(); } }
@@ -5243,6 +5289,7 @@ function lnDown(ev,h){
 }
 function lnAdd(ev,lay){
   var r=lay.getBoundingClientRect(), x=Math.max(0,Math.min(1,(ev.clientX-r.left)/r.width)), lx=laneXArr(FIG)||[];
+  if(LN.snap&&!ev.altKey){ var pi0=+lay.closest('.panel-blot').getAttribute('data-pi'), near=lx.reduce(function(m,c){ return Math.min(m,Math.abs(c-x)); },1); x=Math.max(0,Math.min(1,lnSnapX(pi0,x,Math.max(0.004,Math.min(0.05,near*0.45))))); }
   if(lx.some(function(c){ return Math.abs(c-x)<0.006; })){ toast('There is a lane there already'); return; }
   var j=lanesInsert(x); if(j<0){ toast('Thirty lanes is the most'); return; }
   _lnChanged(); render(); anFormat(); toast('Lane '+(j+1)+' added · '+FIG.laneCount+' lanes');
@@ -5307,6 +5354,7 @@ function lnFind(){
 function lnFormatHtml(){
   var n=FIG.laneCount;
   return anGroup('Mark lanes','<span class="rb-note">Click the blot in the middle of each lane to add one. Drag a numbered handle to move it; the cross under it removes it. The labels and the condition rows sit exactly over the lanes.</span>')
+    +anGroup('Placing','<label class="tb-field"><input type="checkbox" '+(LN.snap?'checked ':'')+'onchange="lnSnapSet(this.checked)" aria-label="Snap to band"> Snap to band</label><span class="rb-note">Alt places exactly.</span>')
     +anGroup('Lanes','<span class="rb-note"><b>'+n+'</b> lane'+(n===1?'':'s')+'</span><button class="btn sm" onclick="lnFind()" title="Read the lanes off the picture: the columns the bands stand in">Find lanes</button><button class="btn sm" onclick="lnEven()" title="Space the lanes evenly between the first and the last">Even spacing</button><button class="btn sm" onclick="lnEqual()" title="Back to equal columns across the picture">Equal columns</button>');
 }
 
