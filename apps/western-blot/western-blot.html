@@ -2053,8 +2053,13 @@ header{border-bottom:1px solid var(--border);padding:0 20px;display:flex;align-i
 .cond-lblcell{position:relative;display:flex;align-items:center;justify-content:flex-end;padding-right:3px;min-width:0;}
 .cond-lblcell .lbl-in{font-family:var(--sans);font-size:var(--fs-5);color:#111;text-align:right;white-space:nowrap;outline:none;min-width:10px;cursor:text;flex:none;}   /* flex:none, or a long title is squeezed to the column and its text spills to the right, over the lanes */
 .cond-lblcell .lbl-in:empty::before{content:'condition';color:#bbb;}
-.cond-del{position:absolute;left:-17px;top:50%;transform:translateY(-50%);width:15px;height:15px;border-radius:50%;border:none;background:#d9534f;color:#fff;font-size:var(--fs-2);line-height:1;cursor:pointer;opacity:0;}
+.cond-del{position:absolute;left:-30px;top:50%;transform:translateY(-50%);width:15px;height:15px;border-radius:50%;border:none;background:#d9534f;color:#fff;font-size:var(--fs-2);line-height:1;cursor:pointer;opacity:0;}
 .cond-lblcell:hover .cond-del{opacity:1;}
+.cond-mv{position:absolute;left:-14px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;opacity:0;}   /* the 30px of padding left of the figure holds the × and this pair; the shell clips anything wider */
+.cond-lblcell:hover .cond-mv,.cond-mv:focus-within{opacity:1;}
+.cond-mv button{width:12px;height:11px;padding:0;border-radius:3px;border:none;background:#6b7280;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+.cond-mv button:disabled{opacity:.35;cursor:default;}
+.cond-mv svg{width:9px;height:9px;}
 .cond-lanes{position:relative;height:24px;}
 .cond-cell{position:absolute;top:50%;display:flex;align-items:center;justify-content:center;min-width:24px;height:24px;cursor:pointer;border-radius:var(--r-1);touch-action:none;}
 .cond-cell:hover{background:rgba(91,107,122,.10);}
@@ -2356,6 +2361,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
       <button class="rb-tab on" role="tab" id="rb-tab-home" data-tab="home" aria-selected="true" onclick="rbClick('home')">Home</button>
       <button class="rb-tab" role="tab" id="rb-tab-insert" data-tab="insert" aria-selected="false" onclick="rbClick('insert')">Insert</button>
       <button class="rb-tab" role="tab" id="rb-tab-layout" data-tab="layout" aria-selected="false" onclick="rbClick('layout')">Layout</button>
+      <button class="rb-tab" role="tab" id="rb-tab-markers" data-tab="markers" aria-selected="false" onclick="rbClick('markers')" title="Molecular-weight markers: pick a ladder and gel, then click each band on the blot">Markers</button>
       <button class="rb-tab rb-ctx" role="tab" id="rb-tab-format" data-tab="format" aria-selected="false" onclick="rbClick('format')" hidden>Format</button>
       <button class="rb-done" id="rb-done" hidden onclick="anTool('select')" title="Leave this tool (Esc)" aria-label="Leave this tool">Done</button>
     </div>
@@ -2476,6 +2482,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
       </div>
     </div>
 
+    <div class="rb-pane" role="tabpanel" data-pane="markers" id="rb-markers" aria-labelledby="rb-tab-markers"></div>
     <div class="rb-pane" role="tabpanel" data-pane="format" id="rb-format" aria-labelledby="rb-tab-format"></div>
   </div>
 </div>
@@ -2727,6 +2734,7 @@ function figSane(fig){
     if(p.cl!=null&&!_fobj(p.cl)) p.cl=null;
     if(p.quant!=null&&!_fobj(p.quant)) p.quant=null;
     if(p.ladder!=null&&typeof p.ladder!=='string') p.ladder=null;
+    if(p.gel!=null&&typeof p.gel!=='string') p.gel=null;
     if(!Array.isArray(p.shapes)) p.shapes=[];
   });
   fig.lanes=(Array.isArray(fig.lanes)?fig.lanes:[]).map(_fstr);
@@ -2768,6 +2776,7 @@ function migrateFig(fig){
     if(p.ladder&&LADDERS_RETIRED[p.ladder]){ p.cl={unit:'kDa',k:mkParseSizes(p.marks.map(function(m){ return m.k; }).join(' '),'kDa')}; p.ladder='custom'; }
     else if(p.ladder&&!mkOk(p.ladder)) p.ladder=null;
     else if(p.ladder==='custom'&&!p.cl) p.cl={unit:'kDa',k:[]};
+    if(p.gel!=null&&!mkGelOk(p.ladder,p.gel)) delete p.gel;   // a gel system only means something for a ladder that has them
     if(p.quant&&!(isFinite(+p.quant.y0)&&isFinite(+p.quant.y1))) p.quant=null;
     p.shapes=anClean(p.shapes);
   });
@@ -3214,13 +3223,18 @@ function nudge(id,dir,fn){
 }
 
 /* ── Sample-conditions matrix ── */
-function addCondRow(kind){
-  kind=kind==='text'?'text':'mark'; var n=FIG.laneCount;
-  FIG.condRows.push({label:'',kind:kind,on:new Array(n).fill(false),txt:new Array(n).fill(''),dx:new Array(n).fill(0),dy:new Array(n).fill(0)});
+function addCondRow(kind,at){
+  kind=kind==='text'?'text':'mark'; var n=FIG.laneCount, row={label:'',kind:kind,on:new Array(n).fill(false),txt:new Array(n).fill(''),dx:new Array(n).fill(0),dy:new Array(n).fill(0)};
+  var k=(typeof at==='number'&&at>=0&&at<FIG.condRows.length)?at:FIG.condRows.length; FIG.condRows.splice(k,0,row);   // `at`: the place in the stack (right-click: below this row); none: at the end
   save(); render();
-  if(kind==='text'){ setTimeout(function(){ var c=document.querySelectorAll('#figure .cond-lblcell .lbl-in'); if(c.length) c[c.length-1].focus(); },0); }
+  if(kind==='text'){ setTimeout(function(){ var c=document.querySelectorAll('#figure .cond-lblcell .lbl-in'); if(c[k]) c[k].focus(); },0); }
 }
 function delCondRow(ri){ if(FIG.condRows[ri]){ FIG.condRows.splice(ri,1); save(); render(); } }
+// A row of the condition stack one place up (-1) or down (+1): the array order is the order on the figure.
+function moveCondRow(ri,dir){ var j=ri+dir, a=FIG.condRows; if(!a[ri]||j<0||j>=a.length) return; var t=a[ri]; a[ri]=a[j]; a[j]=t; save(); render(); }
+function dupCondRow(ri){ var cr=FIG.condRows[ri]; if(!cr) return; FIG.condRows.splice(ri+1,0,JSON.parse(JSON.stringify(cr))); save(); render(); }
+function clearCondRow(ri){ var cr=FIG.condRows[ri]; if(!cr) return; var n=FIG.laneCount; cr.on=new Array(n).fill(false); cr.txt=new Array(n).fill(''); cr.dx=new Array(n).fill(0); cr.dy=new Array(n).fill(0); save(); render(); }
+function resetCondCell(ri,i){ var cr=FIG.condRows[ri]; if(!cr) return; cr.dx=_numArr(cr.dx,FIG.laneCount); cr.dy=_numArr(cr.dy,FIG.laneCount); cr.dx[i]=0; cr.dy[i]=0; save(); render(); }
 function setCondLabel(ri,v){ if(FIG.condRows[ri]){ FIG.condRows[ri].label=v; save(); fitGutter(); fitLaneZone(); } }
 function setCondTxt(ri,i,v){ var cr=FIG.condRows[ri]; if(!cr) return; if(!Array.isArray(cr.txt)) cr.txt=[]; cr.txt[i]=v; save(); }
 // Several values pasted into a text row (a row from a spreadsheet: tab or line separated) fill the cells from this one on.
@@ -3259,7 +3273,9 @@ function condBandHtml(rowNum){
         cells+='<div class="cond-cell cm '+(on?'on':'off')+'" data-ri="'+ri+'" data-i="'+i+'" style="'+pos+'" role="checkbox" aria-checked="'+on+'" tabindex="0" aria-label="'+esc(_stripHtml(cr.label)||('Row '+(ri+1)))+', lane '+(i+1)+'" onpointerdown="condCellDown(event,'+ri+','+i+')" onkeydown="if(event.key===\' \'||event.key===\'Enter\'){event.preventDefault();toggleCond('+ri+','+i+');}" title="Click to switch on or off · drag to move it">'+condMarkerHtml(on)+'</div>';
       }
     }
+    var chev=function(d){ return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="'+(d<0?'M6 15l6-6 6 6':'M6 9l6 6 6-6')+'"/></svg>'; };
     return '<div class="cond-lblcell"><button class="cond-del" onclick="delCondRow('+ri+')" title="Remove this row" aria-label="Remove row '+(ri+1)+'">&times;</button>'
+      +'<span class="cond-mv"><button onclick="moveCondRow('+ri+',-1)"'+(ri===0?' disabled':'')+' title="Move this row up" aria-label="Move row '+(ri+1)+' up">'+chev(-1)+'</button><button onclick="moveCondRow('+ri+',1)"'+(ri===f.condRows.length-1?' disabled':'')+' title="Move this row down" aria-label="Move row '+(ri+1)+' down">'+chev(1)+'</button></span>'
       +'<div class="lbl-in" contenteditable="true" role="textbox" aria-label="Label of condition row '+(ri+1)+'" onfocus="_blotActiveEd=this" oninput="setCondLabel('+ri+',this.innerHTML)">'+_bClean(cr.label||'')+'</div></div>'
       +'<div class="cond-lanes">'+cells+'</div>';
   }).join('');
@@ -3322,6 +3338,30 @@ function setPanelGap(pi,v){ v=(v===''||v==null)?null:Math.max(0,Math.min(80,pars
 function reorderPanel(from,to){ if(from==null||to==null||from===to)return; if(from<0||from>=FIG.panels.length||to<0||to>=FIG.panels.length)return; var item=FIG.panels.splice(from,1)[0]; FIG.panels.splice(to,0,item); save(); render(); }
 function addGroup(){ FIG.groups.push({from:1,to:FIG.laneCount,label:'group'}); save(); render(); }
 function delGroup(gi){ FIG.groups.splice(gi,1); save(); render(); }
+function addPanelAt(pi){ FIG.panels.splice(Math.max(0,Math.min(FIG.panels.length,pi)),0,newPanel('','')); save(); render(); }   // right-click: a panel below this one
+function addGroupAt(from,to){ var n=FIG.laneCount; from=Math.max(1,Math.min(n,from)); to=Math.max(from,Math.min(n,to)); FIG.groups.push({from:from,to:to,label:'group'}); save(); render(); }
+function spanGroup(gi){ var g=FIG.groups[gi]; if(!g) return; g.from=1; g.to=FIG.laneCount; save(); render(); }
+function panelLabelReset(pi,which){ var p=FIG.panels[pi]; if(!p) return; p[which==='kda'?'kdaOffsetY':'protOffsetY']=0; save(); render(); }
+function laneLabelReset(i){ var a=laneLabelOffsetXArr(FIG).slice(), b=laneLabelDYArr(FIG).slice(); a[i]=0; b[i]=0; FIG.laneLabelOffsetX=a; FIG.laneLabelDY=b; save(); render(); }
+// A lane in place j (0 = before the first, n = after the last), from the right-click menu. Equal columns stay equal columns (and keep their
+// widths); lanes marked by hand get the new one halfway between its neighbours. Everything that belongs to a lane moves with it (lanesInsert).
+function laneAddAt(j){
+  var n=FIG.laneCount; if(n>=30){ toast('Thirty lanes is the most'); return; }
+  j=Math.max(0,Math.min(n,j)); var hand=!!laneXArr(FIG), cen=laneCentersPct(FIG).map(function(c){ return c/100; });
+  var w=(Array.isArray(FIG.laneWeights)&&FIG.laneWeights.length===n)?FIG.laneWeights.slice():null;
+  var x=j<=0?cen[0]/2:j>=n?(cen[n-1]+1)/2:(cen[j-1]+cen[j])/2;
+  if(hand&&cen.some(function(c){ return Math.abs(c-x)<0.006; })){ toast('There is no room for a lane there'); return; }
+  var at=lanesInsert(x); if(at<0) return;
+  if(!hand){ FIG.laneX=null; if(w){ w.splice(at,0,w.reduce(function(a,b){ return a+b; },0)/(w.length||1)||1); FIG.laneWeights=w; } }
+  save(); render(); if(AN.tool==='ln'){ LN.dirty=true; anFormat(); } toast('Lane '+(at+1)+' added · '+FIG.laneCount+' lanes');
+}
+function laneDelAt(j){
+  var n=FIG.laneCount; if(n<=1||j<0||j>=n){ toast('A figure keeps at least one lane'); return; }
+  var hand=!!laneXArr(FIG), had=_stripHtml(FIG.lanes[j]), w=(Array.isArray(FIG.laneWeights)&&FIG.laneWeights.length===n)?FIG.laneWeights.slice():null;
+  lanesRemove(j);
+  if(!hand){ FIG.laneX=null; if(w){ w.splice(j,1); FIG.laneWeights=w; } }
+  save(); render(); if(AN.tool==='ln'){ LN.dirty=true; anFormat(); } toast('Lane '+(j+1)+' removed'+(had?' with its label "'+had+'"':'')+' · ⌘Z brings it back');
+}
 function resetFigure(){
   wbAsk('Clear the whole figure?', 'Panels, lanes and labels all go, and you start on a blank one.',
     {ok:'Clear it', danger:true}, function(yes){
@@ -4280,7 +4320,15 @@ function _bCsv(v){ if(typeof v==='number') return String(v); var s=String(v==nul
 var LADDER_PRESTAINED='Prestained: the sizes are apparent (about 5 % lot to lot) and move with the gel and buffer. Quote a size from an unstained ladder.';
 var LADDERS={
   pageruler_plus:{type:'protein',unit:'kDa',grp:'Protein, prestained',name:'PageRuler Plus Prestained',mfr:'Thermo Scientific',cat:'26619 · 26620',
-    k:[250,130,100,70,55,35,25,15,10],ref:[70,25,10],note:'Orange 70 and 25, green 10. '+LADDER_PRESTAINED},
+    k:[250,130,100,70,55,35,25,15,10],ref:[70,25,10],note:'Orange 70 and 25, green 10. '+LADDER_PRESTAINED,
+    // Thermo's own table of the apparent sizes by gel and running buffer ("Migration patterns of PageRuler Plus Prestained Protein Ladder in
+    // different electrophoretic conditions"; the NuPAGE gels). Tris-Glycine (Laemmli SDS) is the system the ladder is calibrated in, so it is the
+    // list above. `ref` are the orange bands (green 10 where the gel resolves it); the 10 kDa band runs off a Tris-Acetate gel.
+    sys:[
+      {id:'tg',name:'Tris-Glycine',gels:'4-20 %, 8-16 %, 10-20 %, 8 %, 10 %, 12 %, 15 %',k:[250,130,100,70,55,35,25,15,10],ref:[70,25,10]},
+      {id:'ta',name:'Tris-Acetate',gels:'3-8 %, 7 %',k:[205,120,85,65,50,30,25],ref:[65,25]},
+      {id:'btmops',name:'Bis-Tris, MOPS',gels:'4-12 %, 10 %, 12 %',k:[185,115,80,65,50,30,25,10],ref:[65,25,10]},
+      {id:'btmes',name:'Bis-Tris, MES',gels:'4-12 %, 10 %, 12 %',k:[190,115,80,70,50,30,25,10],ref:[70,25,10]}]},
   pageruler:{type:'protein',unit:'kDa',grp:'Protein, prestained',name:'PageRuler Prestained',mfr:'Thermo Scientific',cat:'26616 · 26617',
     k:[180,130,100,70,55,40,35,25,15,10],ref:[70,10],note:'Orange 70, green 10. '+LADDER_PRESTAINED},
   spectra_br:{type:'protein',unit:'kDa',grp:'Protein, prestained',name:'Spectra Multicolor Broad Range',mfr:'Thermo Scientific',cat:'26634 · 26623',
@@ -4323,8 +4371,12 @@ MK.snap=true; MK.pin=null; MK.gc=null;
 // A ladder by id. 'custom' is the panel's own list (typed from an insert); an unknown id is no ladder.
 function mkLad(id,p){
   if(id==='custom'){ var c=(p&&p.cl)||{}, bp=c.unit==='bp'; return {type:bp?'dna':'protein',unit:bp?'bp':'kDa',name:'Custom sizes',mfr:'',cat:'',k:(c.k||[]).slice(),ref:[],note:'The sizes on your own ladder\'s insert.'}; }
-  return LADDERS[id]||null;
+  var L=LADDERS[id]||null; if(!L||!L.sys) return L;
+  var y=mkSys(L,p&&p.gel); return Object.assign({},L,{k:y.k.slice(),ref:y.ref.slice(),sys:L.sys,sysId:y.id,sysName:y.name});   // a ladder with a table by gel system reads as the system the panel was run in
 }
+// The gel system of a panel for a ladder that has them (the first, Tris-Glycine, when none is set or the id is not one of them).
+function mkSys(L,id){ var a=(L&&L.sys)||[]; for(var i=0;i<a.length;i++) if(a[i].id===id) return a[i]; return a[0]||null; }
+function mkGelOk(lid,gid){ var L=LADDERS[lid]; return !!(L&&L.sys&&L.sys.some(function(y){ return y.id===gid; })); }
 function mkOk(id){ return id==='custom'||!!LADDERS[id]; }
 function mkCur(){ return mkLad(MK.lad,FIG.panels[MK.pi])||LADDERS.pageruler_plus; }
 function mkUnit(p){ var L=p&&p.ladder?mkLad(p.ladder,p):null; return L?L.unit:'kDa'; }
@@ -4613,7 +4665,8 @@ function anSelect(ids,keepTab){
   rbSync(was===0&&AN.ids.length>0&&!keepTab);
 }
 // The tools that live in their own ribbon tab (markers, measure, lanes): the tab names them and Done leaves them.
-var AN_LENS={mk:1,ms:1,ln:1}, AN_LENS_NAME={mk:'Markers',ms:'Measure',ln:'Lanes'};
+// Markers and Measure are the Markers tab (always in the ribbon: opening it starts the tool); Lanes is the contextual tab that takes Format's place.
+var AN_LENS={mk:1,ms:1,ln:1}, AN_LENS_NAME={ln:'Lanes'}, AN_OWNTAB={mk:'markers',ms:'markers',ln:'format'};
 function anTool(t){
   if(AN.edit) anEditEnd(true);
   if(AN.tool==='ln'&&t!=='ln') lnEnd();
@@ -4967,24 +5020,26 @@ var RB_PHONE=window.matchMedia?window.matchMedia('(max-width:760px), (hover:none
 function rbFold(on){ var r=el('ribbon'); if(r) r.setAttribute('data-collapsed',on?'1':'0'); }
 function rbClick(name){
   var r=el('ribbon'); if(!r) return;
-  if(r.getAttribute('data-tab')===name&&r.getAttribute('data-collapsed')!=='1'&&!(name==='format'&&AN_LENS[AN.tool])){ rbFold(true); return; }   // a tool's own tab never folds itself away: it holds the tool's controls
+  if(r.getAttribute('data-tab')===name&&r.getAttribute('data-collapsed')!=='1'&&!(AN_LENS[AN.tool]&&name===AN_OWNTAB[AN.tool])){ rbFold(true); return; }   // a tool's own tab never folds itself away: it holds the tool's controls
   rbTab(name); rbFold(false);
 }
 function rbTab(name){
   var r=el('ribbon'); if(!r) return;
   if(name==='format'&&el('rb-tab-format').hidden) name=AN.tab||'home';
-  if(name!=='format') AN.tab=name;
+  if(name==='markers'&&AN.tool!=='mk'&&AN.tool!=='ms'){ anStartMarkers(); if(AN.tool==='mk') return; name=AN.tab||'home'; }   // the tab is the tool: opening it starts it (no picture yet: stay where you were)
+  if(name!=='format'&&name!=='markers') AN.tab=name;
   r.setAttribute('data-tab',name);
   r.querySelectorAll('.rb-tab').forEach(function(b){ var on=b.getAttribute('data-tab')===name; b.classList.toggle('on',on); b.setAttribute('aria-selected',on?'true':'false'); });
   r.querySelectorAll('.rb-pane').forEach(function(p){ p.classList.toggle('on',p.getAttribute('data-pane')===name); });
-  if(name!=='format'&&AN_LENS[AN.tool]) anTool('select');   // going to another tab leaves the tool
+  if(AN_LENS[AN.tool]&&name!==AN_OWNTAB[AN.tool]) anTool('select');   // going to another tab leaves the tool
 }
 function rbSync(auto){
   var tf=el('rb-tab-format'); if(!tf) return;
-  var show=AN.ids.length>0||!!AN_LENS[AN.tool], dn=el('rb-done');
+  var mkTab=AN.tool==='mk'||AN.tool==='ms', show=AN.ids.length>0||AN.tool==='ln', dn=el('rb-done');
   tf.hidden=!show; tf.textContent=AN_LENS_NAME[AN.tool]||'Format'; if(dn) dn.hidden=!AN_LENS[AN.tool];   // Done sits beside the tabs, so it is there whichever tab (or a folded ribbon) is showing
-  if(show){ anFormat(); if(auto){ rbTab('format'); if(RB_PHONE.matches&&!AN_LENS[AN.tool]) rbFold(true); else if(AN_LENS[AN.tool]&&!RB_PHONE.matches) rbFold(false); } }   // a tool's controls are shown when it starts (a folded ribbon on a laptop hid them)
+  if(show||mkTab){ anFormat(); if(auto){ rbTab(mkTab?'markers':'format'); if(RB_PHONE.matches&&!AN_LENS[AN.tool]) rbFold(true); else if(AN_LENS[AN.tool]&&!RB_PHONE.matches) rbFold(false); } }   // a tool's controls are shown when it starts (a folded ribbon on a laptop hid them)
   else { var r=el('ribbon'); if(r&&r.getAttribute('data-tab')==='format') rbTab(AN.tab||'home'); }
+  if(!mkTab){ var rr=el('ribbon'); if(rr&&rr.getAttribute('data-tab')==='markers') rbTab(AN.tab||'home'); }   // left the tool (Done, Esc): back to the tab you came from
   document.querySelectorAll('[data-tool]').forEach(function(b){ b.classList.toggle('on',b.getAttribute('data-tool')===AN.tool); });
 }
 
@@ -5026,9 +5081,8 @@ function anSel1(label,field,cur,opts){
 var AN_ALIGN_ICONS={l:'M4 4v16M8 8h12M8 14h7',c:'M12 4v16M6 8h12M8 14h8',r:'M20 4v16M4 8h12M9 14h7',t:'M4 4h16M8 8v12M14 8v7',m:'M4 12h16M8 6v12M14 8v8',b:'M4 20h16M8 4v12M14 9v7',h:'M5 4v16M19 4v16M10 8h4v8h-4z',v:'M4 5h16M4 19h16M8 10h8v4H8z'};
 var AN_ALIGN_NAMES={l:'Align left',c:'Align centre',r:'Align right',t:'Align top',m:'Align middle',b:'Align bottom',h:'Distribute horizontally',v:'Distribute vertically'};
 function anFormat(){
+  var mh=el('rb-markers'); if(mh&&(AN.tool==='mk'||AN.tool==='ms')){ mh.innerHTML=AN.tool==='mk'?mkFormatHtml():msFormatHtml(); return; }
   var host=el('rb-format'); if(!host) return;
-  if(AN.tool==='mk'){ host.innerHTML=mkFormatHtml(); return; }
-  if(AN.tool==='ms'){ host.innerHTML=msFormatHtml(); return; }
   if(AN.tool==='ln'){ host.innerHTML=lnFormatHtml(); return; }
   var sh=anSel(); if(!sh.length){ host.innerHTML=''; return; }
   var s=sh[0], any=function(t){ return sh.some(function(x){ return x.t===t; }); }, lockedAll=sh.every(function(x){ return x.lock; });
@@ -5093,10 +5147,20 @@ function mkFocus(pi){
   var p=FIG.panels[pi]; if(!p) return; MK.pi=pi; MK.lad=_mkPick(p); MK.next=_mkNextIndex(p);
   FIG.panels.forEach(function(q,i){ anDraw(i); }); anFormat();
 }
+// Only the size column of one panel is redrawn: a full render() rebuilds every picture (a base64 image decoded again for each marker placed),
+// which is what made placing the sizes feel slow, and left the snap with no decoded picture to read for a moment after each click.
+function mkRepaint(pi){
+  var p=FIG.panels[pi], d=document.querySelector('#figure .panel-kda[data-pi="'+pi+'"]'); if(!p||!d){ render(); return; }
+  var hasMk=!!(p.marks&&p.marks.length&&_bIsData(p.cropped));
+  d.classList.toggle('has-mk',hasMk); d.classList.toggle('is-dna',mkUnit(p)==='bp');
+  d.title=hasMk?'kDa markers — set them from the panel\'s Markers tool':'Drag to reorder this panel · click the number to edit';
+  d.innerHTML=hasMk?_mkHtml(p,pi):'<div class="lbl-in" style="transform:translateY('+(p.kdaOffsetY||0)+'px);" contenteditable="true" role="textbox" aria-label="Size label, panel '+(pi+1)+'" onfocus="_blotActiveEd=this" oninput="setPanel('+pi+',\'kda\',this.innerHTML)">'+_bClean(p.kda)+'</div>';
+  fitGutter(); FIG.panels.forEach(function(q,i){ anDraw(i); });
+}
 function mkSetLadder(v){
   var p=FIG.panels[MK.pi]; if(!p) return; MK.lad=mkOk(v)?v:'pageruler_plus'; p.ladder=MK.lad;
   if(MK.lad==='custom'&&!p.cl) p.cl={unit:'kDa',k:[]};
-  MK.next=_mkNextIndex(p); save(); render(); anFormat();
+  MK.next=_mkNextIndex(p); save(); mkRepaint(MK.pi); anFormat();
 }
 // Sizes typed from an insert: numbers split by commas, spaces or semicolons, largest first, none twice.
 // In bp a token such as 10,000 is one number (an insert groups thousands); in kDa a comma only ever separates.
@@ -5111,11 +5175,25 @@ function mkParseSizes(txt,unit){
 function mkCustomApply(){
   var p=FIG.panels[MK.pi]; if(!p||MK.lad!=='custom') return;
   var u=el('mk-cl-u').value==='bp'?'bp':'kDa', ks=mkParseSizes(el('mk-cl-k').value,u);
-  p.cl={unit:u,k:ks}; MK.next=_mkNextIndex(p); save(); render(); anFormat();
+  p.cl={unit:u,k:ks}; MK.next=_mkNextIndex(p); save(); mkRepaint(MK.pi); anFormat();
+}
+// Another gel system for a ladder that prints sizes by gel and buffer. The markers already placed carry the old system's sizes, which are not the
+// new one's, so they are not relabelled behind the person's back: asked first, and ⌘Z brings them back.
+function mkSetGel(v){
+  var p=FIG.panels[MK.pi], L=LADDERS[MK.lad]; if(!p||!L||!L.sys||!mkGelOk(MK.lad,v)) return;
+  var go=function(){ if(p.marks&&p.marks.length) p.marks=[]; p.gel=v; MK.next=_mkNextIndex(p); save(); render(); anFormat(); };
+  if(!(p.marks||[]).length){ go(); return; }
+  wbAsk('Change the gel system?', 'The '+p.marks.length+' markers on this blot carry the sizes of '+mkSys(L,p.gel).name+'. They are taken off, and you place the new sizes. ⌘Z brings them back.',
+    {ok:'Take them off'}, function(yes){ if(yes) go(); else anFormat(); });
+}
+function mkGelSelect(L){
+  if(!L.sys) return '';
+  return anGroup('Gel and running buffer','<label class="tb-field">System <select class="rb-sel" aria-label="Gel and running buffer" onchange="mkSetGel(this.value)">'+L.sys.map(function(y){ return '<option value="'+y.id+'"'+(y.id===L.sysId?' selected':'')+'>'+esc(y.name)+'</option>'; }).join('')+'</select></label>'
+    +'<span class="rb-note">'+esc(mkSys(L,L.sysId).gels)+'. Sizes from Thermo\'s table for this system.</span>');
 }
 function mkPick(i){ MK.next=i; anFormat(); }
-function mkClear(){ var p=FIG.panels[MK.pi]; p.marks=[]; MK.next=0; MK.pin=null; save(); render(); anFormat(); }
-function mkRemove(i){ var p=FIG.panels[MK.pi]; (p.marks||[]).splice(i,1); MK.next=_mkNextIndex(p); MK.pin=null; save(); render(); anFormat(); }
+function mkClear(){ var p=FIG.panels[MK.pi]; p.marks=[]; MK.next=0; MK.pin=null; save(); mkRepaint(MK.pi); anFormat(); }
+function mkRemove(i){ var p=FIG.panels[MK.pi]; (p.marks||[]).splice(i,1); MK.next=_mkNextIndex(p); MK.pin=null; save(); mkRepaint(MK.pi); anFormat(); }
 function mkDone(){ MK.pin=null; anTool('select'); }
 function mkSnapSet(on){ MK.snap=!!on; anFormat(); }
 function mkLadderSelect(){
@@ -5128,7 +5206,7 @@ function mkLadderSelect(){
 function mkFormatHtml(){
   var p=FIG.panels[MK.pi]; if(!p) return '';
   var L=mkCur(), ks=L.k, unit=L.unit, have=(p.marks||[]).map(function(m){ return m.k; }), all=ks.length>0&&ks.every(function(k){ return have.indexOf(k)>=0; });
-  var h=anGroup('Ladder',mkLadderSelect());
+  var h=anGroup('Ladder',mkLadderSelect())+mkGelSelect(L);
   if(MK.lad==='custom'){
     h+=anGroup('Your sizes','<label class="tb-field">Sizes <input type="text" id="mk-cl-k" class="rb-txt" value="'+esc(ks.join(', '))+'" placeholder="e.g. 245, 180, 135, 100" aria-label="Sizes, largest first" onchange="mkCustomApply()"></label>'
       +'<label class="tb-field">Unit <select class="rb-sel" id="mk-cl-u" aria-label="Unit" onchange="mkCustomApply()"><option value="kDa"'+(unit==='kDa'?' selected':'')+'>kDa</option><option value="bp"'+(unit==='bp'?' selected':'')+'>bp</option></select></label>');
@@ -5170,7 +5248,14 @@ function anMkSvg(pi,W,H,grips){
   out+='<g id="an-mkg-'+pi+'" style="display:none"><line class="an-mk-guide" x1="0" x2="'+anNum(W)+'" y1="0" y2="0"/><text class="an-mk-lbl" x="14" y="-6"></text></g>';
   return out;
 }
+// The hover guide (the size at the pointer, snapped to the band under it) is worked out once per frame, not once per mouse event.
+var _mkHoverEv=null, _mkHoverRaf=0;
 document.addEventListener('pointermove',function(ev){
+  if(AN.tool!=='mk'&&AN.tool!=='ms') return;
+  _mkHoverEv=ev; if(_mkHoverRaf) return;
+  _mkHoverRaf=requestAnimationFrame(function(){ _mkHoverRaf=0; var e=_mkHoverEv; _mkHoverEv=null; if(e) _mkHover(e); });
+});
+function _mkHover(ev){
   var ms=AN.tool==='ms';
   if((AN.tool!=='mk'&&!ms)||AN.drag||_mkDrag) return;
   var lay=ev.target.closest&&ev.target.closest('.an-layer');
@@ -5184,7 +5269,7 @@ document.addEventListener('pointermove',function(ev){
   if(ms) txt=mkEstText(mkEstimate(p.marks,sn.y),unit);
   else { var ks=mkCur().k, all=ks.length&&ks.every(function(k){ return (p.marks||[]).some(function(m){ return m.k===k; }); }); txt=all?'all placed':ks.length?mkNum(ks[MK.next],unit)+' '+unit:''; }
   g.style.display=''; var ln=g.querySelector('line'), tx=g.querySelector('text'); ln.setAttribute('y1',y); ln.setAttribute('y2',y); tx.setAttribute('y',y-6); tx.textContent=txt;
-});
+}
 function anMkPlace(ev,lay){
   var host=lay.closest('.panel-blot'), pi=+host.getAttribute('data-pi'); if(pi!==MK.pi) mkFocus(pi);
   var p=FIG.panels[pi], L=mkCur(), ks=L.k, k=ks[MK.next], r=lay.getBoundingClientRect();
@@ -5194,7 +5279,7 @@ function anMkPlace(ev,lay){
   var twin=(p.marks||[]).filter(function(m){ return m.k!==k&&Math.abs(m.y-y)<0.004; })[0];   // two sizes cannot be one band
   if(twin){ toast('The '+mkNum(twin.k,L.unit)+' '+L.unit+' marker is already on that band. Click the band for '+mkNum(k,L.unit)+' '+L.unit+'.'); return; }
   p.marks=(p.marks||[]).filter(function(m){ return m.k!==k; }); p.marks.push({k:k,y:+Math.max(0,Math.min(1,y)).toFixed(4)}); p.ladder=MK.lad;
-  var placed=ks.indexOf(k); save(); MK.next=_mkNextIndex(p,placed+1); render(); anFormat();
+  var placed=ks.indexOf(k); save(); MK.next=_mkNextIndex(p,placed+1); mkRepaint(pi); anFormat();
 }
 function anMsClick(ev,lay){
   var host=lay.closest('.panel-blot'), pi=+host.getAttribute('data-pi'), p=FIG.panels[pi];
@@ -5216,7 +5301,7 @@ function anMkGripDown(ev,grip){
   var host=grip.closest('.panel-blot'), pi=+host.getAttribute('data-pi'), k=+grip.getAttribute('data-k'), box=anBox(pi); if(!box) return;
   _mkDrag={pi:pi,k:k,box:box,moved:false}; ev.preventDefault();
   function mv(e){ var p=FIG.panels[pi], m=(p.marks||[]).filter(function(x){ return x.k===k; })[0]; if(!m) return; m.y=+Math.max(0,Math.min(1,(e.clientY-box.top)/box.H)).toFixed(4); _mkDrag.moved=true; anDraw(pi); }
-  function up(){ document.removeEventListener('pointermove',mv); document.removeEventListener('pointerup',up); document.removeEventListener('pointercancel',up); var d=_mkDrag; _mkDrag=null; if(d&&d.moved){ save(); render(); anFormat(); } }
+  function up(){ document.removeEventListener('pointermove',mv); document.removeEventListener('pointerup',up); document.removeEventListener('pointercancel',up); var d=_mkDrag; _mkDrag=null; if(d&&d.moved){ save(); mkRepaint(pi); anFormat(); } }
   document.addEventListener('pointermove',mv); document.addEventListener('pointerup',up); document.addEventListener('pointercancel',up);
 }
 
@@ -5529,14 +5614,16 @@ document.addEventListener('click',function(e){ var p=document.getElementById('op
 <script>
 /* ctx-kit-js:begin — generated by tools/sync_ctxkit.py from tools/ctxkit/ctxkit.js; do not edit here */
 // The right-click menu, the same in every place that has one.
-//   ctxBind(resolve)     resolve(event) returns the items for what is under the pointer, or null to
+//   ctxBind(resolve, editable)  resolve(event) returns the items for what is under the pointer, or null to
 //                        leave the browser's own menu alone. Fields keep their native menu (paste,
-//                        spelling) and so does any selected text — the kit never takes those.
+//                        spelling) and so does any selected text — the kit never takes those. `editable` is
+//                        a selector for the editable labels an app wants its own menu on (with nothing
+//                        selected in them; a selection still gets the native Copy / spelling menu).
 //   ctxApp(resolve, opts) the whole menu for an app: resolve(event, target) returns the items for what the
 //                        pointer is on (or null); the kit then adds what any page can offer — copy a
 //                        cell / row / column / table, copy or save a chart as an image — then opts.acts
 //                        (the app's own actions: [{l, f, args, k, danger, when}], shown only if function
-//                        f exists), then Search / Dark mode / Back to the Hub. opts.canvas:false skips
+//                        f exists), then Search / Dark mode / Back to the Hub. opts.editable (a selector) gives those editable labels the menu too; opts.canvas:false skips
 //                        the image items (a WebGL viewer cannot be read back).
 //   ctxOpen(items, x, y) items: {label, k:'⌘C', act, disabled, danger, check} | {sep:true} | {hd:'title'}
 //   ctxClose(), ctxIsOpen(), CTX_MOD ('⌘' or 'Ctrl+')
@@ -5598,14 +5685,14 @@ var ctxClose, ctxIsOpen, ctxOpen, ctxBind, ctxApp;
     });
     m.focus({ preventScroll: true });
   };
-  ctxBind = function(resolve){
+  ctxBind = function(resolve, editable){
     document.addEventListener('contextmenu', function(e){
       var t = e.target; if (!t || !t.closest) return;
       if (t.closest('.ctx')) { e.preventDefault(); return; }
       if (e.defaultPrevented) return;   // the page already answered (its own menu on a canvas, a column header…)
       // Fields keep the browser's menu (paste, spelling), and so does any selected text.
-      if (t.closest('input,textarea,select,[contenteditable="true"]')) return;
-      var sel = window.getSelection && window.getSelection(); if (sel && String(sel).trim()) return;
+      if (t.closest('input,textarea,select,[contenteditable="true"]') && !(editable && t.closest(editable))) return;
+      var sel = window.getSelection && window.getSelection(); if (sel && String(sel).trim() && !(editable && t.closest(editable))) return;   // (an app that wants its own menu on a label puts Cut / Copy / Paste in it)
       var items = resolve(e); if (!items) return;
       e.preventDefault();
       ctxOpen(items, e.clientX, e.clientY);
@@ -5690,7 +5777,7 @@ var ctxClose, ctxIsOpen, ctxOpen, ctxBind, ctxApp;
       });
       if (acts.length) items = items.concat(items.length ? [{ sep: true }] : [], acts);
       return items.concat(items.length ? [{ sep: true }] : [], tail());
-    });
+    }, opts.editable);
   };
   ctxApp.arg = argOf; ctxApp.copy = copyText; ctxApp.say = say; ctxApp.imageItems = imageItems;
   document.addEventListener('pointerdown', function(e){ if (el && !el.contains(e.target)) ctxClose(); }, true);
@@ -5702,9 +5789,28 @@ var ctxClose, ctxIsOpen, ctxOpen, ctxBind, ctxApp;
 </script>
 <script>
 /* ctx-app:begin — generated by tools/sync_ctxkit.py from tools/ctxkit/apps/western-blot.js; do not edit here */
-// Blot: an annotation (select it, then what the Format tab does), a picture (its tools), and the figure's own actions.
+// Blot: an annotation (select it, then what the Format tab does), and for everything else what the pointer is on —
+// a lane label, a condition or text row (and its cells), a group bracket, a panel or its gutters — then the figure's own actions.
+var _blCtx = '';   // what the last right-click was on, so the figure-wide "Add …" actions do not repeat the ones that menu already has
+// An editable label: Cut / Copy / Paste (the browser's own menu is replaced here) and Edit, which puts the caret at the end.
+function blText(node){
+  if (!node) return [];
+  var s = window.getSelection(), has = !!(s && s.rangeCount && String(s).trim() && node.contains(s.anchorNode)), rg = has ? s.getRangeAt(0).cloneRange() : null;
+  function back(){ node.focus(); var q = window.getSelection(); q.removeAllRanges(); if (rg) q.addRange(rg); else { var r = document.createRange(); r.selectNodeContents(node); r.collapse(false); q.addRange(r); } }
+  return [
+    { label: 'Edit the text', act: back },
+    has && { label: 'Cut', k: CTX_MOD + 'X', act: function(){ back(); document.execCommand('cut'); } },
+    has && { label: 'Copy', k: CTX_MOD + 'C', act: function(){ back(); document.execCommand('copy'); } },
+    { label: 'Paste', k: CTX_MOD + 'V', act: function(){
+        back();
+        if (!navigator.clipboard || !navigator.clipboard.readText) { ctxApp.say('Press ' + CTX_MOD + 'V to paste here.'); return; }
+        navigator.clipboard.readText().then(function(tx){ document.execCommand('insertText', false, String(tx).replace(/[\t\r\n]+/g, ' ')); }).catch(function(){ ctxApp.say('Press ' + CTX_MOD + 'V to paste here.'); });
+      } }
+  ];
+}
 ctxApp(function(e, t){
   if (typeof anFind !== 'function') return null;
+  _blCtx = '';
   var sg = t.closest('.an-s');
   if (sg && AN.tool === 'select') {
     var id = sg.getAttribute('data-id'), f = anFind(id); if (!f) return null;
@@ -5725,21 +5831,86 @@ ctxApp(function(e, t){
       { label: 'Delete', k: 'Del', danger: true, disabled: locked, act: anDelete }
     ];
   }
-  var host = t.closest('.panel-blot'); if (!host) return null;
-  var pi = +host.getAttribute('data-pi'), p = FIG.panels[pi]; if (!p || !p.cropped) return null;
-  return [
-    { hd: 'Panel ' + (pi + 1) },
+  // ── what the pointer is on: a lane label, a condition row or cell, a group bracket, a panel (its picture or its gutters) ──
+  var lc = t.closest('#figure .lane-cell');
+  if (lc) {
+    var li = +lc.getAttribute('data-i'), ln = FIG.laneCount, lhas = !!_stripHtml(FIG.lanes[li] || ''), lmoved = !!(laneLabelOffsetXArr(FIG)[li] || laneLabelDYArr(FIG)[li]);
+    _blCtx = 'lane';
+    return [{ hd: 'Lane ' + (li + 1) }].concat(blText(lc.querySelector('.lbl-in')), [
+      lhas && { label: 'Clear the label', act: function(){ setLane(li, ''); render(); } },
+      lmoved && { label: 'Reset the label position', act: function(){ laneLabelReset(li); } },
+      { sep: true },
+      { label: 'Add a lane before', disabled: ln >= 30, act: function(){ laneAddAt(li); } },
+      { label: 'Add a lane after', disabled: ln >= 30, act: function(){ laneAddAt(li + 1); } },
+      { label: 'Group bracket over this lane', act: function(){ addGroupAt(li + 1, li + 1); } },
+      { sep: true },
+      { label: 'Remove this lane', danger: true, disabled: ln <= 1, act: function(){ laneDelAt(li); } }
+    ]);
+  }
+  var cc = t.closest('#figure .cond-cell'), cr = t.closest('#figure .cond-lblcell, #figure .cond-lanes'), cri = -1, ci = -1;
+  if (cc) { cri = +cc.getAttribute('data-ri'); ci = +cc.getAttribute('data-i'); }
+  else if (cr) { var band = cr.parentNode, same = Array.prototype.filter.call(band.children, function(c){ return c.className === cr.className; }); cri = same.indexOf(cr); }
+  if (cri >= 0 && FIG.condRows[cri]) {
+    var row = FIG.condRows[cri], text = row.kind === 'text', rows = FIG.condRows.length, ttl = _stripHtml(row.label || '');
+    _blCtx = 'cond';
+    var own = [];
+    if (cc && text) own = blText(cc.querySelector('.lbl-in'));
+    else if (cc) own = [{ label: row.on && row.on[ci] ? 'Turn it off' : 'Turn it on', act: function(){ toggleCond(cri, ci); } }];
+    else if (cr.classList.contains('cond-lblcell')) own = blText(cr.querySelector('.lbl-in'));
+    if (cc && ((row.dx && row.dx[ci]) || (row.dy && row.dy[ci]))) own.push({ label: 'Reset its position', act: function(){ resetCondCell(cri, ci); } });
+    return [{ hd: (text ? 'Text row ' : 'Condition row ') + (cri + 1) + (ttl ? ' · ' + ttl.slice(0, 18) : '') }].concat(own, [
+      { sep: true },
+      { label: 'Move row up', disabled: cri === 0, act: function(){ moveCondRow(cri, -1); } },
+      { label: 'Move row down', disabled: cri >= rows - 1, act: function(){ moveCondRow(cri, 1); } },
+      { label: 'Duplicate row', act: function(){ dupCondRow(cri); } },
+      { label: 'Clear row', act: function(){ clearCondRow(cri); } },
+      { sep: true },
+      { label: 'Add a condition row below', act: function(){ addCondRow('mark', cri + 1); } },
+      { label: 'Add a text row below', act: function(){ addCondRow('text', cri + 1); } },
+      { sep: true },
+      { label: 'Remove this row', danger: true, act: function(){ delCondRow(cri); } }
+    ]);
+  }
+  var gp = t.closest('#figure .grp');
+  if (gp) {
+    var gi = +gp.getAttribute('data-gi'), g = FIG.groups[gi]; if (!g) return null;
+    _blCtx = 'group';
+    return [{ hd: 'Group ' + (gi + 1) }].concat(blText(gp.querySelector('.grp-lbl')), [
+      { label: 'Span all lanes', disabled: g.from <= 1 && g.to >= FIG.laneCount, act: function(){ spanGroup(gi); } },
+      { sep: true },
+      { label: 'Add a group bracket', act: function(){ addGroup(); } },
+      { sep: true },
+      { label: 'Remove this group', danger: true, act: function(){ delGroup(gi); } }
+    ]);
+  }
+  var host = t.closest('#figure .panel-blot, #figure .blot-drop, #figure .panel-kda, #figure .panel-prot'); if (!host) return null;
+  var pi = +host.getAttribute('data-pi'), p = FIG.panels[pi]; if (!p) return null;
+  var has = _bIsData(p.cropped), np = FIG.panels.length, gut = host.classList.contains('panel-kda') ? 'kda' : host.classList.contains('panel-prot') ? 'prot' : '';
+  _blCtx = 'panel';
+  var mine = gut ? blText(host.querySelector('.lbl-in')) : [];
+  if (gut && (p[gut === 'kda' ? 'kdaOffsetY' : 'protOffsetY'] || 0)) mine.push({ label: 'Reset the label position', act: function(){ panelLabelReset(pi, gut); } });
+  return [{ hd: 'Panel ' + (pi + 1) }].concat(mine, mine.length ? [{ sep: true }] : [], has ? [
     { label: 'Size markers…', act: function(){ openMarkers(pi); } },
     { label: 'Measure a band', disabled: (p.marks || []).length < 2, act: function(){ MK.pi = pi; anMsStart(); } },
     { label: 'Crop…', act: function(){ openCrop(pi); } },
     { label: 'Quantify…', act: function(){ openQuant(pi); } },
-    (p.shapes || []).length && { sep: true },
-    (p.shapes || []).length && { label: 'Select all annotations', k: CTX_MOD + 'A', act: function(){ anSelect(p.shapes.map(function(s){ return s.id; })); } }
-  ];
+    { label: 'Replace the image…', act: function(){ pickFile(pi); } }
+  ] : [
+    { label: _bIsRef(p.cropped) ? 'Add the picture again…' : 'Add an image…', act: function(){ pickFile(pi); } }
+  ], [
+    (p.shapes || []).length && { label: 'Select all annotations', k: CTX_MOD + 'A', act: function(){ anSelect(p.shapes.map(function(s){ return s.id; })); } },
+    { sep: true },
+    { label: 'Move panel up', disabled: pi === 0, act: function(){ movePanel(pi, -1); } },
+    { label: 'Move panel down', disabled: pi >= np - 1, act: function(){ movePanel(pi, 1); } },
+    { label: 'Add a panel below', act: function(){ addPanelAt(pi + 1); } },
+    { sep: true },
+    { label: 'Remove this panel', danger: true, disabled: np <= 1, act: function(){ removePanel(pi); } }
+  ]);
 }, { acts: [
-  { l: 'Add a panel', f: 'addPanel' },
-  { l: 'Add a group bracket', f: 'addGroup' },
-  { l: 'Add a condition row', f: 'addCondRow' },
+  { l: 'Add a panel', f: 'addPanel', when: function(){ return _blCtx !== 'panel'; } },
+  { l: 'Add a group bracket', f: 'addGroup', when: function(){ return _blCtx !== 'group'; } },
+  { l: 'Add a condition row', f: 'addCondRow', when: function(){ return _blCtx !== 'cond'; } },
+  { l: 'Add a text row', f: 'addCondRow', args: ['text'], when: function(){ return _blCtx !== 'cond'; } },
   { l: 'Reset lane widths', f: 'resetLaneWidths' },
   { l: 'Reset label positions', f: 'resetLaneLabelPos' },
   { l: 'Export PNG (high-res)', f: 'doExport', args: ['png'] },
@@ -5749,7 +5920,7 @@ ctxApp(function(e, t){
   { l: 'History…', f: 'openHistoryModal' },
   { l: 'Presets…', f: 'openPresetsModal' },
   { l: 'Reset the figure…', f: 'resetFigure', danger: true }
-] });
+], editable: '#figure .lbl-in, #figure .grp-lbl' });
 /* ctx-app:end */
 </script>
 </body>

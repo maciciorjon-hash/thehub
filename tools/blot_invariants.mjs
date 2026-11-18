@@ -69,6 +69,13 @@
 //                                      mix them), Find lanes honours a letterboxed picture, presets and portable copies carry positions, text rows and dots
 //   BL39 snap to lanes and bands       a lane handle dragged near a band settles on its centre (Alt, the checkbox, or nothing within reach: it stays where
 //                                      it is dropped); a label, a condition dot and a text annotation dragged near a lane's centre settle on it, any lane's
+//   BL40 right-click acts where you click   a lane label, a condition or text row (and its cells), a group bracket, a panel and its gutters each have their own menu (the
+//                                      editable labels too: the browser's menu is replaced by Cut / Copy / Paste there); add and remove a lane keep equal columns equal
+//                                      and carry the label, row cells and brackets; a row moves up and down (menu and hover arrows); a panel is removed, moved or added
+//                                      below from its own menu; every one comes back with ⌘Z
+//   BL41 Markers tab, gel systems      Markers is a tab of its own (always in the ribbon: opening it starts the tool, another tab or Done leaves it and goes back),
+//                                      PageRuler Plus has Thermo's sizes for Tris-Glycine, Tris-Acetate and Bis-Tris MOPS / MES (a panel that has markers is asked
+//                                      before they are taken off), and placing a size redraws the size column, not the pictures
 //   BL12 layout                        escape, runtime and alignment audits on the figure and every dialog, 1440/1024/390,
 //                                      both themes
 //
@@ -261,8 +268,8 @@ if (run('BL7')) await guard('BL7', async () => {
   const p = await open();
   await p.evaluate(GEL + `;(() => { var g = __gel([.5,.5,.5,.5,.5,.5,.5,.5,.5,.5,.5,.5]); FIG.panels[0].cropped = g; FIG.panels[0].src = g; FIG.panels[0].prot = 'BRD4'; save(); render(); openMarkers(0); })()`);
   await sleep(500);
-  const state = await p.evaluate(() => ({ tool: AN.tool, tab: document.getElementById('rb-tab-format').textContent, shown: !document.getElementById('rb-tab-format').hidden, dialog: !!document.getElementById('mk-back') }));
-  state.tool === 'mk' && state.tab === 'Markers' && state.shown && !state.dialog ? ok() : bad('BL7', 'markers did not open in place: ' + JSON.stringify(state));
+  const state = await p.evaluate(() => ({ tool: AN.tool, tab: document.getElementById('ribbon').dataset.tab, shown: document.getElementById('rb-tab-markers').classList.contains('on'), dialog: !!document.getElementById('mk-back') }));
+  state.tool === 'mk' && state.tab === 'markers' && state.shown && !state.dialog ? ok() : bad('BL7', 'markers did not open in place: ' + JSON.stringify(state));
   const img = async () => p.locator('.panel-blot .blot-img').first().boundingBox();
   let box = await img();
   await p.evaluate(() => mkPick(3)); // 70 kDa in PageRuler Plus
@@ -826,7 +833,7 @@ if (run('BL24')) await guard('BL24', async () => {
   await p.evaluate(() => { openMarkers(0); }); await sleep(300);
   const svg = await p.evaluate(() => [...document.querySelectorAll('.an-mk-lbl')].map(e => e.textContent).filter(Boolean));
   svg.includes('20,000 bp') && svg.includes('1,500 bp') ? ok() : bad('BL24', 'the guides on the blot do not carry the unit: ' + svg.join('|'));
-  const chips = await p.evaluate(() => ({ n: document.querySelectorAll('#rb-format .mk-chip').length, ref: [...document.querySelectorAll('#rb-format .mk-chip.ref')].map(e => e.textContent), opt: [...document.querySelectorAll('#rb-format select option')].length }));
+  const chips = await p.evaluate(() => ({ n: document.querySelectorAll('#rb-markers .mk-chip').length, ref: [...document.querySelectorAll('#rb-markers .mk-chip.ref')].map(e => e.textContent), opt: [...document.querySelectorAll('#rb-markers select option')].length }));
   chips.n === 15 && chips.ref.join('|') === '5,000|1,500|500' && chips.opt > 18 ? ok() : bad('BL24', 'the chips or the list do not show the ladder: ' + JSON.stringify(chips));
   // an older build listed Chameleon and SeeBlue from memory; a panel that used one keeps its markers as custom sizes
   const mig = await p.evaluate(() => { var f = JSON.parse(JSON.stringify(FIG)); f.panels[0].ladder = 'chameleon'; f.panels[0].marks = [{ k: 260, y: .1 }, { k: 8, y: .8 }]; f.panels[0].shapes = []; migrateFig(f); var q = f.panels[0];
@@ -838,7 +845,7 @@ if (run('BL24')) await guard('BL24', async () => {
   // custom sizes typed in, then used for markers
   await p.evaluate(() => { mkSetLadder('custom'); }); await sleep(300);
   await p.evaluate(() => { var i = document.getElementById('mk-cl-k'); i.value = '245, 180, 135'; i.dispatchEvent(new Event('change', { bubbles: true })); }); await sleep(300);
-  const cu = await p.evaluate(() => ({ cl: FIG.panels[0].cl, chips: [...document.querySelectorAll('#rb-format .mk-chip')].map(e => e.textContent), next: MK.next }));
+  const cu = await p.evaluate(() => ({ cl: FIG.panels[0].cl, chips: [...document.querySelectorAll('#rb-markers .mk-chip')].map(e => e.textContent), next: MK.next }));
   JSON.stringify(cu.cl) === '{"unit":"kDa","k":[245,180,135]}' && cu.chips.join('|') === '245|180|135' ? ok() : bad('BL24', 'custom sizes did not reach the chips: ' + JSON.stringify(cu));
   p.errs.length ? bad('BL24', 'errors: ' + p.errs.join(' | ')) : ok();
   await p.context().close();
@@ -934,18 +941,18 @@ if (run('BL27')) await guard('BL27', async () => {
   await p.evaluate(() => { var f = FIG.panels[0]; f.marks = [f.marks[0]]; anMsStart(); });
   (await p.evaluate(() => AN.tool)) !== 'ms' ? ok() : bad('BL27', 'Measure opened with one marker');
   await p.evaluate(() => { FIG.panels[0].marks = [{ k: 250, y: .1 }, { k: 100, y: .3 }, { k: 70, y: .5 }, { k: 10, y: .9 }]; render(); anMsStart(); }); await sleep(300);
-  const st = await p.evaluate(() => ({ tool: AN.tool, tab: document.getElementById('rb-tab-format').textContent, shown: !document.getElementById('rb-tab-format').hidden }));
-  st.tool === 'ms' && st.tab === 'Measure' && st.shown ? ok() : bad('BL27', 'Measure did not open its tab: ' + JSON.stringify(st));
+  const st = await p.evaluate(() => ({ tool: AN.tool, tab: document.getElementById('ribbon').dataset.tab, shown: document.getElementById('rb-tab-markers').classList.contains('on') }));
+  st.tool === 'ms' && st.tab === 'markers' && st.shown ? ok() : bad('BL27', 'Measure did not open its tab: ' + JSON.stringify(st));
   const b = await p.locator('.panel-blot .blot-img').first().boundingBox(), x = b.x + b.width * 0.5;
   await p.keyboard.down('Alt'); await p.mouse.move(x, b.y + b.height * 0.4);
   const hov = await p.evaluate(() => { var g = document.getElementById('an-mkg-0'); return g && g.style.display !== 'none' && g.querySelector('text').textContent; });
   await p.mouse.click(x, b.y + b.height * 0.4); await p.keyboard.up('Alt');
-  const r1 = await p.evaluate(() => ({ pin: MK.pin && MK.pin.text, want: mkEstText(mkEstimate(FIG.panels[0].marks, MK.pin.y), 'kDa'), y: MK.pin.y, res: (document.querySelector('#rb-format .mk-res') || {}).textContent, btn: !!document.querySelector('#rb-format button[onclick="anMsLabel()"]') }));
+  const r1 = await p.evaluate(() => ({ pin: MK.pin && MK.pin.text, want: mkEstText(mkEstimate(FIG.panels[0].marks, MK.pin.y), 'kDa'), y: MK.pin.y, res: (document.querySelector('#rb-markers .mk-res') || {}).textContent, btn: !!document.querySelector('#rb-markers button[onclick="anMsLabel()"]') }));
   Math.abs(r1.y - 0.4) < 0.01 && r1.pin === r1.want && /^≈ \d+ kDa$/.test(r1.pin) && r1.res === r1.pin && r1.btn ? ok() : bad('BL27', 'a click did not read a size: ' + JSON.stringify(r1));
   hov === r1.pin ? ok() : bad('BL27', 'the hover guide does not say the size before the click: ' + hov + ' vs ' + r1.pin);
   const v = parseFloat(r1.pin.replace(/[^\d.]/g, '')); v > 70 && v < 100 ? ok() : bad('BL27', 'a band between the 100 and 70 markers reads ' + v);
   await p.keyboard.down('Alt'); await p.mouse.click(x, b.y + b.height * 0.04); await p.keyboard.up('Alt');
-  const r2 = await p.evaluate(() => ({ pin: MK.pin.text, err: MK.pin.e.err, btn: !!document.querySelector('#rb-format button[onclick="anMsLabel()"]') }));
+  const r2 = await p.evaluate(() => ({ pin: MK.pin.text, err: MK.pin.e.err, btn: !!document.querySelector('#rb-markers button[onclick="anMsLabel()"]') }));
   r2.err === 'out' && /not extrapolated/.test(r2.pin) && !r2.btn ? ok() : bad('BL27', 'a click above the markers was answered: ' + JSON.stringify(r2));
   await p.keyboard.down('Alt'); await p.mouse.click(x, b.y + b.height * 0.4); await p.keyboard.up('Alt');
   const n0 = await p.evaluate(() => (FIG.panels[0].shapes || []).length);
@@ -1473,6 +1480,134 @@ if (run('BL39')) await guard('BL39', async () => {
   await p.keyboard.down('Alt'); await MV(p, t1, { x: t1.x + 5, y: t1.y }); await p.keyboard.up('Alt');
   const t2 = await tcen(); Math.abs(t2.f - .3 - 5 / box.w) < 0.004 ? ok() : bad('BL39', 'Alt did not place the text exactly');
   p.errs.length ? bad('BL39', 'errors: ' + p.errs.join(' | ')) : ok();
+  await p.context().close();
+});
+
+if (run('BL40')) await guard('BL40', async () => {
+  const p = await open();
+  const pic = await p.evaluate(() => { var c = document.createElement('canvas'); c.width = 300; c.height = 100; var x = c.getContext('2d'); x.fillStyle = '#ddd'; x.fillRect(0, 0, 300, 100); return c.toDataURL('image/png'); });
+  const setup = async (hand) => { await p.evaluate(([g, hand]) => {
+    FIG.laneCount = 4; FIG.lanes = ['a', 'b', 'c', 'd']; FIG.laneX = hand ? [.1, .35, .6, .9] : null; FIG.laneWeights = null; FIG.laneLabelOffsetX = null; FIG.laneLabelDY = null;
+    FIG.panels = [newPanel('', ''), newPanel('', '')]; FIG.panels[0].src = g; FIG.panels[0].cropped = g;
+    FIG.groups = [{ from: 1, to: 2, label: 'ctl' }];
+    FIG.condRows = [{ label: 'A', kind: 'mark', on: [true, false, true, false], txt: ['', '', '', ''], dx: [0, 0, 0, 0], dy: [0, 0, 0, 0] },
+                    { label: 'B', kind: 'text', on: [false, false, false, false], txt: ['x', 'y', 'z', 'w'], dx: [0, 0, 0, 0], dy: [0, 0, 0, 0] }];
+    document.getElementById('tb-lanes').value = 4; save(); render(); }, [pic, !!hand]); await sleep(250); };
+  const menu = async (sel, nth = 0) => { await p.locator(sel).nth(nth).click({ button: 'right' }); await sleep(250); return p.evaluate(() => [...document.querySelectorAll('.ctx .ctx-i, .ctx .ctx-hd')].map(i => ({ t: i.textContent.replace(/\s+/g, ' ').trim(), off: !!i.disabled, hd: i.classList.contains('ctx-hd') }))); };
+  const pick = async txt => { await p.locator('.ctx .ctx-i', { hasText: txt }).first().click(); await sleep(250); };
+  const nm = i => i.t.replace(/(⌘|Ctrl\+)\S*$/, '').trim();
+  const has = (m, n) => m.some(i => !i.hd && nm(i) === n);
+  const off = (m, n) => (m.find(i => !i.hd && nm(i) === n) || {}).off;
+  const dump = m => JSON.stringify(m.map(i => i.t + (i.off ? '(off)' : '')));
+  const state = () => p.evaluate(() => ({ n: FIG.laneCount, lanes: FIG.lanes.join(','), x: FIG.laneX, rows: FIG.condRows.map(r => r.label).join(''), cells: FIG.condRows.map(r => r.kind === 'text' ? r.txt.join('') : r.on.map(v => v ? 1 : 0).join('')).join('|'), groups: FIG.groups.map(g => g.from + '-' + g.to).join(','), panels: FIG.panels.length }));
+  // a lane label: the app's menu, not the browser's (the label is editable)
+  await setup(false);
+  let m = await menu('.lane-cell .lbl-in', 1);
+  m[0] && m[0].hd && /^Lane 2/.test(m[0].t) && ['Edit the text', 'Paste', 'Add a lane before', 'Add a lane after', 'Remove this lane'].every(n => has(m, n)) ? ok() : bad('BL40', 'right-click on a lane label: ' + dump(m));
+  has(m, 'Add a panel') ? ok() : bad('BL40', 'the figure-wide actions are gone from a lane label menu');
+  await pick('Add a lane after');
+  let st = await state();
+  st.n === 5 && st.lanes === 'a,b,,c,d' && st.x === null ? ok() : bad('BL40', 'Add a lane after (equal columns stay equal): ' + JSON.stringify(st));
+  st.cells === '10010|xy' + 'zw'.slice(0, 0) + '' + 'zw'.slice(2) + '' || st.cells.split('|')[0] === '10010' ? ok() : bad('BL40', 'the row cells did not move with the lane: ' + st.cells);
+  st.groups === '1-2' ? ok() : bad('BL40', 'the bracket moved: ' + st.groups);
+  await p.keyboard.press('Control+z'); await sleep(300); st = await state();
+  st.n === 4 && st.lanes === 'a,b,c,d' ? ok() : bad('BL40', 'undo did not take the lane away: ' + JSON.stringify(st));
+  m = await menu('.lane-cell .lbl-in', 2); await pick('Remove this lane');
+  st = await state(); st.n === 3 && st.lanes === 'a,b,d' && st.x === null && st.cells.split('|')[0] === '100' ? ok() : bad('BL40', 'Remove this lane: ' + JSON.stringify(st));
+  await p.keyboard.press('Control+z'); await sleep(300); st = await state(); st.n === 4 && st.lanes === 'a,b,c,d' ? ok() : bad('BL40', 'undo did not bring the lane back: ' + JSON.stringify(st));
+  // lanes marked by hand: the new lane goes between its neighbours, in order
+  await setup(true);
+  m = await menu('.lane-cell .lbl-in', 0); await pick('Add a lane before');
+  st = await state(); st.n === 5 && st.x && st.x.length === 5 && st.x.every((v, i, a) => !i || a[i - 1] < v) && st.x[0] < .1 && st.lanes === ',a,b,c,d' ? ok() : bad('BL40', 'Add a lane before on marked lanes: ' + JSON.stringify(st));
+  // a label with a selection keeps Cut / Copy (the contextmenu event as the browser sends it, with the word selected)
+  await setup(false);
+  const sm = await p.evaluate(async () => { var l = document.querySelectorAll('.lane-cell .lbl-in')[0], r = l.getBoundingClientRect(); var g = getSelection(), rg = document.createRange(); rg.selectNodeContents(l); g.removeAllRanges(); g.addRange(rg);
+    l.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: r.x + 3, clientY: r.y + 3 })); await new Promise(r => setTimeout(r, 200));
+    return [...document.querySelectorAll('.ctx .ctx-i')].map(i => i.textContent.replace(/\s+/g, ' ').trim()); });
+  sm.some(t => /^Copy/.test(t)) && sm.some(t => /^Cut/.test(t)) ? ok() : bad('BL40', 'a label with a selection lost Cut / Copy: ' + JSON.stringify(sm));
+  await p.keyboard.press('Escape'); await sleep(100);
+  // condition rows
+  await setup(false);
+  m = await menu('.cond-lblcell .lbl-in', 0);
+  /^Condition row 1/.test(m[0].t) && off(m, 'Move row up') === true && off(m, 'Move row down') === false && ['Duplicate row', 'Clear row', 'Add a text row below', 'Remove this row'].every(n => has(m, n)) ? ok() : bad('BL40', 'a row title menu: ' + dump(m));
+  !has(m, 'Add a condition row') ? ok() : bad('BL40', 'a row menu repeats the figure-wide Add a condition row');
+  await pick('Move row down'); st = await state(); st.rows === 'BA' ? ok() : bad('BL40', 'Move row down: ' + st.rows);
+  await p.locator('.cond-lblcell').nth(1).hover(); await p.locator('.cond-mv button').nth(2).click({ force: true }); await sleep(200);
+  st = await state(); st.rows === 'AB' ? ok() : bad('BL40', 'the hover arrow did not move the row up: ' + st.rows);
+  m = await menu('.cond-cell.cm', 0); has(m, 'Turn it off') ? ok() : bad('BL40', 'a dot has no toggle: ' + dump(m));
+  await pick('Turn it off'); st = await state(); st.cells.split('|')[0] === '0010' ? ok() : bad('BL40', 'Turn it off: ' + st.cells);
+  m = await menu('.cond-cell.txt', 1); await pick('Add a condition row below'); st = await state();
+  (await p.evaluate(() => FIG.condRows.map(r => r.label + (r.kind === 'text' ? 't' : 'm')).join(','))) === 'Am,Bt,m' ? ok() : bad('BL40', 'the new row is not under the one that was clicked: ' + st.rows);
+  m = await menu('.cond-lblcell .lbl-in', 2); await pick('Remove this row'); st = await state(); st.rows === 'AB' ? ok() : bad('BL40', 'Remove this row: ' + st.rows);
+  m = await menu('.cond-lblcell .lbl-in', 0); await pick('Duplicate row'); st = await state(); st.rows === 'AAB' ? ok() : bad('BL40', 'Duplicate row: ' + st.rows);
+  // a group bracket
+  await setup(false);
+  m = await menu('.grp .grp-lbl', 0);
+  /^Group 1/.test(m[0].t) && ['Span all lanes', 'Remove this group'].every(n => has(m, n)) && !has(m, 'Add a group bracket') === false ? ok() : bad('BL40', 'a group menu: ' + dump(m));
+  await pick('Span all lanes'); st = await state(); st.groups === '1-4' ? ok() : bad('BL40', 'Span all lanes: ' + st.groups);
+  m = await menu('.grp .grp-lbl', 0); await pick('Remove this group'); st = await state(); st.groups === '' ? ok() : bad('BL40', 'Remove this group: ' + st.groups);
+  // panels: the picture, the empty one, the gutter
+  await setup(false);
+  m = await menu('.panel-blot .blot-img', 0);
+  ['Size markers…', 'Crop…', 'Quantify…', 'Replace the image…', 'Move panel up', 'Move panel down', 'Add a panel below', 'Remove this panel'].every(n => has(m, n)) && off(m, 'Move panel up') === true && !has(m, 'Add a panel') ? ok() : bad('BL40', 'a picture menu: ' + dump(m));
+  await pick('Add a panel below'); st = await state(); st.panels === 3 ? ok() : bad('BL40', 'Add a panel below: ' + st.panels);
+  m = await menu('.blot-drop', 0); has(m, 'Add an image…') && has(m, 'Remove this panel') ? ok() : bad('BL40', 'an empty panel menu: ' + dump(m));
+  await pick('Remove this panel'); st = await state(); st.panels === 2 ? ok() : bad('BL40', 'Remove this panel: ' + st.panels);
+  await p.keyboard.press('Control+z'); await sleep(300); st = await state(); st.panels === 3 ? ok() : bad('BL40', 'undo did not bring the panel back: ' + st.panels);
+  m = await menu('.panel-prot .lbl-in', 0); /^Panel 1/.test(m[0].t) && has(m, 'Edit the text') && has(m, 'Remove this panel') ? ok() : bad('BL40', 'the protein name gutter has no panel menu: ' + dump(m));
+  await p.keyboard.press('Escape'); await sleep(100);
+  await p.evaluate(() => { FIG.panels = [FIG.panels[0]]; render(); }); await sleep(200);
+  m = await menu('.panel-blot .blot-img', 0); off(m, 'Remove this panel') === true ? ok() : bad('BL40', 'the only panel can be removed from the menu: ' + dump(m));
+  p.errs.length ? bad('BL40', 'errors: ' + p.errs.join(' | ')) : ok();
+  await p.context().close();
+});
+
+if (run('BL41')) await guard('BL41', async () => {
+  const p = await open();
+  const vis = () => p.evaluate(() => { const t = document.getElementById('rb-tab-markers'), r = t.getBoundingClientRect(); return { shown: !t.hidden && r.width > 20, tab: document.getElementById('ribbon').dataset.tab, tool: AN.tool, on: t.classList.contains('on') }; });
+  let v = await vis(); v.shown && v.tool === 'select' ? ok() : bad('BL41', 'the Markers tab is not in the ribbon from the start: ' + JSON.stringify(v));
+  await p.click('#rb-tab-markers'); await sleep(250); v = await vis();
+  v.tool === 'select' && v.tab === 'home' ? ok() : bad('BL41', 'the Markers tab opened without a picture: ' + JSON.stringify(v));
+  await p.evaluate(GEL + `;(() => { var g = __gel([.5,.5,.5,.5,.5,.5,.5,.5,.5,.5,.5,.5]); FIG.panels[0].cropped = g; FIG.panels[0].src = g; FIG.panels[0].marks = []; save(); render(); })()`); await sleep(400);
+  await p.click('#rb-tab-markers'); await sleep(300); v = await vis();
+  v.tool === 'mk' && v.tab === 'markers' && v.on ? ok() : bad('BL41', 'the Markers tab did not start the tool: ' + JSON.stringify(v));
+  const chips = () => p.evaluate(() => ({ c: [...document.querySelectorAll('#rb-markers .mk-chip')].map(e => e.textContent), ref: [...document.querySelectorAll('#rb-markers .mk-chip.ref')].map(e => e.textContent), opts: [...document.querySelectorAll('#rb-markers select[aria-label="Gel and running buffer"] option')].map(o => o.value + ':' + o.textContent) }));
+  let c = await chips();
+  c.c.join(',') === '250,130,100,70,55,35,25,15,10' && c.ref.join(',') === '70,25,10' && c.opts.length === 4 ? ok() : bad('BL41', 'PageRuler Plus does not open on Tris-Glycine with four systems: ' + JSON.stringify(c));
+  await p.selectOption('#rb-markers select[aria-label="Gel and running buffer"]', 'btmops'); await sleep(250); c = await chips();
+  c.c.join(',') === '185,115,80,65,50,30,25,10' && c.ref.join(',') === '65,25,10' ? ok() : bad('BL41', 'Bis-Tris MOPS: ' + JSON.stringify(c));
+  await p.selectOption('#rb-markers select[aria-label="Gel and running buffer"]', 'btmes'); await sleep(250); c = await chips();
+  c.c.join(',') === '190,115,80,70,50,30,25,10' && c.ref.join(',') === '70,25,10' ? ok() : bad('BL41', 'Bis-Tris MES: ' + JSON.stringify(c));
+  await p.selectOption('#rb-markers select[aria-label="Gel and running buffer"]', 'ta'); await sleep(250); c = await chips();
+  c.c.join(',') === '205,120,85,65,50,30,25' && c.ref.join(',') === '65,25' ? ok() : bad('BL41', 'Tris-Acetate: ' + JSON.stringify(c));
+  // placing a size redraws the size column only: the picture element is the same one, the size is in the column, the saved size is the system's
+  await p.evaluate(() => { document.querySelector('.panel-blot .blot-img').__tag = 'same'; });
+  const b = await p.locator('.panel-blot .blot-img').first().boundingBox();
+  await p.keyboard.down('Alt'); await p.mouse.click(b.x + b.width * .5, b.y + b.height * .2); await p.mouse.click(b.x + b.width * .5, b.y + b.height * .4); await p.keyboard.up('Alt'); await sleep(250);
+  const pl = await p.evaluate(() => ({ same: document.querySelector('.panel-blot .blot-img').__tag === 'same', col: [...document.querySelectorAll('.panel-kda .mk-l')].map(e => e.textContent), marks: FIG.panels[0].marks.map(m => m.k), gel: FIG.panels[0].gel, tool: AN.tool }));
+  pl.same && pl.col.join(',') === '205,120' && pl.marks.join(',') === '205,120' && pl.gel === 'ta' && pl.tool === 'mk' ? ok() : bad('BL41', 'placing a size re-rendered the pictures, or the sizes are not the system\'s: ' + JSON.stringify(pl));
+  // a change of system with markers on the blot asks first, and a no leaves everything as it was
+  await p.selectOption('#rb-markers select[aria-label="Gel and running buffer"]', 'tg'); await sleep(250);
+  (await p.evaluate(() => getComputedStyle(document.getElementById('wb-ask')).display)) !== 'none' ? ok() : bad('BL41', 'changing the system with markers placed did not ask');
+  await p.click('#wb-ask-no'); await sleep(250);
+  let k = await p.evaluate(() => ({ marks: FIG.panels[0].marks.length, gel: FIG.panels[0].gel, sel: document.querySelector('#rb-markers select[aria-label="Gel and running buffer"]').value }));
+  k.marks === 2 && k.gel === 'ta' && k.sel === 'ta' ? ok() : bad('BL41', 'declining the change altered something: ' + JSON.stringify(k));
+  await p.selectOption('#rb-markers select[aria-label="Gel and running buffer"]', 'tg'); await sleep(250); await p.click('#wb-ask-ok'); await sleep(300);
+  k = await p.evaluate(() => ({ marks: FIG.panels[0].marks.length, gel: FIG.panels[0].gel, col: document.querySelectorAll('.panel-kda .mk-l').length }));
+  k.marks === 0 && k.gel === 'tg' && k.col === 0 ? ok() : bad('BL41', 'accepting the change did not take the markers off: ' + JSON.stringify(k));
+  // leaving: another tab, Done, Esc; each goes back to the tab you came from
+  await p.click('#rb-tab-layout'); await sleep(200); await p.click('#rb-tab-markers'); await sleep(250);
+  await p.click('#rb-done'); await sleep(250); v = await vis();
+  v.tool === 'select' && v.tab === 'layout' ? ok() : bad('BL41', 'Done did not go back to the tab it came from: ' + JSON.stringify(v));
+  await p.click('#rb-tab-markers'); await sleep(250); await p.click('#rb-tab-insert'); await sleep(250); v = await vis();
+  v.tool === 'select' && v.tab === 'insert' ? ok() : bad('BL41', 'another tab did not leave the tool: ' + JSON.stringify(v));
+  // Insert > kDa markers goes to the Markers tab
+  await p.evaluate(() => { rbFold(false); }); await p.click('button[data-tool="mk"]'); await sleep(300); v = await vis();
+  v.tool === 'mk' && v.tab === 'markers' ? ok() : bad('BL41', 'Insert > kDa markers did not open the Markers tab: ' + JSON.stringify(v));
+  // hostile / older figures: an unknown gel or a gel on a ladder without systems is dropped, a known one kept
+  const mg = await p.evaluate(() => { var f = JSON.parse(JSON.stringify(FIG)), q = f.panels[0]; q.ladder = 'pageruler_plus'; q.gel = 'zzz'; migrateFig(f); var a = q.gel; q.gel = 'btmes'; migrateFig(f); var b2 = q.gel; q.ladder = 'gr_1kb'; q.gel = 'btmes'; migrateFig(f); var c2 = q.gel; q.ladder = 'pageruler_plus'; q.gel = 7; figSane(f); return [a, b2, c2, q.gel]; });
+  mg[0] === undefined && mg[1] === 'btmes' && mg[2] === undefined && mg[3] == null ? ok() : bad('BL41', 'gel systems are not cleaned on load: ' + JSON.stringify(mg));
+  p.errs.length ? bad('BL41', 'errors: ' + p.errs.join(' | ')) : ok();
   await p.context().close();
 });
 
