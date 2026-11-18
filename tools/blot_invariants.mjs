@@ -281,7 +281,7 @@ if (run('BL7')) await guard('BL7', async () => {
     mkDone(); await new Promise(r => setTimeout(r, 200));
     var m = FIG.panels[0].marks, img = document.querySelector('.panel-blot .blot-img').getBoundingClientRect(), mk = [...document.querySelectorAll('.panel-kda .mk')].map(e => { var b = e.querySelector('.mk-t').getBoundingClientRect(); return { k: e.textContent.trim(), y: (b.top + b.height / 2 - img.top) / img.height }; });
     var cv = await renderFigureCanvas(1), x = cv.getContext('2d'), fr = document.getElementById('figure').getBoundingClientRect(), t = document.querySelector('.panel-kda .mk-t').getBoundingClientRect();
-    var px = x.getImageData(Math.round(t.left - fr.left + 18 + t.width / 2), Math.round(t.top - fr.top + 18 + t.height / 2), 1, 1).data;
+    var ov = anOverhang(fr), px = x.getImageData(Math.round(t.left - fr.left + 18 + ov.l + t.width / 2), Math.round(t.top - fr.top + 18 + ov.t + t.height / 2), 1, 1).data;
     return { m: m, mk: mk, px: [px[0], px[1], px[2]], kdaHidden: !document.querySelector('.panel-kda[data-pi="0"] .lbl-in'), tool: AN.tool, undo: UNDO.length };
   });
   r.m.length === 2 && r.m[0].k === 55 === false ? 0 : 0;
@@ -1172,6 +1172,14 @@ if (run('BL32')) await guard('BL32', async () => {
   lx[3] < lx[4] && lx.every((x, i) => !i || x >= lx[i - 1]) ? ok() : bad('BL32', 'a handle dragged past its neighbour broke the order: ' + lx.slice(2, 6));
   const moved = await p.evaluate(() => { const l = document.querySelectorAll('.lane-cell .lbl-in')[2].getBoundingClientRect(), b = document.querySelector('.panel-blot .blot-img').getBoundingClientRect(); return (l.left + l.width / 2 - b.left) / b.width - FIG.laneX[2]; });
   Math.abs(moved) < 0.004 ? ok() : bad('BL32', 'the label did not follow its lane while it was dragged');
+  // the Lanes tool has the lane count field too (it is what Home's field is, while the tool is open) and it follows a lane added or removed
+  await p.evaluate(() => { FIG.laneX = laneCentersPct(FIG).map(x => x / 100); render(); anTool('ln'); });
+  await p.fill('#ln-count', '9'); await p.press('#ln-count', 'Tab'); await sleep(200);
+  let cf = await p.evaluate(() => ({ n: FIG.laneCount, x: FIG.laneX.length, hs: document.querySelectorAll('.an-ln-h').length, f: document.getElementById('ln-count').value, home: document.getElementById('tb-lanes').value }));
+  cf.n === 9 && cf.x === 9 && cf.hs === 9 && cf.f === '9' && cf.home === '9' ? ok() : bad('BL32', 'the Lanes field in the tool did not set the lane count: ' + JSON.stringify(cf));
+  await p.click('#rb-format .plus'); await sleep(200);
+  cf = await p.evaluate(() => ({ n: FIG.laneCount, f: document.getElementById('ln-count').value })); cf.n === 10 && cf.f === '10' ? ok() : bad('BL32', 'the + in the tool did not add a lane: ' + JSON.stringify(cf));
+  await p.evaluate(() => { setLaneCount(12); });
   // a click on the picture adds a lane in its place (label slots in, none lost)
   await p.evaluate(() => { FIG.laneX = laneCentersPct(FIG).map(x => x / 100); FIG.lanes[4] = 'FIVE'; render(); anTool('ln'); });
   box = await picBox(p);

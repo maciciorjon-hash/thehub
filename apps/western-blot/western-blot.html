@@ -3283,7 +3283,7 @@ function setLaneCount(n){ n=Math.max(1,Math.min(30,parseInt(n)||1));
       else { var a0=Math.min(lx[0],0.02); FIG.laneX=[]; for(var q=0;q<n;q++) FIG.laneX.push(+(a0+(0.985-a0)*q/(n-1)).toFixed(4)); } } }   // no room to the right: the lanes are spread over the picture instead
   FIG.laneCount=n; while(FIG.lanes.length<n)FIG.lanes.push(''); FIG.groups.forEach(function(g){g.from=Math.min(g.from,n);g.to=Math.min(g.to,n);});
   FIG.condRows.forEach(function(cr){ if(!Array.isArray(cr.on))cr.on=[]; while(cr.on.length<n)cr.on.push(false); cr.txt=_bResize(Array.isArray(cr.txt)?cr.txt:[],n,''); cr.dx=_bResize(Array.isArray(cr.dx)?cr.dx:[],n,0); cr.dy=_bResize(Array.isArray(cr.dy)?cr.dy:[],n,0); });
-  el('tb-lanes').value=n; save(); render(); }
+  el('tb-lanes').value=n; save(); render(); if(AN.tool==='ln') anFormat(); }
 // Lanes marked on the blot: one more at fraction x (in its place left to right) / one fewer. Everything that belongs to a lane moves with it.
 function lanesInsert(x){
   var lx=laneXArr(FIG)||laneCentersPct(FIG).map(function(p){ return p/100; }), n=FIG.laneCount; if(n>=30) return -1;
@@ -4588,7 +4588,7 @@ function anOverhang(figRect){
   });
   // a label dragged past the edge of the figure is still in the file
   document.querySelectorAll('#figure .lane-cell .lbl-in, #figure .cond-cell, #figure .cond-lblcell .lbl-in').forEach(function(l){ var r=l.getBoundingClientRect(); if(!r.width&&!r.height) return;
-    o.l=Math.max(o.l,figRect.left-r.left); o.t=Math.max(o.t,figRect.top-r.top); o.r=Math.max(o.r,r.right-figRect.right); o.b=Math.max(o.b,r.bottom-figRect.bottom); });
+    o.l=Math.max(o.l,figRect.left-r.left-1); o.t=Math.max(o.t,figRect.top-r.top-1); o.r=Math.max(o.r,r.right-figRect.right-1); o.b=Math.max(o.b,r.bottom-figRect.bottom-1); });   // a pixel of slack: sub-pixel font metrics are not an overhang
   ['l','t','r','b'].forEach(function(k){ o[k]=o[k]>0?Math.ceil(o[k])+2:0; });
   return o;
 }
@@ -4983,7 +4983,7 @@ function rbSync(auto){
   var tf=el('rb-tab-format'); if(!tf) return;
   var show=AN.ids.length>0||!!AN_LENS[AN.tool], dn=el('rb-done');
   tf.hidden=!show; tf.textContent=AN_LENS_NAME[AN.tool]||'Format'; if(dn) dn.hidden=!AN_LENS[AN.tool];   // Done sits beside the tabs, so it is there whichever tab (or a folded ribbon) is showing
-  if(show){ anFormat(); if(auto){ rbTab('format'); if(RB_PHONE.matches&&!AN_LENS[AN.tool]) rbFold(true); } }
+  if(show){ anFormat(); if(auto){ rbTab('format'); if(RB_PHONE.matches&&!AN_LENS[AN.tool]) rbFold(true); else if(AN_LENS[AN.tool]&&!RB_PHONE.matches) rbFold(false); } }   // a tool's controls are shown when it starts (a folded ribbon on a laptop hid them)
   else { var r=el('ribbon'); if(r&&r.getAttribute('data-tab')==='format') rbTab(AN.tab||'home'); }
   document.querySelectorAll('[data-tool]').forEach(function(b){ b.classList.toggle('on',b.getAttribute('data-tool')===AN.tool); });
 }
@@ -5355,7 +5355,7 @@ function lnFormatHtml(){
   var n=FIG.laneCount;
   return anGroup('Mark lanes','<span class="rb-note">Click the blot in the middle of each lane to add one. Drag a numbered handle to move it; the cross under it removes it. The labels and the condition rows sit exactly over the lanes.</span>')
     +anGroup('Placing','<label class="tb-field"><input type="checkbox" '+(LN.snap?'checked ':'')+'onchange="lnSnapSet(this.checked)" aria-label="Snap to band"> Snap to band</label><span class="rb-note">Alt places exactly.</span>')
-    +anGroup('Lanes','<span class="rb-note"><b>'+n+'</b> lane'+(n===1?'':'s')+'</span><button class="btn sm" onclick="lnFind()" title="Read the lanes off the picture: the columns the bands stand in">Find lanes</button><button class="btn sm" onclick="lnEven()" title="Space the lanes evenly between the first and the last">Even spacing</button><button class="btn sm" onclick="lnEqual()" title="Back to equal columns across the picture">Equal columns</button>');
+    +anGroup('Lanes','<label class="tb-field" title="Number of lanes (the labels you typed stay with their lane)">Lanes <span class="tb-step"><button type="button" class="minus" onclick="nudge(\'ln-count\',-1,setLaneCount)" aria-label="Fewer lanes">&minus;</button><input type="number" id="ln-count" min="1" max="30" value="'+n+'" onchange="setLaneCount(this.value)" aria-label="Number of lanes"><button type="button" class="plus" onclick="nudge(\'ln-count\',1,setLaneCount)" aria-label="More lanes">+</button></span></label><button class="btn sm" onclick="lnFind()" title="Read the lanes off the picture: the columns the bands stand in">Find lanes</button><button class="btn sm" onclick="lnEven()" title="Space the lanes evenly between the first and the last">Even spacing</button><button class="btn sm" onclick="lnEqual()" title="Back to equal columns across the picture">Equal columns</button>');
 }
 
 /* ══ Fill the lane labels with a series ═══════════════════════════════════════════════════════
