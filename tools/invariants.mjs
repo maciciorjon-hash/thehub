@@ -3524,6 +3524,14 @@ async function suite(opts) {
 
     // B66 — a compound list is the plan, the transfer file is the truth.
     if (run('B66')) await guard('B66', 'plan then run', async () => {
+      // the compound is named by Sample ID, the Sample Name only stands in when a row has no ID
+      const nm = parseEchoPicklist(['Source Plate Name,Source Well,Destination Plate Name,Destination Well,Transfer Volume,Sample Name,Sample ID,Destination Concentration,Destination Concentration Units,Transfer Status',
+        'S1,A1,P1,B2,25,well A1,BET_A1,1E-06,M,', 'S1,A2,P1,B3,25,named only,,1E-06,M,', 'S1,A3,P1,B4,25,,,1E-06,M,'].join('\r\n') + '\r\n');
+      const w1 = nm.plates && nm.plates[0] && nm.plates[0].wells;
+      if (!w1 || w1.B2.compound !== 'BET_A1') bad('B66', 'sample id', 'a row with Sample ID BET_A1 and Sample Name "well A1" was named ' + (w1 && w1.B2.compound));
+      else if (w1.B3.compound !== 'named only') bad('B66', 'sample name', 'a row with no Sample ID did not fall back to its Sample Name: ' + w1.B3.compound);
+      else if (!w1.B4.dmsoOnly) bad('B66', 'no name', 'a row with neither is not the vehicle');
+
       // plan, then run
       const P = (LB.data.projects || []).find(p => (p.sections || []).length);
       const key = Object.keys(LB.data.presets).find(k => /^D2B/.test(k));

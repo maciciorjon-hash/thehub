@@ -8784,11 +8784,14 @@ function parseEchoPicklist(text){
   function col(){ for(var a=0;a<arguments.length;a++){ var k=cols.indexOf(arguments[a]); if(k>=0) return k; } return -1; }
   var iWell=col('destination well'), iConc=col('destination concentration'),
       iUnit=col('destination concentration units'),
-      iName=col('sample name','sample id'), iPlate=col('destination plate name'),
+      iName=col('sample id','sample name'), iName2=col('sample name'), iPlate=col('destination plate name'),
       iStat=col('transfer status'), iVol=col('actual volume','transfer volume'),
       iFluid=col('fluid type'),
       iSPlate=col('source plate name','source plate barcode','source plate'), iSWell=col('source well'),
       iSConc=col('source concentration'), iSUnit=col('source concentration units');
+  // The compound is named by Sample ID — that is the code the lab gives it — and only when a row has
+  // none does the Sample Name stand in (a DMSO backfill carries neither, or just "DMSO").
+  function nameOf(f){ var v=iName>=0?(f[iName]||'').trim():''; if(!v&&iName2>=0&&iName2!==iName) v=(f[iName2]||'').trim(); return v; }
   var plates={}, skipped=0, bad=0, sources=[], srcSeen={};
   for(var r=hdr+1;r<lines.length;r++){
     var L=lines[r]; if(!L.trim()) continue;
@@ -8805,10 +8808,10 @@ function parseEchoPicklist(text){
     // and empty — instead of vanishing from the picture.
     if(iStat>=0 && (f[iStat]||'').trim() && !/^ok$/i.test((f[iStat]||'').trim())){
       skipped++;
-      var _fn=(iName>=0?(f[iName]||'').trim():'');
+      var _fn=nameOf(f);
       if(_fn&&!/^dmso$/i.test(_fn)) b.failed[w]={compound:_fn,status:(f[iStat]||'').trim().slice(0,60)};
       continue; }
-    var name=(iName>=0?(f[iName]||'').trim():'');
+    var name=nameOf(f);
     var fluid=(iFluid>=0?(f[iFluid]||'').trim():'');
     var conc=(iConc>=0?_echoConc(num(f[iConc]), iUnit>=0?f[iUnit]:'M'):'');
     var nmv=(iConc>=0?_echoConcNM(num(f[iConc]), iUnit>=0?f[iUnit]:'M'):NaN);
