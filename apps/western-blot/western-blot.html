@@ -1962,12 +1962,23 @@ header{border-bottom:1px solid var(--border);padding:0 20px;display:flex;align-i
 .panel-prot.repositioning{background:var(--accent-dim);border-radius:var(--r-1);}
 
 /* lane labels: centered on each lane, never clipped — the zone grows to fit the tallest */
-.lane-row{grid-column:2;display:flex;align-items:flex-end;position:relative;}
-.lane-cell{position:relative;flex:none;display:flex;justify-content:center;align-items:flex-end;}
-.lane-cell .lbl-in{outline:none;white-space:nowrap;color:#111;text-align:center;}
+/* A label is anchored on the CENTRE of its lane (a zero-width cell at the lane's x, so lanes marked by hand
+   need no column), every cell in one grid area so the row is as tall as the tallest label. Offsets are a transform. */
+.lane-row{grid-column:2;display:grid;grid-template-columns:100%;align-items:end;position:relative;}
+.lane-row.below{align-items:start;}
+.lane-cell{grid-area:1/1;justify-self:start;width:0;position:relative;display:flex;justify-content:center;align-items:flex-end;}
+.lane-row.below .lane-cell{align-items:flex-start;}
+.lane-cell .lbl-in{outline:none;white-space:nowrap;color:#111;text-align:center;flex:none;cursor:grab;touch-action:none;}
+.lane-cell .lbl-in:focus{cursor:text;}
 .lane-cell .lbl-in:empty::before{content:'·';color:#ccc;}
-.lane-cell.repositioning{background:var(--accent-dim);border-radius:var(--r-1);}
-.lane-cell.repositioning .lbl-in{cursor:move;}
+.lane-cell.repositioning .lbl-in{background:var(--accent-dim);border-radius:var(--r-1);cursor:move;}
+.lane-cell.dragging .lbl-in{background:var(--accent-dim);border-radius:var(--r-1);cursor:grabbing;}
+#figure.lanes-vert .lane-cell .lbl-in{writing-mode:vertical-rl;transform:rotate(180deg);}
+#figure.lanes-vert.below .lane-cell .lbl-in{transform:none;}
+#figure.lanes-ang .lane-cell{justify-content:flex-start;}
+#figure.lanes-ang .lane-cell .lbl-in{transform:rotate(-45deg);transform-origin:0 100%;}
+#figure.lanes-ang.below .lane-cell .lbl-in{transform:rotate(45deg);transform-origin:0 0;}
+#figure.dragging-lbl,#figure.dragging-lbl *{user-select:none;-webkit-user-select:none;}
 
 /* crop modal */
 .modal-back{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:300;align-items:center;justify-content:center;padding:24px;}
@@ -2039,14 +2050,18 @@ header{border-bottom:1px solid var(--border);padding:0 20px;display:flex;align-i
 
 /* sample-conditions matrix (aligned to the lanes) */
 .cond-band{grid-column:1/-1;display:grid;grid-template-columns:var(--kda-w,54px) var(--blot-w,760px);column-gap:10px;row-gap:5px;align-items:center;margin:4px 0 10px;}
-.cond-lblcell{position:relative;display:flex;align-items:center;justify-content:flex-end;padding-right:3px;}
-.cond-lblcell .lbl-in{font-family:var(--sans);font-size:var(--fs-5);color:#111;text-align:right;white-space:nowrap;outline:none;min-width:10px;cursor:text;}
+.cond-lblcell{position:relative;display:flex;align-items:center;justify-content:flex-end;padding-right:3px;min-width:0;}
+.cond-lblcell .lbl-in{font-family:var(--sans);font-size:var(--fs-5);color:#111;text-align:right;white-space:nowrap;outline:none;min-width:10px;cursor:text;flex:none;}   /* flex:none, or a long title is squeezed to the column and its text spills to the right, over the lanes */
 .cond-lblcell .lbl-in:empty::before{content:'condition';color:#bbb;}
 .cond-del{position:absolute;left:-17px;top:50%;transform:translateY(-50%);width:15px;height:15px;border-radius:50%;border:none;background:#d9534f;color:#fff;font-size:var(--fs-2);line-height:1;cursor:pointer;opacity:0;}
 .cond-lblcell:hover .cond-del{opacity:1;}
-.cond-lanes{display:flex;align-items:center;}
-.cond-cell{flex:none;display:flex;align-items:center;justify-content:center;height:24px;cursor:pointer;border-radius:var(--r-1);}
+.cond-lanes{position:relative;height:24px;}
+.cond-cell{position:absolute;top:50%;display:flex;align-items:center;justify-content:center;min-width:24px;height:24px;cursor:pointer;border-radius:var(--r-1);touch-action:none;}
 .cond-cell:hover{background:rgba(91,107,122,.10);}
+.cond-cell.txt{cursor:grab;padding:0 2px;}
+.cond-cell.txt .lbl-in{font-family:var(--sans);font-size:var(--fs-5);color:#111;white-space:nowrap;outline:none;text-align:center;min-width:10px;cursor:text;}
+.cond-cell.txt .lbl-in:empty::before{content:'·';color:#ccc;}
+.cond-cell.dragging{background:var(--accent-dim);cursor:grabbing;}
 .cond-mark{display:block;}
 .cond-pm{font-family:var(--sans);font-size:var(--fs-6);font-weight:600;color:#111;line-height:1;}
 
@@ -2134,6 +2149,9 @@ input:checked+.theme-slider{background:var(--accent);}
 .rb-tab.rb-ctx{color:var(--text);}
 .rb-tab.rb-ctx:not(.on){background:var(--accent-dim);}
 .rb-tab[hidden]{display:none;}
+.rb-done{border:1px solid var(--accent);border-bottom:none;background:var(--accent);color:var(--on-accent);font-family:var(--sans);font-size:var(--fs-3);font-weight:600;padding:7px 16px;min-height:32px;border-radius:var(--r-2) var(--r-2) 0 0;cursor:pointer;margin:0 0 -1px 8px;}   /* a tab of its own, in the strip, so it is on screen whichever tab or folded ribbon is showing */
+.rb-done:hover{filter:brightness(1.08);}
+.rb-done[hidden]{display:none;}
 .rb-top>.tb-right{display:flex;align-items:center;gap:6px;padding-bottom:5px;}
 .rb-panes{min-height:62px;}
 .ribbon[data-collapsed="1"] .rb-panes{display:none;}
@@ -2179,6 +2197,14 @@ input:checked+.theme-slider{background:var(--accent);}
 
 /* The annotation layer: one SVG over each blot. Shapes live in the panel's own units, so they
    keep their place when the width or the crop changes. */
+/* the lane tool: guides and numbered handles, screen only */
+.an-ln-line{stroke:var(--accent);stroke-width:1;stroke-dasharray:3 3;opacity:.85;pointer-events:none;}
+.an-ln-h{cursor:ew-resize;pointer-events:all;touch-action:none;}
+.an-ln-h circle{fill:var(--accent);stroke:#fff;stroke-width:1.5;}
+.an-ln-h text{fill:var(--on-accent);font:600 10px var(--sans);pointer-events:none;}
+.an-ln-x{cursor:pointer;pointer-events:all;}
+.an-ln-x circle{fill:#fff;stroke:var(--danger);stroke-width:1.2;}
+.an-ln-x path{stroke:var(--danger);stroke-width:1.5;stroke-linecap:round;fill:none;}
 .an-layer{position:absolute;left:0;top:0;overflow:visible;pointer-events:none;z-index:3;color:#111;}   /* the sheet is white in both themes */
 .panel-tools{z-index:6;pointer-events:none;}   /* the bar's own gaps let a click through to the shape or the picture under it */
 .panel-tools>*{pointer-events:auto;}
@@ -2331,6 +2357,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
       <button class="rb-tab" role="tab" id="rb-tab-insert" data-tab="insert" aria-selected="false" onclick="rbClick('insert')">Insert</button>
       <button class="rb-tab" role="tab" id="rb-tab-layout" data-tab="layout" aria-selected="false" onclick="rbClick('layout')">Layout</button>
       <button class="rb-tab rb-ctx" role="tab" id="rb-tab-format" data-tab="format" aria-selected="false" onclick="rbClick('format')" hidden>Format</button>
+      <button class="rb-done" id="rb-done" hidden onclick="anTool('select')" title="Leave this tool (Esc)" aria-label="Leave this tool">Done</button>
     </div>
     <div class="tb-right">
       <button class="btn ghost sm tb-ico" id="tb-undo" onclick="blotUndo()" title="Undo (⌘Z)" aria-label="Undo" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
@@ -2369,6 +2396,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
         <div class="rb-row">
           <label class="tb-field" title="Number of lanes">Lanes <span class="tb-step"><button type="button" class="minus" onclick="nudge('tb-lanes',-1,setLaneCount)" aria-label="Fewer lanes">&minus;</button><input type="number" id="tb-lanes" min="1" max="30" value="12" onchange="setLaneCount(this.value)" aria-label="Number of lanes"><button type="button" class="plus" onclick="nudge('tb-lanes',1,setLaneCount)" aria-label="More lanes">+</button></span></label>
           <button class="btn sm" onclick="srOpen()" title="Fill the lane labels with a dilution series: DMSO, then 10 µM ÷ 3 …">Fill series…</button>
+          <button class="btn sm" data-tool="ln" onclick="lnStart()" title="Mark the lanes on the blot: click the middle of each lane (drag a handle to move it). The labels and the condition rows sit exactly over them."><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 4v16M12 4v16M18 4v16"/><circle cx="6" cy="9" r="1.6" fill="currentColor"/><circle cx="12" cy="9" r="1.6" fill="currentColor"/><circle cx="18" cy="9" r="1.6" fill="currentColor"/></svg><span class="rb-t">Mark lanes</span></button>
         </div>
         <div class="rb-lbl">Lanes</div>
       </div>
@@ -2408,6 +2436,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
           <button class="btn sm" data-tool="ms" onclick="anMsStart()" title="Read the size of a band from the placed markers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 12h16M4 8v8M20 8v8M9 12v-3M14 12v-3"/></svg><span class="rb-t">Measure</span></button>
           <button class="btn sm" onclick="addGroup()" title="Add a group bracket over the lanes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17V9h16v8"/></svg><span class="rb-t">Group bracket</span></button>
           <button class="btn sm" onclick="addCondRow()" title="Add a sample-condition row — a +/- matrix over the lanes (e.g. compound, ligand, substrate). Click a cell to toggle it on/off."><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="7" cy="8" r="3"/><circle cx="7" cy="16" r="3"/><path d="M14 8h6M14 16h6"/></svg><span class="rb-t">Condition row</span></button>
+          <button class="btn sm" onclick="addCondRow('text')" title="Add a row of free text over the lanes (a time, a dose, a genotype: anything you type, one box per lane). Paste a row from a spreadsheet to fill it."><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 8h5M4 16h5M13 6v4M11 6h4M13 14v4M11 14h4M19 8v0M19 16v0"/></svg><span class="rb-t">Text row</span></button>
         </div>
         <div class="rb-lbl">Blot</div>
       </div>
@@ -2427,11 +2456,12 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
           <label class="tb-field" title="Text direction of the lane labels">Direction <select id="tb-laneorient" onchange="setLaneOrient(this.value)"><option value="vert" selected>Vertical</option><option value="ang">Angled</option><option value="horiz">Horizontal</option></select></label>
           <label class="tb-field" title="Put the lane labels + group brackets above or below the panels">Placed <select id="tb-labelpos" onchange="setLaneLabelPos(this.value)"><option value="top" selected>Above</option><option value="bottom">Below</option></select></label>
           <label class="tb-field" title="Lane label text size (px)">Size <span class="tb-step"><button type="button" class="minus" onclick="nudge('tb-lanelabelsize',-1,setLaneLabelSize)" aria-label="Smaller labels">&minus;</button><input type="number" id="tb-lanelabelsize" min="2" max="72" value="16" onchange="setLaneLabelSize(this.value)" aria-label="Lane label size"><button type="button" class="plus" onclick="nudge('tb-lanelabelsize',1,setLaneLabelSize)" aria-label="Larger labels">+</button></span></label>
-          <button class="btn sm" id="tb-movelabels" onclick="toggleLaneRepositionMode()" title="Turn on, then drag any label to reposition it (lane: sideways = one label, up/down = all; kDa/protein: up/down per panel). Turn off to edit label text again.">Move labels</button>
+          <label class="tb-field" title="Lift a label that would overlap its neighbour just enough to clear it. A label you moved yourself stays where you put it."><input type="checkbox" id="tb-laneavoid" checked onchange="setLaneAvoid(this.checked)"> No overlaps</label>
+          <button class="btn sm" id="tb-movelabels" onclick="toggleLaneRepositionMode()" title="Any label can be dragged without this. Turn it on to move labels without ever putting the caret in them; turn it off to edit text again.">Move labels</button>
           <div class="tb-field" style="position:relative;"><button class="btn ghost sm" onclick="toggleResetMenu(event)" title="Reset lane widths / label positions">Reset &#9662;</button>
             <div class="menu" id="reset-menu">
-              <button onclick="resetLaneWidths()">Reset lane widths</button>
-              <button onclick="resetLaneLabelPos()">Reset label positions</button>
+              <button onclick="resetLaneWidths()">Reset lanes to equal columns</button>
+              <button onclick="resetLaneLabelPos()">Reset label and dot positions</button>
             </div>
           </div>
         </div>
@@ -2664,7 +2694,7 @@ var STORE_KEY='blot_figure';
 function defaultFig(){
   return {
     laneCount:12, laneOrient:'vert', laneLabelPos:'top', figW:760, gap:10,
-    laneLabelSize:16, laneLabelZoneH:90, laneLabelOffsetX:null, laneLabelOffsetY:0,
+    laneLabelSize:16, laneLabelZoneH:90, laneLabelOffsetX:null, laneLabelOffsetY:0, laneLabelDY:null, laneX:null, laneAvoid:true,
     lanes:new Array(12).fill(''),
     laneWeights:null,
     border:{on:true,px:1.6},
@@ -2711,7 +2741,19 @@ function migrateFig(fig){
   if(fig.laneLabelOffsetX===undefined) fig.laneLabelOffsetX=null;
   if(fig.laneLabelOffsetY==null) fig.laneLabelOffsetY=0;
   if(!Array.isArray(fig.condRows)) fig.condRows=[];
-  fig.condRows.forEach(function(cr){ if(!Array.isArray(cr.on)) cr.on=[]; if(cr.label==null) cr.label=''; });
+  // Lanes marked by hand: the centre of each lane as a fraction of the blot's width, left to right (null = equal columns).
+  fig.laneX=laneXClean(fig.laneX,fig.laneCount);
+  fig.laneLabelDY=_numArr(fig.laneLabelDY,fig.laneCount,true);
+  if(fig.laneLabelOffsetX!=null) fig.laneLabelOffsetX=_numArr(fig.laneLabelOffsetX,fig.laneCount,true);
+  if(fig.laneAvoid==null) fig.laneAvoid=true; fig.laneAvoid=!!fig.laneAvoid;
+  fig.condRows=fig.condRows.filter(function(cr){ return cr&&typeof cr==='object'; });
+  fig.condRows.forEach(function(cr){
+    if(!Array.isArray(cr.on)) cr.on=[]; if(cr.label==null) cr.label='';
+    cr.kind=cr.kind==='text'?'text':'mark';
+    var n=fig.laneCount;
+    cr.txt=(Array.isArray(cr.txt)?cr.txt:[]).slice(0,n).map(function(t){ return t==null?'':String(t).slice(0,400); }); while(cr.txt.length<n) cr.txt.push('');
+    cr.dx=_numArr(cr.dx,n); cr.dy=_numArr(cr.dy,n);
+  });
   if(fig.condStyle==null) fig.condStyle='circle';
   if(fig.condPos==null) fig.condPos='top';
   return fig;
@@ -2720,33 +2762,114 @@ function _stripHtml(s){ var d=document.createElement('div'); d.innerHTML=String(
 
 /* ── Lane widths (uniform by default, individually draggable) ── */
 function laneWeightsArr(f){ if(Array.isArray(f.laneWeights)&&f.laneWeights.length===f.laneCount) return f.laneWeights; return new Array(f.laneCount).fill(1); }
-function laneEdgesPct(f){ // returns laneCount+1 percentages: edges[0]=0 .. edges[laneCount]=100
+function _laneEdgesEq(f){ // returns laneCount+1 percentages: edges[0]=0 .. edges[laneCount]=100
   var w=laneWeightsArr(f), total=w.reduce(function(a,b){return a+b;},0)||1;
   var edges=[0], cum=0;
   w.forEach(function(x){ cum+=x; edges.push(cum/total*100); });
   return edges;
 }
+// Lanes the person marked on the blot: n fractions 0..1, ascending, or null (equal columns).
+function laneXClean(a,n){
+  if(!Array.isArray(a)||a.length!==n||!n) return null;
+  var o=a.map(Number); if(!o.every(isFinite)) return null;
+  return o.map(function(x){ return Math.max(0,Math.min(1,x)); }).sort(function(p,q){ return p-q; });
+}
+function _numArr(a,n,nullable){ if(!Array.isArray(a)) return nullable?null:new Array(n).fill(0); var o=a.slice(0,n).map(function(x){ x=+x; return isFinite(x)?Math.max(-2000,Math.min(2000,x)):0; }); while(o.length<n) o.push(0); return o; }
+function laneXArr(f){ return (Array.isArray(f.laneX)&&f.laneX.length===f.laneCount)?f.laneX:null; }
+// A lane owns the strip between the midpoints to its neighbours, so a bracket, a measurement and a label agree about where lane k is.
+function laneEdgesPct(f){
+  var lx=laneXArr(f); if(!lx) return _laneEdgesEq(f);
+  var n=lx.length, c=lx.map(function(x){ return x*100; }); if(n===1) return [0,100];
+  var e=[Math.max(0,c[0]-(c[1]-c[0])/2)]; for(var i=1;i<n;i++) e.push((c[i-1]+c[i])/2);
+  e.push(Math.min(100,c[n-1]+(c[n-1]-c[n-2])/2)); return e;
+}
+function laneCentersPct(f){
+  var lx=laneXArr(f); if(lx) return lx.map(function(x){ return x*100; });
+  var e=_laneEdgesEq(f), r=[]; for(var i=0;i<f.laneCount;i++) r.push((e[i]+e[i+1])/2); return r;
+}
 function laneLabelOffsetXArr(f){ if(Array.isArray(f.laneLabelOffsetX)&&f.laneLabelOffsetX.length===f.laneCount) return f.laneLabelOffsetX; return new Array(f.laneCount).fill(0); }
-function resetLaneWidths(){ FIG.laneWeights=null; save(); render(); toast('Lane widths reset to equal'); closeMenus(); }
+function laneLabelDYArr(f){ if(Array.isArray(f.laneLabelDY)&&f.laneLabelDY.length===f.laneCount) return f.laneLabelDY; return new Array(f.laneCount).fill(0); }
+function resetLaneWidths(){ FIG.laneWeights=null; FIG.laneX=null; save(); render(); toast('Lanes are equal columns again'); closeMenus(); }
 
-// Apply ONLY geometry (lane widths, label offsets, group bracket positions, kDa/protein Y)
+// Apply ONLY geometry (lane widths, label offsets, group bracket positions, kDa/protein Y, condition dots)
 // to the existing DOM in place — no innerHTML rebuild, so we never re-decode the (large)
 // panel images during a drag. This is what every geometry drag calls each frame.
 function applyGeometry(){
-  var f=FIG, edges=laneEdgesPct(f), laneW=laneWeightsArr(f), total=laneW.reduce(function(a,b){return a+b;},0)||1;
+  var f=FIG, edges=laneEdgesPct(f);
   var band=el('groups-band');
   if(band){ var grps=band.querySelectorAll('.grp'); for(var gi=0;gi<grps.length;gi++){ var G=f.groups[gi]; if(!G)continue; grps[gi].style.left=edges[G.from-1]+'%'; grps[gi].style.right=(100-edges[G.to])+'%'; } }
   var lr=el('lane-row');
   if(lr){
-    var offX=laneLabelOffsetXArr(f), cells=lr.querySelectorAll('.lane-cell');
-    for(var i=0;i<cells.length;i++){ cells[i].style.width=(laneW[i]/total*100)+'%'; cells[i].style.left=(offX[i]||0)+'px'; }
+    var cen=laneCentersPct(f), cells=lr.querySelectorAll('.lane-cell');
+    for(var i=0;i<cells.length;i++) cells[i].style.marginLeft=cen[i]+'%';
     var divs=lr.querySelectorAll('.lane-divider');
     for(var di=0;di<divs.length;di++){ divs[di].style.left=edges[di+1]+'%'; }
   }
+  var cc=document.querySelectorAll('#figure .cond-cell');
+  for(var ci=0;ci<cc.length;ci++){ var cr=f.condRows[+cc[ci].getAttribute('data-ri')], k=+cc[ci].getAttribute('data-i'); if(!cr) continue;
+    cc[ci].style.left=laneCentersPct(f)[k]+'%'; cc[ci].style.transform=condXf(cr.dx&&cr.dx[k],cr.dy&&cr.dy[k]); }
   var kd=document.querySelectorAll('.panel-kda .lbl-in');
   for(var ki=0;ki<kd.length;ki++){ var pk=f.panels[ki]; if(pk) kd[ki].style.transform='translateY('+(pk.kdaOffsetY||0)+'px)'; }
   var pr=document.querySelectorAll('.panel-prot .lbl-in');
   for(var pri=0;pri<pr.length;pri++){ var pp=f.panels[pri]; if(pp) pr[pri].style.transform='translateY('+(pp.protOffsetY||0)+'px)'; }
+  fitLaneZone();
+}
+function condXf(dx,dy){ return 'translate(calc(-50% + '+(+dx||0)+'px),calc(-50% + '+(+dy||0)+'px))'; }
+function _hasText(l){ return !!(l&&(l.innerText||l.textContent||'').trim()); }
+
+/* ── Labels that do not collide ──
+   A lane label sits at its lane's centre plus the offset the person dragged it to. When two of them would overlap
+   (a horizontal "DMSO" next to "1000 nM", an angled label on a tight lane) the one on the right is lifted away from
+   the one it would hit, the least that clears it (down, for labels below the blot); a label the person moved by hand
+   is left where it is and the others make way for it. Nothing is stored: it follows the geometry. ── */
+function _quad(cx,cy,w,h,ang){ var c=Math.cos(ang), s=Math.sin(ang), hw=w/2+2, hh=h/2+2;
+  return [[-hw,-hh],[hw,-hh],[hw,hh],[-hw,hh]].map(function(p){ return [cx+p[0]*c-p[1]*s, cy+p[0]*s+p[1]*c]; }); }
+function _quadHit(a,b){
+  var P=[a,b];
+  for(var k=0;k<2;k++) for(var i=0;i<4;i++){
+    var p=P[k][i], q=P[k][(i+1)%4], nx=q[1]-p[1], ny=p[0]-q[0], lo=[1e18,1e18], hi=[-1e18,-1e18];
+    for(var m=0;m<2;m++) P[m].forEach(function(v){ var d=v[0]*nx+v[1]*ny; if(d<lo[m]) lo[m]=d; if(d>hi[m]) hi[m]=d; });
+    if(hi[0]<lo[1]||hi[1]<lo[0]) return false;
+  }
+  return true;
+}
+function _laneAvoid(cells,offX,offY,below){
+  var ang=FIG.laneOrient==='ang'?(below?45:-45)*Math.PI/180:0, items=[];
+  cells.forEach(function(c,i){
+    var l=c.querySelector('.lbl-in'); if(!l||!_hasText(l)) return;
+    var bb=l.getBoundingClientRect();
+    items.push({i:i,cell:c,cx:bb.left+bb.width/2,cy:bb.top+bb.height/2,w:l.offsetWidth,h:l.offsetHeight,pinned:!!(offX[i]||offY[i]),shift:0});
+  });
+  var placed=[], dir=below?1:-1, auto=new Array(cells.length).fill(0);
+  items.filter(function(t){ return t.pinned; }).forEach(function(t){ placed.push(_quad(t.cx,t.cy,t.w,t.h,ang)); });
+  items.filter(function(t){ return !t.pinned; }).forEach(function(t){
+    var sft=0, q;
+    for(;sft<=320;sft+=3){ q=_quad(t.cx,t.cy+dir*sft,t.w,t.h,ang); if(!placed.some(function(p){ return _quadHit(p,q); })) break; }
+    if(sft>320){ sft=0; q=_quad(t.cx,t.cy,t.w,t.h,ang); }
+    t.shift=sft; auto[t.i]=sft; placed.push(q);
+  });
+  return auto;
+}
+// The label zone is as tall as its labels stand: an angled or staggered label reaches well above its own line. A label the person
+// dragged is theirs: it goes where it is dropped, the zone does not chase it, and the export widens for it.
+function fitLaneZone(){
+  var row=el('lane-row'); if(!row) return;
+  var f=FIG, below=f.laneLabelPos==='bottom', dir=below?1:-1, cells=[].slice.call(row.querySelectorAll('.lane-cell')), offX=laneLabelOffsetXArr(f), offY=laneLabelDYArr(f);
+  var xf=function(i,auto,manual){ return 'translate('+(manual?(offX[i]||0):0)+'px,'+((manual?(offY[i]||0):0)+dir*(auto?auto[i]||0:0))+'px)'; };
+  row.style.minHeight='';
+  cells.forEach(function(c,i){ c.style.transform=xf(i,null,true); });
+  var auto=f.laneAvoid!==false?_laneAvoid(cells,offX,offY,below):null;
+  cells.forEach(function(c,i){ c.style.transform=xf(i,auto,false); });   // the zone is sized for the labels that are placed by the layout
+  var rb=row.getBoundingClientRect(), need=0;
+  cells.forEach(function(c,i){ if(offX[i]||offY[i]) return; var l=c.querySelector('.lbl-in'); if(!l||!_hasText(l)) return; var r=l.getBoundingClientRect(); need=Math.max(need,below?r.bottom-rb.top:rb.bottom-r.top); });
+  if(need>rb.height+0.5) row.style.minHeight=Math.ceil(need)+'px';
+  cells.forEach(function(c,i){ c.style.transform=xf(i,auto,true); });
+}
+// The condition titles decide how wide the left column is: the widest one sets it, so none is squeezed into 54px.
+function fitGutter(){
+  var fig=el('figure'); if(!fig) return; var w=0;
+  fig.querySelectorAll('.cond-lblcell .lbl-in').forEach(function(l){ if(_hasText(l)) w=Math.max(w,l.offsetWidth); });
+  fig.style.setProperty('--kda-w',Math.max(54,w?Math.ceil(w)+8:0)+'px');
 }
 
 var _laneDrag=null;
@@ -2777,25 +2900,44 @@ document.addEventListener('mouseup',function(){ if(_laneDrag){ _laneDrag=null; s
    toggle) so it works identically on Mac & Windows; Alt/Option+drag also works. ── */
 var _laneRepositionMode=false;
 function toggleLaneRepositionMode(){ _laneRepositionMode=!_laneRepositionMode; render(); }
-function resetLaneLabelPos(){ FIG.laneLabelOffsetX=null; FIG.laneLabelOffsetY=0; FIG.panels.forEach(function(p){ p.kdaOffsetY=0; p.protOffsetY=0; }); save(); render(); toast('Label positions reset'); closeMenus(); }
+function resetLaneLabelPos(){ FIG.laneLabelOffsetX=null; FIG.laneLabelOffsetY=0; FIG.laneLabelDY=null; FIG.condRows.forEach(function(cr){ cr.dx=_numArr(null,FIG.laneCount); cr.dy=_numArr(null,FIG.laneCount); }); FIG.panels.forEach(function(p){ p.kdaOffsetY=0; p.protOffsetY=0; }); save(); render(); toast('Label positions reset'); closeMenus(); }
 
-// Lane label drag: horizontal moves just this label, vertical moves ALL labels together.
-var _laneLblDrag=null;
-function startLaneLabelDrag(e,i){
-  if(!_laneRepositionMode && !e.altKey) return; // otherwise let normal text editing happen
-  e.preventDefault();
-  var arr=laneLabelOffsetXArr(FIG);
-  _laneLblDrag={i:i, startX:e.clientX, startOffX:arr[i]||0};
+// A label or a condition dot is dragged by a press that MOVES: a press that stays put is a click (the caret for a label,
+// the toggle for a dot). Both axes are free; Shift keeps to one axis; it settles on the lane's centre and the row's line
+// when it passes within 5px of them (Alt turns that off).
+var _bDrag=null;
+function _blDragBind(st){
+  _bDrag=st; var fig=el('figure');
+  function mv(e){
+    var dx=e.clientX-st.x0, dy=e.clientY-st.y0;
+    if(!st.moved){ if(Math.hypot(dx,dy)<4) return; st.moved=true; st.cell.classList.add('dragging'); if(fig) fig.classList.add('dragging-lbl'); try{ var ae=document.activeElement; if(ae&&ae.blur&&ae.closest&&ae.closest('#figure')) ae.blur(); }catch(_){} }
+    e.preventDefault(); try{ getSelection().removeAllRanges(); }catch(_){}
+    if(e.shiftKey){ if(Math.abs(dx)>=Math.abs(dy)) dy=0; else dx=0; }
+    var nx=st.ox+dx, ny=st.oy+dy;
+    if(!e.altKey){ if(Math.abs(nx)<5) nx=0; if(Math.abs(ny)<5) ny=0; }
+    st.set(Math.round(nx*2)/2, Math.round(ny*2)/2);
+  }
+  function up(){
+    document.removeEventListener('pointermove',mv); document.removeEventListener('pointerup',up); document.removeEventListener('pointercancel',up);
+    _bDrag=null; if(st.cell&&st.cell.classList) st.cell.classList.remove('dragging'); if(fig) fig.classList.remove('dragging-lbl');
+    if(st.moved) save(); else if(st.click) st.click();
+  }
+  document.addEventListener('pointermove',mv); document.addEventListener('pointerup',up); document.addEventListener('pointercancel',up);
 }
-document.addEventListener('mousemove',function(e){
-  if(!_laneLblDrag) return;
-  var d=_laneLblDrag;
-  var arr=laneLabelOffsetXArr(FIG).slice();
-  arr[d.i]=d.startOffX+(e.clientX-d.startX); // horizontal only
-  FIG.laneLabelOffsetX=arr;
-  applyGeometry();
-});
-document.addEventListener('mouseup',function(){ if(_laneLblDrag){ _laneLblDrag=null; save(); } });
+function laneCellDown(ev,i){
+  if(ev.button>0||_bDrag||_laneDrag) return;
+  var cell=ev.currentTarget; if(_laneRepositionMode) ev.preventDefault();   // in Move mode a press never puts a caret in the label
+  _blDragBind({cell:cell,x0:ev.clientX,y0:ev.clientY,ox:laneLabelOffsetXArr(FIG)[i]||0,oy:laneLabelDYArr(FIG)[i]||0,moved:false,
+    set:function(nx,ny){ var a=laneLabelOffsetXArr(FIG).slice(), b=laneLabelDYArr(FIG).slice(); a[i]=nx; b[i]=ny; FIG.laneLabelOffsetX=a; FIG.laneLabelDY=b; applyGeometry(); }});
+}
+function condCellDown(ev,ri,i){
+  if(ev.button>0||_bDrag) return; var cr=FIG.condRows[ri]; if(!cr) return;
+  var cell=ev.currentTarget, text=cr.kind==='text';
+  if(text&&!ev.target.closest('.lbl-in')) ev.preventDefault();
+  _blDragBind({cell:cell,x0:ev.clientX,y0:ev.clientY,ox:(cr.dx&&cr.dx[i])||0,oy:(cr.dy&&cr.dy[i])||0,moved:false,
+    set:function(nx,ny){ cr.dx=_numArr(cr.dx,FIG.laneCount); cr.dy=_numArr(cr.dy,FIG.laneCount); cr.dx[i]=nx; cr.dy[i]=ny; applyGeometry(); },
+    click:text?null:function(){ toggleCond(ri,i); }});
+}
 
 // kDa / protein label drag: vertical only, per panel.
 var _panelLblDrag=null;
@@ -2911,10 +3053,11 @@ var DRAG_SVG='<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6"
 function render(){
   var f=FIG, fig=el('figure');
   fig.style.setProperty('--blot-w', f.figW+'px');
-  fig.className = 'lanes-'+f.laneOrient + (_laneRepositionMode?' reposition-mode':'');
+  fig.className = 'lanes-'+f.laneOrient + (f.laneLabelPos==='bottom'?' below':'') + (_laneRepositionMode?' reposition-mode':'');
   var mlBtn=el('tb-movelabels'); if(mlBtn) mlBtn.className = _laneRepositionMode ? 'btn sm primary' : 'btn sm';
   var _cs=el('tb-condstyle'); if(_cs) _cs.value=f.condStyle;
   var _cp=el('tb-condpos'); if(_cp) _cp.value=f.condPos;
+  var _la=el('tb-laneavoid'); if(_la) _la.checked=f.laneAvoid!==false;
   var repo=_laneRepositionMode;
   var N=f.panels.length;
   var hasCond=f.condRows.length>0;
@@ -2986,23 +3129,22 @@ function render(){
       +'<div class="lbl-in" style="transform:translateY('+(p.protOffsetY||0)+'px);" contenteditable="true" role="textbox" aria-label="Protein name, panel '+(pi+1)+'" onfocus="_blotActiveEd=this" oninput="setPanel('+pi+',\'prot\',this.innerHTML)">'+_bClean(p.prot)+'</div></div>';
     html+='</div>';
   });
-  // lane labels + width dividers
-  var laneW=laneWeightsArr(f), laneTotal=laneW.reduce(function(a,b){return a+b;},0)||1;
-  var dividerHtml='';
-  for(var di=0;di<f.laneCount-1;di++){ dividerHtml+='<div class="lane-divider" style="left:'+edges[di+1]+'%;" data-i="'+di+'" onmousedown="startLaneDrag(event,'+di+')" title="Drag to resize these two lanes"></div>'; }
-  var laneFsz=f.laneLabelSize||16, laneOffX=laneLabelOffsetXArr(f);
+  // lane labels (each one centred on its lane) + width dividers (equal columns only: lanes marked by hand have no divider)
+  var dividerHtml='', hand=!!laneXArr(f);
+  for(var di=0;di<f.laneCount-1&&!hand;di++){ dividerHtml+='<div class="lane-divider" style="left:'+edges[di+1]+'%;" data-i="'+di+'" onmousedown="startLaneDrag(event,'+di+')" title="Drag to resize these two lanes"></div>'; }
+  var laneFsz=f.laneLabelSize||16, cen=laneCentersPct(f);
   var laneRowMargin = f.laneLabelPos==='bottom' ? ('margin-top:'+LANE_GEL_GAP+'px;') : ('margin-bottom:'+LANE_GEL_GAP+'px;');
-  html+='<div class="lane-row" id="lane-row" style="grid-row:'+rowLanes+';'+laneRowMargin+'">'
+  html+='<div class="lane-row'+(f.laneLabelPos==='bottom'?' below':'')+'" id="lane-row" style="grid-row:'+rowLanes+';'+laneRowMargin+'">'
     +f.lanes.slice(0,f.laneCount).map(function(l,i){
-      var wpct=(laneW[i]/laneTotal*100);
-      var lblTitle=repo ? 'Drag sideways to reposition this label' : 'Click to edit · turn on "Move" to drag it sideways';
-      return '<div class="lane-cell'+(repo?' repositioning':'')+'" style="width:'+wpct+'%;left:'+(laneOffX[i]||0)+'px;" onmousedown="startLaneLabelDrag(event,'+i+')" title="'+lblTitle+'">'
+      var lblTitle=repo ? 'Drag to move this label' : 'Click to edit · drag to move it (Shift keeps one direction, Alt does not snap)';
+      return '<div class="lane-cell'+(repo?' repositioning':'')+'" data-i="'+i+'" style="margin-left:'+cen[i]+'%;" onpointerdown="laneCellDown(event,'+i+')" title="'+lblTitle+'">'
         +'<div class="lbl-in" style="font-size:'+laneFsz+'px;" contenteditable="true" role="textbox" aria-label="Label of lane '+(i+1)+'" onfocus="_blotActiveEd=this" oninput="setLane('+i+',this.innerHTML)">'+_bClean(l||'')+'</div></div>';
     }).join('')
     +dividerHtml
   +'</div>';
   if(rowCond!=null) html+=condBandHtml(rowCond);
   fig.innerHTML=html;
+  fitGutter(); applyGeometry();
   wireGroupDrag();
   anRender();
 }
@@ -3019,9 +3161,25 @@ function nudge(id,dir,fn){
 }
 
 /* ── Sample-conditions matrix ── */
-function addCondRow(){ FIG.condRows.push({label:'',on:new Array(FIG.laneCount).fill(false)}); save(); render(); }
+function addCondRow(kind){
+  kind=kind==='text'?'text':'mark'; var n=FIG.laneCount;
+  FIG.condRows.push({label:'',kind:kind,on:new Array(n).fill(false),txt:new Array(n).fill(''),dx:new Array(n).fill(0),dy:new Array(n).fill(0)});
+  save(); render();
+  if(kind==='text'){ setTimeout(function(){ var c=document.querySelectorAll('#figure .cond-lblcell .lbl-in'); if(c.length) c[c.length-1].focus(); },0); }
+}
 function delCondRow(ri){ if(FIG.condRows[ri]){ FIG.condRows.splice(ri,1); save(); render(); } }
-function setCondLabel(ri,v){ if(FIG.condRows[ri]){ FIG.condRows[ri].label=v; save(); } }
+function setCondLabel(ri,v){ if(FIG.condRows[ri]){ FIG.condRows[ri].label=v; save(); fitGutter(); fitLaneZone(); } }
+function setCondTxt(ri,i,v){ var cr=FIG.condRows[ri]; if(!cr) return; if(!Array.isArray(cr.txt)) cr.txt=[]; cr.txt[i]=v; save(); }
+// Several values pasted into a text row (a row from a spreadsheet: tab or line separated) fill the cells from this one on.
+function condPaste(ev,ri,i){
+  var cr=FIG.condRows[ri]; if(!cr) return;
+  var t=(ev.clipboardData||window.clipboardData).getData('text/plain')||'';
+  if(!/[\t\r\n]/.test(t.replace(/[\t\r\n]+$/,''))){ ev.preventDefault(); document.execCommand('insertText',false,t.replace(/[\t\r\n]+/g,' ')); return; }   // one value: as plain text
+  ev.preventDefault();
+  var parts=t.replace(/[\r\n]+$/,'').split(/\t|\r?\n/);
+  cr.txt=cr.txt||[]; parts.forEach(function(p,k){ if(i+k<FIG.laneCount) cr.txt[i+k]=esc(p.trim().slice(0,200)); });
+  save(); render();
+}
 function toggleCond(ri,i){ var cr=FIG.condRows[ri]; if(!cr) return; if(!Array.isArray(cr.on)) cr.on=[]; cr.on[i]=!cr.on[i]; save(); render(); }
 function setCondStyle(v){ FIG.condStyle=(v==='plusminus'||v==='dot')?v:'circle'; save(); render(); }
 function setCondPos(v){ FIG.condPos=(v==='bottom'?'bottom':'top'); save(); render(); }
@@ -3031,16 +3189,24 @@ function condMarkerHtml(on){
   if(s==='dot') return '<svg class="cond-mark" width="18" height="18" viewBox="0 0 24 24"><circle cx="12" cy="12" r="'+(on?7:3)+'" fill="#111"/></svg>';
   return '<svg class="cond-mark" width="18" height="18" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="'+(on?'#111':'none')+'" stroke="#111" stroke-width="2"/></svg>';
 }
+// A row of marks (on/off) or a row of text (free text in every cell). Every cell sits on the CENTRE of its lane, and can be
+// dragged from there, so a mark or a word can be put exactly over the band it describes.
 function condBandHtml(rowNum){
   var f=FIG; if(!f.condRows.length) return '';
-  var laneW=laneWeightsArr(f), total=laneW.reduce(function(a,b){return a+b;},0)||1;
+  var cen=laneCentersPct(f);
   var rows=f.condRows.map(function(cr,ri){
-    var cells='';
+    var cells='', text=cr.kind==='text';
     for(var i=0;i<f.laneCount;i++){
-      var on=!!(cr.on&&cr.on[i]);
-      cells+='<div class="cond-cell '+(on?'on':'off')+'" style="width:'+(laneW[i]/total*100)+'%;" onclick="toggleCond('+ri+','+i+')" title="Click to toggle">'+condMarkerHtml(on)+'</div>';
+      var xf=condXf(cr.dx&&cr.dx[i],cr.dy&&cr.dy[i]), pos='left:'+cen[i]+'%;transform:'+xf+';';
+      if(text){
+        cells+='<div class="cond-cell txt" data-ri="'+ri+'" data-i="'+i+'" style="'+pos+'" onpointerdown="condCellDown(event,'+ri+','+i+')" title="Type here · drag to move it">'
+          +'<div class="lbl-in" contenteditable="true" role="textbox" aria-label="Row '+(ri+1)+', lane '+(i+1)+'" onfocus="_blotActiveEd=this" onpaste="condPaste(event,'+ri+','+i+')" oninput="setCondTxt('+ri+','+i+',this.innerHTML)">'+_bClean((cr.txt&&cr.txt[i])||'')+'</div></div>';
+      } else {
+        var on=!!(cr.on&&cr.on[i]);
+        cells+='<div class="cond-cell cm '+(on?'on':'off')+'" data-ri="'+ri+'" data-i="'+i+'" style="'+pos+'" role="checkbox" aria-checked="'+on+'" tabindex="0" aria-label="'+esc(_stripHtml(cr.label)||('Row '+(ri+1)))+', lane '+(i+1)+'" onpointerdown="condCellDown(event,'+ri+','+i+')" onkeydown="if(event.key===\' \'||event.key===\'Enter\'){event.preventDefault();toggleCond('+ri+','+i+');}" title="Click to switch on or off · drag to move it">'+condMarkerHtml(on)+'</div>';
+      }
     }
-    return '<div class="cond-lblcell"><button class="cond-del" onclick="delCondRow('+ri+')" title="Remove condition">&times;</button>'
+    return '<div class="cond-lblcell"><button class="cond-del" onclick="delCondRow('+ri+')" title="Remove this row" aria-label="Remove row '+(ri+1)+'">&times;</button>'
       +'<div class="lbl-in" contenteditable="true" role="textbox" aria-label="Label of condition row '+(ri+1)+'" onfocus="_blotActiveEd=this" oninput="setCondLabel('+ri+',this.innerHTML)">'+_bClean(cr.label||'')+'</div></div>'
       +'<div class="cond-lanes">'+cells+'</div>';
   }).join('');
@@ -3049,13 +3215,46 @@ function condBandHtml(rowNum){
 
 /* ── Editing ── */
 function setPanel(pi,field,v){ FIG.panels[pi][field]=v; save(); }
-function setLane(i,v){ FIG.lanes[i]=v; save(); }
+function setLane(i,v){ FIG.lanes[i]=v; save(); fitLaneZone(); }
 function setGroupLabel(gi,v){ FIG.groups[gi].label=v; save(); }
 function setLaneCount(n){ n=Math.max(1,Math.min(30,parseInt(n)||1));
-  // The lanes that stay keep the widths and label offsets you gave them; a new lane gets the average width.
+  // The lanes that stay keep the widths, positions and label offsets you gave them; a new lane gets the average width.
   if(Array.isArray(FIG.laneWeights)&&FIG.laneWeights.length===FIG.laneCount) FIG.laneWeights=_bResize(FIG.laneWeights,n,function(a){ return a.reduce(function(s,x){ return s+x; },0)/(a.length||1)||1; });
   if(Array.isArray(FIG.laneLabelOffsetX)&&FIG.laneLabelOffsetX.length===FIG.laneCount) FIG.laneLabelOffsetX=_bResize(FIG.laneLabelOffsetX,n,0);
-  FIG.laneCount=n; while(FIG.lanes.length<n)FIG.lanes.push(''); FIG.groups.forEach(function(g){g.from=Math.min(g.from,n);g.to=Math.min(g.to,n);}); FIG.condRows.forEach(function(cr){ if(!Array.isArray(cr.on))cr.on=[]; while(cr.on.length<n)cr.on.push(false); }); el('tb-lanes').value=n; save(); render(); }
+  if(Array.isArray(FIG.laneLabelDY)&&FIG.laneLabelDY.length===FIG.laneCount) FIG.laneLabelDY=_bResize(FIG.laneLabelDY,n,0);
+  var lx=laneXArr(FIG);
+  if(lx){ var old=lx.length;
+    if(n<old) FIG.laneX=lx.slice(0,n);
+    else if(n>old){ var last=lx[old-1], more=n-old, pitch=old>1?(last-lx[0])/(old-1):0.08, out=lx.slice();
+      if(last+pitch*more>0.985){ pitch=Math.max(0.004,(0.985-last)/more); if(last>=0.985) last=Math.max(0,0.985-pitch*more); }
+      for(var k=1;k<=more;k++) out.push(Math.min(1,last+pitch*k)); FIG.laneX=out; } }
+  FIG.laneCount=n; while(FIG.lanes.length<n)FIG.lanes.push(''); FIG.groups.forEach(function(g){g.from=Math.min(g.from,n);g.to=Math.min(g.to,n);});
+  FIG.condRows.forEach(function(cr){ if(!Array.isArray(cr.on))cr.on=[]; while(cr.on.length<n)cr.on.push(false); cr.txt=_bResize(Array.isArray(cr.txt)?cr.txt:[],n,''); cr.dx=_bResize(Array.isArray(cr.dx)?cr.dx:[],n,0); cr.dy=_bResize(Array.isArray(cr.dy)?cr.dy:[],n,0); });
+  el('tb-lanes').value=n; save(); render(); }
+// Lanes marked on the blot: one more at fraction x (in its place left to right) / one fewer. Everything that belongs to a lane moves with it.
+function lanesInsert(x){
+  var lx=laneXArr(FIG)||laneCentersPct(FIG).map(function(p){ return p/100; }), n=FIG.laneCount; if(n>=30) return -1;
+  var j=0; while(j<lx.length&&lx[j]<x) j++;
+  FIG.laneX=lx.slice(); FIG.laneX.splice(j,0,Math.max(0,Math.min(1,x)));
+  FIG.laneWeights=null; FIG.lanes.splice(j,0,'');
+  if(Array.isArray(FIG.laneLabelOffsetX)) FIG.laneLabelOffsetX.splice(j,0,0);
+  if(Array.isArray(FIG.laneLabelDY)) FIG.laneLabelDY.splice(j,0,0);
+  FIG.condRows.forEach(function(cr){ ['on','txt','dx','dy'].forEach(function(k){ if(!Array.isArray(cr[k])) cr[k]=[]; cr[k].splice(j,0,k==='on'?false:k==='txt'?'':0); }); });
+  FIG.groups.forEach(function(g){ if(j<=g.from-1) g.from++; if(j<=g.to-1) g.to++; });
+  FIG.laneCount=n+1; el('tb-lanes').value=n+1; return j;
+}
+function lanesRemove(j){
+  var n=FIG.laneCount; if(n<=1||j<0||j>=n) return false;
+  var lx=laneXArr(FIG)||laneCentersPct(FIG).map(function(p){ return p/100; });
+  FIG.laneX=lx.slice(); FIG.laneX.splice(j,1); FIG.laneWeights=null; FIG.lanes.splice(j,1);
+  if(Array.isArray(FIG.laneLabelOffsetX)) FIG.laneLabelOffsetX.splice(j,1);
+  if(Array.isArray(FIG.laneLabelDY)) FIG.laneLabelDY.splice(j,1);
+  FIG.condRows.forEach(function(cr){ ['on','txt','dx','dy'].forEach(function(k){ if(Array.isArray(cr[k])) cr[k].splice(j,1); }); });
+  var L=j+1;   // lane number taken out; a group that covered only that lane stays on its neighbour
+  FIG.groups.forEach(function(g){ if(L<g.from){ g.from--; g.to--; } else if(L<=g.to&&g.to>g.from) g.to--; g.from=Math.max(1,Math.min(g.from,n-1)); g.to=Math.max(g.from,Math.min(g.to,n-1)); });
+  FIG.laneCount=n-1; el('tb-lanes').value=n-1; return true;
+}
+function setLaneAvoid(v){ FIG.laneAvoid=!!v; save(); render(); }
 function setLaneOrient(v){ FIG.laneOrient=v; save(); render(); }
 function setLaneLabelPos(v){ FIG.laneLabelPos=(v==='bottom'?'bottom':'top'); save(); render(); }
 function setLaneLabelSize(v){ FIG.laneLabelSize=Math.max(2,Math.min(72,parseInt(v)||16)); save(); render(); }
@@ -3141,8 +3340,9 @@ function wireGroupDrag(){
       var gi=+h.dataset.gi, end=h.dataset.end, g=FIG.groups[gi];
       var rect=band.getBoundingClientRect(), n=FIG.laneCount;
       function move(ev){
-        var frac=(ev.clientX-rect.left)/rect.width;
-        var lane=Math.max(1,Math.min(n,Math.round(frac*n)+ (end==='from'?1:0)));
+        var pct=(ev.clientX-rect.left)/rect.width*100, ed=laneEdgesPct(FIG), ne=0;   // the lane edge nearest the pointer
+        for(var q=1;q<ed.length;q++) if(Math.abs(ed[q]-pct)<Math.abs(ed[ne]-pct)) ne=q;
+        var lane=Math.max(1,Math.min(n,ne+(end==='from'?1:0)));
         if(end==='from'){ g.from=Math.min(lane,g.to); } else { g.to=Math.max(lane,g.from); }
         applyGeometry(); // move in place — no rebuild, handle stays live
       }
@@ -3478,7 +3678,7 @@ async function renderFigureCanvas(scale,svg){
   fig.querySelectorAll('.panel-prot .lbl-in').forEach(function(inEl){ drawLabel(inEl,0,'left'); });
   E(); G('Lane labels');
   // 3) lane labels — rotation from orientation
-  var rot = FIG.laneOrient==='vert' ? -90 : (FIG.laneOrient==='ang' ? -45 : 0);
+  var rot = FIG.laneOrient==='vert' ? (FIG.laneLabelPos==='bottom' ? 90 : -90) : (FIG.laneOrient==='ang' ? (FIG.laneLabelPos==='bottom' ? 45 : -45) : 0);
   fig.querySelectorAll('.lane-row .lane-cell .lbl-in').forEach(function(inEl){ drawLabel(inEl, rot, 'center'); });
   E(); G('Group brackets');
   // 4) group brackets
@@ -3493,6 +3693,7 @@ async function renderFigureCanvas(scale,svg){
   // 5) sample-conditions matrix (labels + on/off markers)
   fig.querySelectorAll('.cond-band .cond-lblcell .lbl-in').forEach(function(inEl){ drawLabel(inEl,0,'right'); });
   fig.querySelectorAll('.cond-band .cond-cell').forEach(function(cell){
+    if(cell.classList.contains('txt')){ var tl=cell.querySelector('.lbl-in'); if(tl) drawLabel(tl,0,'center'); return; }
     var r=rel(cell), on=cell.classList.contains('on'), cx=r.cx, cy=r.cy;
     ctx.fillStyle='#111'; ctx.strokeStyle='#111';
     if(FIG.condStyle==='plusminus'){ ctx.font='600 17px "IBM Plex Sans",sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(on?'+':'−', cx, cy); }
@@ -3747,7 +3948,7 @@ function _bCleanFig(f){
   f.lanes=(f.lanes||[]).map(_bClean);
   (f.panels||[]).forEach(function(p){ p.kda=_bClean(p.kda); p.prot=_bClean(p.prot); });
   (f.groups||[]).forEach(function(g){ g.label=_bClean(g.label); });
-  (f.condRows||[]).forEach(function(c){ c.label=_bClean(c.label); });
+  (f.condRows||[]).forEach(function(c){ c.label=_bClean(c.label); if(Array.isArray(c.txt)) c.txt=c.txt.map(_bClean); });
   return f;
 }
 
@@ -4332,6 +4533,9 @@ function anOverhang(figRect){
     p.shapes.forEach(function(s){ var a=anAABB(s,r.width,r.height);
       o.l=Math.max(o.l,-(ox+a.x0)); o.t=Math.max(o.t,-(oy+a.y0)); o.r=Math.max(o.r,ox+a.x1-figRect.width); o.b=Math.max(o.b,oy+a.y1-figRect.height); });
   });
+  // a label dragged past the edge of the figure is still in the file
+  document.querySelectorAll('#figure .lane-cell .lbl-in, #figure .cond-cell, #figure .cond-lblcell .lbl-in').forEach(function(l){ var r=l.getBoundingClientRect(); if(!r.width&&!r.height) return;
+    o.l=Math.max(o.l,figRect.left-r.left); o.t=Math.max(o.t,figRect.top-r.top); o.r=Math.max(o.r,r.right-figRect.right); o.b=Math.max(o.b,r.bottom-figRect.bottom); });
   ['l','t','r','b'].forEach(function(k){ o[k]=o[k]>0?Math.ceil(o[k])+2:0; });
   return o;
 }
@@ -4355,15 +4559,18 @@ function anSelect(ids,keepTab){
   var pi=anSelPi(); FIG.panels.forEach(function(p,i){ anDraw(i); });
   rbSync(was===0&&AN.ids.length>0&&!keepTab);
 }
+// The tools that live in their own ribbon tab (markers, measure, lanes): the tab names them and Done leaves them.
+var AN_LENS={mk:1,ms:1,ln:1}, AN_LENS_NAME={mk:'Markers',ms:'Measure',ln:'Lanes'};
 function anTool(t){
   if(AN.edit) anEditEnd(true);
-  AN.tool=t; if(t!=='select'&&t!=='mk'&&t!=='ms') AN.ids=[]; if(t==='mk'||t==='ms') AN.ids=[];
+  if(AN.tool==='ln'&&t!=='ln') lnEnd();
+  AN.tool=t; if(t!=='select') AN.ids=[];
   var fig=el('figure'); if(fig) fig.classList.toggle('an-tool',t!=='select');
   document.querySelectorAll('[data-tool]').forEach(function(b){ b.classList.toggle('on',b.getAttribute('data-tool')===t); });
   FIG.panels.forEach(function(p,i){ anDraw(i); });
-  if(t==='mk'||t==='ms') rbSync(true); else rbSync(false);
+  if(AN_LENS[t]) rbSync(true); else rbSync(false);
   if(RB_PHONE.matches&&t!=='select') rbFold(true);
-  if(t!=='select'&&t!=='mk'&&t!=='ms'){ var m={arrow:'Drag on a blot to draw an arrow, or click to point at a band',line:'Drag on a blot to draw a line',rect:'Drag on a blot to draw a box',ellipse:'Drag on a blot to draw a circle',text:'Click on a blot, then type',star:'Click where the asterisk goes'}; toast(m[t]||''); }
+  if(t!=='select'&&!AN_LENS[t]){ var m={arrow:'Drag on a blot to draw an arrow, or click to point at a band',line:'Drag on a blot to draw a line',rect:'Drag on a blot to draw a box',ellipse:'Drag on a blot to draw a circle',text:'Click on a blot, then type',star:'Click where the asterisk goes'}; toast(m[t]||''); }
 }
 
 /* ── Drawing the layer of one panel ── */
@@ -4382,6 +4589,7 @@ function anUiSvg(pi,W,H){
   if(mq) out+='<rect class="an-marquee" x="'+anNum(Math.min(mq.p0.x,mq.cur.x))+'" y="'+anNum(Math.min(mq.p0.y,mq.cur.y))+'" width="'+anNum(Math.abs(mq.cur.x-mq.p0.x))+'" height="'+anNum(Math.abs(mq.cur.y-mq.p0.y))+'"/>';
   if(AN.tool==='mk'&&MK.pi===pi) out+=anMkSvg(pi,W,H,true);
   else if(AN.tool==='ms'&&(p.marks||[]).length>1) out+=anMkSvg(pi,W,H,false);
+  if(AN.tool==='ln') out+=lnSvg(pi,W,H);
   if(!ids.length) return out?'<g class="an-ui">'+out+'</g>':'';
   var sh=ids.map(function(id){ return anFind(id).s; });
   if(sh.length>1){
@@ -4576,6 +4784,7 @@ document.addEventListener('pointerdown',function(ev){
   if(h&&AN.tool==='select'){ anBeginHandle(ev,h.getAttribute('data-h'),h.getAttribute('data-id')); return; }
   if(AN.tool==='mk'){ var mg=t.closest('.an-mk-grip'); if(mg){ anMkGripDown(ev,mg); return; } var lay=t.closest('.an-layer'); if(lay){ anMkPlace(ev,lay); } return; }
   if(AN.tool==='ms'){ var ml=t.closest('.an-layer'); if(ml) anMsClick(ev,ml); return; }
+  if(AN.tool==='ln'){ var lh=t.closest('.an-ln-h'), lx=t.closest('.an-ln-x'); if(lx){ lnRemove(+lx.getAttribute('data-i')); return; } if(lh){ lnDown(ev,lh); return; } var ll=t.closest('.an-layer'); if(ll) lnAdd(ev,ll); return; }
   if(AN.tool!=='select'){ var ly=t.closest('.an-layer'); if(ly) anCreate(ev,ly); return; }
   var sg=t.closest('.an-s');
   if(sg){
@@ -4703,7 +4912,7 @@ var RB_PHONE=window.matchMedia?window.matchMedia('(max-width:760px), (hover:none
 function rbFold(on){ var r=el('ribbon'); if(r) r.setAttribute('data-collapsed',on?'1':'0'); }
 function rbClick(name){
   var r=el('ribbon'); if(!r) return;
-  if(r.getAttribute('data-tab')===name&&r.getAttribute('data-collapsed')!=='1'){ rbFold(true); return; }
+  if(r.getAttribute('data-tab')===name&&r.getAttribute('data-collapsed')!=='1'&&!(name==='format'&&AN_LENS[AN.tool])){ rbFold(true); return; }   // a tool's own tab never folds itself away: it holds the tool's controls
   rbTab(name); rbFold(false);
 }
 function rbTab(name){
@@ -4713,12 +4922,13 @@ function rbTab(name){
   r.setAttribute('data-tab',name);
   r.querySelectorAll('.rb-tab').forEach(function(b){ var on=b.getAttribute('data-tab')===name; b.classList.toggle('on',on); b.setAttribute('aria-selected',on?'true':'false'); });
   r.querySelectorAll('.rb-pane').forEach(function(p){ p.classList.toggle('on',p.getAttribute('data-pane')===name); });
+  if(name!=='format'&&AN_LENS[AN.tool]) anTool('select');   // going to another tab leaves the tool
 }
 function rbSync(auto){
   var tf=el('rb-tab-format'); if(!tf) return;
-  var show=AN.ids.length>0||AN.tool==='mk'||AN.tool==='ms';
-  tf.hidden=!show; tf.textContent=AN.tool==='mk'?'Markers':AN.tool==='ms'?'Measure':'Format';
-  if(show){ anFormat(); if(auto){ rbTab('format'); if(RB_PHONE.matches&&AN.tool!=='mk'&&AN.tool!=='ms') rbFold(true); } }
+  var show=AN.ids.length>0||!!AN_LENS[AN.tool], dn=el('rb-done');
+  tf.hidden=!show; tf.textContent=AN_LENS_NAME[AN.tool]||'Format'; if(dn) dn.hidden=!AN_LENS[AN.tool];   // Done sits beside the tabs, so it is there whichever tab (or a folded ribbon) is showing
+  if(show){ anFormat(); if(auto){ rbTab('format'); if(RB_PHONE.matches&&!AN_LENS[AN.tool]) rbFold(true); } }
   else { var r=el('ribbon'); if(r&&r.getAttribute('data-tab')==='format') rbTab(AN.tab||'home'); }
   document.querySelectorAll('[data-tool]').forEach(function(b){ b.classList.toggle('on',b.getAttribute('data-tool')===AN.tool); });
 }
@@ -4764,6 +4974,7 @@ function anFormat(){
   var host=el('rb-format'); if(!host) return;
   if(AN.tool==='mk'){ host.innerHTML=mkFormatHtml(); return; }
   if(AN.tool==='ms'){ host.innerHTML=msFormatHtml(); return; }
+  if(AN.tool==='ln'){ host.innerHTML=lnFormatHtml(); return; }
   var sh=anSel(); if(!sh.length){ host.innerHTML=''; return; }
   var s=sh[0], any=function(t){ return sh.some(function(x){ return x.t===t; }); }, lockedAll=sh.every(function(x){ return x.lock; });
   var nonText=sh.some(function(x){ return x.t!=='text'; }), shapeLike=any('rect')||any('ellipse'), lineLike=any('line'), textLike=any('text');
@@ -4952,6 +5163,106 @@ function anMkGripDown(ev,grip){
   function mv(e){ var p=FIG.panels[pi], m=(p.marks||[]).filter(function(x){ return x.k===k; })[0]; if(!m) return; m.y=+Math.max(0,Math.min(1,(e.clientY-box.top)/box.H)).toFixed(4); _mkDrag.moved=true; anDraw(pi); }
   function up(){ document.removeEventListener('pointermove',mv); document.removeEventListener('pointerup',up); document.removeEventListener('pointercancel',up); var d=_mkDrag; _mkDrag=null; if(d&&d.moved){ save(); render(); anFormat(); } }
   document.addEventListener('pointermove',mv); document.addEventListener('pointerup',up); document.addEventListener('pointercancel',up);
+}
+
+/* ══ Mark the lanes on the blot ══════════════════════════════════════════════════════════════
+   A blot's lanes are rarely the equal columns of the picture: there is a margin, a gap, a wide lane. Home → Mark lanes puts a
+   numbered handle on every lane (drag it to the middle of the lane), a click on the blot adds one, the cross removes one,
+   Find lanes reads them off the picture. They are stored as fractions of the blot's width (FIG.laneX, ascending), and the lane
+   labels, the condition rows, the group brackets and the densitometry all follow them. The guides are drawn on the screen only. ═══ */
+var LN={pi:null,dirty:false,wasNull:false};
+function lnStart(){
+  if(AN.tool==='ln'){ anTool('select'); return; }
+  var pi=-1; FIG.panels.some(function(p,i){ if(_bIsData(p.cropped)){ pi=i; return true; } return false; });
+  if(pi<0){ toast('Add and crop a blot image first'); return; }
+  LN.pi=pi; LN.dirty=false; LN.wasNull=!laneXArr(FIG);
+  if(LN.wasNull){ FIG.laneX=laneCentersPct(FIG).map(function(p){ return p/100; }); render(); }   // the equal columns become handles to drag
+  anTool('ln'); toast('Click the blot in the middle of each lane · drag a handle to move it');
+}
+function lnEnd(){ if(!LN.dirty&&LN.wasNull){ FIG.laneX=null; render(); } LN.wasNull=false; }
+function lnSvg(pi,W,H){
+  var lx=laneXArr(FIG)||[], out='', r=AN_COARSE?12:9;
+  lx.forEach(function(x,i){ var px=anNum(x*W), by=anNum(H-r-2);
+    out+='<line class="an-ln-line" x1="'+px+'" x2="'+px+'" y1="0" y2="'+anNum(H)+'"/>'
+      +'<g class="an-ln-h" data-i="'+i+'"><circle cx="'+px+'" cy="'+(r+2)+'" r="'+r+'"/><text x="'+px+'" y="'+(r+5.4)+'" text-anchor="middle">'+(i+1)+'</text><title>Drag to move lane '+(i+1)+'</title></g>'
+      +'<g class="an-ln-x" data-i="'+i+'"><circle cx="'+px+'" cy="'+by+'" r="'+(r-2)+'"/><path d="M-2.6 -2.6l5.2 5.2M2.6 -2.6l-5.2 5.2" transform="translate('+px+' '+by+')"/><title>Remove lane '+(i+1)+'</title></g>'; });
+  return out;
+}
+function _lnChanged(){ LN.dirty=true; save(); }
+function lnDown(ev,h){
+  var host=h.closest('.panel-blot'), pi=+host.getAttribute('data-pi'), i=+h.getAttribute('data-i'), box=anBox(pi), lx=laneXArr(FIG); if(!box||!lx) return;
+  ev.preventDefault(); var moved=false;
+  function mv(e){
+    var x=(e.clientX-box.left)/box.W, lo=i>0?lx[i-1]+0.003:0, hi=i<lx.length-1?lx[i+1]-0.003:1;
+    lx[i]=+Math.max(lo,Math.min(hi,x)).toFixed(4); moved=true; applyGeometry(); FIG.panels.forEach(function(p,k){ anDraw(k); });
+  }
+  function up(){ document.removeEventListener('pointermove',mv); document.removeEventListener('pointerup',up); document.removeEventListener('pointercancel',up); if(moved){ _lnChanged(); } }
+  document.addEventListener('pointermove',mv); document.addEventListener('pointerup',up); document.addEventListener('pointercancel',up);
+}
+function lnAdd(ev,lay){
+  var r=lay.getBoundingClientRect(), x=Math.max(0,Math.min(1,(ev.clientX-r.left)/r.width)), lx=laneXArr(FIG)||[];
+  if(lx.some(function(c){ return Math.abs(c-x)<0.006; })){ toast('There is a lane there already'); return; }
+  var j=lanesInsert(x); if(j<0){ toast('Thirty lanes is the most'); return; }
+  _lnChanged(); render(); anFormat(); toast('Lane '+(j+1)+' added · '+FIG.laneCount+' lanes');
+}
+function lnRemove(i){
+  var had=_stripHtml(FIG.lanes[i]); if(!lanesRemove(i)){ toast('A figure keeps at least one lane'); return; }
+  _lnChanged(); render(); anFormat(); toast('Lane '+(i+1)+' removed'+(had?' with its label "'+had+'"':'')+' · ⌘Z brings it back');
+}
+function lnEven(){
+  var lx=laneXArr(FIG); if(!lx||lx.length<3){ toast('Even spacing needs three lanes or more'); return; }
+  var a=lx[0], b=lx[lx.length-1]; FIG.laneX=lx.map(function(x,i){ return +(a+(b-a)*i/(lx.length-1)).toFixed(4); });
+  _lnChanged(); render(); anFormat(); toast('Lanes spaced evenly between the first and the last');
+}
+function lnEqual(){
+  FIG.laneWeights=null; FIG.laneX=null; FIG.laneX=laneCentersPct(FIG).map(function(p){ return p/100; });
+  _lnChanged(); render(); anFormat(); toast('Equal columns');
+}
+// Lane centres read off a picture: the strongest columns of the band rows, merged when they are closer than half a lane, and a gap
+// of more than one and a half lane is filled at the lane pitch (a faint lane in a dilution series has no band to find).
+function lnPeaks(G,dark,y0,y1){
+  var w=G.w, prof=new Float32Array(w), rows=Math.max(1,y1-y0), x, i, d;
+  for(x=0;x<w;x++){ var t=0; for(var y=y0;y<y1;y++){ var v=G.g[y*G.w+x]; t+=dark?255-v:v; } prof[x]=t/rows; }
+  var mean=0; for(x=0;x<w;x++) mean+=prof[x]; mean/=w;
+  // the lane pitch is where the profile repeats itself: the first strong peak of its autocorrelation
+  var lo=Math.max(3,Math.ceil(w*0.015)), hi=Math.min(w-2,Math.floor(w*0.35)), ac=[], ac0=0;
+  for(x=0;x<w;x++) ac0+=(prof[x]-mean)*(prof[x]-mean); ac0/=w;
+  for(var lag=lo-1;lag<=hi+1;lag++){ var a=0; for(x=0;x+lag<w;x++) a+=(prof[x]-mean)*(prof[x+lag]-mean); ac[lag]=a/(w-lag); }
+  var pitch=0; for(lag=lo;lag<=hi;lag++){ if(ac[lag]>ac[lag-1]&&ac[lag]>=ac[lag+1]&&ac[lag]>0.2*ac0){ pitch=lag; break; } }
+  if(!pitch) return [];
+  var k=Math.max(1,Math.round(pitch*0.12)), sm=new Float32Array(w);
+  for(x=0;x<w;x++){ var s1=0,c=0; for(d=-k;d<=k;d++){ var xx=x+d; if(xx>=0&&xx<w){ s1+=prof[xx]; c++; } } sm[x]=s1/c; }
+  var sorted=Array.prototype.slice.call(sm).sort(function(p,q){ return p-q; }), base=sorted[Math.floor(w*0.2)], top=sorted[w-1], thr=base+(top-base)*0.14, span=Math.max(2,Math.round(pitch*0.3)), pk=[];
+  for(x=0;x<w;x++){ if(sm[x]<thr) continue; var isMax=true; for(d=-span;d<=span;d++){ var q=x+d; if(q>=0&&q<w&&(sm[q]>sm[x]||(sm[q]===sm[x]&&q<x))){ isMax=false; break; } } if(isMax) pk.push(x); }
+  if(pk.length<2) return [];
+  // the middle of a band, not the first column of its flat top: the centre of mass of the stretch above half its height
+  pk=pk.map(function(p){ var h=base+(sm[p]-base)/2, a=p, b=p; while(a>0&&sm[a-1]>h) a--; while(b<w-1&&sm[b+1]>h) b++;
+    var sw=0,sx=0; for(var q=a;q<=b;q++){ var wt=sm[q]-h; sw+=wt; sx+=wt*q; } return sw>0?sx/sw:(a+b)/2; });
+  var cl=[[pk[0]]];   // peaks closer than half a lane are one lane
+  for(i=1;i<pk.length;i++){ var last=cl[cl.length-1]; if(pk[i]-last[last.length-1]<pitch*0.5) last.push(pk[i]); else cl.push([pk[i]]); }
+  var mg=cl.map(function(g){ return g.reduce(function(a,b){ return a+b; },0)/g.length; });
+  if(mg.length<2) return [];
+  // a gap of more than one and a half lane is filled at the pitch (a faint lane in a dilution series has no band to find)
+  var out=[mg[0]];
+  for(i=1;i<mg.length;i++){ var gap=mg[i]-mg[i-1]; if(gap>=pitch*1.6){ var m=Math.round(gap/pitch)-1; for(var j=1;j<=m;j++) out.push(mg[i-1]+gap*j/(m+1)); } out.push(mg[i]); }
+  return out.map(function(p){ return +((p+0.5)/w).toFixed(4); });
+}
+function lnFind(){
+  var p=FIG.panels[LN.pi]; if(!p||!_bIsData(p.cropped)){ toast('Add a blot picture first'); return; }
+  _dnLoad(LN.pi).then(function(im){
+    var G=_dnGrey(im), dark=p.quant?p.quant.dark!==false:_dnDarkAuto(G), r=p.quant?{y0:p.quant.y0,y1:p.quant.y1}:_dnAuto(G,dark);
+    var pk=lnPeaks(G,dark,Math.max(0,Math.floor(r.y0*G.h)),Math.min(G.h,Math.ceil(r.y1*G.h)));
+    if(pk.length<2){ toast('No lanes found in this picture. Click the blot to place them.'); return; }
+    var n=Math.min(30,pk.length); pk=pk.slice(0,n);
+    function apply(){ if(n!==FIG.laneCount) setLaneCount(n); FIG.laneX=pk; _lnChanged(); render(); anFormat(); toast(n+' lanes found · drag a handle if one is off'); }
+    if(n===FIG.laneCount){ apply(); return; }
+    wbAsk('Found '+n+' lanes','The figure has '+FIG.laneCount+'. Use the '+n+' that were found? The labels you typed stay with their lane numbers, and Undo (⌘Z) puts the old ones back.',{ok:'Use '+n+' lanes'},function(yes){ if(yes) apply(); });
+  },function(){ toast('Could not read this picture'); });
+}
+function lnFormatHtml(){
+  var n=FIG.laneCount;
+  return anGroup('Mark lanes','<span class="rb-note">Click the blot in the middle of each lane to add one. Drag a numbered handle to move it; the cross under it removes it. The labels and the condition rows sit exactly over the lanes.</span>')
+    +anGroup('Lanes','<span class="rb-note"><b>'+n+'</b> lane'+(n===1?'':'s')+'</span><button class="btn sm" onclick="lnFind()" title="Read the lanes off the picture: the columns the bands stand in">Find lanes</button><button class="btn sm" onclick="lnEven()" title="Space the lanes evenly between the first and the last">Even spacing</button><button class="btn sm" onclick="lnEqual()" title="Back to equal columns across the picture">Equal columns</button>');
 }
 
 /* ══ Fill the lane labels with a series ═══════════════════════════════════════════════════════

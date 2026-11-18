@@ -50,6 +50,19 @@
 //   BL29 select and right-click        Shift-drag on a picture selects what the box touches (and keeps the selection it began with, and does not pan the
 //                                      crop), ⌘A selects the panel's annotations, right-click on an annotation selects it and offers duplicate,
 //                                      lock, order and delete (disabled while locked), right-click on a picture offers its tools
+//   BL30 label direction                vertical, angled and horizontal each really turn the lane labels (they did nothing: the CSS was dropped in a
+//                                      restyle), above and below the blot, and the label zone holds them (nothing past the zone, none over the picture)
+//   BL31 lanes marked by hand          FIG.laneX puts every label, condition cell, bracket and densitometry strip on the lane's own centre; a hostile
+//                                      laneX is dropped; adding and removing a lane takes its label, its row cells and its bracket with it
+//   BL32 the Lanes tool                handles, a click adds a lane in its place, a drag moves one (never past a neighbour), the cross removes it, Find
+//                                      lanes reads a gel, Done / Esc / another tab leave the tool, an unchanged visit leaves equal columns
+//   BL33 labels do not collide         long horizontal labels overlap without the rule and do not with it; a label moved by hand stays put and the rest
+//                                      make way; the zone grows to hold the lifted ones; the export has them where the screen does
+//   BL34 labels are dragged            a press that moves drags a label in both axes (Shift one axis, snap to the centre, Alt exact), a press that stays
+//                                      is a click with a caret, saved, one undo step, in the SVG where it is on the screen
+//   BL35 conditions                    titles end on one line and inside the figure (the column widens for the widest, also while typing); a text row takes
+//                                      free text per cell, a spreadsheet row pasted fills it, text is never markup; a dot is dragged and still toggles
+//   BL36 a tool can be left            Markers / Measure / Lanes each have Done beside the tabs (also with the ribbon folded), Esc and another tab leave them
 //   BL12 layout                        escape, runtime and alignment audits on the figure and every dialog, 1440/1024/390,
 //                                      both themes
 //
@@ -1062,6 +1075,8 @@ if (run('BL12')) await guard('BL12', async () => {
     const screens = [['figure', null], ['crop', () => openCrop(0)], ['quantify', () => openQuant(0)], ['markers in place', () => openMarkers(0)], ['format', () => { anTool('select'); anSelect([FIG.panels[0].shapes[1].id]); }],
       ['format of an arrow', () => anSelect([FIG.panels[0].shapes[0].id])], ['insert tab', () => { anSelect([]); rbTab('insert'); }], ['layout tab', () => rbTab('layout')], ['fill series', () => { rbTab('home'); srOpen(); }],
       ['markers, DNA ladder', () => { var q = FIG.panels[0]; q.ladder = 'gr_1kb_plus'; q.marks = [{ k: 20000, y: .2 }, { k: 1500, y: .6 }]; render(); openMarkers(0); }],
+      ['lanes tool', () => { FIG.laneX = null; render(); lnStart(); }],
+      ['lanes by hand, text row, long titles', () => { anTool('select'); FIG.laneOrient = 'ang'; FIG.laneX = [.05, .12, .2, .31, .4, .5, .58, .7, .77, .86, .93, .98]; FIG.condRows = [{ label: 'Dox 30 with a long title', on: [true, false, true] }, { label: 'Time (h)', kind: 'text', txt: ['0', '2', '4', '6', '8', '24'] }]; render(); }],
       ['markers, custom sizes', () => { mkSetLadder('custom'); FIG.panels[0].cl = { unit: 'kDa', k: [245, 180, 135, 100, 75, 63, 48, 35, 25, 20, 17, 11] }; render(); openMarkers(0); }],
       ['measure', () => { var q = FIG.panels[0]; q.ladder = 'pageruler_plus'; q.cl = null; q.marks = [{ k: 250, y: .1 }, { k: 100, y: .3 }, { k: 10, y: .9 }]; render(); anMsStart(); MK.pin = { pi: 0, y: .5, e: mkEstimate(q.marks, .5), text: mkEstText(mkEstimate(q.marks, .5), 'kDa') }; anFormat(); anDraw(0); }]];
     for (const [name, fn] of screens) {
@@ -1074,6 +1089,257 @@ if (run('BL12')) await guard('BL12', async () => {
       if (fn) await p.evaluate(() => { closeCrop(); closeQuant(); srClose(); anTool('select'); anSelect([]); rbTab('home'); });
     }
     p.errs.length ? bad('BL12', `${theme} ${w}: errors: ` + p.errs.join(' | ')) : ok();
+    await p.context().close();
+  }
+});
+
+// ── BL30–BL36: lanes, labels, conditions ──────────────────────────────────────────────────────────────────
+const SEED = GEL + `;window.__seed = function(o){ o = o || {}; var g = __gel([.5,.5,.5,.5,.5,.5,.5,.5,.5,.5,.5,.5]); FIG.panels[0].src = g; FIG.panels[0].cropped = g; FIG.panels[0].prot = 'BRD4';
+  FIG.laneCount = 12; FIG.lanes = o.lanes || ['Marker','DMSO','1000 nM','333 nM','111 nM','37.5 nM','12.5 nM','4.1 nM','1.4 nM','0.45 nM','0.15 nM','0.05 nM']; FIG.laneOrient = o.orient || 'horiz';
+  FIG.laneLabelPos = o.pos || 'top'; FIG.laneX = o.laneX || null; FIG.condRows = o.cond || []; FIG.laneAvoid = o.avoid !== false; FIG.laneWeights = null; FIG.laneLabelOffsetX = null; FIG.laneLabelDY = null; save(); render(); };
+  window.__cen = function(el_){ var b = el_.getBoundingClientRect(); return b.left + b.width / 2; };`;
+const picBox = p => p.evaluate(() => { const b = document.querySelector('.panel-blot .blot-img').getBoundingClientRect(); return { l: b.left, t: b.top, w: b.width, h: b.height }; });
+const MV = async (p, a, b, o = {}) => { await p.mouse.move(a.x, a.y); await p.mouse.down(); const n = o.steps || 8; for (let i = 1; i <= n; i++) await p.mouse.move(a.x + (b.x - a.x) * i / n, a.y + (b.y - a.y) * i / n); await p.mouse.up(); await sleep(120); };
+
+if (run('BL30')) await guard('BL30', async () => {
+  const p = await open(); await p.evaluate(SEED + ';__seed()');
+  for (const place of ['top', 'bottom']) for (const o of ['vert', 'ang', 'horiz']) {
+    const r = await p.evaluate(([o, place]) => { FIG.laneLabelPos = place; FIG.laneOrient = o; render();
+      const row = el('lane-row').getBoundingClientRect(), pic = document.querySelector('.panel-blot').getBoundingClientRect(), ls = [...document.querySelectorAll('.lane-cell .lbl-in')];
+      const cs = getComputedStyle(ls[2]), b2 = ls[2].getBoundingClientRect(), m = /matrix\(([^)]+)\)/.exec(cs.transform);
+      return { ws: cs.writingMode, tf: cs.transform, sin: m ? +m[1].split(',')[1] : 0, w: b2.width, h: b2.height,
+        over: ls.some(l => { const b = l.getBoundingClientRect(); return place === 'top' ? b.top < row.top - 1 || b.bottom > pic.top + 1 : b.bottom > row.bottom + 1 || b.top < pic.bottom - 1; }) }; }, [o, place]);
+    const tag = `${o}/${place}`;
+    if (o === 'vert') (r.ws === 'vertical-rl' && r.h > r.w * 2 ? ok() : bad('BL30', `${tag}: labels did not turn upright (${r.ws} ${r.w.toFixed(0)}×${r.h.toFixed(0)})`));
+    if (o === 'ang') (Math.abs(Math.abs(r.sin) - 0.7071) < 0.01 && (place === 'top' ? r.sin < 0 : r.sin > 0) ? ok() : bad('BL30', `${tag}: labels are not at 45 degrees the right way (${r.tf})`));
+    if (o === 'horiz') (r.tf === 'none' && r.ws === 'horizontal-tb' ? ok() : bad('BL30', `${tag}: horizontal labels are turned (${r.tf})`));
+    !r.over ? ok() : bad('BL30', `${tag}: a label stands outside its zone or over the picture`);
+  }
+  await p.context().close();
+});
+
+if (run('BL31')) await guard('BL31', async () => {
+  const p = await open(); await p.evaluate(SEED + ';__seed()');
+  const LX = [.05, .12, .2, .31, .4, .5, .58, .7, .77, .86, .93, .98];
+  await p.evaluate(([lx]) => { FIG.laneOrient = 'vert'; FIG.laneX = lx; FIG.condRows = [{ label: 'Dox', on: lx.map((_, i) => i % 2 === 0) }, { label: 'Time', kind: 'text', txt: lx.map((_, i) => String(i)) }]; FIG.groups = [{ from: 3, to: 5, label: 'g' }]; save(); render(); }, [LX]);
+  const r = await p.evaluate(() => { const img = document.querySelector('.panel-blot .blot-img').getBoundingClientRect(), c = x => (x - img.left) / img.width;
+    return { lab: [...document.querySelectorAll('.lane-cell .lbl-in')].map(l => c(__cen(l))), mk: [...document.querySelectorAll('.cond-cell.cm')].map(l => c(__cen(l))), tx: [...document.querySelectorAll('.cond-cell.txt')].map(l => c(__cen(l))),
+      divs: document.querySelectorAll('.lane-divider').length, q: laneEdgesPct(FIG).map(x => x / 100), g: (() => { const b = document.querySelector('.grp').getBoundingClientRect(); return [c(b.left), c(b.right)]; })() }; });
+  const maxd = (a, b) => Math.max(...a.map((x, i) => Math.abs(x - b[i])));
+  maxd(r.lab, LX) < 0.004 ? ok() : bad('BL31', `labels are off their lanes by ${(maxd(r.lab, LX) * 760).toFixed(1)}px`);
+  maxd(r.mk, LX) < 0.004 && maxd(r.tx, LX) < 0.004 ? ok() : bad('BL31', 'condition cells are off their lanes');
+  r.divs === 0 ? ok() : bad('BL31', 'lanes marked by hand still show the equal-column dividers');
+  Math.abs(r.q[3] - (LX[2] + LX[3]) / 2) < 1e-6 && Math.abs(r.q[0] - 0) < 0.06 ? ok() : bad('BL31', 'the densitometry strips are not the strips between the marked lanes');
+  Math.abs(r.g[0] - r.q[2]) < 0.004 && Math.abs(r.g[1] - r.q[5]) < 0.004 ? ok() : bad('BL31', `the bracket does not span its lanes: ${r.g.map(x => x.toFixed(3))} vs ${r.q[2].toFixed(3)}, ${r.q[5].toFixed(3)}`);
+  // hostile or stale lane positions are dropped (equal columns), not trusted
+  const h = await p.evaluate(() => [[1, 2], 'x', [NaN, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], null, [.9, .1, .5, .3, .2, .4, .6, .7, .8, 0, 1, .15], [5, -3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]].map(a => { const f = JSON.parse(JSON.stringify(FIG)); f.laneX = a; const m = migrateFig(f).laneX; return m === null ? 'null' : (m.every((x, i) => x >= 0 && x <= 1 && (!i || x >= m[i - 1])) ? 'ok' : 'bad'); }));
+  h.join() === 'null,null,null,null,ok,ok' ? ok() : bad('BL31', 'laneX was trusted: ' + h.join());
+  // a lane added or taken away takes what belongs to it
+  const a = await p.evaluate(() => { const lab0 = FIG.lanes.slice(); const j = lanesInsert(.25); render(); const after = { j, n: FIG.laneCount, lab: FIG.lanes.slice(), on: FIG.condRows[0].on.length, tx: FIG.condRows[1].txt.slice(), g: [FIG.groups[0].from, FIG.groups[0].to], x: FIG.laneX.slice() };
+    lanesRemove(j); render(); return { lab0, after, back: { lab: FIG.lanes.slice(), n: FIG.laneCount, tx: FIG.condRows[1].txt.slice(), g: [FIG.groups[0].from, FIG.groups[0].to], x: FIG.laneX.slice() } }; });
+  a.after.j === 3 && a.after.n === 13 && a.after.lab[3] === '' && a.after.lab[4] === a.lab0[3] && a.after.on === 13 && a.after.tx[3] === '' && a.after.tx[4] === '3' ? ok() : bad('BL31', 'adding a lane did not shift its label and row cells: ' + JSON.stringify(a.after));
+  a.after.g.join() === '3,6' ? ok() : bad('BL31', 'a lane added inside a bracket did not widen it: ' + a.after.g);
+  a.back.n === 12 && a.back.lab.slice(0, 12).join() === a.lab0.join() && a.back.tx[3] === '3' && a.back.g.join() === '3,5' && a.back.x.join() === LX.join() ? ok() : bad('BL31', 'removing the lane again did not give the figure back: ' + JSON.stringify(a.back));
+  // the count changes keep the positions
+  const c = await p.evaluate(() => { setLaneCount(8); const s = FIG.laneX.slice(); setLaneCount(14); const g = FIG.laneX.slice(); return { s, g }; });
+  c.s.length === 8 && c.s[2] === LX[2] && c.g.length === 14 && c.g[7] === LX[7] && c.g.every((x, i) => !i || x >= c.g[i - 1]) && c.g[13] <= 1 ? ok() : bad('BL31', 'changing the lane count lost or scrambled the positions: ' + JSON.stringify(c));
+  p.errs.length ? bad('BL31', 'errors: ' + p.errs.join(' | ')) : ok();
+  await p.context().close();
+});
+
+if (run('BL32')) await guard('BL32', async () => {
+  const p = await open(); await p.evaluate(SEED + ';__seed()');
+  await p.evaluate(() => { document.getElementById('rb-tab-home').click(); lnStart(); });
+  await sleep(200);
+  let st = await p.evaluate(() => ({ tool: AN.tool, tab: document.getElementById('rb-tab-format').textContent, done: !document.getElementById('rb-done').hidden, hs: document.querySelectorAll('.an-ln-h').length, xs: document.querySelectorAll('.an-ln-x').length, n: FIG.laneCount, div: document.querySelectorAll('.lane-divider').length }));
+  st.tool === 'ln' && st.tab === 'Lanes' && st.done && st.hs === 12 && st.xs === 12 && st.div === 0 ? ok() : bad('BL32', 'the tool did not open with a handle per lane: ' + JSON.stringify(st));
+  // a drag moves one handle, never past its neighbour
+  let box = await picBox(p), hx = i => p.evaluate(i => { const b = document.querySelector('.an-ln-h[data-i="' + i + '"] circle').getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; }, i);
+  const h2 = await hx(2); await MV(p, h2, { x: h2.x + 30, y: h2.y });
+  let lx = await p.evaluate(() => FIG.laneX.slice());
+  Math.abs(lx[2] - (0.2083 + 30 / box.w)) < 0.012 ? ok() : bad('BL32', `dragging a handle 30px moved the lane to ${lx[2]} (from .208)`);
+  const h3 = await hx(3); await MV(p, h3, { x: h3.x + 400, y: h3.y });
+  lx = await p.evaluate(() => FIG.laneX.slice());
+  lx[3] < lx[4] && lx.every((x, i) => !i || x >= lx[i - 1]) ? ok() : bad('BL32', 'a handle dragged past its neighbour broke the order: ' + lx.slice(2, 6));
+  const moved = await p.evaluate(() => { const l = document.querySelectorAll('.lane-cell .lbl-in')[2].getBoundingClientRect(), b = document.querySelector('.panel-blot .blot-img').getBoundingClientRect(); return (l.left + l.width / 2 - b.left) / b.width - FIG.laneX[2]; });
+  Math.abs(moved) < 0.004 ? ok() : bad('BL32', 'the label did not follow its lane while it was dragged');
+  // a click on the picture adds a lane in its place (label slots in, none lost)
+  await p.evaluate(() => { FIG.laneX = laneCentersPct(FIG).map(x => x / 100); FIG.lanes[4] = 'FIVE'; render(); anTool('ln'); });
+  box = await picBox(p);
+  const tx = box.l + box.w * ((p.__x = await p.evaluate(() => (FIG.laneX[4] + FIG.laneX[5]) / 2))), ty = box.t + box.h * 0.6;
+  await p.mouse.click(tx, ty); await sleep(200);
+  const add = await p.evaluate(() => ({ n: FIG.laneCount, lab: FIG.lanes.slice(3, 7), x: FIG.laneX.length, hs: document.querySelectorAll('.an-ln-h').length, field: document.getElementById('tb-lanes').value }));
+  add.n === 13 && add.lab[1] === 'FIVE' && add.lab[2] === '' && add.x === 13 && add.hs === 13 && add.field === '13' ? ok() : bad('BL32', 'a click did not add a lane in its place: ' + JSON.stringify(add));
+  await p.mouse.click(tx, ty); await sleep(150);
+  (await p.evaluate(() => FIG.laneCount)) === 13 ? ok() : bad('BL32', 'a second click on the same lane added another');
+  // the cross removes it
+  const xb = await p.evaluate(() => { const b = document.querySelector('.an-ln-x[data-i="5"] circle').getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; });
+  await p.mouse.click(xb.x, xb.y); await sleep(200);
+  const rm = await p.evaluate(() => ({ n: FIG.laneCount, lab: FIG.lanes.slice(3, 6) }));
+  rm.n === 12 && rm.lab[1] === 'FIVE' ? ok() : bad('BL32', 'the cross did not remove the lane: ' + JSON.stringify(rm));
+  // undo brings it back
+  await p.evaluate(() => blotUndo()); await sleep(150);
+  (await p.evaluate(() => FIG.laneCount)) === 13 ? ok() : bad('BL32', 'undo did not bring the removed lane back');
+  // Find lanes reads the gel: 12 bands at (L+.5)/12
+  await p.evaluate(() => { setLaneCount(12); lnFind(); }); await sleep(700);
+  const fd = await p.evaluate(() => FIG.laneX.map((x, i) => Math.abs(x - (i + .5) / 12)));
+  Math.max(...fd) < 0.01 && fd.length === 12 ? ok() : bad('BL32', 'Find lanes missed the gel\'s lanes by ' + Math.max(...fd).toFixed(3));
+  // and the faint ones: a lane with no band is filled at the pitch
+  const g2 = await p.evaluate(() => { const g = __gel([.5, .5, .5, 0, .5, .5, .5, .5, 0, 0, .5, .5]); const im = new Image(); return new Promise(res => { im.onload = () => { const G = _dnGrey(im); res(lnPeaks(G, _dnDarkAuto(G), 40, 80).map(x => +x.toFixed(3))); }; im.src = g; }); });
+  g2.length === 12 && Math.max(...g2.map((x, i) => Math.abs(x - (i + .5) / 12))) < 0.012 ? ok() : bad('BL32', 'lanes without a band were not filled at the pitch: ' + g2.join());
+  // leaving: Done, Esc, another tab
+  for (const how of ['done', 'esc', 'tab']) {
+    await p.evaluate(() => { anTool('select'); lnStart(); }); await sleep(100);
+    if (how === 'done') await p.click('#rb-done'); else if (how === 'esc') await p.keyboard.press('Escape'); else await p.click('#rb-tab-layout');
+    await sleep(150);
+    const left = await p.evaluate(() => ({ tool: AN.tool, hidden: document.getElementById('rb-tab-format').hidden, done: document.getElementById('rb-done').hidden }));
+    left.tool === 'select' && left.hidden && left.done ? ok() : bad('BL32', `${how} did not leave the Lanes tool: ` + JSON.stringify(left));
+    await p.evaluate(() => rbTab('home'));
+  }
+  // a visit that changes nothing leaves the equal columns (and their dividers)
+  await p.evaluate(() => { FIG.laneX = null; render(); lnStart(); anTool('select'); });
+  const vis = await p.evaluate(() => ({ x: FIG.laneX, d: document.querySelectorAll('.lane-divider').length }));
+  vis.x === null && vis.d === 11 ? ok() : bad('BL32', 'an unchanged visit left the lanes marked by hand: ' + JSON.stringify(vis));
+  p.errs.length ? bad('BL32', 'errors: ' + p.errs.join(' | ')) : ok();
+  await p.context().close();
+});
+
+if (run('BL33')) await guard('BL33', async () => {
+  const p = await open(); await p.evaluate(SEED + ';__seed({ lanes: ["Marker","DMSO","1000 nM MG","333 nM MG","111 nM MG","37.5 nM MG","12.5 nM MG","4.1 nM MG","1.4 nM MG","0.45 nM MG","0.15 nM MG","0.05 nM MG"] })');
+  const rects = () => p.evaluate(() => [...document.querySelectorAll('.lane-cell .lbl-in')].map(l => { const b = l.getBoundingClientRect(); return [b.left, b.top, b.right, b.bottom]; }));
+  const hits = rs => { let n = 0; for (let i = 0; i < rs.length; i++) for (let j = i + 1; j < rs.length; j++) if (rs[i][0] < rs[j][2] && rs[j][0] < rs[i][2] && rs[i][1] < rs[j][3] && rs[j][1] < rs[i][3]) n++; return n; };
+  await p.evaluate(() => { FIG.laneAvoid = false; render(); }); const off = hits(await rects());
+  await p.evaluate(() => { FIG.laneAvoid = true; render(); }); const on = hits(await rects());
+  off > 0 && on === 0 ? ok() : bad('BL33', `overlaps without the rule: ${off}, with it: ${on}`);
+  const z = await p.evaluate(() => { const row = el('lane-row').getBoundingClientRect(); return [...document.querySelectorAll('.lane-cell .lbl-in')].every(l => l.getBoundingClientRect().top >= row.top - 1) && document.querySelectorAll('.lane-cell').length === 12; });
+  z ? ok() : bad('BL33', 'a lifted label reached above the label zone');
+  // a label put by hand stays; the others make way for it
+  const before = await p.evaluate(() => { const c = document.querySelectorAll('.lane-cell')[3]; return c.style.transform; });
+  await p.evaluate(() => { FIG.laneLabelDY = new Array(12).fill(0); FIG.laneLabelDY[3] = -40; FIG.laneLabelOffsetX = new Array(12).fill(0); render(); });
+  const pin = await p.evaluate(() => ({ t: document.querySelectorAll('.lane-cell')[3].style.transform })); const rs2 = await rects();
+  /-40px/.test(pin.t) && hits(rs2) === 0 ? ok() : bad('BL33', 'a label moved by hand was moved again, or collides: ' + pin.t + ' hits ' + hits(rs2));
+  // angled and upright labels on tight lanes
+  for (const o of ['vert', 'ang']) {
+    await p.evaluate(([o]) => { FIG.laneLabelDY = null; FIG.laneOrient = o; FIG.laneX = [.05, .09, .13, .17, .21, .25, .29, .33, .37, .41, .45, .49]; FIG.laneAvoid = true; render(); }, [o]);
+    const q = await p.evaluate(() => { const ls = [...document.querySelectorAll('.lane-cell .lbl-in')].map(l => ({ b: l.getBoundingClientRect(), w: l.offsetWidth, h: l.offsetHeight })), row = el('lane-row').getBoundingClientRect(), pic = document.querySelector('.panel-blot').getBoundingClientRect();
+      return { in: ls.every(l => l.b.top >= row.top - 1 && l.b.bottom <= pic.top + 1), lifted: [...document.querySelectorAll('.lane-cell')].some(c => /-\d+px\)$/.test(c.style.transform) && !/-?0px\)$/.test(c.style.transform)) }; });
+    q.in ? ok() : bad('BL33', `${o}: labels on tight lanes stand outside the zone`);
+  }
+  // the export puts a lifted, upright label where the screen has it (the SVG's matrix is the label's centre)
+  await p.evaluate(() => { FIG.laneOrient = 'vert'; FIG.laneX = [.05, .09, .13, .17, .21, .25, .29, .33, .37, .41, .45, .49]; FIG.lanes = ['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta', 'eta', 'theta', 'iota', 'kappa', 'lambda', 'mu']; render(); });
+  const ex = await p.evaluate(async () => { const rec = await renderFigureCanvas(1, true), svg = rec.toSvg(), fr = el('figure').getBoundingClientRect(), o = anOverhang(fr), out = [];
+    document.querySelectorAll('.lane-cell .lbl-in').forEach(l => { const t = l.textContent, b = l.getBoundingClientRect(), re = new RegExp('<text[^>]*transform="matrix\\(([^)]+)\\)"[^>]*>' + t + '</text>'), m = re.exec(svg); if (!m) { out.push(t + ': none'); return; }
+      const v = m[1].split(' ').map(Number), cx = b.left + b.width / 2 - fr.left + 18 + o.l, cy = b.top + b.height / 2 - fr.top + 18 + o.t; out.push(Math.hypot(v[4] - cx, v[5] - cy)); });
+    return out; });
+  ex.every(d => typeof d === 'number' && d < 1.5) ? ok() : bad('BL33', 'the SVG puts a label away from where the screen has it: ' + ex.slice(0, 4).join(', '));
+  p.errs.length ? bad('BL33', 'errors: ' + p.errs.join(' | ')) : ok();
+  await p.context().close();
+});
+
+if (run('BL34')) await guard('BL34', async () => {
+  const p = await open(); await p.evaluate(SEED + ';__seed()');
+  const lab = i => p.evaluate(i => { const b = document.querySelectorAll('.lane-cell .lbl-in')[i].getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; }, i);
+  const a = await lab(7);
+  await MV(p, a, { x: a.x + 24, y: a.y - 31 });
+  let o = await p.evaluate(() => ({ x: FIG.laneLabelOffsetX[7], y: FIG.laneLabelDY[7], n: FIG.laneLabelOffsetX.length, foc: !!document.activeElement.closest('.lbl-in') }));
+  Math.abs(o.x - 24) <= 1 && Math.abs(o.y + 31) <= 1 && o.n === 12 ? ok() : bad('BL34', 'a drag did not move the label in both directions: ' + JSON.stringify(o));
+  !o.foc ? ok() : bad('BL34', 'a drag left a caret in the label');
+  (await p.evaluate(() => getSelection().toString())) === '' ? ok() : bad('BL34', 'a drag selected text');
+  const b = await lab(7); Math.abs(b.x - a.x - 24) < 2 && Math.abs(b.y - a.y + 31) < 2 ? ok() : bad('BL34', 'the label is not where it was dropped');
+  // a stay-put press is a click: caret, no move
+  const c = await lab(2); await p.mouse.click(c.x, c.y); await sleep(100);
+  o = await p.evaluate(() => ({ foc: !!(document.activeElement && document.activeElement.closest && document.activeElement.closest('.lane-cell')), x: FIG.laneLabelOffsetX[2], y: FIG.laneLabelDY[2] }));
+  o.foc && !o.x && !o.y ? ok() : bad('BL34', 'a click on a label did not edit it, or moved it: ' + JSON.stringify(o));
+  await p.keyboard.type('X'); await sleep(100);
+  (await p.evaluate(() => FIG.lanes[2])) === 'X1000 nM' || (await p.evaluate(() => FIG.lanes[2])).indexOf('X') >= 0 ? ok() : bad('BL34', 'typing after the click did not reach the label');
+  // Shift keeps one axis; near the centre it settles on it; Alt does not
+  const d = await lab(9); await p.keyboard.down('Shift'); await MV(p, d, { x: d.x + 40, y: d.y + 9 }); await p.keyboard.up('Shift');
+  o = await p.evaluate(() => ({ x: FIG.laneLabelOffsetX[9], y: FIG.laneLabelDY[9] })); o.y === 0 && Math.abs(o.x - 40) <= 1 ? ok() : bad('BL34', 'Shift did not keep one axis: ' + JSON.stringify(o));
+  const e = await lab(10); await MV(p, e, { x: e.x + 4, y: e.y + 3 }); await sleep(50);
+  o = await p.evaluate(() => ({ x: FIG.laneLabelOffsetX[10], y: FIG.laneLabelDY[10] })); o.x === 0 && o.y === 0 ? ok() : bad('BL34', 'a nudge of 5px did not settle on the centre: ' + JSON.stringify(o));
+  const f = await lab(10); await p.keyboard.down('Alt'); await MV(p, f, { x: f.x + 4, y: f.y + 3 }); await p.keyboard.up('Alt');
+  o = await p.evaluate(() => ({ x: FIG.laneLabelOffsetX[10], y: FIG.laneLabelDY[10] })); o.x === 4 && o.y === 3 ? ok() : bad('BL34', 'Alt did not place exactly: ' + JSON.stringify(o));
+  // saved, and one undo step per drag
+  await p.reload(); await p.waitForFunction(() => typeof FIG === 'object' && FIG.panels[0]); await sleep(500);
+  o = await p.evaluate(() => ({ x: (FIG.laneLabelOffsetX || [])[7], y: (FIG.laneLabelDY || [])[7] })); Math.abs(o.x - 24) <= 1 && Math.abs(o.y + 31) <= 1 ? ok() : bad('BL34', 'the moved label was not saved: ' + JSON.stringify(o));
+  await p.evaluate(SEED + ';__seed()'); await p.evaluate(() => { FIG.laneLabelOffsetX = new Array(12).fill(0); FIG.laneLabelDY = new Array(12).fill(0); save(); render(); });
+  const g = await lab(4); await MV(p, g, { x: g.x + 20, y: g.y - 20 }); await sleep(900);
+  await p.evaluate(() => blotUndo()); await sleep(200);
+  o = await p.evaluate(() => ({ x: FIG.laneLabelOffsetX[4], y: FIG.laneLabelDY[4] })); !o.x && !o.y ? ok() : bad('BL34', 'one undo did not put a dragged label back: ' + JSON.stringify(o));
+  // it is exported where it is on the screen, including past the edge of the figure (the export widens)
+  await p.evaluate(() => { FIG.laneOrient = 'vert'; FIG.laneLabelOffsetX[0] = -90; FIG.laneLabelDY[0] = -20; render(); });
+  const ex = await p.evaluate(async () => { const rec = await renderFigureCanvas(1, true), svg = rec.toSvg(), fr = el('figure').getBoundingClientRect(), ov = anOverhang(fr), l = document.querySelectorAll('.lane-cell .lbl-in')[0], b = l.getBoundingClientRect();
+    const m = new RegExp('<text[^>]*transform="matrix\\(([^)]+)\\)"[^>]*>' + l.textContent + '</text>').exec(svg); if (!m) return null; const v = m[1].split(' ').map(Number), W = +/width="([\d.]+)"/.exec(svg)[1];
+    return { dx: v[4] - (b.left + b.width / 2 - fr.left + 18 + ov.l), dy: v[5] - (b.top + b.height / 2 - fr.top + 18 + ov.t), left: b.left - fr.left, ovl: ov.l, inside: v[4] > 0 && v[4] < W }; });
+  ex && Math.abs(ex.dx) < 1.5 && Math.abs(ex.dy) < 1.5 && ex.inside ? ok() : bad('BL34', 'the export does not have the dragged label where the screen has it: ' + JSON.stringify(ex));
+  p.errs.length ? bad('BL34', 'errors: ' + p.errs.join(' | ')) : ok();
+  await p.context().close();
+});
+
+if (run('BL35')) await guard('BL35', async () => {
+  const p = await open(); await p.evaluate(SEED + ';__seed()');
+  await p.evaluate(() => { FIG.condRows = [{ label: 'Dox 30', on: [] }, { label: 'Biotin 200 µM', on: [] }, { label: 'Time', kind: 'text' }]; save(); render(); });
+  const ends = () => p.evaluate(() => { const fr = el('figure').getBoundingClientRect(), L = [...document.querySelectorAll('.cond-lblcell .lbl-in')].map(l => l.getBoundingClientRect()), col = document.querySelector('.cond-lanes').getBoundingClientRect();
+    return { right: L.map(b => +b.right.toFixed(1)), left: Math.min(...L.map(b => b.left)) - fr.left, gap: col.left - Math.max(...L.map(b => b.right)) }; });
+  let e = await ends(); new Set(e.right).size === 1 ? ok() : bad('BL35', 'the condition titles do not end on one line: ' + e.right.join(', '));
+  e.left >= -0.5 && e.gap > 2 ? ok() : bad('BL35', `a title stands outside the figure or runs into the lanes (${e.left.toFixed(1)}, gap ${e.gap.toFixed(1)})`);
+  // longer while typing: the column follows
+  const lab = (await p.$$('.cond-lblcell .lbl-in'))[0]; await lab.click(); await p.keyboard.press('End'); await p.keyboard.type(' with a really quite long title indeed'); await sleep(150);
+  e = await ends(); new Set(e.right).size === 1 && e.left >= -0.5 && e.gap > 2 ? ok() : bad('BL35', 'a title typed longer spilled out of the figure: ' + JSON.stringify(e));
+  // a text row: free text per cell, in its lane; a typed word is stored, never markup
+  const cell = (await p.$$('.cond-cell.txt .lbl-in'))[3]; await cell.click(); await p.keyboard.type('24 h'); await sleep(100);
+  let r = await p.evaluate(() => ({ t: FIG.condRows[2].txt[3], kind: FIG.condRows[2].kind, c: Math.abs(__cen(document.querySelectorAll('.cond-cell.txt')[3]) - __cen(document.querySelectorAll('.lane-cell .lbl-in')[3])) }));
+  r.t === '24 h' && r.kind === 'text' && r.c < 1.5 ? ok() : bad('BL35', 'a text cell did not store what was typed in its lane: ' + JSON.stringify(r));
+  await p.evaluate(() => { FIG.condRows[2].txt[5] = '<img src=x onerror="window.__pwn=1"><b>bold</b><script>window.__pwn=2<\/script>'; save(); render(); }); await sleep(200);
+  r = await p.evaluate(() => ({ pwn: window.__pwn || 0, img: !!document.querySelector('.cond-cell.txt img, .cond-cell.txt script'), b: !!document.querySelector('.cond-cell.txt b') }));
+  !r.pwn && !r.img && r.b ? ok() : bad('BL35', 'a text cell ran markup: ' + JSON.stringify(r));
+  // a row pasted from a spreadsheet fills from the cell on
+  await p.evaluate(() => { const c = document.querySelectorAll('.cond-cell.txt .lbl-in')[6]; c.focus(); const dt = new DataTransfer(); dt.setData('text/plain', '0\t2\t4\t6\t8'); c.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })); }); await sleep(200);
+  r = await p.evaluate(() => FIG.condRows[2].txt.slice(6, 11)); r.join() === '0,2,4,6,8' ? ok() : bad('BL35', 'a pasted row did not fill the cells: ' + r.join('|'));
+  await p.evaluate(() => { const c = document.querySelectorAll('.cond-cell.txt .lbl-in')[11]; c.focus(); const dt = new DataTransfer(); dt.setData('text/plain', '1\t2\t3\t4'); c.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })); }); await sleep(150);
+  (await p.evaluate(() => FIG.condRows[2].txt.length)) === 12 ? ok() : bad('BL35', 'a pasted row longer than the lanes grew the row');
+  // a dot is dragged, and a click still toggles
+  const dot = i => p.evaluate(i => { const b = document.querySelectorAll('.cond-cell.cm')[i].getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; }, i);
+  const d0 = await dot(4); await p.mouse.click(d0.x, d0.y); await sleep(150);
+  (await p.evaluate(() => FIG.condRows[0].on[4])) === true ? ok() : bad('BL35', 'a click on a dot did not switch it on');
+  const d1 = await dot(4); await MV(p, d1, { x: d1.x + 17, y: d1.y + 9 });
+  r = await p.evaluate(() => ({ on: FIG.condRows[0].on[4], dx: FIG.condRows[0].dx[4], dy: FIG.condRows[0].dy[4] }));
+  r.on === true && Math.abs(r.dx - 17) <= 1 && Math.abs(r.dy - 9) <= 1 ? ok() : bad('BL35', 'a dragged dot toggled, or did not land where it was dropped: ' + JSON.stringify(r));
+  const d2 = await dot(4); Math.abs(d2.x - d1.x - 17) < 2 && Math.abs(d2.y - d1.y - 9) < 2 ? ok() : bad('BL35', 'the dot is not where it was dropped');
+  // exported where it is on the screen: a dot in the PNG sits at the screen position
+  const ex = await p.evaluate(async () => { const cv = await renderFigureCanvas(1), fr = el('figure').getBoundingClientRect(), ov = anOverhang(fr), b = document.querySelectorAll('.cond-cell.cm')[4].getBoundingClientRect();
+    const x = Math.round(b.left + b.width / 2 - fr.left + 18 + ov.l), y = Math.round(b.top + b.height / 2 - fr.top + 18 + ov.t), d = cv.getContext('2d').getImageData(x - 8, y - 8, 17, 17).data; let dark = 0; for (let i = 0; i < d.length; i += 4) if (d[i] < 90) dark++; return dark; });
+  ex > 40 ? ok() : bad('BL35', 'the dragged dot is not where it was exported (' + ex + ' dark pixels there)');
+  // reload keeps rows, kinds, texts and offsets; an old row (no kind, no arrays) loads as a row of marks
+  const old = await p.evaluate(() => { const f = JSON.parse(JSON.stringify(FIG)); f.condRows = [{ label: 'Old', on: [true, false] }]; const m = migrateFig(f).condRows[0]; return { k: m.kind, t: m.txt.length, dx: m.dx.length, dy: m.dy.length, bad: m.dx.some(x => x !== 0) }; });
+  old.k === 'mark' && old.t === 12 && old.dx === 12 && old.dy === 12 && !old.bad ? ok() : bad('BL35', 'an old condition row did not load: ' + JSON.stringify(old));
+  p.errs.length ? bad('BL35', 'errors: ' + p.errs.join(' | ')) : ok();
+  await p.context().close();
+});
+
+if (run('BL36')) await guard('BL36', async () => {
+  for (const [w, h] of [[1440, 900], [390, 800]]) {
+    const p = await open({ w, h }); await p.evaluate(SEED + ';__seed()');
+    await p.evaluate(() => { FIG.panels[0].marks = [{ k: 250, y: .1 }, { k: 100, y: .3 }, { k: 10, y: .9 }]; render(); });
+    for (const [name, start] of [['Markers', () => openMarkers(0)], ['Measure', () => anMsStart()], ['Lanes', () => lnStart()]]) {
+      await p.evaluate(start); await sleep(250);
+      for (const how of ['done', 'esc', 'tab', 'folded']) {
+        if (how !== 'done') { await p.evaluate(start); await sleep(150); }
+        if (how === 'folded') await p.evaluate(() => rbFold(true));
+        const vis = await p.evaluate(() => { const b = document.getElementById('rb-done'), r = b.getBoundingClientRect(); return !b.hidden && r.width > 20 && r.height > 20 && r.right <= innerWidth && r.left >= 0; });
+        vis ? ok() : bad('BL36', `${w}px ${name} (${how}): Done is not on screen`);
+        if (how === 'esc') await p.keyboard.press('Escape'); else if (how === 'tab') await p.evaluate(() => document.getElementById('rb-tab-layout').click()); else await p.click('#rb-done');
+        await sleep(150);
+        const s = await p.evaluate(() => ({ tool: AN.tool, done: document.getElementById('rb-done').hidden, tab: document.getElementById('rb-tab-format').hidden, fig: document.getElementById('figure').classList.contains('an-tool') }));
+        s.tool === 'select' && s.done && s.tab && !s.fig ? ok() : bad('BL36', `${w}px ${name} (${how}) did not leave the tool: ` + JSON.stringify(s));
+        await p.evaluate(() => { rbFold(false); rbTab('home'); });
+      }
+    }
+    // the tool's own tab is not folded away by clicking it
+    await p.evaluate(() => openMarkers(0)); await sleep(150);
+    await p.evaluate(() => document.getElementById('rb-tab-format').click()); await sleep(100);
+    (await p.evaluate(() => document.getElementById('ribbon').getAttribute('data-collapsed') !== '1' || RB_PHONE.matches)) ? ok() : bad('BL36', 'clicking the Markers tab folded its own controls away');
+    p.errs.length ? bad('BL36', `${w}px errors: ` + p.errs.join(' | ')) : ok();
     await p.context().close();
   }
 });
