@@ -206,6 +206,7 @@
 //   B66 plan then run     A compound list is a plan and the Echo transfer file is what happened: a transfer file dropped on a plan replaces it — the compounds the run did not place come off the map, a moved one is where the run put it, the square says confirmed and counts what differs from the plan, the source plate and well of every compound are kept, and the picklist CSV rebuilt from them reads back as the same list
 //   B65 seeding per line   With two or more cell lines the cell seeding is one step per line (first keeps its place, titled and worded for its line, each counts the plates of its line), the incubation wait sits on the last one only, the read prep follows the number of lines until a number is typed over it, a re-applied setup keeps all of it, a seeding already ticked is left as it was, one undo takes the lines and the split back
 //   B64 echo step         The Echo compound step has inputs and says only what they say: every preset and the library carry the echo calculator (plates, compounds, concentrations, replicates, DMSO — fed by the setup), the words quote its boxes, and no step names a time or a rule nobody recorded ("allow about 3 h", "working window", "first thing", "keep DMSO at or below", a backfill to load). A box left empty reads "—", never a hidden default. A run not started takes the new step; a ticked, noted, typed-wait or finished one is left as written.
+//   B67 hours from setup  The hours of a treatment are the setup's Treatment (h), not words in the step: no step says "note the time" (the chip and the timer do), the Echo step writes no number of hours, and the read is as many days after the compound as the hours say (6 h → the same day, 20 h → the next), for a new run, an edited setup and a run made before — never over a read someone moved by hand or one with a tick.
 //   B54 plate labels      Words round the plate: select wells and a dashed + sits beside the plate on all four sides over exactly the selected columns/rows; a label
 //                            is typed, edited, removed and undone; a wider one stacks outside a narrower one; nothing written round the plate sits on a well, a header or
 //                            another label; the card, the PNG, the print table and a copied layout all carry it. (the plate map could not say what a column was)
@@ -3613,7 +3614,7 @@ async function suite(opts) {
         if (kind !== 'echo') bad('B64', k, 'the Echo step has no echo calculator (' + kind + '): nothing to type in');
         if (!/\{\{c\.plates\}\}/.test(b.html) || !/\{\{c\.compounds\}\}/.test(b.html) || !/\{\{c\.dmso\}\}/.test(b.html)) bad('B64', k, 'the words do not quote the calculator\'s boxes');
         if (FORBID.test(b.html) || FORBID.test(b.pub || '') || NUM.test(strip(b.html))) bad('B64', k, 'a time or a rule nobody recorded is in the words: ' + strip(b.html).replace(/<[^>]+>/g, ' ').slice(0, 200));
-        if (k !== 'library' && b.w && !/\{\{treatH\}\}/.test(b.html) && !/OA/.test(b.html)) bad('B64', k, 'a wait of ' + b.w + ' min the words do not quote');
+        if (k !== 'library' && b.w && !/\{\{treatH\}\}/.test(b.html + (b.pub || '')) && !/OA/.test(b.html)) bad('B64', k, 'a wait of ' + b.w + ' min the words do not quote');
       });
       const key = 'D2B_SEED1', tpl = LB.data.presets[key];
       if (!tpl) { bad('B64', key, 'the preset is not in the notebook'); return; }
@@ -3648,6 +3649,50 @@ async function suite(opts) {
       const typed = old('INV_B64F', 'planned', (x, q) => { q.waitOwn = true; q.waitMin = 200; }); seedPresets();
       const fin = old('INV_B64G', 'done'); seedPresets();
       [['ticked', ticked], ['noted', noted], ['typed wait', typed], ['finished run', fin]].forEach(([w, x]) => { if (echo(x).calc) bad('B64', 'kept ' + w, 'a step with records or a finished run was rewritten'); });
+    });
+
+    // B67 — the hours are the setup's, not words in the step, and the read follows them.
+    if (run('B67')) await guard('B67', 'hours from setup', async () => {
+      const P = (LB.data.projects || []).find(p => (p.sections || []).length);
+      const all = [];
+      Object.keys(EXTRA_PRESET_SEED).forEach(k => EXTRA_PRESET_SEED[k].blocks.forEach(b => all.push([k + ' / ' + b.title, b])));
+      STEP_LIBRARY.forEach(x => all.push(['library ' + x.id, x]));
+      all.forEach(([k, b]) => { if (/note the time/i.test(String(b.html || '') + String(b.pub || ''))) bad('B67', k, 'the step says "note the time": the chip and the timer say when'); });
+      const key = 'D2B_SEED1', tpl = LB.data.presets[key];
+      if (!tpl) { bad('B67', key, 'the preset is not in the notebook'); return; }
+      const mk = (code, h) => {
+        const su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup || {})), { treatH: h });
+        const before = new Set(Object.keys(LB.data.experiments));
+        buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-11-17', type: 'D2B', title: 'INV hours', code, setup: su, plate: true });
+        const e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); clean.push(e); return e; };
+      const echo = e => e.blocks.find(b => b.title === 'Compound addition (Echo)');
+      const read = e => e.blocks.find(b => b.title === 'HiBiT Lytic + read');
+      const apply = (e, h) => { e.setup.treatH = h; e.blocks = applySetupToBlocks('D2B', e.setup, e.blocks, undefined, key); };
+      const said = (e, b) => String(fillCalcText(b.html, b, e)).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+      const e = mk('INV_B67A', 6); tick('B67');
+      if (!echo(e) || !read(e)) { bad('B67', 'made', 'no Echo or read step'); return; }
+      if (read(e).dayOffset !== echo(e).dayOffset || read(e).date !== echo(e).date) bad('B67', 'same day', '6 h of treatment but the read is on day ' + read(e).dayOffset + ' (' + read(e).date + '), the compound on day ' + echo(e).dayOffset);
+      if (echo(e).waitMin !== 360) bad('B67', 'wait', 'the compound step\'s wait is ' + echo(e).waitMin + ' min, not the setup\'s 6 h');
+      if (/\b6 h\b|note the time/.test(said(e, echo(e)))) bad('B67', 'words', 'the Echo step still writes the hours or "note the time": ' + said(e, echo(e)).slice(0, 220));
+      apply(e, 22);
+      if (read(e).dayOffset !== echo(e).dayOffset + 1) bad('B67', 'next day', '22 h of treatment but the read is ' + (read(e).dayOffset - echo(e).dayOffset) + ' day(s) after the compound');
+      apply(e, 6);
+      if (read(e).dayOffset !== echo(e).dayOffset) bad('B67', 'back', 'the read did not come back to the same day with 6 h');
+      // a read moved by hand stays where it was put
+      const by = mk('INV_B67B', 22); const r = read(by); r.dayOffset += 2; r.date = addDays(r.date, 2); const at = r.dayOffset; apply(by, 6);
+      if (read(by).dayOffset !== at) bad('B67', 'by hand', 'a read moved by hand was moved again by the setup');
+      // a read with a tick is a record
+      const tk = mk('INV_B67C', 22); read(tk).stepDone = { 0: true }; const tat = read(tk).dayOffset; apply(tk, 6);
+      if (read(tk).dayOffset !== tat) bad('B67', 'ticked', 'a read with a tick moved');
+      // a run made before: 6 h, the read the day after, "note the time" in the step
+      const OLD = '<ol><li>Run the Echo picklist onto the seeded {{c.plates}}: {{c.compounds}} per plate at {{c.concs}}, {{c.reps}} each.</li><li>Final DMSO in the well: at most {{c.dmso}}.</li><li>Back to 37 &deg;C for {{treatH}} h &mdash; note the time.</li><li>Attach the run\'s CSV to this experiment on the Files tab.</li></ol>';
+      const old = (code, status, mut) => { const x = mk(code, 22), q = echo(x); x.setup.treatH = 6; q.tpl = { title: q.title, html: OLD, pub: q.tpl && q.tpl.pub || '' }; q.html = fillSetup(OLD, x.setup); q.waitMin = 360; x.status = status || 'planned'; if (mut) mut(x, q); return x; };
+      const pl = old('INV_B67D'); seedPresets();
+      if (/note the time/.test(echo(pl).html) || /note the time/.test(echo(pl).tpl.html)) bad('B67', 'old words', 'a run not started kept "note the time"');
+      if (read(pl).dayOffset !== echo(pl).dayOffset) bad('B67', 'old read', 'a run not started kept its read the day after a 6 h treatment');
+      const h1 = echo(pl).html, d1 = read(pl).date; seedPresets(); if (echo(pl).html !== h1 || read(pl).date !== d1) bad('B67', 'idempotent', 'a second pass changed the run again');
+      const fin = old('INV_B67F', 'done'); const fr = read(fin).dayOffset; seedPresets();
+      if (read(fin).dayOffset !== fr) bad('B67', 'finished run', 'a finished run\'s read was moved: it is a record');
     });
 
     // B54 — words round the plate: what a column or a row is, written beside it.
