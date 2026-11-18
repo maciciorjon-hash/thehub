@@ -8786,8 +8786,10 @@ function parseEchoPicklist(text){
       iUnit=col('destination concentration units'),
       iName=col('sample name','sample id'), iPlate=col('destination plate name'),
       iStat=col('transfer status'), iVol=col('actual volume','transfer volume'),
-      iFluid=col('fluid type');
-  var plates={}, skipped=0, bad=0;
+      iFluid=col('fluid type'),
+      iSPlate=col('source plate name','source plate barcode','source plate'), iSWell=col('source well'),
+      iSConc=col('source concentration'), iSUnit=col('source concentration units');
+  var plates={}, skipped=0, bad=0, sources=[], srcSeen={};
   for(var r=hdr+1;r<lines.length;r++){
     var L=lines[r]; if(!L.trim()) continue;
     var f=_csvRow(L,SEP); if(f.length<3) continue;
@@ -8815,13 +8817,21 @@ function parseEchoPicklist(text){
     if(isFinite(vol)) cell.vol+=vol;
     // DMSO backfill transfers carry no compound — they must not overwrite the real one.
     var isVeh=(!name)||/^dmso$/i.test(name)||(!name&&/dmso/i.test(fluid));
-    if(!isVeh){ cell.compound=name; cell.conc=conc; cell.dmsoOnly=false; if(isFinite(nmv)) cell.nm=+nmv.toPrecision(5); }
+    if(!isVeh){ cell.compound=name; cell.conc=conc; cell.dmsoOnly=false; if(isFinite(nmv)) cell.nm=+nmv.toPrecision(5);
+      // Where the compound came from: the source plate and well are what turns a transfer file back
+      // into the picklist that was fed to the Echo, so they are kept once per compound and place.
+      var sw=(iSWell>=0?(f[iSWell]||''):'').trim().toUpperCase();
+      if(/^[A-P]\d{1,2}$/.test(sw)){ sw=sw.charAt(0)+parseInt(sw.slice(1),10);
+        var sp=(iSPlate>=0?(f[iSPlate]||''):'').trim(), sk=name+'|'+sp+'|'+sw;
+        if(!srcSeen[sk]){ srcSeen[sk]=1;
+          var snm=(iSConc>=0)?_echoConcNM(num(f[iSConc]),iSUnit>=0&&f[iSUnit]?f[iSUnit]:'mM'):NaN;
+          sources.push({name:name,well:sw,plate:sp,mM:isFinite(snm)?+(snm/1e6).toPrecision(6):null}); } } }
     b.n++;
   }
   var list=Object.keys(plates).map(function(k){ return plates[k]; })
              .sort(function(a,b){ return b.n-a.n; });
   if(!list.length) return {error:'No usable transfers found in this picklist.'};
-  return {plates:list, skipped:skipped, bad:bad, meta:meta};
+  return {plates:list, skipped:skipped, bad:bad, meta:meta, sources:sources};
 }
 // Apply one parsed destination plate onto the plate map, keeping everything it does not touch.
 // PLATE_FORMATS is {r,c}; this compared dims.rows/dims.cols, so both sides were undefined and
@@ -8882,7 +8892,7 @@ function nmImportEcho(){
       if(res.source){ lbAlert('This is a compound list, not a picklist with destination wells. Create the experiment, draw its plate map, then drop the list on the Echo square inside the experiment \u2014 it places the compounds on your blocks.',{title:'Compound list'}); return; }
       function go(dest){
         var fmt=echoGuessFormat(dest);
-        NM_ECHO={dest:dest, format:fmt, meta:res.meta||{}, all:res.plates, file:f, skipped:res.skipped||0, bad:res.bad||0};
+        NM_ECHO={dest:dest, format:fmt, meta:res.meta||{}, all:res.plates, file:f, skipped:res.skipped||0, bad:res.bad||0, sources:res.sources||[]};
         NM_PLATE=true;
         var t=echoGuessType(res.meta);
         if(t){ var opt=[].slice.call(el('nm-type').options).filter(function(o){ return presetBase(o.value)===t; })[0];
@@ -8946,7 +8956,7 @@ function _echoNM(c){
   var m=/^([\d.]+)\s*(mM|µM|nM|pM|M)\b/.exec(String(c.conc||'')); if(!m) return null;
   return parseFloat(m[1])*({M:1e9,mM:1e6,'µM':1e3,nM:1,pM:1e-3}[m[2]]);
 }
-function _echoRunFrom(list,meta,fileName,skipped,bad){
+function _echoRunFrom(list,meta,fileName,skipped,bad,sources){
   var plates=list.slice().sort(function(a,b){ return _natCmp(a.name,b.name); })
     .map(function(p){ var o={name:p.name, n:p.n, wells:p.wells}; if(p.failed&&Object.keys(p.failed).length) o.failed=p.failed; return o; });
   var fmt='96', cmp={}, order=[], tx=0;
@@ -8957,7 +8967,8 @@ function _echoRunFrom(list,meta,fileName,skipped,bad){
       var c=p.wells[w]; if(!c.dmsoOnly&&c.compound&&!cmp[c.compound]){ cmp[c.compound]=1; order.push(c.compound); } });
   });
   return {protocol:(meta&&meta.protocol)||'', runDate:(meta&&meta.runDate)||'', name:fileName||'', added:Date.now(),
-    format:fmt, plates:plates, transfers:tx, skipped:skipped||0, bad:bad||0, compounds:order};
+    format:fmt, plates:plates, transfers:tx, skipped:skipped||0, bad:bad||0, compounds:order,
+    confirmed:true, items:(sources||[]).slice()};
 }
 // The first destination plate goes into the plate map WITHOUT repainting it: a map drawn for
 // this experiment (types, shading, block labels) keeps its look, and only what the picklist
@@ -8974,6 +8985,24 @@ function echoFoldIntoPlate(e,dest,fmt){
     else { cur.compound=src.compound; cur.conc=src.conc; }
     cur.echoVol=Math.round(src.vol*100)/100;
   });
+}
+// Blocks in the order a person reads a plate: band by band from the top, and inside a band from
+// the left to the right — left, right, left, right, then the next band down. A band is every block
+// that starts within the rows of the topmost block left, so blocks that are a row or two out of
+// step still read as one line. (Sorting by the first well alone numbered a staggered left column
+// all the way down before it reached the right one.)
+function _lbBlockOrder(items,idsOf){
+  var bx=items.map(function(it){ var r0=1e9,r1=-1,c0=1e9;
+    idsOf(it).forEach(function(id){ var q=wellRC(id); if(!q) return; r0=Math.min(r0,q.r); r1=Math.max(r1,q.r); c0=Math.min(c0,q.c); });
+    return {it:it,r0:r0,r1:r1,c0:c0}; });
+  bx.sort(function(a,b){ return a.r0-b.r0||a.c0-b.c0; });
+  var out=[], rest=bx;
+  while(rest.length){ var top=rest[0], r1=top.r1;
+    var band=rest.filter(function(b){ return b.r0<=r1; });
+    rest=rest.filter(function(b){ return b.r0>r1; });
+    band.sort(function(a,b){ return a.c0-b.c0||a.r0-b.r0; });
+    band.forEach(function(b){ out.push(b.it); }); }
+  return out;
 }
 // The compound blocks of a plate map, in the order a person reads the plate. A "slot" is one
 // compound: every well that carries the same compound name (a replicate band lower down the plate
@@ -8993,7 +9022,7 @@ function plateCompoundSlots(p){
     s.ids.push(id);
   }
   if(!out.length) out=_plColumnSlots(p);
-  return out;
+  return _lbBlockOrder(out,function(sl){ return sl.ids; });
 }
 // A screen plate that draws one compound per column (the D2B 384) names no block: its treatment
 // wells carry a type and a shade and nothing else, so a compound list found "no compound blocks"
@@ -9085,6 +9114,44 @@ function echoAssignSource(expId,res,file,replace){
   } else lbConfirm(msg,{title:'Compound list',ok:'Place them',html:true}).then(function(ok){ if(ok) go(); });
   return true;
 }
+// What the run did against what the list planned: by compound, the plate (by order) and wells.
+function _echoPlanDiff(prev,R){
+  function where(run){ var m={}; (run.plates||[]).forEach(function(pl,i){ Object.keys(pl.wells||{}).forEach(function(id){
+      var w=pl.wells[id]; if(w.dmsoOnly||!w.compound) return; (m[w.compound]=m[w.compound]||[]).push(i+':'+id); }); });
+    Object.keys(m).forEach(function(k){ m[k].sort(); }); return m; }
+  var a=where(prev), b=where(R), moved=[], missing=[], added=[];
+  Object.keys(a).forEach(function(n){ if(!b[n]) missing.push(n); else if(a[n].join()!==b[n].join()) moved.push(n); });
+  Object.keys(b).forEach(function(n){ if(!a[n]) added.push(n); });
+  return {moved:moved,missing:missing,added:added};
+}
+// The plan wrote compound names onto the map (and onto unnamed block labels). The wells the run
+// confirms are written again by the fold; the others go back to empty rather than keep a guess.
+function _echoClearPlan(e,prev,R){
+  var p=e.plate; if(!p||!prev.plates||!prev.plates[0]||!R.plates[0]) return;
+  var plan=prev.plates[0].wells, truth=R.plates[0].wells, names={};
+  (prev.compounds||[]).forEach(function(n){ names[n]=1; });
+  Object.keys(plan).forEach(function(id){ var pw=plan[id]; if(!pw||pw.dmsoOnly) return;
+    var cw=(p.wells||{})[id]; if(!cw) return;
+    var t=truth[id]; if(t&&!t.dmsoOnly) return;
+    if(names[cw.compound]){ cw.compound=''; delete cw.echoVol; } });
+  Object.keys(p.groups||{}).forEach(function(gid){ var g=p.groups[gid]; if(!g||!names[g.label]) return;
+    var seen={}; Object.keys(p.wells).forEach(function(id){ var w=p.wells[id]; if(w&&w.groupId===gid){ var t=truth[id]; if(t&&!t.dmsoOnly&&t.compound) seen[t.compound]=1; } });
+    var k=Object.keys(seen); g.label=(k.length===1)?k[0]:''; });
+}
+// The picklist the Echo was given, rebuilt from what is stored: source plate, source well,
+// compound code, stock — the same four columns a compound list is read from, so it round-trips.
+function echoPicklistCsv(e){
+  var R=e&&e.echoRun; if(!R||!(R.items||[]).length) return '';
+  var q=function(v){ v=String(v==null?'':v); return /[",\n]/.test(v)?('"'+v.replace(/"/g,'""')+'"'):v; };
+  return ['Source plate Barcode,Source Well,Compound Code,Concentration (mM)'].concat(R.items.map(function(it){
+    return [q(it.plate),q(it.well),q(it.name),it.mM==null?'':it.mM].join(','); })).join('\r\n')+'\r\n';
+}
+function echoDownloadPicklist(expId){
+  var e=LB.data.experiments[expId], txt=echoPicklistCsv(e); if(!txt){ toast('No source wells are stored for this picklist'); return; }
+  try{ var b=new Blob([txt],{type:'text/csv'}), u=URL.createObjectURL(b), a=document.createElement('a');
+    a.href=u; a.download=(e.code||e.title||'experiment').replace(/[^\w.-]+/g,'_')+'_picklist.csv'; document.body.appendChild(a); a.click();
+    setTimeout(function(){ URL.revokeObjectURL(u); a.remove(); },4000); }catch(x){ toast('Could not save the picklist'); }
+}
 function echoImportFile(expId,file){
   if(!file) return;
   if(file.size>8e6){ lbAlert('"'+file.name+'" is '+_fmtBytes(file.size)+' — too large for an Echo picklist. Is it the right file?',{title:'Echo picklist'}); return; }
@@ -9098,9 +9165,26 @@ function echoImportText(expId,text,file,replace){
   var res=parseEchoPicklist(text);
   if(res.error){ lbAlert(res.error,{title:'Echo picklist'}); return false; }
   if(res.source) return echoAssignSource(expId,res,file,replace);
+  var plan=(e.echoRun&&e.echoRun.source)?e.echoRun:null;
   function go(){
     undoMark('Echo picklist',['experiments.'+e.id]);
-    var R=_echoRunFrom(res.plates,res.meta,file&&file.name,res.skipped,res.bad);
+    var R=_echoRunFrom(res.plates,res.meta,file&&file.name,res.skipped,res.bad,res.sources);
+    var diff=null;
+    if(plan){
+      // The list was a plan; the transfer file is what happened. The picklist the plan carried stays
+      // for any compound the transfer does not name a source for; every place the plan guessed and the
+      // run did not confirm is taken off the map before the real ones are written.
+      diff=_echoPlanDiff(plan,R);
+      var have={}; R.items.forEach(function(it){ have[it.name]=1; });
+      (plan.items||[]).forEach(function(it){ if(!have[it.name]&&R.compounds.indexOf(it.name)>=0){ R.items.push({name:it.name,well:it.well,plate:it.plate,mM:it.mM}); have[it.name]=1; } });
+      R.vsPlan={moved:diff.moved.length,missing:diff.missing.length,added:diff.added.length,
+        names:diff.moved.slice(0,8),missingNames:diff.missing.slice(0,8)};
+      _echoClearPlan(e,plan,R);
+      if(e.setup&&e.setup.compounds===(plan.compounds||[]).join('\n')) e.setup.compounds=R.compounds.join('\n');
+    }
+    var stock={}, bc={}; R.items.forEach(function(x){ if(x.mM!=null) stock[x.mM]=(stock[x.mM]||0)+1; if(x.plate) bc[x.plate]=1; });
+    var sm=Object.keys(stock).sort(function(a,b){ return stock[b]-stock[a]; })[0];
+    if(sm!=null) R.stockMM=+sm; R.barcodes=Object.keys(bc);
     e.echoRun=R;
     echoFoldIntoPlate(e,R.plates[0],R.format);
     e.updated=Date.now(); save(); renderEditor();
@@ -9109,10 +9193,12 @@ function echoImportText(expId,text,file,replace){
       if(!ok||!e.echoRun) return;
       var f=(e.files||[])[(e.files||[]).length-1]; if(f){ e.echoRun.fileId=f.id; save(); renderEditor(); } });
     toast('Picklist stored — '+R.plates.length+' plate'+(R.plates.length===1?'':'s')+', '+R.compounds.length+' compound'+(R.compounds.length===1?'':'s')
+      +(diff?(diff.moved.length+diff.missing.length+diff.added.length?(' · differs from the plan: '+diff.moved.length+' moved, '+diff.missing.length+' not dispensed, '+diff.added.length+' new'):' · matches the plan'):'')
       +(R.skipped?(' · '+R.skipped+' failed transfer'+(R.skipped===1?'':'s')+' not recorded'):''));
   }
   if(e.echoRun&&e.echoRun.plates&&!replace){
-    lbConfirm('Replace the picklist stored in this experiment with '+(file?('"'+file.name+'"'):'this one')+'? The plate map is filled in again from it; the CSV already on the Files tab stays.',
+    lbConfirm(plan?('Replace the compound list (the plan) with the transfer file '+(file?('"'+file.name+'"'):'')+'? The positions come from what the Echo really dispensed; places the plan guessed and the run did not confirm are cleared, and the list stays on the Files tab.')
+      :('Replace the picklist stored in this experiment with '+(file?('"'+file.name+'"'):'this one')+'? The plate map is filled in again from it; the CSV already on the Files tab stays.'),
       {title:'Replace picklist',ok:'Replace'}).then(function(ok){ if(ok) go(); });
     return true;
   }
@@ -9165,12 +9251,15 @@ function echoDropHtml(e){
     var n=(R.compounds||[]).length;
     return '<div class="echo-drop filled" data-exp="'+id+'">'
       +'<span class="ed-ic">'+ICON_ECHO+'</span>'
-      +'<div class="ed-main"><div class="ed-t">'+(R.source?'Compound list':'Echo picklist')+(R.name?(' <span class="ed-name">'+esc(R.name)+'</span>'):'')+'</div>'
+      +'<div class="ed-main"><div class="ed-t">'+(R.source?'Compound list \u00b7 plan':'Echo picklist'+(R.confirmed?' \u00b7 confirmed':''))+(R.name?(' <span class="ed-name">'+esc(R.name)+'</span>'):'')+'</div>'
       +'<div class="ed-facts">'+R.plates.length+' plate'+(R.plates.length===1?'':'s')+' &middot; '+n+' compound'+(n===1?'':'s')
       +(R.source?(' &middot; '+R.perPlate+' per plate'+(R.stockMM!=null?(' &middot; '+esc(_fmtStockMM(R.stockMM))+' stock'):'')):(' &middot; '+(R.transfers||0).toLocaleString('en-GB')+' transfers'+(R.runDate?(' &middot; run '+esc(R.runDate)):'')))
+      +(R.vsPlan?(R.vsPlan.moved+R.vsPlan.missing+R.vsPlan.added?(' &middot; <span class="ed-bad">differs from the plan: '+R.vsPlan.moved+' moved, '+R.vsPlan.missing+' not dispensed, '+R.vsPlan.added+' new</span>'):' &middot; matches the plan'):'')
       +(R.skipped?(' &middot; <span class="ed-bad">'+R.skipped+' failed transfer'+(R.skipped===1?'':'s')+' not recorded</span>'):'')+'</div>'
+      +(R.source?'<div class="ed-chk">A plan: each compound goes where the order of the list puts it. Drop the Echo transfer file after the run and the real positions replace it.</div>':'')
       +echoCheckLine(e)+'</div>'
       +'<div class="ed-act"><button class="btn" onclick="openCheckPlates(\''+id+'\')">Check plates</button>'
+      +((R.items||[]).length?'<button class="btn ghost" onclick="echoDownloadPicklist(\''+id+'\')">Picklist CSV</button>':'')
       +'<button class="btn ghost" onclick="echoPickFile(\''+id+'\')">Replace</button>'
       +'<button class="btn ghost" onclick="echoRemove(\''+id+'\')">Remove</button></div></div>';
   }
@@ -10190,7 +10279,7 @@ function _plIsCtl(p,id){ var w=(p.wells||{})[id]; if(!w) return false;
 // Compound blocks are groups marked as such, numbered in reading order like Lumina's.
 function _plCpdList(p){ var by={};
   Object.keys(p.wells||{}).forEach(function(id){ var g=p.wells[id].groupId; if(g&&p.groups&&p.groups[g]&&p.groups[g].cpd) (by[g]=by[g]||[]).push(id); });
-  var zones=PlateEngine.sortZones(Object.keys(by).map(function(g){ return by[g]; }));
+  var zones=_lbBlockOrder(PlateEngine.sortZones(Object.keys(by).map(function(g){ return by[g]; })),function(z){ return z; });
   return zones.map(function(z,i){ var g=p.wells[z[0]].groupId; return {gid:g, wells:z, no:i+1, name:(p.groups[g].label||''), named:!!p.groups[g].named}; }); }
 // A block you have not named is "Compound n" by its place, so the numbers follow the plate.
 function _plRenumberCpds(p){ _plCpdList(p).forEach(function(c){
@@ -15837,7 +15926,7 @@ function buildExperimentFrom(sp){
       e.echoRun={protocol:(_echo.meta||{}).protocol||'', runDate:(_echo.meta||{}).runDate||'',
                  compounds:(_echo.compounds||[]).slice()};
       // The whole picklist rides with the experiment, not only the plate that became the map.
-      if(_echo.all&&_echo.all.length) e.echoRun=_echoRunFrom(_echo.all,_echo.meta,_echo.file&&_echo.file.name,_echo.skipped,_echo.bad);
+      if(_echo.all&&_echo.all.length) e.echoRun=_echoRunFrom(_echo.all,_echo.meta,_echo.file&&_echo.file.name,_echo.skipped,_echo.bad,_echo.sources);
     } else if(wantPlate){
       e.plate = _plateMap ? JSON.parse(JSON.stringify(_plateMap))
                             : experimentPlateFor(key,type,setup,e,null,null,_layout);
