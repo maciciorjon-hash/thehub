@@ -272,7 +272,7 @@ if (run('BL7')) await guard('BL7', async () => {
   state.tool === 'mk' && state.tab === 'markers' && state.shown && !state.dialog ? ok() : bad('BL7', 'markers did not open in place: ' + JSON.stringify(state));
   const img = async () => p.locator('.panel-blot .blot-img').first().boundingBox();
   let box = await img();
-  await p.evaluate(() => mkPick(3)); // 70 kDa in PageRuler Plus
+  await p.evaluate(() => { mkSetGel('tg'); mkPick(3); }); // 70 kDa in PageRuler Plus on a Tris-Glycine gel (the default system is Bis-Tris MOPS, 65)
   await p.mouse.move(box.x + box.width / 2, box.y + box.height * 0.5);
   const guide = await p.evaluate(() => { var g = document.getElementById('an-mkg-0'); return g && g.style.display !== 'none' && g.querySelector('text').textContent; });
   guide === '70 kDa' ? ok() : bad('BL7', 'the guide does not say which size the next click places: ' + guide);
@@ -1571,11 +1571,11 @@ if (run('BL41')) await guard('BL41', async () => {
   await p.evaluate(GEL + `;(() => { var g = __gel([.5,.5,.5,.5,.5,.5,.5,.5,.5,.5,.5,.5]); FIG.panels[0].cropped = g; FIG.panels[0].src = g; FIG.panels[0].marks = []; save(); render(); })()`); await sleep(400);
   await p.click('#rb-tab-markers'); await sleep(300); v = await vis();
   v.tool === 'mk' && v.tab === 'markers' && v.on ? ok() : bad('BL41', 'the Markers tab did not start the tool: ' + JSON.stringify(v));
-  const chips = () => p.evaluate(() => ({ c: [...document.querySelectorAll('#rb-markers .mk-chip')].map(e => e.textContent), ref: [...document.querySelectorAll('#rb-markers .mk-chip.ref')].map(e => e.textContent), opts: [...document.querySelectorAll('#rb-markers select[aria-label="Gel and running buffer"] option')].map(o => o.value + ':' + o.textContent) }));
+  const chips = () => p.evaluate(() => ({ c: [...document.querySelectorAll('#rb-markers .mk-chip')].map(e => e.textContent), ref: [...document.querySelectorAll('#rb-markers .mk-chip.ref')].map(e => e.textContent), opts: [...document.querySelectorAll('#rb-markers select[aria-label="Gel and running buffer"] option')].map(o => o.value + ':' + o.textContent), sel: document.querySelector('#rb-markers select[aria-label="Gel and running buffer"]').value }));
   let c = await chips();
-  c.c.join(',') === '250,130,100,70,55,35,25,15,10' && c.ref.join(',') === '70,25,10' && c.opts.length === 4 ? ok() : bad('BL41', 'PageRuler Plus does not open on Tris-Glycine with four systems: ' + JSON.stringify(c));
-  await p.selectOption('#rb-markers select[aria-label="Gel and running buffer"]', 'btmops'); await sleep(250); c = await chips();
-  c.c.join(',') === '185,115,80,65,50,30,25,10' && c.ref.join(',') === '65,25,10' ? ok() : bad('BL41', 'Bis-Tris MOPS: ' + JSON.stringify(c));
+  c.c.join(',') === '185,115,80,65,50,30,25,10' && c.ref.join(',') === '65,25,10' && c.opts.length === 4 && c.sel === 'btmops' ? ok() : bad('BL41', 'PageRuler Plus does not open on Bis-Tris MOPS with four systems: ' + JSON.stringify(c));
+  await p.selectOption('#rb-markers select[aria-label="Gel and running buffer"]', 'tg'); await sleep(250); c = await chips();
+  c.c.join(',') === '250,130,100,70,55,35,25,15,10' && c.ref.join(',') === '70,25,10' ? ok() : bad('BL41', 'Tris-Glycine: ' + JSON.stringify(c));
   await p.selectOption('#rb-markers select[aria-label="Gel and running buffer"]', 'btmes'); await sleep(250); c = await chips();
   c.c.join(',') === '190,115,80,70,50,30,25,10' && c.ref.join(',') === '70,25,10' ? ok() : bad('BL41', 'Bis-Tris MES: ' + JSON.stringify(c));
   await p.selectOption('#rb-markers select[aria-label="Gel and running buffer"]', 'ta'); await sleep(250); c = await chips();
@@ -1607,6 +1607,9 @@ if (run('BL41')) await guard('BL41', async () => {
   // hostile / older figures: an unknown gel or a gel on a ladder without systems is dropped, a known one kept
   const mg = await p.evaluate(() => { var f = JSON.parse(JSON.stringify(FIG)), q = f.panels[0]; q.ladder = 'pageruler_plus'; q.gel = 'zzz'; migrateFig(f); var a = q.gel; q.gel = 'btmes'; migrateFig(f); var b2 = q.gel; q.ladder = 'gr_1kb'; q.gel = 'btmes'; migrateFig(f); var c2 = q.gel; q.ladder = 'pageruler_plus'; q.gel = 7; figSane(f); return [a, b2, c2, q.gel]; });
   mg[0] === undefined && mg[1] === 'btmes' && mg[2] === undefined && mg[3] == null ? ok() : bad('BL41', 'gel systems are not cleaned on load: ' + JSON.stringify(mg));
+  // the default is Bis-Tris MOPS, so markers saved before the systems existed (no gel) stay the Tris-Glycine sizes; a new placement records its system
+  const old = await p.evaluate(() => { var f = JSON.parse(JSON.stringify(FIG)), q = f.panels[0]; q.ladder = 'pageruler_plus'; delete q.gel; q.marks = [{ k: 250, y: .1 }]; migrateFig(f); var a = q.gel; q.marks = []; delete q.gel; migrateFig(f); return [a, q.gel, mkLad('pageruler_plus', { }).sysId]; });
+  old[0] === 'tg' && old[1] == null && old[2] === 'btmops' ? ok() : bad('BL41', 'markers without a gel are not kept as Tris-Glycine, or the default is not Bis-Tris MOPS: ' + JSON.stringify(old));
   p.errs.length ? bad('BL41', 'errors: ' + p.errs.join(' | ')) : ok();
   await p.context().close();
 });

@@ -2776,7 +2776,8 @@ function migrateFig(fig){
     if(p.ladder&&LADDERS_RETIRED[p.ladder]){ p.cl={unit:'kDa',k:mkParseSizes(p.marks.map(function(m){ return m.k; }).join(' '),'kDa')}; p.ladder='custom'; }
     else if(p.ladder&&!mkOk(p.ladder)) p.ladder=null;
     else if(p.ladder==='custom'&&!p.cl) p.cl={unit:'kDa',k:[]};
-    if(p.gel!=null&&!mkGelOk(p.ladder,p.gel)) delete p.gel;   // a gel system only means something for a ladder that has them
+    if(p.gel!=null&&!mkGelOk(p.ladder,p.gel)) delete p.gel;
+    if(p.gel==null&&p.ladder==='pageruler_plus'&&p.marks.length) p.gel='tg';   // markers placed before the systems existed are the Tris-Glycine sizes; the default has since become Bis-Tris MOPS   // a gel system only means something for a ladder that has them
     if(p.quant&&!(isFinite(+p.quant.y0)&&isFinite(+p.quant.y1))) p.quant=null;
     p.shapes=anClean(p.shapes);
   });
@@ -4320,14 +4321,14 @@ function _bCsv(v){ if(typeof v==='number') return String(v); var s=String(v==nul
 var LADDER_PRESTAINED='Prestained: the sizes are apparent (about 5 % lot to lot) and move with the gel and buffer. Quote a size from an unstained ladder.';
 var LADDERS={
   pageruler_plus:{type:'protein',unit:'kDa',grp:'Protein, prestained',name:'PageRuler Plus Prestained',mfr:'Thermo Scientific',cat:'26619 · 26620',
-    k:[250,130,100,70,55,35,25,15,10],ref:[70,25,10],note:'Orange 70 and 25, green 10. '+LADDER_PRESTAINED,
+    k:[250,130,100,70,55,35,25,15,10],ref:[70,25,10],note:'Orange 70 and 25, green 10 (Tris-Glycine, the maker\'s list; a Bis-Tris gel runs the bands at other sizes, see the system). '+LADDER_PRESTAINED,
     // Thermo's own table of the apparent sizes by gel and running buffer ("Migration patterns of PageRuler Plus Prestained Protein Ladder in
-    // different electrophoretic conditions"; the NuPAGE gels). Tris-Glycine (Laemmli SDS) is the system the ladder is calibrated in, so it is the
-    // list above. `ref` are the orange bands (green 10 where the gel resolves it); the 10 kDa band runs off a Tris-Acetate gel.
+    // different electrophoretic conditions"; the NuPAGE gels). Tris-Glycine (Laemmli SDS) is the system the ladder is calibrated in; Bis-Tris
+    // with MOPS (`def`) is the one Jon runs, so a panel with no gel set reads as that. `ref` are the orange bands (green 10 where the gel resolves it); the 10 kDa band runs off a Tris-Acetate gel.
     sys:[
       {id:'tg',name:'Tris-Glycine',gels:'4-20 %, 8-16 %, 10-20 %, 8 %, 10 %, 12 %, 15 %',k:[250,130,100,70,55,35,25,15,10],ref:[70,25,10]},
       {id:'ta',name:'Tris-Acetate',gels:'3-8 %, 7 %',k:[205,120,85,65,50,30,25],ref:[65,25]},
-      {id:'btmops',name:'Bis-Tris, MOPS',gels:'4-12 %, 10 %, 12 %',k:[185,115,80,65,50,30,25,10],ref:[65,25,10]},
+      {id:'btmops',def:true,name:'Bis-Tris, MOPS',gels:'4-12 %, 10 %, 12 %',k:[185,115,80,65,50,30,25,10],ref:[65,25,10]},
       {id:'btmes',name:'Bis-Tris, MES',gels:'4-12 %, 10 %, 12 %',k:[190,115,80,70,50,30,25,10],ref:[70,25,10]}]},
   pageruler:{type:'protein',unit:'kDa',grp:'Protein, prestained',name:'PageRuler Prestained',mfr:'Thermo Scientific',cat:'26616 · 26617',
     k:[180,130,100,70,55,40,35,25,15,10],ref:[70,10],note:'Orange 70, green 10. '+LADDER_PRESTAINED},
@@ -4374,8 +4375,8 @@ function mkLad(id,p){
   var L=LADDERS[id]||null; if(!L||!L.sys) return L;
   var y=mkSys(L,p&&p.gel); return Object.assign({},L,{k:y.k.slice(),ref:y.ref.slice(),sys:L.sys,sysId:y.id,sysName:y.name});   // a ladder with a table by gel system reads as the system the panel was run in
 }
-// The gel system of a panel for a ladder that has them (the first, Tris-Glycine, when none is set or the id is not one of them).
-function mkSys(L,id){ var a=(L&&L.sys)||[]; for(var i=0;i<a.length;i++) if(a[i].id===id) return a[i]; return a[0]||null; }
+// The gel system of a panel for a ladder that has them (the one marked `def`, Bis-Tris MOPS, when none is set or the id is not one of them).
+function mkSys(L,id){ var a=(L&&L.sys)||[]; for(var i=0;i<a.length;i++) if(a[i].id===id) return a[i]; for(i=0;i<a.length;i++) if(a[i].def) return a[i]; return a[0]||null; }
 function mkGelOk(lid,gid){ var L=LADDERS[lid]; return !!(L&&L.sys&&L.sys.some(function(y){ return y.id===gid; })); }
 function mkOk(id){ return id==='custom'||!!LADDERS[id]; }
 function mkCur(){ return mkLad(MK.lad,FIG.panels[MK.pi])||LADDERS.pageruler_plus; }
@@ -5278,7 +5279,7 @@ function anMkPlace(ev,lay){
   var yf=Math.max(0,Math.min(1,(ev.clientY-r.top)/r.height)), xf=Math.max(0,Math.min(1,(ev.clientX-r.left)/r.width)), y=mkSnapClick(pi,xf,yf,ev).y;
   var twin=(p.marks||[]).filter(function(m){ return m.k!==k&&Math.abs(m.y-y)<0.004; })[0];   // two sizes cannot be one band
   if(twin){ toast('The '+mkNum(twin.k,L.unit)+' '+L.unit+' marker is already on that band. Click the band for '+mkNum(k,L.unit)+' '+L.unit+'.'); return; }
-  p.marks=(p.marks||[]).filter(function(m){ return m.k!==k; }); p.marks.push({k:k,y:+Math.max(0,Math.min(1,y)).toFixed(4)}); p.ladder=MK.lad;
+  p.marks=(p.marks||[]).filter(function(m){ return m.k!==k; }); p.marks.push({k:k,y:+Math.max(0,Math.min(1,y)).toFixed(4)}); p.ladder=MK.lad; if(L.sysId) p.gel=L.sysId;   // the markers record the system they were placed in
   var placed=ks.indexOf(k); save(); MK.next=_mkNextIndex(p,placed+1); mkRepaint(pi); anFormat();
 }
 function anMsClick(ev,lay){
