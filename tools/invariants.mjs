@@ -203,7 +203,7 @@
 //   B61 spark isrib        SC3 with ISRIB (HB_SPARK_SC3_ISRIB): the series DOWN the rows (layout drcols, a compound per pair of columns, 7 points A-G, DMSO in row H), one plate per condition with the same six compounds, ISRIB for plate 2 only, the medium swapped on both.
 //   B62 spark nb pairs     NanoBRET SPARK screen with several pairs (NB_SPARK_PAIRS96, layout nbscreenpairs96): NL-DELE1(CTD)/DELE1(CTD)-NL against HT-CRBN at 1:50 with G4 and G7 at 20, 10, 1 µM in duplicate, MG132 an hour first - row A the −ligand of each pair over its own three columns, row B each construct alone + mock + the first pair without substrate, DMSO then one band per compound from row C; what does not fit is named; the screen it came from is untouched
 //   B63 cell lines        A plate says which cell line it is for; "+ Add cell line" copies every plate (layout and compound names) for the new line, the header lists the lines, the compounds list and the plate count belong to the first line's plates and the copies follow (an added plate or a renamed compound reaches every line), a copy's names are read-only, the first time asks which line the plates you have are for, an experiment that never names a line is unchanged
-//   B66 plan then run     A compound list is a plan and the Echo transfer file is what happened: blocks are numbered left, right, left, right down the plate (a staggered left column no longer runs all the way down before the right one starts); a transfer file dropped on a plan replaces it — the compounds the run did not place come off the map, a moved one is where the run put it, the square says confirmed and counts what differs from the plan, the source plate and well of every compound are kept, and the picklist CSV rebuilt from them reads back as the same list
+//   B66 plan then run     A compound list is a plan and the Echo transfer file is what happened: a transfer file dropped on a plan replaces it — the compounds the run did not place come off the map, a moved one is where the run put it, the square says confirmed and counts what differs from the plan, the source plate and well of every compound are kept, and the picklist CSV rebuilt from them reads back as the same list
 //   B65 seeding per line   With two or more cell lines the cell seeding is one step per line (first keeps its place, titled and worded for its line, each counts the plates of its line), the incubation wait sits on the last one only, the read prep follows the number of lines until a number is typed over it, a re-applied setup keeps all of it, a seeding already ticked is left as it was, one undo takes the lines and the split back
 //   B64 echo step         The Echo compound step has inputs and says only what they say: every preset and the library carry the echo calculator (plates, compounds, concentrations, replicates, DMSO — fed by the setup), the words quote its boxes, and no step names a time or a rule nobody recorded ("allow about 3 h", "working window", "first thing", "keep DMSO at or below", a backfill to load). A box left empty reads "—", never a hidden default. A run not started takes the new step; a ticked, noted, typed-wait or finished one is left as written.
 //   B54 plate labels      Words round the plate: select wells and a dashed + sits beside the plate on all four sides over exactly the selected columns/rows; a label
@@ -3522,21 +3522,8 @@ async function suite(opts) {
       closePlateEditor();
     });
 
-    // B66 — a compound list is the plan, the transfer file is the truth, and the numbering reads left, right, left, right.
+    // B66 — a compound list is the plan, the transfer file is the truth.
     if (run('B66')) await guard('B66', 'plan then run', async () => {
-      // numbering: two stacks of blocks a row out of step, then a band of three
-      const box = (r0, r1, c0, c1) => { const o = []; for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) o.push(wellIdOf(r, c)); return o; };
-      const items = [{ n: 'L0', ids: box(0, 1, 0, 2) }, { n: 'L1', ids: box(2, 3, 0, 2) }, { n: 'L2', ids: box(4, 5, 0, 2) },
-                     { n: 'R0', ids: box(1, 2, 6, 8) }, { n: 'R1', ids: box(3, 4, 6, 8) }, { n: 'R2', ids: box(5, 6, 6, 8) }];
-      const got = _lbBlockOrder(items.slice().reverse(), x => x.ids).map(x => x.n).join(',');
-      if (got !== 'L0,R0,L1,R1,L2,R2') bad('B66', 'numbering', 'staggered blocks are numbered ' + got + ', not left, right, left, right down the plate');
-      const wide = _lbBlockOrder([{ n: 'c', ids: box(0, 7, 4, 4) }, { n: 'a', ids: box(0, 7, 0, 0) }, { n: 'b', ids: box(0, 7, 2, 2) }], x => x.ids).map(x => x.n).join('');
-      if (wide !== 'abc') bad('B66', 'columns', 'a compound per column is numbered ' + wide + ', not left to right');
-      const pl = newPlate('96'); pl.types = [{ id: 'dose', name: 'Dose', color: '#cfe2f3' }]; pl.wells = {};
-      items.forEach(x => x.ids.forEach(id => { pl.wells[id] = { typeId: 'dose', compound: x.n }; }));
-      const slotOrder = plateCompoundSlots(pl).map(s => s.name).join(',');
-      if (slotOrder !== 'L0,R0,L1,R1,L2,R2') bad('B66', 'slots', 'a compound list lands on the blocks in the order ' + slotOrder);
-
       // plan, then run
       const P = (LB.data.projects || []).find(p => (p.sections || []).length);
       const key = Object.keys(LB.data.presets).find(k => /^D2B/.test(k));

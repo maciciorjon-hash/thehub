@@ -8986,24 +8986,6 @@ function echoFoldIntoPlate(e,dest,fmt){
     cur.echoVol=Math.round(src.vol*100)/100;
   });
 }
-// Blocks in the order a person reads a plate: band by band from the top, and inside a band from
-// the left to the right — left, right, left, right, then the next band down. A band is every block
-// that starts within the rows of the topmost block left, so blocks that are a row or two out of
-// step still read as one line. (Sorting by the first well alone numbered a staggered left column
-// all the way down before it reached the right one.)
-function _lbBlockOrder(items,idsOf){
-  var bx=items.map(function(it){ var r0=1e9,r1=-1,c0=1e9;
-    idsOf(it).forEach(function(id){ var q=wellRC(id); if(!q) return; r0=Math.min(r0,q.r); r1=Math.max(r1,q.r); c0=Math.min(c0,q.c); });
-    return {it:it,r0:r0,r1:r1,c0:c0}; });
-  bx.sort(function(a,b){ return a.r0-b.r0||a.c0-b.c0; });
-  var out=[], rest=bx;
-  while(rest.length){ var top=rest[0], r1=top.r1;
-    var band=rest.filter(function(b){ return b.r0<=r1; });
-    rest=rest.filter(function(b){ return b.r0>r1; });
-    band.sort(function(a,b){ return a.c0-b.c0||a.r0-b.r0; });
-    band.forEach(function(b){ out.push(b.it); }); }
-  return out;
-}
 // The compound blocks of a plate map, in the order a person reads the plate. A "slot" is one
 // compound: every well that carries the same compound name (a replicate band lower down the plate
 // is the same compound, not a second one), or, for a block that is shaded/dosed but has no name yet,
@@ -9022,7 +9004,7 @@ function plateCompoundSlots(p){
     s.ids.push(id);
   }
   if(!out.length) out=_plColumnSlots(p);
-  return _lbBlockOrder(out,function(sl){ return sl.ids; });
+  return out;
 }
 // A screen plate that draws one compound per column (the D2B 384) names no block: its treatment
 // wells carry a type and a shade and nothing else, so a compound list found "no compound blocks"
@@ -10279,7 +10261,7 @@ function _plIsCtl(p,id){ var w=(p.wells||{})[id]; if(!w) return false;
 // Compound blocks are groups marked as such, numbered in reading order like Lumina's.
 function _plCpdList(p){ var by={};
   Object.keys(p.wells||{}).forEach(function(id){ var g=p.wells[id].groupId; if(g&&p.groups&&p.groups[g]&&p.groups[g].cpd) (by[g]=by[g]||[]).push(id); });
-  var zones=_lbBlockOrder(PlateEngine.sortZones(Object.keys(by).map(function(g){ return by[g]; })),function(z){ return z; });
+  var zones=PlateEngine.sortZones(Object.keys(by).map(function(g){ return by[g]; }));
   return zones.map(function(z,i){ var g=p.wells[z[0]].groupId; return {gid:g, wells:z, no:i+1, name:(p.groups[g].label||''), named:!!p.groups[g].named}; }); }
 // A block you have not named is "Compound n" by its place, so the numbers follow the plate.
 function _plRenumberCpds(p){ _plCpdList(p).forEach(function(c){
