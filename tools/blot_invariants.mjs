@@ -63,6 +63,10 @@
 //   BL35 conditions                    titles end on one line and inside the figure (the column widens for the widest, also while typing); a text row takes
 //                                      free text per cell, a spreadsheet row pasted fills it, text is never markup; a dot is dragged and still toggles
 //   BL36 a tool can be left            Markers / Measure / Lanes each have Done beside the tabs (also with the ribbon folded), Esc and another tab leave them
+//   BL37 hostile figures               a saved figure, preset or portable file with the wrong types (a lane count of "x", a group that is a string, a
+//                                      panel that is a number, a laneX of true) opens as a figure and renders and exports; a figure that cannot be read opens blank
+//   BL38 lanes by hand, measured       densitometry reads the strip between the marked lanes (bands at uneven lanes give their own ratios, where equal columns
+//                                      mix them), Find lanes honours a letterboxed picture, presets and portable copies carry positions, text rows and dots
 //   BL12 layout                        escape, runtime and alignment audits on the figure and every dialog, 1440/1024/390,
 //                                      both themes
 //
@@ -664,7 +668,7 @@ if (run('BL20')) await guard('BL20', async () => {
   const pt = await p.evaluate(() => { var r = document.querySelector('.an-s[data-t="text"] .an-hit').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
   await p.mouse.dblclick(pt.x, pt.y); await sleep(150);
   (await p.locator('#an-edit').count()) === 1 ? ok() : bad('BL20', 'a double-click did not reopen the text');
-  await p.keyboard.press('Control+a'); await p.keyboard.press('Delete'); await p.keyboard.press('Control+Enter'); await sleep(120);
+  await p.keyboard.press('ControlOrMeta+a'); await p.keyboard.press('Delete'); await p.keyboard.press('Control+Enter'); await sleep(120);
   (await shapes(p)).length === 0 ? ok() : bad('BL20', 'an emptied text stayed as an invisible shape');
   // typing is one undo step, not one per key
   await tab(p, 'insert'); await p.click('[data-tool="text"]'); await p.mouse.click(box.x + box.width * .4, box.y + box.height * .7); await sleep(120);
@@ -1143,6 +1147,9 @@ if (run('BL31')) await guard('BL31', async () => {
   // the count changes keep the positions
   const c = await p.evaluate(() => { setLaneCount(8); const s = FIG.laneX.slice(); setLaneCount(14); const g = FIG.laneX.slice(); return { s, g }; });
   c.s.length === 8 && c.s[2] === LX[2] && c.g.length === 14 && c.g[7] === LX[7] && c.g.every((x, i) => !i || x >= c.g[i - 1]) && c.g[13] <= 1 ? ok() : bad('BL31', 'changing the lane count lost or scrambled the positions: ' + JSON.stringify(c));
+  // more lanes when the last one is already at the edge of the picture: still in order, still inside (a fuzz found 0.985 followed by 0.941)
+  const e = await p.evaluate(() => { FIG.laneX = [.9, .94, .985]; FIG.laneCount = 3; FIG.lanes = ['a', 'b', 'c']; FIG.condRows = []; FIG.groups = []; FIG.laneLabelOffsetX = null; FIG.laneLabelDY = null; const o = []; [8, 30, 4, 12].forEach(n => { setLaneCount(n); o.push(FIG.laneX.every((x, i) => x >= 0 && x <= 1 && (!i || x >= FIG.laneX[i - 1])) && FIG.laneX.length === n); }); return o; });
+  e.every(Boolean) ? ok() : bad('BL31', 'adding lanes at the right edge broke the order: ' + e.join());
   p.errs.length ? bad('BL31', 'errors: ' + p.errs.join(' | ')) : ok();
   await p.context().close();
 });
@@ -1342,6 +1349,60 @@ if (run('BL36')) await guard('BL36', async () => {
     p.errs.length ? bad('BL36', `${w}px errors: ` + p.errs.join(' | ')) : ok();
     await p.context().close();
   }
+});
+
+if (run('BL37')) await guard('BL37', async () => {
+  const p = await open();
+  const HOSTILE = [{ laneCount: 'x' }, { laneCount: NaN }, { laneCount: 1e9 }, { laneCount: -4 }, { laneCount: [null, 1] }, { lanes: -5 }, { lanes: 'x' }, { laneX: true }, { laneX: [null, 1] }, { laneWeights: { a: 1 } }, { laneWeights: 31 },
+    { condRows: 0 }, { condRows: [1e9, { label: 't' }, null, []] }, { groups: [{ from: [null, 1], to: null, label: {} }, 'a', 7] }, { groups: 'a' }, { panels: 5 }, { panels: [7, null, 'x'] }, { panels: [{ id: 1, src: 5, cropped: {}, prot: {}, kda: [], quant: -1e9, cl: 'x', marks: 'x', shapes: 'x', crop: 'x' }] },
+    { laneOrient: [null] }, { figW: '<img src=x onerror=window.__pwn=1>' }, { gap: 'constructor' }, { border: 5 }, { laneLabelSize: 1e9 }, { condStyle: {} }, { laneLabelOffsetX: [] }, { laneLabelDY: true }];
+  const r = await p.evaluate(async hs => { const out = [];
+    for (let i = 0; i < hs.length; i++) { try { const f = Object.assign(JSON.parse(JSON.stringify(defaultFig())), hs[i]); FIG = migrateFig(f); _bCleanFig(FIG); render();
+        const fine = FIG.laneCount >= 1 && FIG.laneCount <= 30 && Number.isInteger(FIG.laneCount) && document.querySelectorAll('.lane-cell').length === FIG.laneCount && document.getElementById('figure').getBoundingClientRect().width > 50 && !/NaN|undefined|Infinity|\[object/.test(document.getElementById('figure').innerText);
+        const cv = await renderFigureCanvas(1), svg = (await renderFigureCanvas(1, true)).toSvg(); if (!fine || !cv.width || /NaN|Infinity/.test(svg) || window.__pwn) out.push(i + ' ' + JSON.stringify(hs[i]).slice(0, 80)); } catch (e) { out.push(i + ' threw ' + e.message + ' ' + JSON.stringify(hs[i]).slice(0, 60)); } }
+    return out; }, HOSTILE);
+  r.length === 0 ? ok() : bad('BL37', 'a hostile figure broke the page: ' + r.slice(0, 3).join(' | '));
+  p.errs.length ? bad('BL37', 'errors: ' + p.errs.join(' | ')) : ok();
+  await p.context().close();
+  // a stored figure that is wrong from the start: the page still opens
+  for (const f of [{ laneCount: 'x', panels: [{ id: 'a' }], groups: 'a' }, { panels: [5], condRows: [null, 1] }, { panels: [{ id: 'a' }], laneX: true, laneWeights: 31, lanes: -5 }]) {
+    const q = await open({ ls: { blot_figure: JSON.stringify(f) } });
+    const o = await q.evaluate(() => ({ panels: FIG.panels.length, cells: document.querySelectorAll('.lane-cell').length, n: FIG.laneCount }));
+    o.panels >= 1 && o.cells === o.n && o.n >= 1 ? ok() : bad('BL37', 'a stored figure with the wrong types did not open: ' + JSON.stringify(o));
+    q.errs.length ? bad('BL37', 'errors on a stored figure: ' + q.errs.join(' | ')) : ok();
+    await q.context().close();
+  }
+  // a preset that cannot be read says so and leaves the figure
+  const r3 = await open(); await r3.evaluate(() => { savePresetsList([{ name: 'bad', fig: 5 }]); });
+  const pr = await r3.evaluate(() => { const before = JSON.stringify(FIG.laneCount); try { loadPreset(0); } catch (e) { return 'threw ' + e.message; } return { same: before === JSON.stringify(FIG.laneCount), n: FIG.laneCount }; });
+  typeof pr === 'object' && pr.same ? ok() : bad('BL37', 'a preset that cannot be read: ' + JSON.stringify(pr));
+  await r3.context().close();
+});
+
+if (run('BL38')) await guard('BL38', async () => {
+  const p = await open();
+  // bands at uneven lanes: .08, .2, .55, .9 of the width with darkness .2 .4 .6 .8
+  const g = await p.evaluate(GEL + `;(() => { var W = 600, H = 120, c = document.createElement('canvas'); c.width = W; c.height = H; var x = c.getContext('2d'); x.fillStyle = '#f4f4f4'; x.fillRect(0, 0, W, H);
+    [[.08, .2], [.2, .4], [.55, .6], [.9, .8]].forEach(function (b) { for (var yy = 0; yy < 120; yy++) { var gg = Math.exp(-((yy - 60) * (yy - 60)) / 50); x.fillStyle = 'rgba(0,0,0,' + (b[1] * gg) + ')'; x.fillRect(b[0] * W - 15, yy, 30, 1); } }); return c.toDataURL('image/png'); })()`);
+  await p.evaluate(g0 => { FIG.panels[0].src = g0; FIG.panels[0].cropped = g0; FIG.laneCount = 4; FIG.lanes = ['a', 'b', 'c', 'd']; FIG.laneX = [.08, .2, .55, .9]; FIG.laneWeights = null; save(); render(); }, g);
+  const meas = async () => p.evaluate(async () => { const im = await _dnLoad(0), G = _dnGrey(im), q = { y0: .3, y1: .7, dark: true }; return dnMeasure(G, q, FIG).map(x => x.vol); });
+  const hand = await meas(); await p.evaluate(() => { FIG.laneX = null; render(); }); const eq = await meas();
+  const want = [.2, .4, .6, .8], ratio = v => v.map(x => x / v[3]), rh = ratio(hand), re = ratio(eq);
+  Math.max(...rh.map((x, i) => Math.abs(x - want[i] / .8))) < 0.1 ? ok() : bad('BL38', 'lanes marked by hand did not measure the bands in their lanes: ' + rh.map(x => x.toFixed(2)));
+  Math.max(...re.map((x, i) => Math.abs(x - want[i] / .8))) > 0.2 ? ok() : bad('BL38', 'the control (equal columns) should have mixed the bands: ' + re.map(x => x.toFixed(2)));
+  // a letterboxed picture: Find lanes puts the lanes on the picture, not on the box
+  const lb = await p.evaluate(async g0 => { FIG.laneX = null; FIG.laneCount = 4; FIG.panels[0].customHeightRatio = .12; FIG.panels[0].scaleWithBox = false; save(); render(); lnStart(); lnFind(); await new Promise(r => setTimeout(r, 800)); const x = FIG.laneX.slice(); const img = document.querySelector('.panel-blot .blot-img'), cs = getComputedStyle(img); anTool('select'); return { x, fit: cs.objectFit, w: img.getBoundingClientRect().width, h: img.getBoundingClientRect().height }; }, g);
+  const sc = Math.min(lb.w / 600, lb.h / 120), cw = 600 * sc, x0 = (lb.w - cw) / 2 / lb.w, wf = cw / lb.w, wantx = [.08, .2, .55, .9].map(f => x0 + f * wf);
+  lb.fit === 'contain' && lb.x.length === 4 && Math.max(...lb.x.map((x, i) => Math.abs(x - wantx[i]))) < 0.02 ? ok() : bad('BL38', 'Find lanes on a letterboxed picture: ' + JSON.stringify({ x: lb.x, wantx, x0 }));
+  // presets and a portable copy keep the lanes, the text rows, the dots and the label offsets
+  await p.evaluate(() => { FIG.panels[0].customHeightRatio = null; FIG.laneX = [.08, .2, .55, .9]; FIG.condRows = [{ label: 'T', kind: 'text', txt: ['0', '2', '4', '24'], dx: [0, 5, 0, 0], dy: [0, 0, -3, 0], on: [] }]; FIG.laneLabelOffsetX = [0, 7, 0, 0]; FIG.laneLabelDY = [0, 0, -12, 0]; migrateFig(FIG); save(); render(); });
+  const snap = await p.evaluate(() => JSON.stringify([FIG.laneX, FIG.condRows[0].txt, FIG.condRows[0].dx, FIG.condRows[0].dy, FIG.laneLabelOffsetX, FIG.laneLabelDY]));
+  const back = await p.evaluate(async () => { var pf = _bFigClone(_bFigRefs(FIG)); var f2 = await _bFromPortable({ fig: pf, pv: {} }); var k = f2.fig || f2; return JSON.stringify([k.laneX, k.condRows[0].txt, k.condRows[0].dx, k.condRows[0].dy, k.laneLabelOffsetX, k.laneLabelDY]); });
+  back === snap ? ok() : bad('BL38', 'a portable copy lost the lanes, text row or offsets: ' + back + ' vs ' + snap);
+  const pre = await p.evaluate(() => { var list = [{ name: 'x', fig: JSON.parse(JSON.stringify(_bFigRefs(FIG))) }]; savePresetsList(list); FIG.laneX = null; FIG.condRows = []; loadPreset(0); return JSON.stringify([FIG.laneX, FIG.condRows[0] && FIG.condRows[0].txt, FIG.condRows[0] && FIG.condRows[0].dx, FIG.condRows[0] && FIG.condRows[0].dy, FIG.laneLabelOffsetX, FIG.laneLabelDY]); });
+  pre === snap ? ok() : bad('BL38', 'a preset lost the lanes, text row or offsets: ' + pre + ' vs ' + snap);
+  p.errs.length ? bad('BL38', 'errors: ' + p.errs.join(' | ')) : ok();
+  await p.context().close();
 });
 
 await browser.close(); srv.kill();

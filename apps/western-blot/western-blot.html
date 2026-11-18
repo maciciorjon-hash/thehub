@@ -2705,8 +2705,49 @@ function defaultFig(){
 }
 var _pid=1;
 function newPanel(prot,kda){ return {id:'p'+(_pid++)+'_'+Math.random().toString(36).slice(2,6), src:null, crop:null, cropped:null, prot:prot||'', kda:kda||'', gapAfter:null, customHeightRatio:null, scaleWithBox:true, kdaOffsetY:0, protOffsetY:0, shapes:[]}; }
+// A figure arrives from storage, a preset, a portable file, the cloud, Labbook: whatever it holds, it is made into a figure of the right
+// types first (a lane count of "x", a group that is a string, a panel that is a number used to stop the page from starting at all).
+function _fnum(v,d,lo,hi){ if(typeof v==='string'&&v.trim()!=='') v=+v; if(typeof v!=='number'||!isFinite(v)) v=d; return Math.max(lo,Math.min(hi,v)); }
+function _fstr(v){ return typeof v==='string'?v:(typeof v==='number'&&isFinite(v)?String(v):''); }
+function _fobj(v){ return !!v&&typeof v==='object'&&!Array.isArray(v); }
+function figSane(fig){
+  if(!_fobj(fig)) return null;
+  fig.panels=(Array.isArray(fig.panels)?fig.panels:[]).filter(_fobj);
+  if(!fig.panels.length) fig.panels=[newPanel('','')];
+  fig.panels.forEach(function(p){
+    if(typeof p.id!=='string'||!p.id) p.id='p'+(_pid++)+'_'+Math.random().toString(36).slice(2,6);
+    ['src','cropped'].forEach(function(k){ if(typeof p[k]!=='string'||!p[k]) p[k]=null; });
+    p.prot=_fstr(p.prot); p.kda=_fstr(p.kda);
+    if(p.gapAfter!=null) p.gapAfter=_fnum(p.gapAfter,10,0,80);
+    if(p.customHeightRatio!=null) p.customHeightRatio=_fnum(p.customHeightRatio,0.4,0.05,4);
+    p.kdaOffsetY=_fnum(p.kdaOffsetY,0,-2000,2000); p.protOffsetY=_fnum(p.protOffsetY,0,-2000,2000);
+    if(p.scaleWithBox!==undefined) p.scaleWithBox=p.scaleWithBox!==false;
+    if(p.crop!=null&&!(_fobj(p.crop)&&['x','y','w','h'].every(function(k){ return typeof p.crop[k]==='number'&&isFinite(p.crop[k]); })&&p.crop.w>0&&p.crop.h>0)) p.crop=null;
+    if(!Array.isArray(p.marks)) p.marks=[];
+    if(p.cl!=null&&!_fobj(p.cl)) p.cl=null;
+    if(p.quant!=null&&!_fobj(p.quant)) p.quant=null;
+    if(p.ladder!=null&&typeof p.ladder!=='string') p.ladder=null;
+    if(!Array.isArray(p.shapes)) p.shapes=[];
+  });
+  fig.lanes=(Array.isArray(fig.lanes)?fig.lanes:[]).map(_fstr);
+  var n=Math.round(+fig.laneCount); fig.laneCount=isFinite(n)&&fig.laneCount!=null&&fig.laneCount!==''&&fig.laneCount!==false&&fig.laneCount!==true&&!Array.isArray(fig.laneCount)?Math.max(1,Math.min(30,n)):Math.max(1,Math.min(30,fig.lanes.length||12));
+  while(fig.lanes.length<fig.laneCount) fig.lanes.push('');
+  if(['vert','ang','horiz'].indexOf(fig.laneOrient)<0) fig.laneOrient='vert';
+  fig.laneLabelPos=fig.laneLabelPos==='bottom'?'bottom':'top';
+  fig.condStyle=(fig.condStyle==='plusminus'||fig.condStyle==='dot')?fig.condStyle:'circle';
+  fig.condPos=fig.condPos==='bottom'?'bottom':'top';
+  fig.figW=_fnum(fig.figW,760,300,1400); fig.gap=_fnum(fig.gap,10,0,80); fig.laneLabelSize=_fnum(fig.laneLabelSize,16,2,72);
+  fig.laneLabelZoneH=_fnum(fig.laneLabelZoneH,90,0,400);
+  if(!_fobj(fig.border)) fig.border={on:true,px:1.6}; fig.border.on=fig.border.on!==false; fig.border.px=_fnum(fig.border.px,1.6,0,8);
+  fig.laneWeights=(Array.isArray(fig.laneWeights)&&fig.laneWeights.length===fig.laneCount&&fig.laneWeights.every(function(w){ return typeof w==='number'&&isFinite(w)&&w>0; }))?fig.laneWeights:null;
+  fig.groups=(Array.isArray(fig.groups)?fig.groups:[]).filter(_fobj).map(function(g){
+    var a=Math.round(_fnum(g.from,1,1,fig.laneCount)), b=Math.round(_fnum(g.to,fig.laneCount,1,fig.laneCount)); return {from:Math.min(a,b),to:Math.max(a,b),label:_fstr(g.label)}; });
+  fig.condRows=(Array.isArray(fig.condRows)?fig.condRows:[]).filter(_fobj).map(function(cr){ cr.label=_fstr(cr.label); cr.on=(Array.isArray(cr.on)?cr.on:[]).map(function(v){ return !!v; }); return cr; });
+  if(!_fobj(fig.pv)&&fig.pv!==undefined) delete fig.pv;
+  return fig;
+}
 function migrateFig(fig){
-  if(!fig) return defaultFig();
+  fig=figSane(fig); if(!fig) return defaultFig();
   if(fig.laneLabelPos==null) fig.laneLabelPos='top';
   if(!fig.border) fig.border={on:true,px:1.6};
   if(fig.border.on==null) fig.border.on=true;
@@ -2814,6 +2855,7 @@ function applyGeometry(){
   for(var pri=0;pri<pr.length;pri++){ var pp=f.panels[pri]; if(pp) pr[pri].style.transform='translateY('+(pp.protOffsetY||0)+'px)'; }
   fitLaneZone();
 }
+try{ if(document.fonts&&document.fonts.ready) document.fonts.ready.then(function(){ fitGutter(); fitLaneZone(); }); if(document.fonts&&document.fonts.addEventListener) document.fonts.addEventListener('loadingdone',function(){ fitGutter(); fitLaneZone(); }); }catch(e){}
 function condXf(dx,dy){ return 'translate(calc(-50% + '+(+dx||0)+'px),calc(-50% + '+(+dy||0)+'px))'; }
 function _hasText(l){ return !!(l&&(l.innerText||l.textContent||'').trim()); }
 
@@ -2822,7 +2864,7 @@ function _hasText(l){ return !!(l&&(l.innerText||l.textContent||'').trim()); }
    (a horizontal "DMSO" next to "1000 nM", an angled label on a tight lane) the one on the right is lifted away from
    the one it would hit, the least that clears it (down, for labels below the blot); a label the person moved by hand
    is left where it is and the others make way for it. Nothing is stored: it follows the geometry. ── */
-function _quad(cx,cy,w,h,ang){ var c=Math.cos(ang), s=Math.sin(ang), hw=w/2+2, hh=h/2+2;
+function _quad(cx,cy,w,h,ang){ var c=Math.cos(ang), s=Math.sin(ang), hw=w/2+4, hh=h/2+4;
   return [[-hw,-hh],[hw,-hh],[hw,hh],[-hw,hh]].map(function(p){ return [cx+p[0]*c-p[1]*s, cy+p[0]*s+p[1]*c]; }); }
 function _quadHit(a,b){
   var P=[a,b];
@@ -3225,9 +3267,9 @@ function setLaneCount(n){ n=Math.max(1,Math.min(30,parseInt(n)||1));
   var lx=laneXArr(FIG);
   if(lx){ var old=lx.length;
     if(n<old) FIG.laneX=lx.slice(0,n);
-    else if(n>old){ var last=lx[old-1], more=n-old, pitch=old>1?(last-lx[0])/(old-1):0.08, out=lx.slice();
-      if(last+pitch*more>0.985){ pitch=Math.max(0.004,(0.985-last)/more); if(last>=0.985) last=Math.max(0,0.985-pitch*more); }
-      for(var k=1;k<=more;k++) out.push(Math.min(1,last+pitch*k)); FIG.laneX=out; } }
+    else if(n>old){ var last=lx[old-1], more=n-old, pitch=old>1?(last-lx[0])/(old-1):0.08, space=0.985-last;
+      if(space>=more*Math.min(pitch,0.03)){ var st=Math.min(pitch,space/more), out=lx.slice(); for(var k=1;k<=more;k++) out.push(Math.min(1,last+st*k)); FIG.laneX=out; }
+      else { var a0=Math.min(lx[0],0.02); FIG.laneX=[]; for(var q=0;q<n;q++) FIG.laneX.push(+(a0+(0.985-a0)*q/(n-1)).toFixed(4)); } } }   // no room to the right: the lanes are spread over the picture instead
   FIG.laneCount=n; while(FIG.lanes.length<n)FIG.lanes.push(''); FIG.groups.forEach(function(g){g.from=Math.min(g.from,n);g.to=Math.min(g.to,n);});
   FIG.condRows.forEach(function(cr){ if(!Array.isArray(cr.on))cr.on=[]; while(cr.on.length<n)cr.on.push(false); cr.txt=_bResize(Array.isArray(cr.txt)?cr.txt:[],n,''); cr.dx=_bResize(Array.isArray(cr.dx)?cr.dx:[],n,0); cr.dy=_bResize(Array.isArray(cr.dy)?cr.dy:[],n,0); });
   el('tb-lanes').value=n; save(); render(); }
@@ -3900,7 +3942,7 @@ function saveCurrentAsPreset(){
 }
 function loadPreset(i){
   var list=getPresets(), pr=list[i]; if(!pr) return;
-  FIG=migrateFig(JSON.parse(JSON.stringify(pr.fig)));
+  try{ FIG=migrateFig(JSON.parse(JSON.stringify(pr.fig))); _bCleanFig(FIG); }catch(e){ toast('This preset could not be opened'); return; }
   save(); render(); closePresetsModal(); toast('Preset loaded');
 }
 function deletePreset(i){ var list=getPresets(); list.splice(i,1); savePresetsList(list); renderPresetsList(); }
@@ -4024,8 +4066,8 @@ function save(){
 function load(){
   var raw=null; try{ raw=localStorage.getItem(STORE_KEY); }catch(e){}
   var s=null; try{ s=JSON.parse(raw); }catch(e){}
-  FIG=(s&&s.panels)?migrateFig(s):defaultFig();
-  _bCleanFig(FIG);
+  try{ FIG=(s&&s.panels)?migrateFig(s):defaultFig(); _bCleanFig(FIG); }
+  catch(e){ FIG=defaultFig(); _bWarnOnce('figload','The saved figure could not be read, so Blot opened a blank one. The saved copy is still in History.'); }
   // A figure saved before this version kept its pictures inline: put the raw text aside first.
   if(raw&&raw.indexOf('"data:image')>=0) _bIdb('kv','readwrite',function(st){ st.put(raw,'figure-before-idb'); });
 }
@@ -5223,29 +5265,31 @@ function lnEqual(){
 function lnPeaks(G,dark,y0,y1){
   var w=G.w, prof=new Float32Array(w), rows=Math.max(1,y1-y0), x, i, d;
   for(x=0;x<w;x++){ var t=0; for(var y=y0;y<y1;y++){ var v=G.g[y*G.w+x]; t+=dark?255-v:v; } prof[x]=t/rows; }
-  var mean=0; for(x=0;x<w;x++) mean+=prof[x]; mean/=w;
-  // the lane pitch is where the profile repeats itself: the first strong peak of its autocorrelation
-  var lo=Math.max(3,Math.ceil(w*0.015)), hi=Math.min(w-2,Math.floor(w*0.35)), ac=[], ac0=0;
-  for(x=0;x<w;x++) ac0+=(prof[x]-mean)*(prof[x]-mean); ac0/=w;
-  for(var lag=lo-1;lag<=hi+1;lag++){ var a=0; for(x=0;x+lag<w;x++) a+=(prof[x]-mean)*(prof[x+lag]-mean); ac[lag]=a/(w-lag); }
-  var pitch=0; for(lag=lo;lag<=hi;lag++){ if(ac[lag]>ac[lag-1]&&ac[lag]>=ac[lag+1]&&ac[lag]>0.2*ac0){ pitch=lag; break; } }
-  if(!pitch) return [];
-  var k=Math.max(1,Math.round(pitch*0.12)), sm=new Float32Array(w);
+  var k=Math.max(1,Math.round(w*0.006)), sm=new Float32Array(w);
   for(x=0;x<w;x++){ var s1=0,c=0; for(d=-k;d<=k;d++){ var xx=x+d; if(xx>=0&&xx<w){ s1+=prof[xx]; c++; } } sm[x]=s1/c; }
-  var sorted=Array.prototype.slice.call(sm).sort(function(p,q){ return p-q; }), base=sorted[Math.floor(w*0.2)], top=sorted[w-1], thr=base+(top-base)*0.14, span=Math.max(2,Math.round(pitch*0.3)), pk=[];
+  var sorted=Array.prototype.slice.call(sm).sort(function(p,q){ return p-q; }), base=sorted[Math.floor(w*0.2)], top=sorted[w-1], thr=base+(top-base)*0.12, span=Math.max(2,Math.round(w*0.008)), pk=[];
+  if(!(top-base>1e-6)) return [];
   for(x=0;x<w;x++){ if(sm[x]<thr) continue; var isMax=true; for(d=-span;d<=span;d++){ var q=x+d; if(q>=0&&q<w&&(sm[q]>sm[x]||(sm[q]===sm[x]&&q<x))){ isMax=false; break; } } if(isMax) pk.push(x); }
-  if(pk.length<2) return [];
+  if(!pk.length) return [];
+  // two maxima with no real valley between them (the valley is above 80% of the lower one, over the baseline) are one band
+  var groups=[[pk[0]]];
+  for(i=1;i<pk.length;i++){ var g=groups[groups.length-1], a0=g[g.length-1], b0=pk[i], vmin=1e9; for(x=a0;x<=b0;x++) if(sm[x]<vmin) vmin=sm[x];
+    var low=Math.min(sm[a0],sm[b0])-base; if(vmin-base>0.8*low) g.push(b0); else groups.push([b0]); }
   // the middle of a band, not the first column of its flat top: the centre of mass of the stretch above half its height
-  pk=pk.map(function(p){ var h=base+(sm[p]-base)/2, a=p, b=p; while(a>0&&sm[a-1]>h) a--; while(b<w-1&&sm[b+1]>h) b++;
-    var sw=0,sx=0; for(var q=a;q<=b;q++){ var wt=sm[q]-h; sw+=wt; sx+=wt*q; } return sw>0?sx/sw:(a+b)/2; });
-  var cl=[[pk[0]]];   // peaks closer than half a lane are one lane
-  for(i=1;i<pk.length;i++){ var last=cl[cl.length-1]; if(pk[i]-last[last.length-1]<pitch*0.5) last.push(pk[i]); else cl.push([pk[i]]); }
-  var mg=cl.map(function(g){ return g.reduce(function(a,b){ return a+b; },0)/g.length; });
+  var mg=groups.map(function(g){ var p=g[0]; g.forEach(function(q){ if(sm[q]>sm[p]) p=q; });
+    var h=base+(sm[p]-base)/2, a=g[0], b=g[g.length-1]; while(a>0&&sm[a-1]>h) a--; while(b<w-1&&sm[b+1]>h) b++;
+    var sw=0,sx=0; for(var q2=a;q2<=b;q2++){ var wt=sm[q2]-h; if(wt>0){ sw+=wt; sx+=wt*q2; } } return sw>0?sx/sw:(a+b)/2; });
   if(mg.length<2) return [];
-  // a gap of more than one and a half lane is filled at the pitch (a faint lane in a dilution series has no band to find)
-  var out=[mg[0]];
+  // a gap of more than one and a half the usual lane is filled at that pitch (a faint lane in a dilution series has no band to find)
+  var gaps=[]; for(i=1;i<mg.length;i++) gaps.push(mg[i]-mg[i-1]);
+  var pitch=_dnMedian(gaps), out=[mg[0]];
   for(i=1;i<mg.length;i++){ var gap=mg[i]-mg[i-1]; if(gap>=pitch*1.6){ var m=Math.round(gap/pitch)-1; for(var j=1;j<=m;j++) out.push(mg[i-1]+gap*j/(m+1)); } out.push(mg[i]); }
   return out.map(function(p){ return +((p+0.5)/w).toFixed(4); });
+}
+// Where the picture itself stands in the panel's box, as fractions of the box's width: all of it, unless the membrane keeps its own scale in a box of another shape.
+function lnPicSpan(p,G){
+  if(p.customHeightRatio==null||p.scaleWithBox!==false||!G||!G.w||!G.h) return {x0:0,w:1};
+  var bw=FIG.figW, bh=p.customHeightRatio*FIG.figW, sc=Math.min(bw/G.w,bh/G.h), cw=G.w*sc; return {x0:(bw-cw)/2/bw,w:cw/bw};
 }
 function lnFind(){
   var p=FIG.panels[LN.pi]; if(!p||!_bIsData(p.cropped)){ toast('Add a blot picture first'); return; }
@@ -5253,6 +5297,7 @@ function lnFind(){
     var G=_dnGrey(im), dark=p.quant?p.quant.dark!==false:_dnDarkAuto(G), r=p.quant?{y0:p.quant.y0,y1:p.quant.y1}:_dnAuto(G,dark);
     var pk=lnPeaks(G,dark,Math.max(0,Math.floor(r.y0*G.h)),Math.min(G.h,Math.ceil(r.y1*G.h)));
     if(pk.length<2){ toast('No lanes found in this picture. Click the blot to place them.'); return; }
+    var sp=lnPicSpan(p,G); pk=pk.map(function(f){ return +Math.max(0,Math.min(1,sp.x0+f*sp.w)).toFixed(4); });
     var n=Math.min(30,pk.length); pk=pk.slice(0,n);
     function apply(){ if(n!==FIG.laneCount) setLaneCount(n); FIG.laneX=pk; _lnChanged(); render(); anFormat(); toast(n+' lanes found · drag a handle if one is off'); }
     if(n===FIG.laneCount){ apply(); return; }
