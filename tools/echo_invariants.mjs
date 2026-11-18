@@ -54,6 +54,10 @@
 //   E23 the results table      A confidence limit is never printed as a long run of digits (three significant figures, a power of ten outside
 //                              0.01–99,999, ∞ for an unbounded limit), and column widths follow the content: Flag and the numbers take what
 //                              they need, Reason is the widest and wraps. The app is called Echo Dose Response in the setup header.
+//   E84 the planner is a        The Gradient Planner reads like the sheet it replaced: Jon's hand-made example (30 µL, 0.3 %, 1 mM Source, 8 µM
+//       sheet                    intermediate, DF 3.5) gives its exact numbers; a cell is red exactly when the 2.5 nL-snapped transfer is under one drop
+//                                or over the max transfer; nothing typed in a shaded box is ever rewritten by the planner (only ✦ Suggest does, and
+//                                Undo gives the typed ones back); a click on a cell moves the point to that stock and a click on a red one does nothing.
 //   E82 edge effect          Optional (Setup › Analysis). The plate's own vehicle wells, inside and on each side, say how much the edge reads off (EdgeKit): corrected, the
 //                            curves are those of the undistorted plates (with the Smart DMSO control too, without counting the edge twice); a plate with no edge effect
 //                            or a layout that cannot tell edge from vehicle level is left exactly as it was and the Console says why; Leave out the outer ring does not
@@ -2368,11 +2372,12 @@ if (run('E60')) await guard('E60', async () => {
     set('eg-inter-vol', c.pre ?? 30); set('eg-bf-ncompounds', 10); set('eg-bf-srcType', c.srcType || 'ldv'); set('eg-bf-srcDead', c.srcDead ?? 2.5);
     set('eg-bf-plateType', c.plate || 'pp'); set('eg-bf-dead', c.dead ?? (c.plate === 'ldv' ? 2.5 : 20));
     window._egExplicitPlanM = null; window._egS.length = 1; window._egS[0] = { label: 'Source', val: 10, unit: '1e-3' };
-    const f = document.getElementById('eg-force-on'); f.checked = c.force != null; document.getElementById('eg-force-n').value = c.force ?? 1; _egForceChg();
+    document.getElementById('eg-bf-card').open = true;   // Plate prep is closed until asked for, and a closed <details> has no innerText
+    document.getElementById('eg-sug-n').value = c.force != null ? String(c.force) : '';
     window._egSuggest(false); await new Promise(r => setTimeout(r, 450));
     const rows = [...document.querySelectorAll('#eg-tbody tr')].map(t => t.innerText);
     return { n: window._egS.length - 1, bad: rows.filter(t => /✗|% off/.test(t)).length, out: document.getElementById('eg-bf-out').innerText.replace(/\s+/g, ' '),
-             lbl: document.getElementById('eg-auto-lbl').textContent, note: document.getElementById('eg-warn-box').innerText.replace(/\s+/g, ' ') };
+             lbl: document.getElementById('eg-sug-note').innerText.replace(/\s+/g, ' '), note: document.getElementById('eg-sug-note').innerText.replace(/\s+/g, ' ') };
   }, c);
   const A = { vol: 20, dmso: 1, top: 10, unit: '1e-6', pts: 10, df: 3 };          // needs two intermediates, no fewer reaches
   // the intermediate plate is 384 PP / 20 µL dead by default, whatever the Source plate is
@@ -2396,7 +2401,7 @@ if (run('E60')) await guard('E60', async () => {
   r = await plan({ vol: 20, dmso: 1, top: 10, unit: '1e-6', pts: 10, df: 2 });
   check('E60', 'up to 10% deviation is taken before a second intermediate is added', r.n === 1 && r.bad === 0 && /within 10%/.test(r.note), { n: r.n, bad: r.bad, note: r.note.slice(0, 200) });
   r = await plan(A);
-  check('E60', 'the 19 683-fold series takes two, not more', r.n === 2 && r.bad === 0 && /intermediates automatic/.test(r.lbl), { n: r.n, bad: r.bad, lbl: r.lbl });
+  check('E60', 'the 19 683-fold series takes two, not more', r.n === 2 && r.bad === 0 && /Suggested/.test(r.lbl) && !/Forced/.test(r.lbl), { n: r.n, bad: r.bad, lbl: r.lbl });
   r = await plan({ vol: 20, dmso: 0.2, top: 1000, unit: '1e-9', pts: 10, df: 3 });
   const hb = r.n;
   const hb6 = await plan({ vol: 20, dmso: 0.2, top: 1000, unit: '1e-9', pts: 10, df: 3, force: 6 });
@@ -2404,14 +2409,14 @@ if (run('E60')) await guard('E60', async () => {
   // forced
   for (const k of [0, 1, 2, 4]) {
     r = await plan({ ...A, force: k });
-    check('E60', `forced to ${k}: exactly ${k} intermediate${k === 1 ? '' : 's'}, the label says so`, r.n === k && new RegExp('forced to ' + k).test(r.lbl), { n: r.n, lbl: r.lbl });
+    check('E60', `forced to ${k}: exactly ${k} intermediate${k === 1 ? '' : 's'}, the label says so`, r.n === k && new RegExp('Forced to ' + k).test(r.lbl), { n: r.n, lbl: r.lbl });
   }
   r = await plan({ ...A, force: 1 });
   check('E60', 'forced below what reaches: the best that number can, with the points it misses marked and the note saying so', r.bad > 0 && /Forced to 1 intermediate/.test(r.note) && /best 1 intermediate can do/.test(r.note), r.note.slice(0, 300));
   r = await plan({ ...A, force: 4 });
   check('E60', 'forced above what is needed: exactly that many, all within tolerance', r.n === 4 && r.bad === 0, { n: r.n, bad: r.bad });
   r = await plan(A);
-  check('E60', 'unticking Force hands the number back to the planner', r.n === 2 && !/forced/.test(r.lbl), { n: r.n, lbl: r.lbl });
+  check('E60', '"Fewest that work" hands the number back to the planner', r.n === 2 && !/Forced/.test(r.lbl), { n: r.n, lbl: r.lbl });
 });
 
 if (run('E61')) await guard('E61', async () => {
@@ -2725,11 +2730,11 @@ if (run('E72')) await guard('E72', async () => {
       set('eg-vol', vol); set('eg-dmso', dmso); await wait(300);
       const exact = Math.round(vol * 1000 * dmso) / 100 / 2.5; if (Math.abs(exact - Math.round(exact)) > 1e-9) continue;
       n++;
-      const t = document.getElementById('eg-h-assay').innerText; const m = /\((\d+) drops?\)/.exec(t);
+      const t = document.getElementById('eg-maxT').innerText; const m = /\((\d+) drops?\)/.exec(t);
       // the top point asks for the whole budget: it must be dispensed, as the whole budget
       set('eg-top-unit', '1e-6'); set('eg-top-val', (vol * 1000 * dmso / 100) * 10 / vol); await wait(500);
-      const row = document.querySelector('#eg-tbody tr'); const tin = row && row.querySelector('.eg-tin');
-      if (!m || +m[1] !== Math.round(exact) || !tin || Math.abs(+tin.value - vol * 1000 * dmso / 100) > 1e-6) bad.push({ vol, dmso, drops: m && m[1], want: Math.round(exact), top: tin && tin.value });
+      const row = document.querySelector('#eg-tbody tr'); const tin = row && row.querySelector('td.eg-pick'); const top = tin && parseFloat(tin.innerText.replace(/,/g, ''));
+      if (!m || +m[1] !== Math.round(exact) || !tin || Math.abs(top - vol * 1000 * dmso / 100) > 1e-6) bad.push({ vol, dmso, drops: m && m[1], want: Math.round(exact), top });
     }
     return { bad, n };
   });
@@ -2911,7 +2916,7 @@ if (run('E78')) await guard('E78', async () => {
   await q.evaluate(() => { loadTestData(); }); await q.waitForTimeout(800);
   const PROBE = () => {
     const out = { btn: [], inp: [], glyph: [] }; const modal = document.getElementById('setup-modal'); const mopen = modal && !modal.classList.contains('hidden') && modal.offsetParent !== null; const root = mopen ? modal : document.body;
-    const SKIP_B = /\b(tab|tabgrp|tabmenu-item|outer-tab|setup-stab|plate-view|hx-ic|hx-tg|na-btn|plate-png|rrm|sx-link|setup-reopen-btn|setup-hclose|opts-btn|eg-x|cv-tbl-x|cv-mode-single|cv-mode-compare|ck-[\w-]+|tk-[\w-]+|as-[\w-]+|eg-sel|eg-tin|pinfo|dz-[\w-]+|ctx[\w-]*|cv-dl-item|rv-fix)\b/;
+    const SKIP_B = /\b(tab|tabgrp|tabmenu-item|outer-tab|setup-stab|plate-view|hx-ic|hx-tg|na-btn|plate-png|rrm|sx-link|setup-reopen-btn|setup-hclose|opts-btn|eg-x|cv-tbl-x|cv-mode-single|cv-mode-compare|ck-[\w-]+|tk-[\w-]+|as-[\w-]+|eg-sel|eg-tin|eg-pk|eg-link|pinfo|dz-[\w-]+|ctx[\w-]*|cv-dl-item|rv-fix)\b/;
     for (const e of root.querySelectorAll('button')) {
       const r = e.getBoundingClientRect(), cs = getComputedStyle(e); if (r.width < 2 || r.height < 2 || cs.visibility === 'hidden' || cs.display === 'none' || e.disabled === undefined) continue;
       if (SKIP_B.test(e.className + ' ' + e.id) || e.closest('#dep-stack,.ck-root,.as-panel,[class*="tk-"]') || (e.textContent || '').trim().length < 3) continue;
@@ -2947,14 +2952,14 @@ if (run('E79')) await guard('E79', async () => {
     set('eg-inter-vol', 30);
     window._egS.length = 1; window._egS[0].val = 10; window._egS[0].unit = '1e-3'; _egAddStock(); _egSVal(1, v); _egSUnit(1, '1e-6');
     await new Promise(r => setTimeout(r, 700));
-    const rows = [...document.querySelectorAll('#eg-bf-out table.eg-mini')][0]; const tr = rows && rows.querySelectorAll('tr')[1];
-    return { cells: tr ? [...tr.querySelectorAll('td')].map(t => t.innerText.trim()) : null, text: document.getElementById('eg-bf-out').innerText };
+    const cell = document.querySelectorAll('#eg-stocks-container .eg-srow')[1].querySelector('.eg-st-prep');
+    return { text: cell.innerText.replace(/\s+/g, ' ').trim(), warn: cell.classList.contains('warn'), tip: cell.title };
   }, val);
   let r = await out(1);
-  check('E79', '1 uM: the table says the 2.5 nL step makes 833 nM (-17 %)', r.cells && /833 nM/.test(r.cells[3]) && /-17%/.test(r.cells[3]), r.cells);
-  check('E79', '1 uM: a warning says the intermediate is off the listed concentration', /comes out -17% from the listed concentration/.test(r.text), r.text.slice(0, 300));
+  check('E79', '1 uM: the stock row says the 2.5 nL step makes 833 nM (-17 %)', /833 nM/.test(r.text) && /−17%/.test(r.text), r.text);
+  check('E79', '1 uM: the cell is amber and its tooltip says the intermediate is off the typed concentration', r.warn && /−17% from the concentration typed/.test(r.tip), r);
   r = await out(10);
-  check('E79', '10 uM: made as listed (30 nL, 9.99 uM), no warning', r.cells && /^9\.99 µM$/.test(r.cells[3]) && !/from the listed concentration/.test(r.text), r.cells);
+  check('E79', '10 uM: made as listed (30 nL), no amber, nothing to explain', /^30\.00$/.test(r.text) && !r.warn, r);
   await c.close();
 });
 
@@ -3168,6 +3173,121 @@ if (run('E83')) await guard('E83', async () => {
   check('E83', 'a stranger beside a misplaced reader file is named too, and a mixed drop loads what belongs', R.strangerMix.echo.length === 1 && R.strangerMix.note && /E5XX-0001\.xlsx/.test(R.strangerMix.note.text) && /photo\.png/.test(R.strangerMix.note.text), R.strangerMix);
   check('E83', 'the notice takes focus on its button and sits inside the window', R.focus && R.inView, { focus: R.focus, inView: R.inView });
   check('E83', 'no page errors', !errs.length, errs);
+  await c.close();
+});
+
+if (run('E84')) await guard('E84', async () => {
+  const c = await browser.newContext({ viewport: { width: 1440, height: 900 } }); const q = await c.newPage(); const errs = [];
+  q.on('pageerror', e => errs.push(String(e)));
+  await q.goto('file://' + FILE); await q.waitForTimeout(1200);
+  await q.evaluate(() => { [...document.querySelectorAll('.outer-tab')].find(b => /Gradient/.test(b.textContent)).click(); }); await q.waitForTimeout(600);
+  const setup = (cfg) => q.evaluate(async cfg => {
+    const set = (id, x) => { const e = document.getElementById(id); e.value = x; e.dispatchEvent(new Event('input', { bubbles: true })); };
+    set('eg-vol', cfg.vol); set('eg-dmso', cfg.dmso); set('eg-top-val', cfg.top); document.getElementById('eg-top-unit').value = '1e-9';
+    set('eg-pts', cfg.pts); set('eg-df', cfg.df); set('eg-inter-vol', cfg.pre); window._egExplicitPlanM = null;
+    window._egS.length = 1; window._egS[0].val = cfg.src[0]; window._egS[0].unit = cfg.src[1];
+    for (const [v, u] of cfg.inters) { _egAddStock(); const i = window._egS.length - 1; _egSVal(i, v); _egSUnit(i, u); }
+    await new Promise(r => setTimeout(r, 600));
+  }, cfg);
+  const grid = () => q.evaluate(() => {
+    const n = window._egS.length;
+    return [...document.querySelectorAll('#eg-tbody tr')].map(tr => { const td = [...tr.children];
+      const cell = x => ({ t: parseFloat(x.innerText.replace(/,/g, '')), bad: x.classList.contains('eg-bad'), pick: x.classList.contains('eg-pick') });
+      return { plan: td[1].innerText, need: td.slice(2, 2 + n).map(cell), adj: td.slice(2 + n, 2 + 2 * n).map(cell), status: td[td.length - 1].innerText.trim() }; });
+  });
+  // 1. the hand-made sheet, number for number
+  await setup({ vol: 30, dmso: 0.3, top: 1000, pts: 7, df: 3.5, pre: 30, src: [1, '1e-3'], inters: [[8, '1e-6']] });
+  const g = await grid();
+  const maxT = await q.evaluate(() => document.getElementById('eg-maxT').innerText);
+  check('E84', "Jon's sheet: the max transfer is 90 nL", /^90 nL/.test(maxT), maxT);
+  const sheetNeed = [[30, 3750], [8.57, 1071.43], [2.45, 306.12], [0.70, 87.46], [0.20, 24.99], [0.06, 7.14], [0.02, 2.04]];
+  const sheetAdj = [[30, 3750], [7.5, 1072.5], [2.5, 305], [0, 87.5], [0, 25], [0, 7.5], [0, 2.5]];
+  check('E84', "Jon's sheet: every needed volume is the sheet's", g.length === 7 && g.every((r, i) => r.need.every((x, k) => Math.abs(x.t - sheetNeed[i][k]) < 0.006)), g.map(r => r.need.map(x => x.t)));
+  check('E84', "Jon's sheet: every adjusted volume is the sheet's (rows 1-2 and 4-7 exactly; row 3 is one drop here, the sheet says 0)", g.every((r, i) => i === 2 || r.adj.every((x, k) => Math.abs(x.t - sheetAdj[i][k]) < 1e-9)), g.map(r => r.adj.map(x => x.t)));
+  const redWant = [[0, 1], [0, 1], [0, 1], [1, 0], [1, 0], [1, 0], [1, 0]];   // [source red, inter red]; row 3 Source is 2.45 -> 2.5, possible
+  check('E84', "Jon's sheet: red where the sheet is red (Inter for the first three points, Source from the fourth)", g.every((r, i) => r.adj.every((x, k) => x.bad === !!redWant[i][k])), g.map(r => r.adj.map(x => x.bad)));
+  // 2. red is exactly "snapped transfer outside one drop … max transfer", over a grid of plans (the rule written again, independently)
+  const wrong = await q.evaluate(async () => {
+    const set = (id, x) => { const e = document.getElementById(id); e.value = x; e.dispatchEvent(new Event('input', { bubbles: true })); };
+    const bad = []; let n = 0;
+    for (const [vol, dmso, top, df, src] of [[20, 0.2, 1000, 3, 10], [30, 0.5, 5000, 2, 10], [12.5, 1, 300, 4, 1], [25, 0.3, 40, 5, 10], [7.5, 4.1, 100, 3, 10]]) {
+      set('eg-vol', vol); set('eg-dmso', dmso); set('eg-top-val', top); set('eg-pts', 8); set('eg-df', df);
+      window._egS.length = 1; window._egS[0].val = src; window._egS[0].unit = '1e-3'; _egAddStock(); _egSVal(1, src * 40); _egSUnit(1, '1e-6');
+      await new Promise(r => setTimeout(r, 450));
+      const maxT = Math.round(vol * 1000 * dmso / 100 * 1e6) / 1e6, nS = window._egS.length;
+      [...document.querySelectorAll('#eg-tbody tr')].forEach((tr, p) => {
+        const td = [...tr.children]; const P = top * 1e-9 / Math.pow(df, p);
+        for (let k = 0; k < nS; k++) {
+          const cM = window._egS[k].val * parseFloat(window._egS[k].unit); const adj = Math.round(vol * P * 1000 / cM / 2.5) * 2.5; const want = !(adj >= 2.5 && adj <= maxT);
+          const cell = td[2 + nS + k]; n++;
+          if (cell.classList.contains('eg-bad') !== want) bad.push({ vol, dmso, p, k, adj, maxT, shown: cell.innerText });
+        }
+      });
+    }
+    return { bad, n };
+  });
+  check('E84', 'a cell is red exactly when its snapped transfer is under one drop or over the max transfer', wrong.n > 60 && wrong.bad.length === 0, wrong);
+  // 3. what is typed is not rewritten
+  await setup({ vol: 30, dmso: 0.3, top: 1000, pts: 7, df: 3.5, pre: 30, src: [1, '1e-3'], inters: [[8, '1e-6']] });
+  const kept = await q.evaluate(async () => {
+    const set = (id, x) => { const e = document.getElementById(id); e.value = x; e.dispatchEvent(new Event('input', { bubbles: true })); };
+    const snap = () => JSON.stringify(window._egS);
+    const before = snap();
+    set('eg-vol', 20); await new Promise(r => setTimeout(r, 500)); set('eg-df', 2); await new Promise(r => setTimeout(r, 500)); set('eg-pts', 12); await new Promise(r => setTimeout(r, 500));
+    set('eg-top-val', 50); await new Promise(r => setTimeout(r, 500));
+    return { before, after: snap() };
+  });
+  check('E84', 'changing the assay or the series never rewrites the intermediates you typed', kept.before === kept.after, kept);
+  // 4. Suggest fills them, Undo gives yours back to the digit, and a plan Suggest can solve has no red point
+  const sug = await q.evaluate(async () => {
+    const set = (id, x) => { const e = document.getElementById(id); e.value = x; e.dispatchEvent(new Event('input', { bubbles: true })); };
+    set('eg-vol', 30); set('eg-df', 3.5); set('eg-pts', 7); set('eg-top-val', 1000); await new Promise(r => setTimeout(r, 400));
+    const typed = JSON.stringify(window._egS);
+    window._egSuggest(); await new Promise(r => setTimeout(r, 500));
+    const after = JSON.stringify(window._egS), note = document.getElementById('eg-sug-note').innerText;
+    const redPts = [...document.querySelectorAll('#eg-tbody tr')].filter(tr => /✗/.test(tr.lastElementChild.innerText)).length;
+    const offPts = [...document.querySelectorAll('#eg-tbody tr')].filter(tr => /% off/.test(tr.lastElementChild.innerText)).length;
+    const undo = [...document.querySelectorAll('#eg-sug-note .eg-link')].map(b => b.textContent);
+    document.querySelector('#eg-sug-note .eg-link').click(); await new Promise(r => setTimeout(r, 300));
+    return { typed, after, note, redPts, offPts, undo, back: JSON.stringify(window._egS), noteAfter: document.getElementById('eg-sug-note').innerText };
+  });
+  check('E84', 'Suggest replaces the intermediates with a set that puts every point within 10 %', sug.after !== sug.typed && sug.redPts === 0 && sug.offPts === 0 && /All 7 points within 10%/.test(sug.note), sug);
+  check('E84', 'Suggest offers Undo, and Undo gives the typed intermediates back exactly', sug.undo.join() === 'Undo' && sug.back === sug.typed && sug.noteAfter === '', sug);
+  // 5. clicking a cell
+  const clk = await q.evaluate(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    // a point that two or more stocks can dispense: the first one of the series
+    window._egSuggest(); await wait(500);
+    const nS = window._egS.length, rows = [...document.querySelectorAll('#eg-tbody tr')];
+    const two = rows.find(tr => [...Array(nS).keys()].filter(k => tr.children[2 + nS + k].querySelector('button')).length >= 2);
+    if (!two) return { none: true, nS };
+    const pt = two.dataset.pt, row = () => document.querySelector('#eg-tbody tr[data-pt="' + pt + '"]');
+    const picked = () => [...row().children].findIndex(td => td.classList.contains('eg-pick'));
+    const adjOf = k => row().children[2 + nS + k];
+    const auto = picked(), okIdx = [...Array(nS).keys()].filter(k => adjOf(k).querySelector('button') && 2 + nS + k !== auto);
+    const redIdx = [...Array(nS).keys()].filter(k => adjOf(k).classList.contains('eg-bad'));
+    adjOf(okIdx[0]).querySelector('button').click(); await wait(200);
+    const moved = { now: picked(), want: 2 + nS + okIdx[0], manual: row().children[picked()].classList.contains('eg-man') };
+    row().children[picked()].querySelector('button').click(); await wait(200);
+    const back = picked();
+    const redBtn = redIdx.length ? [...redIdx].every(k => adjOf(k).querySelector('button') === null) : true;
+    return { nS, pt, auto, okIdx, moved, back, redBtn, redIdx };
+  });
+  check('E84', 'clicking another stock\'s cell moves the point there (marked as chosen by hand) and the final concentration follows', !clk.none && clk.moved.now === clk.moved.want && clk.moved.manual, clk);
+  check('E84', 'clicking the chosen cell again goes back to the stock nearest the plan', clk.back === clk.auto, clk);
+  check('E84', 'a red cell is not a button', !clk.none && clk.redBtn === true, clk);
+  const exp = await q.evaluate(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms)); const nS = window._egS.length; const rows = [...document.querySelectorAll('#eg-tbody tr')]; const row = rows.find(tr => [...Array(nS).keys()].filter(k => tr.children[2 + nS + k].querySelector('button')).length >= 2);
+    const k = [...Array(nS).keys()].find(k => row.children[2 + nS + k].querySelector('button') && !row.children[2 + nS + k].classList.contains('eg-pick'));
+    if (k == null) return { none: true };
+    row.children[2 + nS + k].querySelector('button').click(); await wait(200);
+    let csv = ''; const OB = window.Blob; window.Blob = function (parts) { csv = parts.join(''); return new OB(parts); }; const oc = HTMLAnchorElement.prototype.click; HTMLAnchorElement.prototype.click = function () {};
+    window._egExportPlan(); window.Blob = OB; HTMLAnchorElement.prototype.click = oc;
+    const lines = csv.replace(/^\uFEFF/, '').split(/\r\n/); const r4 = lines[+row.dataset.pt].split(',');
+    return { stock: r4[1], want: window._egS[k].label, transfer: parseFloat(r4[3]), shown: parseFloat(row.children[2 + nS + k].innerText.replace(/,/g, '')) };
+  });
+  check('E84', 'the CSV export has the point as it is dispensed: the stock that was clicked and its volume', !exp.none && (exp.stock === exp.want && exp.transfer === exp.shown), exp);
+  check('E84', 'no page errors', !errs.length, errs);
   await c.close();
 });
 
