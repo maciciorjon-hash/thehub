@@ -9099,6 +9099,18 @@ function echoAssignSource(expId,res,file,replace){
   } else lbConfirm(msg,{title:'Compound list',ok:'Place them',html:true}).then(function(ok){ if(ok) go(); });
   return true;
 }
+// A compound block is named for what the run put in it. The label is drawn over the block and the wells
+// carry the name on hover, so a label left from an earlier list or an earlier reading of the file
+// shows one thing and says another. A block holding two compounds, or none, is left alone.
+function _echoNameBlocks(e){
+  var p=e.plate; if(!p||!p.groups) return;
+  var by={};
+  Object.keys(p.wells||{}).forEach(function(id){ var w=p.wells[id]; if(!w||!w.groupId||!p.groups[w.groupId]) return;
+    var c=String(w.compound||'').trim(); if(!c||/^dmso$/i.test(c)) return; (by[w.groupId]=by[w.groupId]||{})[c]=1; });
+  Object.keys(by).forEach(function(gid){ var k=Object.keys(by[gid]), g=p.groups[gid];
+    if(k.length!==1||(!g.cpd&&!g.label)) return;
+    g.label=k[0]; if(g.cpd) g.named=true; });
+}
 // What the run did against what the list planned: by compound, the plate (by order) and wells.
 function _echoPlanDiff(prev,R){
   function where(run){ var m={}; (run.plates||[]).forEach(function(pl,i){ Object.keys(pl.wells||{}).forEach(function(id){
@@ -9172,6 +9184,10 @@ function echoImportText(expId,text,file,replace){
     if(sm!=null) R.stockMM=+sm; R.barcodes=Object.keys(bc);
     e.echoRun=R;
     echoFoldIntoPlate(e,R.plates[0],R.format);
+    _echoNameBlocks(e);
+    // The compound list the plate is named from is the run's: left as it was, the next time names are
+    // laid on the blocks it would put the old ones back over what the Echo dispensed.
+    if(R.compounds.length&&(_cpdSetupField(e)||expCpdText(e))) _expCpdWrite(e,R.compounds.join('\n'));
     e.updated=Date.now(); save(); renderEditor();
     // The CSV itself, with the experiment: what was dispensed is provable from the file.
     if(file) addFileTo('exp:'+e.id,file,'Echo picklist').then(function(ok){

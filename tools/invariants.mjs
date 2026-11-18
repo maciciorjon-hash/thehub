@@ -3574,6 +3574,30 @@ async function suite(opts) {
       } finally { window.lbAlert = a0; window.lbConfirm = c0; }
     });
 
+    // B66b — the labels over the blocks follow the compounds the transfer file put there (they used to keep an old list's names).
+    if (run('B66')) await guard('B66', 'block labels', async () => {
+      const P = (LB.data.projects || []).find(p => (p.sections || []).length);
+      const key = Object.keys(LB.data.presets).find(k => /^D2B/.test(k));
+      if (!key) return;
+      const tpl = LB.data.presets[key], su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup || {})));
+      const before = new Set(Object.keys(LB.data.experiments));
+      buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-10-01', type: 'D2B', title: 'INV labels', code: 'INV_B66B', setup: su, plate: true });
+      const e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); clean.push(e); openExp(e.id); tick('B66');
+      // two blocks that carry the names of an earlier list
+      const pl = e.plate, box = (r0, c0) => { const o = []; for (let r = r0; r < r0 + 2; r++) for (let c = c0; c < c0 + 3; c++) o.push(wellIdOf(r, c)); return o; };
+      pl.wells = {}; pl.groups = {};
+      [['g1', 'Sample 1', 1, 1], ['g2', 'Sample 2', 3, 1]].forEach(([g, lab, r, c]) => { pl.groups[g] = { label: lab, cpd: true, named: true }; box(r, c).forEach(id => { pl.wells[id] = { typeId: pl.types[0].id, groupId: g, compound: lab }; }); });
+      const c0 = window.lbConfirm; window.lbConfirm = () => Promise.resolve(true);
+      try {
+        const T = ['Source Plate Name,Source Well,Destination Plate Name,Destination Well,Transfer Volume,Sample Name,Sample ID,Destination Concentration,Destination Concentration Units,Transfer Status'];
+        box(1, 1).forEach(id => T.push(['S1', 'A1', 'P1', id, 25, 'Sample 1', 'BET_A1', '1E-06', 'M', ''].join(',')));
+        box(3, 1).forEach(id => T.push(['S1', 'A2', 'P1', id, 25, 'Sample 2', 'BET_A2', '1E-06', 'M', ''].join(',')));
+        echoImportText(e.id, T.join('\r\n') + '\r\n', new File(['z'], 't.csv'), false); await sleep(400);
+        const g = LB.data.experiments[e.id].plate.groups;
+        if (g.g1.label !== 'BET_A1' || g.g2.label !== 'BET_A2') bad('B66', 'labels', 'the blocks are labelled ' + g.g1.label + ' and ' + g.g2.label + ' over wells that hold BET_A1 and BET_A2');
+      } finally { window.lbConfirm = c0; }
+    });
+
     // B64 — the Echo compound step has inputs, its figures are those inputs, and it names no time or rule nobody recorded.
     if (run('B64')) await guard('B64', 'echo step', async () => {
       const P = (LB.data.projects || []).find(p => (p.sections || []).length);
