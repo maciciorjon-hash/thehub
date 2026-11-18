@@ -1614,6 +1614,49 @@ if (run('BL41')) await guard('BL41', async () => {
   await p.context().close();
 });
 
+// BL42 — the Picture tab: the hover bar's controls in the ribbon, for the panel it names; tab order; arrow keys move the focus only
+if (run('BL42')) await guard('BL42', async () => {
+  const p = await open();
+  const order = await p.evaluate(() => [...document.querySelectorAll('#ribbon .rb-tab')].map(b => b.dataset.tab).join());
+  order === 'home,insert,picture,markers,layout,format' ? ok() : bad('BL42', 'the tabs are not in workflow order: ' + order);
+  const wired = await p.evaluate(() => [...document.querySelectorAll('#ribbon .rb-tab')].filter(b => { const c = document.getElementById(b.getAttribute('aria-controls')); return !c || c.getAttribute('aria-labelledby') !== b.id; }).map(b => b.id));
+  wired.length === 0 ? ok() : bad('BL42', 'a tab does not point at its panel: ' + wired.join(', '));
+  const pic = await p.evaluate(() => { var c = document.createElement('canvas'); c.width = 300; c.height = 100; var x = c.getContext('2d'); x.fillStyle = '#ddd'; x.fillRect(0, 0, 300, 100); x.fillStyle = '#222'; x.fillRect(60, 40, 40, 14); return c.toDataURL('image/png'); });
+  await p.evaluate(g => { FIG.panels = [newPanel('Actin', '42'), newPanel('Target', '55'), newPanel('', '')]; FIG.panels[0].src = g; FIG.panels[0].cropped = g; FIG.panels[1].src = g; FIG.panels[1].cropped = g; save(); render(); }, pic); await sleep(300);
+  await p.click('#rb-tab-picture'); await sleep(200);
+  const st = () => p.evaluate(() => ({ tab: document.getElementById('ribbon').dataset.tab, pi: PC.pi, opts: [...document.querySelectorAll('#pc-panel option')].map(o => o.textContent), sel: document.getElementById('pc-panel').value,
+    dis: ['pc-crop', 'pc-quant', 'pc-scale', 'pc-up', 'pc-down', 'pc-del'].filter(i => document.getElementById(i).disabled), pick: document.getElementById('pc-pick-t').textContent, on: document.getElementById('pc-scale').classList.contains('on'), gap: document.getElementById('pc-gap').value }));
+  let s = await st();
+  s.tab === 'picture' && s.pi === 0 && s.opts.join('|') === '1 · Actin|2 · Target|3' && s.dis.join() === 'pc-up' && s.pick === 'Replace image' && s.on ? ok() : bad('BL42', 'the Picture tab does not describe panel 1: ' + JSON.stringify(s));
+  // a click on a panel of the figure picks it; a panel with no picture cannot be cropped or quantified and offers Add image
+  await p.locator('#figure .blot-drop').first().hover(); await p.mouse.down(); await p.mouse.up(); await sleep(150); s = await st();
+  s.pi === 2 && s.sel === '2' && s.pick === 'Add image' && ['pc-crop', 'pc-quant', 'pc-scale', 'pc-down'].every(i => s.dis.includes(i)) && !s.dis.includes('pc-up') ? ok() : bad('BL42', 'clicking the empty panel did not hand it to the Picture tab: ' + JSON.stringify(s));
+  // the controls reach the figure: space after, order (the choice follows the panel), the quantify and crop dialogs
+  await p.selectOption('#pc-panel', '1'); await sleep(100);
+  await p.evaluate(() => { var g = document.getElementById('pc-gap'); g.value = 33; g.dispatchEvent(new Event('change')); }); await sleep(150);
+  const gap = await p.evaluate(() => [FIG.panels[1].gapAfter, FIG.panels[0].gapAfter, document.getElementById('pc-gap').value]);
+  gap[0] === 33 && gap[1] === null && gap[2] === '33' ? ok() : bad('BL42', 'Space after did not reach panel 2: ' + JSON.stringify(gap));
+  await p.click('#pc-up'); await sleep(200);
+  const mv = await p.evaluate(() => ({ first: FIG.panels[0].prot, pi: PC.pi, sel: document.getElementById('pc-panel').value, gap: FIG.panels[0].gapAfter }));
+  mv.first === 'Target' && mv.pi === 0 && mv.sel === '0' && mv.gap === 33 ? ok() : bad('BL42', 'moving a panel up lost it: ' + JSON.stringify(mv));
+  await p.click('#pc-crop'); await sleep(300);
+  (await p.evaluate(() => document.getElementById('crop-back').classList.contains('open'))) ? ok() : bad('BL42', 'Crop & adjust did not open the crop dialog'); await p.evaluate(() => closeCrop());
+  await p.click('#pc-quant'); await sleep(500);
+  (await p.evaluate(() => document.getElementById('dn-back').classList.contains('open') && DN.pi === 0)) ? ok() : bad('BL42', 'Quantify bands did not open the densitometry of the chosen panel'); await p.evaluate(() => closeQuant());
+  await p.click('#pc-scale'); await sleep(150);
+  (await p.evaluate(() => FIG.panels[0].scaleWithBox === false && !document.getElementById('pc-scale').classList.contains('on'))) ? ok() : bad('BL42', 'Stretch to box did not toggle');
+  await p.selectOption('#pc-panel', '2'); await p.click('#pc-del'); await sleep(200);
+  (await p.evaluate(() => FIG.panels.length === 2 && PC.pi === 1 && document.getElementById('pc-panel').value === '1')) ? ok() : bad('BL42', 'removing the last panel left the tab pointing at nothing');
+  // arrow keys move the focus along the tabs and do not open them (Markers would start its tool)
+  await p.focus('#rb-tab-picture'); await p.keyboard.press('ArrowRight'); await sleep(100);
+  const ar = await p.evaluate(() => ({ f: document.activeElement.id, tool: AN.tool, tab: document.getElementById('ribbon').dataset.tab }));
+  ar.f === 'rb-tab-markers' && ar.tool === 'select' && ar.tab === 'picture' ? ok() : bad('BL42', 'ArrowRight did not just move the focus: ' + JSON.stringify(ar));
+  await p.keyboard.press('End'); await p.keyboard.press('ArrowRight'); await sleep(100);
+  (await p.evaluate(() => document.activeElement.id)) === 'rb-tab-home' ? ok() : bad('BL42', 'the arrow keys do not wrap around the visible tabs');
+  p.errs.length ? bad('BL42', 'errors: ' + p.errs.join(' | ')) : ok();
+  await p.context().close();
+});
+
 await browser.close(); srv.kill();
 findings.forEach(f => console.log(f));
 console.log(`\nBlot invariants: ${passed} passed, ${findings.length} finding${findings.length === 1 ? '' : 's'}`);
