@@ -2,7 +2,7 @@
    An analysis with data is saved by itself a moment after anything changes; opening one puts it back as it was.
    The app says three things: what to keep (current), how to put it back (open) and where the list is drawn (root).
    HistoryKit.create({ key, app, noun, root, shown, toast, current, open, afterOpen, onChange, onRename, adapt, classes, emptyAction })
-     → { touch, save, render, load, open, remove, pin, rename, list, id }
+     → { touch, save, render, load, open, remove, pin, rename, fork, nextName, list, id }
      key      the database is <key>_history, one store, one record per analysis
      root     the element (or its id) the list is drawn into
      current  () → null while there is nothing worth keeping, else { name, key?, bits: [], chips: [], files: [], data }
@@ -13,7 +13,10 @@
      toast    (message, kind)
      name     the Assay ID the person typed. Without one (empty), the entry is called <APP><YYYYMMDD>_<HHMM> after the moment it was first kept, so
               two analyses are never told apart by "Untitled" — and the id stays the same on every later save. o.code sets the letters (default: the first three of app)
-     current may also give x (small facts the app reads back from the list, kept as they are) and nameWins: true when the app
+     fork()     from here on the analysis on screen is a NEW entry: the next save never finds an earlier one through the readings (the same readings read again
+              are the same analysis only until a person says "new analysis"). New analysis (tools/newkit) calls it after keeping the one on screen.
+   nextName(base)  "<base> (2)", "<base> (3)" … the first one no entry in History has
+   current may also give x (small facts the app reads back from the list, kept as they are) and nameWins: true when the app
               has its own name field, so the entry follows it; otherwise a name a person gave in History is kept
      onRename (rec, isOpen) the app takes the new name when the entry is the one open
      adapt    (rec) → rec  turns an entry written before the kit into the kit's shape, as it is read
@@ -56,7 +59,7 @@ var HistoryKit = (function(){
     return code + d.getFullYear() + z(d.getMonth() + 1) + z(d.getDate()) + '_' + z(d.getHours()) + z(d.getMinutes());
   }
   function create(o){
-    var H = { dbp: null, broken: null, list: [], q: '', timer: 0, loaded: false, id: null, quiet: 0, sig: '', warned: false };
+    var H = { dbp: null, broken: null, list: [], q: '', timer: 0, loaded: false, id: null, quiet: 0, sig: '', warned: false, sfx: '' };
     var noun = o.noun || 'analysis', K = o.classes || {};
     function dlg(extra){ extra.sec = K.sec || ''; extra.primary = K.primary || 'primary'; extra.dangerCls = K.danger || 'danger'; return extra; }
     function rootEl(){ return typeof o.root === 'string' ? document.getElementById(o.root) : o.root; }
@@ -100,11 +103,12 @@ var HistoryKit = (function(){
       var cur; try { cur = o.current(); } catch (e) { return Promise.resolve(); }
       if (!cur) { if (H.id) { H.id = null; H.sig = ''; if (H.shown()) H.render(); } return Promise.resolve(); }   // the screen was emptied: nothing is "open now"
       var sig; try { sig = JSON.stringify([cur.name, cur.data]); } catch (e) { return Promise.resolve(); }
-      var rec = (H.id && find(H.id)) || (cur.key && H.list.filter(function(r){ return r.dkey === cur.key; })[0]) || null;
+      var dk = cur.key ? cur.key + H.sfx : '';
+      var rec = (H.id && find(H.id)) || (dk && H.list.filter(function(r){ return r.dkey === dk; })[0]) || null;
       if (rec && H.id !== rec.id) { H.id = rec.id; H.sig = ''; }
       if (rec && sig === H.sig) return Promise.resolve();
       var now = Date.now();
-      var out = { id: rec ? rec.id : 'h' + now.toString(36) + Math.random().toString(36).slice(2, 6), dkey: cur.key || '', name: rec && rec.named && !cur.nameWins ? rec.name : (cur.name || stampName(o.code || String(o.app || noun).replace(/[^A-Za-z0-9]/g, '').slice(0, 3).toUpperCase(), rec ? rec.created : now)), named: !!(rec && rec.named),
+      var out = { id: rec ? rec.id : 'h' + now.toString(36) + Math.random().toString(36).slice(2, 6), dkey: dk, sfx: H.sfx, name: rec && rec.named && !cur.nameWins ? rec.name : (cur.name || stampName(o.code || String(o.app || noun).replace(/[^A-Za-z0-9]/g, '').slice(0, 3).toUpperCase(), rec ? rec.created : now)), named: !!(rec && rec.named),
         x: cur.x || null, bits: cur.bits || [], chips: cur.chips || [], files: cur.files || [], data: cur.data, created: rec ? rec.created : now, updated: now, pinned: rec ? !!rec.pinned : false };
       return req('readwrite', function(st){ return st.put(out); }).then(function(){
         H.id = out.id; H.sig = sig;
@@ -123,7 +127,7 @@ var HistoryKit = (function(){
     H.open = function(id){
       var rec = find(id); if (!rec) return;
       clearTimeout(H.timer);
-      H.quiet = Date.now() + 1200;
+      H.quiet = Date.now() + 1200; H.sfx = rec.sfx || '';
       var r; try { r = o.open(typeof structuredClone === 'function' ? structuredClone(rec.data) : rec.data, rec); } catch (e) { console.warn('History open:', e); r = false; }
       // open may answer straight away or with a promise (Tempo reads its plates in again before it can say).
       Promise.resolve(r).then(function(ok){
@@ -134,6 +138,14 @@ var HistoryKit = (function(){
         if (o.afterOpen) o.afterOpen(rec);
         toast('“' + rec.name + '” is open.');
       }, function(e){ console.warn('History open:', e); toast('“' + rec.name + '” could not be opened.', 'err'); });
+    };
+    // The analysis on screen becomes a new entry of its own (see the header). Whatever was open is kept as it is by the caller, before this.
+    H.fork = function(){ clearTimeout(H.timer); H.id = null; H.sig = ''; H.sfx = '~' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5); if (H.shown()) H.render(); };
+    H.nextName = function(base){
+      base = String(base || '').trim().replace(/\s*\(\d+\)$/, '');
+      var used = {}; H.list.forEach(function(r){ used[String(r.name).toLowerCase()] = 1; });
+      for (var n = 2; n < 1000; n++) { var c = base + ' (' + n + ')'; if (!used[c.toLowerCase()]) return c; }
+      return base + ' (copy)';
     };
     H.remove = function(id){
       var rec = find(id); if (!rec) return;

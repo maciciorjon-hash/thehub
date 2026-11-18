@@ -37,6 +37,7 @@ run "Multi-plate reader kit"          "$PY" tools/sync_reader_plates.py --check
 run "Setup dialog kit"                 "$PY" tools/sync_setupkit.py --check
 run "Menu kit"                         "$PY" tools/sync_menukit.py --check
 run "History kit"                      "$PY" tools/sync_historykit.py --check
+run "New-analysis kit"                 "$PY" tools/sync_newkit.py --check
 run "Sheet kit"                        "$PY" tools/sync_sheetkit.py --check
 run "Statistics kit"                   "$PY" tools/sync_statskit.py --check
 run "Pattern kit"                      "$PY" tools/sync_patternkit.py --check

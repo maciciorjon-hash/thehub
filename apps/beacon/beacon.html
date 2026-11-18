@@ -1439,7 +1439,7 @@ var SetupKit = (function(){
    An analysis with data is saved by itself a moment after anything changes; opening one puts it back as it was.
    The app says three things: what to keep (current), how to put it back (open) and where the list is drawn (root).
    HistoryKit.create({ key, app, noun, root, shown, toast, current, open, afterOpen, onChange, onRename, adapt, classes, emptyAction })
-     → { touch, save, render, load, open, remove, pin, rename, list, id }
+     → { touch, save, render, load, open, remove, pin, rename, fork, nextName, list, id }
      key      the database is <key>_history, one store, one record per analysis
      root     the element (or its id) the list is drawn into
      current  () → null while there is nothing worth keeping, else { name, key?, bits: [], chips: [], files: [], data }
@@ -1450,7 +1450,10 @@ var SetupKit = (function(){
      toast    (message, kind)
      name     the Assay ID the person typed. Without one (empty), the entry is called <APP><YYYYMMDD>_<HHMM> after the moment it was first kept, so
               two analyses are never told apart by "Untitled" — and the id stays the same on every later save. o.code sets the letters (default: the first three of app)
-     current may also give x (small facts the app reads back from the list, kept as they are) and nameWins: true when the app
+     fork()     from here on the analysis on screen is a NEW entry: the next save never finds an earlier one through the readings (the same readings read again
+              are the same analysis only until a person says "new analysis"). New analysis (tools/newkit) calls it after keeping the one on screen.
+   nextName(base)  "<base> (2)", "<base> (3)" … the first one no entry in History has
+   current may also give x (small facts the app reads back from the list, kept as they are) and nameWins: true when the app
               has its own name field, so the entry follows it; otherwise a name a person gave in History is kept
      onRename (rec, isOpen) the app takes the new name when the entry is the one open
      adapt    (rec) → rec  turns an entry written before the kit into the kit's shape, as it is read
@@ -1493,7 +1496,7 @@ var HistoryKit = (function(){
     return code + d.getFullYear() + z(d.getMonth() + 1) + z(d.getDate()) + '_' + z(d.getHours()) + z(d.getMinutes());
   }
   function create(o){
-    var H = { dbp: null, broken: null, list: [], q: '', timer: 0, loaded: false, id: null, quiet: 0, sig: '', warned: false };
+    var H = { dbp: null, broken: null, list: [], q: '', timer: 0, loaded: false, id: null, quiet: 0, sig: '', warned: false, sfx: '' };
     var noun = o.noun || 'analysis', K = o.classes || {};
     function dlg(extra){ extra.sec = K.sec || ''; extra.primary = K.primary || 'primary'; extra.dangerCls = K.danger || 'danger'; return extra; }
     function rootEl(){ return typeof o.root === 'string' ? document.getElementById(o.root) : o.root; }
@@ -1537,11 +1540,12 @@ var HistoryKit = (function(){
       var cur; try { cur = o.current(); } catch (e) { return Promise.resolve(); }
       if (!cur) { if (H.id) { H.id = null; H.sig = ''; if (H.shown()) H.render(); } return Promise.resolve(); }   // the screen was emptied: nothing is "open now"
       var sig; try { sig = JSON.stringify([cur.name, cur.data]); } catch (e) { return Promise.resolve(); }
-      var rec = (H.id && find(H.id)) || (cur.key && H.list.filter(function(r){ return r.dkey === cur.key; })[0]) || null;
+      var dk = cur.key ? cur.key + H.sfx : '';
+      var rec = (H.id && find(H.id)) || (dk && H.list.filter(function(r){ return r.dkey === dk; })[0]) || null;
       if (rec && H.id !== rec.id) { H.id = rec.id; H.sig = ''; }
       if (rec && sig === H.sig) return Promise.resolve();
       var now = Date.now();
-      var out = { id: rec ? rec.id : 'h' + now.toString(36) + Math.random().toString(36).slice(2, 6), dkey: cur.key || '', name: rec && rec.named && !cur.nameWins ? rec.name : (cur.name || stampName(o.code || String(o.app || noun).replace(/[^A-Za-z0-9]/g, '').slice(0, 3).toUpperCase(), rec ? rec.created : now)), named: !!(rec && rec.named),
+      var out = { id: rec ? rec.id : 'h' + now.toString(36) + Math.random().toString(36).slice(2, 6), dkey: dk, sfx: H.sfx, name: rec && rec.named && !cur.nameWins ? rec.name : (cur.name || stampName(o.code || String(o.app || noun).replace(/[^A-Za-z0-9]/g, '').slice(0, 3).toUpperCase(), rec ? rec.created : now)), named: !!(rec && rec.named),
         x: cur.x || null, bits: cur.bits || [], chips: cur.chips || [], files: cur.files || [], data: cur.data, created: rec ? rec.created : now, updated: now, pinned: rec ? !!rec.pinned : false };
       return req('readwrite', function(st){ return st.put(out); }).then(function(){
         H.id = out.id; H.sig = sig;
@@ -1560,7 +1564,7 @@ var HistoryKit = (function(){
     H.open = function(id){
       var rec = find(id); if (!rec) return;
       clearTimeout(H.timer);
-      H.quiet = Date.now() + 1200;
+      H.quiet = Date.now() + 1200; H.sfx = rec.sfx || '';
       var r; try { r = o.open(typeof structuredClone === 'function' ? structuredClone(rec.data) : rec.data, rec); } catch (e) { console.warn('History open:', e); r = false; }
       // open may answer straight away or with a promise (Tempo reads its plates in again before it can say).
       Promise.resolve(r).then(function(ok){
@@ -1571,6 +1575,14 @@ var HistoryKit = (function(){
         if (o.afterOpen) o.afterOpen(rec);
         toast('“' + rec.name + '” is open.');
       }, function(e){ console.warn('History open:', e); toast('“' + rec.name + '” could not be opened.', 'err'); });
+    };
+    // The analysis on screen becomes a new entry of its own (see the header). Whatever was open is kept as it is by the caller, before this.
+    H.fork = function(){ clearTimeout(H.timer); H.id = null; H.sig = ''; H.sfx = '~' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5); if (H.shown()) H.render(); };
+    H.nextName = function(base){
+      base = String(base || '').trim().replace(/\s*\(\d+\)$/, '');
+      var used = {}; H.list.forEach(function(r){ used[String(r.name).toLowerCase()] = 1; });
+      for (var n = 2; n < 1000; n++) { var c = base + ' (' + n + ')'; if (!used[c.toLowerCase()]) return c; }
+      return base + ' (copy)';
     };
     H.remove = function(id){
       var rec = find(id); if (!rec) return;
@@ -1957,6 +1969,100 @@ var SheetKit = (function(){
 })();
 /* sheet-kit-js:end */
 </script>
+<style>
+/* new-kit:begin — generated by tools/sync_newkit.py from tools/newkit/new.css; do not edit here */
+/* New analysis — the button and the question it asks (tools/newkit). */
+.nk-back{position:fixed;inset:0;z-index:2100;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.42);padding:16px;}
+.nk-dlg{width:min(460px,100%);box-sizing:border-box;padding:20px 22px;border-radius:var(--r-3);background:var(--surface);border:1px solid var(--border2);color:var(--text);box-shadow:0 12px 40px rgba(0,0,0,.28);font-family:var(--sans);}
+.nk-dlg h3{margin:0 0 6px;font-size:var(--fs-5);font-weight:600;}
+.nk-dlg > p{margin:0 0 14px;font-size:var(--fs-3);color:var(--text2);line-height:1.45;}
+.nk-opts{display:flex;flex-direction:column;gap:8px;margin-bottom:14px;}
+.nk-opt{display:flex;align-items:flex-start;gap:12px;width:100%;box-sizing:border-box;padding:12px 14px;border-radius:var(--r-2);border:1px solid var(--border2);background:var(--surface2);color:var(--text);font-family:var(--sans);text-align:left;cursor:pointer;}
+.nk-opt:hover,.nk-opt:focus-visible{border-color:var(--accent);outline:none;}
+.nk-opt svg{flex:none;width:18px;height:18px;margin-top:1px;color:var(--accent);}
+.nk-opt b{display:block;font-size:var(--fs-3);font-weight:600;}
+.nk-opt span{display:block;margin-top:2px;font-size:var(--fs-2);color:var(--text2);line-height:1.4;}
+.nk-foot{display:flex;justify-content:flex-end;}
+.nk-cancel{height:32px;padding:0 14px;border-radius:var(--r-1);border:1px solid var(--border2);background:var(--surface2);color:var(--text2);font-family:var(--sans);font-size:var(--fs-3);cursor:pointer;}
+.nk-cancel:hover{color:var(--text);border-color:var(--accent);}
+@media (max-width:1100px){.tab-new .nk-lbl{display:none;}.tab-new{padding:0 10px;}}
+/* new-kit:end */
+</style>
+<script>
+/* new-kit-js:begin — generated by tools/sync_newkit.py from tools/newkit/new.js; do not edit here */
+/* NewKit — "New analysis": keep the one on screen, start the next from the beginning with Setup open, or from a copy of this one.
+   Every analysis app has a Setup; a person who runs the same experiment again with one thing changed should not have to type it all in
+   again, and should not lose the first version. The button asks one question (empty, or a copy of the inputs) and the app does the rest.
+   NewKit.create({ app, noun, has, flush, fork, blank, copy, setup, name, toast })
+     has()     → true while there is something on screen worth keeping (nothing: the button goes straight to an empty Setup)
+     flush()   → keeps the analysis on screen (History's save); may return a promise
+     fork()    → what is on screen from now on is a new entry, never the one just kept (History's fork)
+     blank()   → empties everything and goes back to where the app starts; may return a promise
+     copy(n)   → keeps the inputs (readings, layout, settings), drops what was worked out from them, and gives the copy the name n
+     setup()   → opens Setup on its first step
+     name()    → the Assay ID on screen ('' when none), so the copy can be called "<id> (2)"; nextName(base) → that name
+   → { ask, blank, copy }.  The button is the app's: <button onclick="…ask()">. Shown text is English. */
+var NewKit = (function(){
+  var IC = {
+    blank: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M12 11v6M9 14h6"/></svg>',
+    copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>'
+  };
+  function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function create(o){
+    var N = { busy: false }, noun = o.noun || 'analysis';
+    function say(m, k){ try { if (o.toast) o.toast(m, k); } catch (e) {} }
+    function keep(){ return Promise.resolve().then(function(){ return o.flush && o.flush(); }).catch(function(){}); }
+    // An empty analysis: what was on screen is kept first, then everything goes back to the start with Setup open.
+    N.blank = function(){
+      if (N.busy) return Promise.resolve(); N.busy = true;
+      return keep().then(function(){ if (o.fork) o.fork(); return o.blank(); }).then(function(){
+        if (o.flush) return o.flush();   // the screen is empty now: History lets go of the entry it had open
+      }).then(function(){ o.setup(); }).catch(function(e){ console.warn('New analysis:', e); say('Could not start a new ' + noun + ': ' + ((e && e.message) || e), 'err'); }).then(function(){ N.busy = false; });
+    };
+    // The same inputs, to change only what differs. The first one stays as it was; the copy is saved on its own.
+    N.copy = function(){
+      if (N.busy) return Promise.resolve(); N.busy = true;
+      var from = String(o.name ? o.name() : '').trim(), to = from ? (o.nextName ? o.nextName(from) : from + ' (2)') : '';
+      return keep().then(function(){ if (o.fork) o.fork(); return o.copy(to); }).then(function(){
+        return o.flush && o.flush();   // the copy is an entry of its own from this moment, not after the next edit
+      }).then(function(){
+        o.setup();
+        say(from ? '“' + from + '” stays as it was. This is a copy called “' + to + '” — change what you want; it is saved on its own.' : 'This is a copy of the ' + noun + ' — change what you want; it is saved on its own and the first one stays as it was.');
+      }).catch(function(e){ console.warn('New analysis (copy):', e); say('Could not copy the ' + noun + ': ' + ((e && e.message) || e), 'err'); }).then(function(){ N.busy = false; });
+    };
+    N.ask = function(){
+      if (N.busy || document.querySelector('.nk-back')) return;
+      if (!o.has()) { N.blank(); return; }
+      var from = String(o.name ? o.name() : '').trim();
+      var back = document.createElement('div'); back.className = 'nk-back';
+      back.innerHTML = '<div class="nk-dlg" role="dialog" aria-modal="true" aria-label="New ' + esc(noun) + '"><h3>New ' + esc(noun) + '</h3>' +
+        '<p>' + (from ? '“' + esc(from) + '”' : 'This ' + esc(noun)) + ' is kept in History as it is now.</p>' +
+        '<div class="nk-opts"><button type="button" class="nk-opt" data-k="blank">' + IC.blank + '<div><b>Start empty</b><span>Back to the beginning with Setup open.</span></div></button>' +
+        '<button type="button" class="nk-opt" data-k="copy">' + IC.copy + '<div><b>Keep these inputs</b><span>A copy with the same readings, layout and settings, to change only what is different. It is saved on its own.</span></div></button></div>' +
+        '<div class="nk-foot"><button type="button" class="nk-cancel" data-k="cancel">Cancel</button></div></div>';
+      var prev = document.activeElement;
+      function done(k){
+        document.removeEventListener('keydown', key, true); back.remove();
+        if (k === 'blank') N.blank(); else if (k === 'copy') N.copy(); else if (prev && prev.focus) { try { prev.focus({ preventScroll: true }); } catch (e) {} }
+      }
+      function key(e){
+        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done('cancel'); return; }
+        if (e.key === 'Tab') {   // the focus stays inside the question
+          var f = [].slice.call(back.querySelectorAll('button')), i = f.indexOf(document.activeElement);
+          e.preventDefault(); f[(i + (e.shiftKey ? f.length - 1 : 1)) % f.length].focus();
+        }
+      }
+      back.addEventListener('click', function(e){ if (e.target === back) { done('cancel'); return; } var b = e.target.closest && e.target.closest('[data-k]'); if (b) done(b.dataset.k); });
+      document.addEventListener('keydown', key, true);
+      document.body.appendChild(back);
+      back.querySelector('[data-k="blank"]').focus();
+    };
+    return N;
+  }
+  return { create: create };
+})();
+/* new-kit-js:end */
+</script>
 </head>
 <body>
 
@@ -2019,6 +2125,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   </div>
   <div class="tab-indicator" id="tab-indicator"></div>
   <button class="tab-setup" id="bs-open" onclick="bsOpen()" title="Set up the analysis: name, readings, controls and compounds"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h9M19 7h1M4 17h1M11 17h9"/><circle cx="16" cy="7" r="2.2"/><circle cx="8" cy="17" r="2.2"/></svg>Setup</button>
+  <button class="tab-setup tab-new" id="nk-open" onclick="bNew.ask()" aria-label="New analysis" title="Keep this analysis in History and start another: empty, or from a copy of these inputs"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span class="nk-lbl">New analysis</span></button>
 </div>
 
 <div class="content">
@@ -2943,13 +3050,17 @@ function bClearAll(){
   if (!bHasAnything()) { beaconToast('There is nothing to clear.'); return; }
   beaconAsk('Clear everything?', 'Every plate, reading, layout and the name of this analysis are cleared and Beacon starts again from an empty 96-well protein–protein plate. What was saved in History stays there, and ⌘Z brings it all back here.', { ok: 'Clear all', danger: true }, function(ok){
     if (!ok) return;
-    bMark();
-    state.plates = [bNewPlate(8, 12, null)]; state.plate = 0; state.series = []; state.queue = []; state.seq = 0; state.view = null; state.tracerConc = null; state.assayMode = 'gain';
-    state.name = ''; state.nameAuto = true; state.info = {}; state.hid = null;
-    BM_SEL = new Set(); BM_NX = null; BM_CH = null; BM_MODE = null; RS_SEL = null; RS_PLATE = null; RS_PER = false; _bFitC = null;
-    bAfterChange();
+    bClearCore();
     beaconToast('Cleared — ⌘Z brings it back.');
   });
+}
+// Everything back to an empty 96-well plate (⌘Z undoes it). Clear all asks first; New analysis has already kept the analysis in History.
+function bClearCore(){
+  bMark();
+  state.plates = [bNewPlate(8, 12, null)]; state.plate = 0; state.series = []; state.queue = []; state.seq = 0; state.view = null; state.tracerConc = null; state.assayMode = 'gain';
+  state.name = ''; state.nameAuto = true; state.info = {}; state.hid = null;
+  BM_SEL = new Set(); BM_NX = null; BM_CH = null; BM_MODE = null; RS_SEL = null; RS_PLATE = null; RS_PER = false; _bFitC = null;
+  bAfterChange();
 }
 
 
@@ -5453,6 +5564,16 @@ var bhist = HistoryKit.create({
     if (typeof bsRecent === 'function') bsRecent();
   }
 });
+// New analysis (tools/newkit): the one on screen is kept, then Setup opens on an empty plate or on a copy of these inputs.
+var bNew = NewKit.create({
+  app: 'Beacon', noun: 'analysis', toast: function(m, k){ beaconToast(m, k); },
+  has: function(){ return bHasAnything(); },
+  name: function(){ return state.nameAuto ? '' : bAnalysisName(); }, nextName: function(b){ return bhist.nextName(b); },
+  flush: function(){ return bhist.save(); }, fork: function(){ bhist.fork(); },
+  blank: function(){ bClearCore(); switchTab('plate'); },
+  copy: function(to){ bMark(); if (to) { state.name = to; state.nameAuto = false; } state.hid = null; switchTab('plate'); bAfterChange(); },
+  setup: function(){ bsOpen(0); }
+});
 function bAfterChangeQuiet(){ state.rev++; bRenderAll(); }
 function bhOpen(id){ bhist.open(id); }
 function bhWhen(t){ return HistoryKit.when(t); }
@@ -5878,7 +5999,8 @@ function bsInfoSave(){ bhist.touch(); }
 (function(){ var input = document.getElementById('reader-file'); if (input) input.addEventListener('change', function(){ setTimeout(function(){ var d = bsEl('bs'); if (d && !d.classList.contains('hidden')) { bsRefresh(); bsTabs(); } }, 400); }); })();
 // First sight of the app: the way in opens by itself — but not under automation (the checks drive the plate directly), and not
 // when the person has dismissed it for this tab.
-setTimeout(function(){ try { if (!navigator.webdriver && !bHasAnything() && !sessionStorage.getItem('beacon_setup_seen')) { sessionStorage.setItem('beacon_setup_seen', '1'); bsOpen(0); } } catch (e) {} }, 350);
+// Every time the app is entered with nothing on the plate, Setup opens by itself — not under automation (window.__autoSetup says a check wants to see it).
+setTimeout(function(){ try { if ((!navigator.webdriver || window.__autoSetup) && !bHasAnything()) bsOpen(0); } catch (e) {} }, 350);
 
 /* ---- THEME and the Settings panel: MenuKit's (tools/menukit); the results are drawn again once per change ---- */
 MenuKit.init({ redraw: function(){ if (activeTab === 'results') bDrawResults(); } });
