@@ -2725,6 +2725,8 @@ if (run('E72')) await guard('E72', async () => {
   const r = await q.evaluate(async () => {
     const set = (id, v) => { const e = document.getElementById(id); e.value = v; e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); };
     const wait = ms => new Promise(r => setTimeout(r, ms)); const bad = []; let n = 0;
+    // Source alone at 10 mM, whatever the page opens on: the top point below asks Source for the whole budget
+    window._egS.length = 1; window._egS[0].val = 10; window._egS[0].unit = '1e-3';
     // every (volume, DMSO %) whose budget is a whole number of drops: the help line must count exactly that many
     for (const [vol, dmso] of [[7.5, 4.1], [12.5, 2.3], [7.5, 4.1], [20, 0.25], [25, 0.3], [12.5, 4.1], [37.5, 3.3]]) {
       set('eg-vol', vol); set('eg-dmso', dmso); await wait(300);
