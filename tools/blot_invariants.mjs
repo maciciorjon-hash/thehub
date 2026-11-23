@@ -288,8 +288,9 @@ if (run('BL7')) await guard('BL7', async () => {
     mkDone(); await new Promise(r => setTimeout(r, 200));
     var m = FIG.panels[0].marks, img = document.querySelector('.panel-blot .blot-img').getBoundingClientRect(), mk = [...document.querySelectorAll('.panel-kda .mk')].map(e => { var b = e.querySelector('.mk-t').getBoundingClientRect(); return { k: e.textContent.trim(), y: (b.top + b.height / 2 - img.top) / img.height }; });
     var cv = await renderFigureCanvas(1), x = cv.getContext('2d'), fr = document.getElementById('figure').getBoundingClientRect(), t = document.querySelector('.panel-kda .mk-t').getBoundingClientRect();
-    var ov = anOverhang(fr), px = x.getImageData(Math.round(t.left - fr.left + 18 + ov.l + t.width / 2), Math.round(t.top - fr.top + 18 + ov.t + t.height / 2), 1, 1).data;
-    return { m: m, mk: mk, px: [px[0], px[1], px[2]], kdaHidden: !document.querySelector('.panel-kda[data-pi="0"] .lbl-in'), tool: AN.tool, undo: UNDO.length };
+    var ov = anOverhang(fr), px = x.getImageData(Math.round(t.left - fr.left + 18 + ov.l + t.width / 2) - 2, Math.round(t.top - fr.top + 18 + ov.t + t.height / 2) - 2, 5, 5).data;
+    var dk = 0; for (var q = 4; q < px.length; q += 4) if (px[q] < px[dk]) dk = q;   /* the darkest pixel of a 5x5 patch: a 1 px tick lands on a half pixel under another rasteriser (CI's Linux Chromium drew it 188 grey at the centre) */
+    return { m: m, mk: mk, px: [px[dk], px[dk + 1], px[dk + 2]], kdaHidden: !document.querySelector('.panel-kda[data-pi="0"] .lbl-in'), tool: AN.tool, undo: UNDO.length };
   });
   r.m.length === 2 && r.m[0].k === 55 === false ? 0 : 0;
   const m70 = r.m.find(x => x.k === 70), m55 = r.m.find(x => x.k === 55);
