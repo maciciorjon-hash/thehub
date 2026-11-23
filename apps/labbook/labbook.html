@@ -1815,8 +1815,9 @@ details.pl-sec>*:not(summary):last-child{padding-bottom:11px;}
 .es-ar{color:var(--text3);}
 .es-b{color:var(--accent-ink);font-family:var(--mono);font-weight:600;}
 .es-note{font-size:var(--fs-2);color:var(--text2);line-height:1.55;}
-.es-plate-note{margin:12px 0 2px;font-size:var(--fs-3);color:var(--text2);line-height:1.5;}
-.es-plate-note b{color:var(--text);font-weight:600;margin-right:4px;}
+.es-cpd-plan{grid-column:1/-1;font-size:var(--fs-3);color:var(--text2);line-height:1.5;margin-top:2px;}
+.es-cpd-plan b{color:var(--text);font-weight:600;}
+.es-cpd-plan .warn{color:var(--warn-ink);}
 .es-was{white-space:nowrap;font-style:normal;font-weight:400;font-size:var(--fs-2);color:var(--text3);margin-left:6px;}
 .nm-setup .ci-f.lead span{color:var(--accent-ink);}
 .nm-setup .ci-f.lead select{border-color:var(--accent);font-weight:600;}
@@ -15624,7 +15625,7 @@ function nmSetupField(f,lead,src,upd){
 var SETUP_GROUPS=[['plate','Plate and cells'],['constructs','Constructs'],['cmpd','Compounds'],['dose','Dosing'],['read','Readout'],['more','Other']];
 var SETUP_GROUP_OF={format:'plate',cellLine:'plate',cellsPerWell:'plate',volPerWell:'plate',nPlates:'plate',nSamples:'plate',nWells:'plate',nSetups:'plate',
   donors:'constructs',acceptors:'constructs',ratios:'constructs',plasmid:'constructs',dnaNg:'constructs',fugeneRatio:'constructs',nTransfect:'constructs',
-  compounds:'cmpd',vehicle:'cmpd',vehiclePct:'cmpd',dmsoMax:'cmpd',nCompounds:'cmpd',nTotal:'cmpd',
+  compounds:'cmpd',cpdOwn:'cmpd',vehicle:'cmpd',vehiclePct:'cmpd',dmsoMax:'cmpd',nCompounds:'cmpd',nTotal:'cmpd',
   concs:'dose',treatH:'dose',dosing:'dose',doseResp:'dose',doseSeries:'dose',topConc:'dose',topUM:'dose',df:'dose',nPoints:'dose',nConc:'dose',nReps:'dose',minVol:'dose',timepoints:'dose',runMin:'dose',intervalMin:'dose',endpointD:'dose',ligand:'dose',mg132:'dose',
   targets:'read',loadCtrl:'read',abDil:'read'};
 var SETUP_GROUP_MIN=7;
@@ -16857,6 +16858,47 @@ function _plateCompounds(e){ var seen={}, out=[];
   return out; }
 function _plateCompoundsLine(e){ var L=_plateCompounds(e); if(!L.length) return '';
   return L.length>12?(L.slice(0,12).join(', ')+' \u2026 +'+(L.length-12)):L.join(', '); }
+// ── The compounds, from Edit setup ─────────────────────────────────────────────────────────────────────────────────────────
+// The list of compounds is one thing with two places to type it: the plate editor's Compounds step and this dialog. Both end in
+// expCpdApply — the same placement the plate editor does when a list is committed (names onto the layout's compound blocks in
+// order, the plates the list needs added with the same layout, the list stored where the experiment keeps it: the setup's own
+// Compounds question when the type asks one, e.cpdList otherwise). A name past the end of a shorter list is taken off its block,
+// as there, so it is only run when the list was changed here — an older run whose names the plates hold is never re-placed by
+// pressing Apply on something else.
+function expCpdApply(e,text){
+  var names=_cpdNames(text); text=_cpdTidy(text,names);
+  _expCpdWrite(e,text);
+  var R=_plCpdPlanAll(e,names), added=0;
+  if(R.extra&&!R.same){ added=_plCpdAddPlates(e,R.extra); R=_plCpdPlanAll(e,names); }
+  var changed=_plCpdPlace(e,R); e.updated=Date.now();
+  changed.forEach(function(k){ platePersist(k); });
+  return {names:names.length,added:added,per:R.per}; }
+// What the dialog's list opens on: what the experiment stores, else what its plates already say.
+function _esCpdOpenText(e){ var t=expCpdText(e); return String(t||'').trim()?t:_plCpdFromPlates(e).join('\n'); }
+// A list of its own in the dialog only where the type has no Compounds question (that one is a field like the others).
+function _esCpdOwn(e){ return !_cpdSetupField(e)&&(expPlateList(e).length>0||!!String(e.cpdList||'').trim()); }
+function _esCpdText(e){ return _cpdSetupField(e)?String(ES_SETUP.compounds||''):String(ES_CPD.text||''); }
+function _esCpdPlan(e,text){
+  var names=_cpdNames(text), n=names.length; if(!n) return 'Type or paste the names \u2014 one per line, or separated by commas; a column from Excel works.';
+  var R=_plCpdPlanAll(e,names), lc={}, dup=0; names.forEach(function(x){ var k=x.toLowerCase(); if(lc[k]) dup++; lc[k]=1; });
+  function pl(k){ return k===1?'':'s'; }
+  var h='<b>'+n+' compound'+pl(n)+'</b>';
+  if(!R.per) h+=' \u00b7 no compound blocks on a plate yet \u2014 the list is kept and fills the plates once the layout has them';
+  else if(R.same) h+=' \u00b7 '+R.per+' per plate, the same on every plate'+(R.left.length?(' \u00b7 <span class="warn">'+R.left.length+' do not fit</span>'):'');
+  else { var used=0; R.assign.forEach(function(a){ if(a.length) used++; }); var plates=used+R.extra;
+    h+=' \u00b7 '+R.per+' per plate \u2192 <b>'+plates+' plate'+pl(plates)+'</b>'+(plates!==R.L.length?(' (you have '+R.L.length+(R.extra?'; '+R.extra+' will be added with this layout':'')+')'):''); }
+  if(dup) h+=' \u00b7 <span class="warn">'+dup+' name'+pl(dup)+' repeated</span>';
+  return h; }
+function _esCpdHtml(e){
+  return '<label class="ci-f sf-list" title="One per line, or separated by commas. They go onto the layout\u2019s compound blocks in order, and the plates the list needs are added with the same layout \u2014 the same as the Compounds step of the plate editor.">'
+    +'<span>Compounds <span class="sf-n">'+(_cpdNames(ES_CPD.text).length||'')+'</span></span>'
+    +'<textarea rows="'+Math.min(12,Math.max(4,_cpdNames(ES_CPD.text).length+1))+'" spellcheck="false" placeholder="One per line \u2014 paste a column straight from Excel" oninput="esCpdUpd(this)">'+esc(ES_CPD.text)+'</textarea></label>'
+    +'<div class="es-cpd-plan" id="es-cpd-plan">'+_esCpdPlan(e,ES_CPD.text)+'</div>'; }
+function esCpdUpd(ta){ var e=LB.data.experiments[ES_EXP]; if(!e) return; ES_CPD.text=ta.value;
+  var pn=el('es-cpd-plan'); if(pn) pn.innerHTML=_esCpdPlan(e,ta.value);
+  var n=ta.closest('label')&&ta.closest('label').querySelector('.sf-n'); if(n) n.textContent=_cpdNames(ta.value).length||'';
+  var d=el('es-diff'); if(d) d.innerHTML=esDiffHtml(e); }
+var ES_CPD={on:false,text:'',base:'',pre:false,orig:undefined};
 var ES_WAS={}, ES_BASE=null;
 function openSetupEditor(expId){
   var e=LB.data.experiments[expId]; if(!e) return;
@@ -16875,6 +16917,10 @@ function openSetupEditor(expId){
     ES_SETUP[k]=view.use[k]; });
   // A dose series an older run has numbers for is a dose series; a box left unticked beside its own top concentration contradicts itself.
   if(asked.doseResp&&ES_SETUP.doseResp===undefined&&(ES_SETUP.topConc||ES_SETUP.df||ES_SETUP.nPoints)) ES_SETUP.doseResp=true;
+  // the compounds: where the type asks them, the question is prefilled from the plates when it holds nothing; where it does not, a list of its own
+  ES_CPD={on:_esCpdOwn(e),text:'',base:'',pre:false,orig:(e.setup||{}).compounds};
+  if(_cpdSetupField(e)){ var _t=_esCpdOpenText(e); if(!String(ES_SETUP.compounds||'').trim()&&_t){ ES_SETUP.compounds=_t; ES_CPD.pre=true; } ES_CPD.base=String(ES_SETUP.compounds||''); }
+  else if(ES_CPD.on){ ES_CPD.text=ES_CPD.base=_esCpdOpenText(e); }
   ES_BASE=JSON.parse(JSON.stringify(ES_SETUP));
   el('es-modal').classList.add('open');
   esRender();
@@ -16887,10 +16933,11 @@ function esRender(){
   // because that variant has no such step — bringing it back here as an empty box asks about
   // something the experiment does not have.
   var flds=_setupQs(e.type,ES_HIDE,ES_ADD,ES_SETUP);
+  // the experiment's own list of compounds (a type with no Compounds question) sits among the questions, under the Compounds heading
+  if(ES_CPD.on) flds=flds.concat([{f:'cpdOwn',t:'cpdown',lbl:'Compounds'}]);
   el('es-fields').innerHTML=(flds.length
-      ? setupFieldsHTML(flds,function(f,i){ return qWrap('es',f,nmSetupField(f,i===0&&f.t==='format',ES_SETUP,'esSetupUpd')); })
+      ? setupFieldsHTML(flds,function(f,i){ return f.t==='cpdown'?_esCpdHtml(e):qWrap('es',f,nmSetupField(f,i===0&&f.t==='format',ES_SETUP,'esSetupUpd')); })
       : '<div class="ds-none">No questions left. Add the ones this run needs below.</div>')
-    +(_plateCompounds(e).length&&!String(ES_SETUP.compounds||'').trim()?('<div class="es-plate-note"><b>Compounds on the plate map ('+_plateCompounds(e).length+')</b> '+esc(_plateCompoundsLine(e))+' \u2014 named and changed on the plate map.</div>'):'')
     +qRestoreHtml('es');
   var sub=el('es-sub'); if(sub) sub.textContent=[e.code,e.title||e.name].filter(Boolean).join(' \u00b7 ');
   Object.keys(ES_WAS||{}).forEach(function(k){
@@ -16958,6 +17005,11 @@ function esDiffHtml(e){
   var out='';
   out+=rows.length?('<div class="es-sec">Setup</div>'+rows.join('')):'';
   out+=calc.length?('<div class="es-sec">Calculators</div>'+calc.join('')):'';
+  var cpdOut='', ct=_esCpdText(e);
+  if(ct!==ES_CPD.base&&(ES_CPD.on||_cpdSetupField(e))){ var n0=_cpdNames(ES_CPD.base).length, n1=_cpdNames(ct).length, R=_plCpdPlanAll(e,_cpdNames(ct));
+    cpdOut='<div class="es-sec">Compounds</div><div class="es-row"><span class="es-k">List</span><span class="es-a">'+n0+'</span><span class="es-ar">\u2192</span><span class="es-b">'+n1+'</span></div>'
+      +'<div class="es-note">'+(R.per?('The names are placed on the plate map\u2019s compound blocks in order'+(R.extra&&!R.same?(', and '+R.extra+' plate'+(R.extra===1?'':'s')+' added with the same layout'):'')+'; a block past the end of the list loses its name.'):'There is no compound block on a plate yet, so the list is only kept.')+'</div>'; }
+  out+=cpdOut;
   var notes=[];
   if(prose) notes.push(prose===1 ? '1 step will have its text re-rendered from the template'
                                  : prose+' steps will have their text re-rendered from the template');
@@ -16977,8 +17029,12 @@ function applySetupEdit(){
   // back — it had no undoMark at all, so a setup saved by mistake was recoverable only from the
   // version history, which is written at most once per record per 10 minutes.
   undoMark('Edit setup',['experiments.'+e.id]);
+  // the compounds are placed on the plates only if this edit changed the list (see expCpdApply)
+  var cpdBacked=_cpdSetupField(e), cpdNow=_esCpdText(e), cpdChanged=cpdNow!==ES_CPD.base&&(ES_CPD.on||cpdBacked);
   e.blocks=applySetupToBlocks(e.type,ES_SETUP,e.blocks||[],prev,e.presetKey,ES_BASE);
   e.setup=JSON.parse(JSON.stringify(ES_SETUP));
+  // a list the dialog filled in from the plates, left as it was, is not stored as an answer
+  if(ES_CPD.pre&&!cpdChanged){ if(ES_CPD.orig===undefined) delete e.setup.compounds; else e.setup.compounds=ES_CPD.orig; }
   // a question the steps called for, taken out here, stays out: it is hidden like a type's own
   var _kept={}; _setupQs(e.type,ES_HIDE,ES_ADD).forEach(function(f){ _kept[f.f]=1; });
   var _use=_stepsUse(e); Object.keys(CTX_QS).forEach(function(k){ if(_use[k]!==undefined&&!_kept[k]&&ES_HIDE.indexOf(k)<0) ES_HIDE.push(k); });
@@ -16986,8 +17042,9 @@ function applySetupEdit(){
   e.setupAdd=JSON.parse(JSON.stringify(ES_ADD));
   if(ES_SETUP.cellLine!=null&&ES_SETUP.cellLine!==''){ e.cellLines=cellLineLabel(ES_SETUP.cellLine); }
   _syncExpLines(e);   // plates that say which line they are for are the record of it
+  var cpdRes=cpdChanged?expCpdApply(e,cpdNow):null;
   e.updated=Date.now(); save(); closeSetupEditor(); renderAll();
-  toast('Setup applied.');
+  toast('Setup applied.'+(cpdRes&&cpdRes.added?(' '+cpdRes.added+' plate'+(cpdRes.added===1?'':'s')+' added with the same layout for the compounds.'):''));
 }
 function setupSummaryHtml(e){
   // The preset's own questions (setupAdd) are answers on the record too, so they are chips; so are the ones the steps call for (a seeding
@@ -17001,7 +17058,9 @@ function setupSummaryHtml(e){
     return '<div class="exh-setup-i'+(String(v).length>48?' wide':'')+'"><b>'+esc(f.lbl)+'</b><span>'+esc(String(v))+'</span></div>';
   }).filter(Boolean).join('');
   // Compounds the plate map names and the setup does not list (every older run: the list was typed once, if at all)
-  if(!String(V.su.compounds||'').trim()&&_plateCompounds(e).length)
+  if(!_cpdSetupField(e)&&String(e.cpdList||'').trim())
+    parts+='<div class="exh-setup-i wide"><b>Compounds ('+_cpdNames(e.cpdList).length+')</b><span>'+esc(_cpdNames(e.cpdList).join(', '))+'</span></div>';
+  else if(!String(V.su.compounds||'').trim()&&_plateCompounds(e).length)
     parts+='<div class="exh-setup-i wide"><b>Compounds on the plate map ('+_plateCompounds(e).length+')</b><span>'+esc(_plateCompoundsLine(e))+'</span></div>';
   // The chips were read-only, which is where the dead end was: you could see the setup and
   // not change it.

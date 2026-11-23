@@ -68,6 +68,10 @@
 //   L31 the setup asks about the run  Edit setup opens on what the steps use (a setup saved earlier that said 10 plates beside a seeding step of 8 opened
 //                           on the 10 and, on Apply, rescaled every readout to it), asks what the steps call for even when the type did not (a NanoBRET's
 //                           cells per well and seeding volume), and takes any cell line typed, not only the seven in the list
+//   L32 compounds from Edit setup  The list of compounds can be typed in Edit setup as in the plate editor's Compounds step: the names go onto the layout's
+//                           compound blocks in order and the plates the list needs are added with the same layout; it is stored where the experiment keeps it
+//                           (the setup's own question, else e.cpdList, never both); an older run's list opens prefilled from its plates; Apply on something
+//                           else does not re-place the names
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -895,8 +899,65 @@ try {
     else r.bad.forEach(m => bad('L31', m));
     errs.forEach(m => bad('L31', 'page error: ' + m)); await ctx.close();
   }
+  // ── L32 ──
+  if (run('L32')) {
+    counts.L32 = 1;
+    const ctx = await newCtx(); const { page, errs } = await open(ctx);
+    const r = await page.evaluate(async () => {
+      const out = { bad: [] }, wait = ms => new Promise(r => setTimeout(r, ms));
+      const P = LB.data.projects.find(p => (p.sections || []).length), S = P.sections[0];
+      const mk = (key, code) => { const tpl = LB.data.presets[key] || EXTRA_PRESET_SEED[key]; if (!tpl) return null;
+        const su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup || {}))); const before = Object.assign({}, LB.data.experiments);
+        buildExperimentFrom({ pid: P.id, sid: S.id, key, tpl, startDate: todayStr(), type: presetBase(key), title: tpl.title || key, code, setup: su, plate: true });
+        return Object.values(LB.data.experiments).find(x => !before[x.id]); };
+      const open = e => { openSetupEditor(e.id); return wait(60); };
+      const type = (ta, names) => { ta.value = names.join('\n'); ta.dispatchEvent(new Event('input', { bubbles: true })); };
+      const plateNames = e => expPlateList(e).map(x => _plSlots(x.p).map(s => s.name));
+      const ctg = mk('CTG', 'AU_L32_CTG'), nb = mk('NB_SPARK_SCREEN96', 'AU_L32_NB');
+      if (!ctg || !nb) { out.gone = true; return out; }
+      // a. a type that asks Compounds: the question places the names on the plates
+      const per = _plSlots(expPlateList(ctg)[0].p).length, names = []; for (let i = 1; i <= per + 2; i++) names.push('Cpd' + i);
+      await open(ctg); const ta = document.querySelector('#es-fields textarea[data-sf="compounds"]');
+      if (!ta) out.bad.push('CTG: the Compounds question is not in Edit setup');
+      else {
+        type(ta, names); await wait(30);
+        if (!/Compounds/.test(document.getElementById('es-diff').innerText) || !/added with the same layout/.test(document.getElementById('es-diff').innerText)) out.bad.push('CTG: the dialog does not say the list will place names and add a plate: ' + document.getElementById('es-diff').innerText.replace(/\s+/g, ' ').slice(0, 120));
+        applySetupEdit(); await wait(60);
+        const pn = plateNames(ctg);
+        if (pn.length !== 2) out.bad.push('CTG: ' + names.length + ' compounds at ' + per + ' per plate made ' + pn.length + ' plates');
+        else if (pn[0].join() !== names.slice(0, per).join() || pn[1].filter(Boolean).join() !== names.slice(per).join()) out.bad.push('CTG: the names are not on the plates in order: ' + JSON.stringify(pn));
+        if (String(ctg.setup.compounds || '').split('\n').length !== names.length) out.bad.push('CTG: the setup list is "' + ctg.setup.compounds + '"');
+        if (ctg.cpdList) out.bad.push('CTG: the list is stored twice (setup and cpdList)');
+        // b. opened again it shows the list; Apply on something else does not re-place the names
+        _plSlotName(expPlateList(ctg)[0].p, _plSlots(expPlateList(ctg)[0].p)[0], 'ZZ-by-hand', 0);
+        await open(ctg); const ta2 = document.querySelector('#es-fields textarea[data-sf="compounds"]');
+        if (!ta2 || ta2.value.split('\n').length !== names.length) out.bad.push('CTG: the list does not come back when Edit setup is reopened');
+        const cpw = document.querySelector('#es-fields input[data-sf="cellsPerWell"]'); cpw.value = String((+cpw.value || 1000) + 1); cpw.dispatchEvent(new Event('input', { bubbles: true }));
+        applySetupEdit(); await wait(40);
+        if (plateNames(ctg)[0][0] !== 'ZZ-by-hand') out.bad.push('CTG: Apply on another answer re-placed the compounds (the name given by hand is now "' + plateNames(ctg)[0][0] + '")');
+      }
+      // c. a type with no Compounds question gets a list of its own, kept in e.cpdList
+      const per2 = _plSlots(expPlateList(nb)[0].p).length, n2 = []; for (let i = 1; i <= per2 + 1; i++) n2.push('Nb' + i);
+      await open(nb); const ta3 = document.querySelector('#es-fields .sf-list textarea:not([data-sf])');
+      if (!ta3) out.bad.push('NanoBRET: there is no compound list in Edit setup');
+      else {
+        type(ta3, n2); await wait(30);
+        if (!/compound/.test(document.getElementById('es-cpd-plan').innerText)) out.bad.push('NanoBRET: the list has no plan line');
+        applySetupEdit(); await wait(60);
+        if (expPlateList(nb).length !== 2) out.bad.push('NanoBRET: ' + n2.length + ' names at ' + per2 + ' per plate made ' + expPlateList(nb).length + ' plates');
+        if (_cpdNames(nb.cpdList).length !== n2.length) out.bad.push('NanoBRET: e.cpdList is "' + nb.cpdList + '"');
+        if (nb.setup && nb.setup.compounds) out.bad.push('NanoBRET: the list is stored twice');
+        if (setupSummaryHtml(nb).indexOf('Nb1') < 0) out.bad.push('NanoBRET: the Setup block does not name the compounds');
+      }
+      [ctg, nb].forEach(e => { delete LB.data.experiments[e.id]; });
+      return out;
+    });
+    if (r.gone) bad('L32', 'a preset used by the test is gone (the test is void)');
+    else r.bad.forEach(m => bad('L32', m));
+    errs.forEach(m => bad('L32', 'page error: ' + m)); await ctx.close();
+  }
 } finally { await browser.close(); if (srv) srv.kill(); }
-for (const id of ['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8', 'L9', 'L10', 'L11', 'L12', 'L13', 'L14', 'L15', 'L16', 'L17', 'L18', 'L19', 'L20', 'L21', 'L22', 'L23', 'L24', 'L25', 'L26', 'L27', 'L28', 'L29', 'L30', 'L31']) { if (ONLY && !ONLY.includes(id)) continue; const fs_ = findings.filter(f => f.id === id); process.stdout.write(`  ${fs_.length ? '✗' : '✓'} ${id}${fs_.length ? '  — ' + fs_.length + ' finding(s)' : ''}\n`); }
+for (const id of ['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8', 'L9', 'L10', 'L11', 'L12', 'L13', 'L14', 'L15', 'L16', 'L17', 'L18', 'L19', 'L20', 'L21', 'L22', 'L23', 'L24', 'L25', 'L26', 'L27', 'L28', 'L29', 'L30', 'L31', 'L32']) { if (ONLY && !ONLY.includes(id)) continue; const fs_ = findings.filter(f => f.id === id); process.stdout.write(`  ${fs_.length ? '✗' : '✓'} ${id}${fs_.length ? '  — ' + fs_.length + ' finding(s)' : ''}\n`); }
 const seen = new Set(); findings.forEach(f => { const k = f.id + f.m; if (seen.has(k)) return; seen.add(k); process.stdout.write(`     [${f.id}] ${f.m}\n`); });
 if (!findings.length) process.stdout.write('\nLabbook audit invariants hold.\n');
 process.exit(findings.length ? 1 : 0);
