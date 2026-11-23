@@ -641,6 +641,29 @@ if (run('DO16')) await guard('DO16', async () => {
   }
 });
 
+// DO17 — every popover is a layer with a role. The laptop sweep (tools/mobile_hub_sweep.mjs) treats [role=menu]/[role=dialog] as a layer the person opened on purpose;
+// Filters, Columns, Score and Range were bare divs, so the table text under each open panel was reported as covered (CI red on 704a2a4..1248741, 2026-11-23).
+if (run('DO17')) await guard('DO17', async () => {
+  const p = await open();
+  const r = await p.evaluate(async () => {
+    loadTestData(); switchTab('table'); await new Promise(r => setTimeout(r, 400));
+    const out = { bare: [], opened: [] };
+    document.querySelectorAll('.dd-menu').forEach(m => { if (!m.matches('[role=menu],[role=dialog]')) out.bare.push(m.id || m.className); });
+    for (const id of ['flt-dd', 'col-dd', 'sc-dd']) {
+      ddToggle(id); await new Promise(r => setTimeout(r, 150));
+      const m = document.querySelector('#' + id + ' .dd-menu'), b = m.getBoundingClientRect();
+      const top = document.elementFromPoint(b.left + b.width / 2, b.top + Math.min(40, b.height / 2));
+      out.opened.push({ id, shown: !m.hidden && b.width > 50 && b.height > 30, layer: !!(top && top.closest('[role=menu],[role=dialog]')) });
+      ddClose();
+    }
+    return out;
+  });
+  !r.bare.length ? ok() : bad('DO17', 'a popover with no role (the sweep reads what it covers as covered text): ' + r.bare.join(', '));
+  r.opened.every(o => o.shown && o.layer) ? ok() : bad('DO17', 'an opened panel is not drawn as a layer: ' + JSON.stringify(r.opened));
+  p.errs.length ? bad('DO17', 'errors: ' + p.errs.join(' | ')) : ok();
+  await p.context().close();
+});
+
 await browser.close();
 for (const f of findings) console.log(f);
 for (const k of skipped) console.log('~ skipped: ' + k);
