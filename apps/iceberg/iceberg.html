@@ -206,6 +206,12 @@ main{flex:1;overflow:hidden;display:flex;flex-direction:column;min-height:0;}
 .field textarea{height:auto;min-height:64px;padding:9px 11px;line-height:1.5;font-family:var(--sans);resize:vertical;}
 .field input[type="date"]{font-family:var(--sans);}
 .field .hint{font-size:var(--fs-2);color:var(--text3);margin-top:1px;}
+.vf-plan{display:block;background:var(--surface2);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:var(--r-2);padding:8px 11px;font-size:var(--fs-3);color:var(--text2);line-height:1.45;min-height:36px;}
+.vf-plan b{color:var(--text);font-family:var(--mono);font-weight:600;}
+.vf-plan.warn{border-left-color:var(--danger);color:var(--danger);}
+.vf-plan.warn b{color:inherit;}
+.vf-plan .vf-note{display:block;color:var(--text3);font-size:var(--fs-2);margin-top:2px;}
+#vf-count[readonly]{background:var(--surface2);color:var(--text3);}
 
 /* TABLE VIEW */
 .table-wrap{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-2);overflow:auto;min-height:0;}
@@ -591,9 +597,15 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
     <div class="modal-body">
       <form id="vial-form" class="vial-form" onsubmit="event.preventDefault();saveVial();">
         <div class="field">
-          <label for="vf-pos">Position</label>
-          <input type="text" id="vf-pos" placeholder="A1" required pattern="[A-Z][0-9]{1,2}" style="text-transform:uppercase;font-family:var(--mono);">
-          <span class="hint">Row letter + column number (e.g. A1, B12)</span>
+          <label for="vf-pos" id="vf-pos-lbl">Position</label>
+          <input type="text" id="vf-pos" placeholder="G1  or  G1-G5" required autocomplete="off" spellcheck="false" oninput="vfPlanRefresh()" style="text-transform:uppercase;font-family:var(--mono);">
+        </div>
+        <div class="field" id="vf-fill-field">
+          <label for="vf-count">How many vials</label>
+          <input type="number" id="vf-count" value="1" min="1" max="200" oninput="vfPlanRefresh()">
+        </div>
+        <div class="field span2" id="vf-plan-field">
+          <span class="vf-plan" id="vf-plan" role="status" aria-live="polite"></span>
         </div>
         <div class="field">
           <label for="vf-kind">What is it</label>
@@ -627,11 +639,6 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
         <div class="field">
           <label id="vf-by-lbl" for="vf-by">Frozen by</label>
           <input type="text" id="vf-by" placeholder="initials">
-        </div>
-        <div class="field" id="vf-fill-field">
-          <label for="vf-count">How many vials</label>
-          <input type="number" id="vf-count" value="1" min="1" max="200">
-          <span class="hint" id="vf-fill-hint">One per position, filling forward from here</span>
         </div>
         <div class="field span2">
           <label for="vf-notes">Notes</label>
@@ -2013,7 +2020,7 @@ function fillSelection(){
   _vf('pos').value = empties[0];
   openAddVial();
   _vf('count').value = empties.length;
-  var h = document.getElementById('vf-fill-hint'); if (h) h.textContent = 'Into the ' + empties.length + ' selected position' + (empties.length === 1 ? '' : 's') + ': ' + empties.join(', ');
+  vfPlanRefresh();
 }
 function _moveVials(srcBox, positions, dest, destLoc, srcLoc){
   var n = positions.length, start = _freeRun(dest, n), free = start ? _boxPositions(dest).slice(_boxPositions(dest).indexOf(start), _boxPositions(dest).indexOf(start) + n) : _freeFrom(dest, _boxPositions(dest)[0], n);
@@ -2126,7 +2133,10 @@ function _boxLastVial(box){
 function openAddVial(){
   editingVialPos = null;
   var box = getCurrentBox(), last = _boxLastVial(box);
-  document.getElementById('vial-modal-title').textContent = 'Add vial';
+  document.getElementById('vial-modal-title').textContent = 'Add vials';
+  document.getElementById('vf-pos-lbl').textContent = 'Position or run';
+  document.getElementById('vf-plan-field').style.display = '';
+  _vf('count').readOnly = false; _vf('pos').readOnly = false;
   document.getElementById('vf-delete-btn').style.display = 'none';
   document.getElementById('vf-discard-btn').style.display = 'none';
   document.getElementById('vf-dup-btn').style.display = 'none';
@@ -2147,6 +2157,7 @@ function openAddVial(){
   var _pp = normalisePos(_vf('pos').value);
   if (box && (!_pp || (box.vials && box.vials[_pp]))) _vf('pos').value = _freeFrom(box, 'A1', 1)[0] || '';
   vfSyncKind();
+  vfPlanRefresh();
   refreshCellLineSuggestions();
   document.getElementById('vial-modal').classList.add('open');
   pushNavLevel(function(){ document.getElementById('vial-modal').classList.remove('open'); editingVialPos=null; });
@@ -2157,6 +2168,9 @@ function openEditVial(pos){
   var v = (box.vials || {})[pos]; if (!v) return openAddVial();
   editingVialPos = pos;
   document.getElementById('vial-modal-title').textContent = 'Edit vial \u2014 ' + pos;
+  document.getElementById('vf-pos-lbl').textContent = 'Position';
+  document.getElementById('vf-plan-field').style.display = 'none';
+  _vf('count').readOnly = false; _vf('pos').readOnly = false;
   document.getElementById('vf-delete-btn').style.display = 'inline-flex';
   document.getElementById('vf-discard-btn').style.display = 'inline-flex';
   document.getElementById('vf-dup-btn').style.display = 'inline-flex';
@@ -2205,6 +2219,113 @@ function _freeFrom(box, startPos, n){
   for (var k2 = 0; k2 < i && out.length < n; k2++) if (!vials[all[k2]]) out.push(all[k2]);
   return out;
 }
+// ─── WHERE NEW VIALS GO ────────────────────────────────────────────────────
+// ONE reader for "which positions", used by this form and by the Hub (Incubator's Freeze asks it through
+// the shell), so the two can never disagree about where five vials land.
+//   "G1"            one position; with "How many" it is the START, and the vials fill forward from it
+//   "G1-G5"  "G1-5" a run in reading order (G8-H2 is G8, G9, H1, H2)
+//   "G1,G3 H2"      a list
+// A run or a list is exactly what was typed (the count follows it); a start plus a number skips what is taken.
+function parsePosSpec(spec, box){
+  var all = _boxPositions(box), out = [], bad = [], seen = {};
+  var txt = String(spec == null ? '' : spec).toUpperCase().replace(/\s*(?:[-\u2013\u2014:]|\.\.)\s*/g, '-');
+  function put(p){ if (!seen[p]){ seen[p] = 1; out.push(p); } }
+  txt.split(/[\s,;]+/).forEach(function(tok){
+    if (!tok) return;
+    var m = /^([A-Z]\d{1,2})-([A-Z]\d{1,2}|\d{1,2})$/.exec(tok);
+    if (m){
+      var a = normalisePos(m[1]), b = /^\d/.test(m[2]) ? (a ? normalisePos(a.charAt(0) + m[2]) : null) : normalisePos(m[2]);
+      var ia = a ? all.indexOf(a) : -1, ib = b ? all.indexOf(b) : -1;
+      if (ia < 0 || ib < 0){ bad.push(tok); return; }
+      for (var k = Math.min(ia, ib); k <= Math.max(ia, ib); k++) put(all[k]);
+      return;
+    }
+    var q = normalisePos(tok);
+    if (q && all.indexOf(q) >= 0) put(q); else bad.push(tok);
+  });
+  return { positions: out, bad: bad };
+}
+// "G1, G2, G3, G4, G5" -> "G1\u2013G5": runs in reading order, so a plan of fifty reads in one glance.
+function posRuns(list, box){
+  var all = _boxPositions(box), idx = list.map(function(p){ return all.indexOf(p); }).sort(function(a, b){ return a - b; }), out = [];
+  for (var i = 0; i < idx.length;){
+    var j = i; while (j + 1 < idx.length && idx[j + 1] === idx[j] + 1) j++;
+    out.push(j - i >= 2 ? all[idx[i]] + '\u2013' + all[idx[j]] : all.slice(idx[i], idx[j] + 1).join(', '));
+    i = j + 1;
+  }
+  return out.join(', ');
+}
+function planVials(box, spec, count){
+  var p = parsePosSpec(spec, box), vials = box.vials || {};
+  var plan = { positions: [], taken: [], bad: p.bad, skipped: [], short: 0, explicit: false };
+  if (p.bad.length) return plan;
+  if (p.positions.length > 1){                      // a run or a list is exactly what was typed
+    plan.explicit = true; plan.positions = p.positions;
+    plan.taken = p.positions.filter(function(q){ return vials[q]; });
+    return plan;
+  }
+  var n = Math.max(1, Math.min(200, parseInt(count, 10) || 1)), start = p.positions[0] || _boxPositions(box)[0];
+  if (vials[start]){ plan.taken = [start]; return plan; }
+  var all = _boxPositions(box), i0 = all.indexOf(start);
+  for (var k = i0; k < all.length && plan.positions.length < n; k++){
+    if (!vials[all[k]]) plan.positions.push(all[k]); else if (plan.positions.length) plan.skipped.push(all[k]);
+  }
+  plan.short = n - plan.positions.length;           // never wraps to the front: five vials from G1 do not end up in A1
+  return plan;
+}
+function planOk(plan){ return !plan.bad.length && !plan.taken.length && plan.positions.length > 0; }
+function planText(plan, box){
+  var occ = function(q){ return q + ' holds ' + (vialLabel((box.vials || {})[q]) || 'a vial'); };
+  if (plan.bad.length) return 'Not a position in this box: ' + plan.bad.join(', ') + ' (rows A\u2013' + String.fromCharCode(64 + box.rows) + ', columns 1\u2013' + box.cols + ')';
+  if (plan.taken.length) return occ(plan.taken[0]) + (plan.taken.length > 1 ? ' (and ' + (plan.taken.length - 1) + ' more taken)' : '') + ' \u2014 pick free positions';
+  if (!plan.positions.length) return 'No free position from there on';
+  var n = plan.positions.length, t = n + ' vial' + (n === 1 ? '' : 's') + ' \u2192 ' + posRuns(plan.positions, box);
+  if (plan.skipped.length) t += '  (skipping ' + posRuns(plan.skipped, box) + ', taken)';
+  if (plan.short) t += '  \u2014 only ' + n + ' free from there on';
+  return t;
+}
+// The whole add in one write: one save, one repaint, and the next add starts from what was just typed.
+function addVialsToBox(boxId, positions, base){
+  var box = null;
+  Object.keys(state.storages || {}).forEach(function(sk){ ((state.storages[sk] || {}).racks || []).forEach(function(rk){ (rk.boxes || []).forEach(function(bx){ if (bx.id === boxId) box = bx; }); }); });
+  if (!box) return 0;
+  box.vials = box.vials || {};
+  var n = 0;
+  positions.forEach(function(q){ if (!box.vials[q]){ box.vials[q] = JSON.parse(JSON.stringify(base)); n++; } });
+  if (n){
+    box._last = JSON.parse(JSON.stringify(base));
+    saveState();
+    try { if (currentBoxDetail && currentBoxDetail.boxId === boxId) renderBoxDetail(); renderTab(currentTab); } catch(e){}
+  }
+  return n;
+}
+// What the Hub asks before it writes: where would N vials from here land, and is it all right.
+function planVialsFor(boxId, spec, count){
+  var box = null;
+  Object.keys(state.storages || {}).forEach(function(sk){ ((state.storages[sk] || {}).racks || []).forEach(function(rk){ (rk.boxes || []).forEach(function(bx){ if (bx.id === boxId) box = bx; }); }); });
+  if (!box) return null;
+  var plan = planVials(box, spec, count);
+  return { positions: plan.positions, ok: planOk(plan), text: planText(plan, box), runs: posRuns(plan.positions, box), explicit: plan.explicit, short: plan.short };
+}
+// Live line under Position / How many: what Save will do, before it does it.
+function vfPlanRefresh(){
+  var box = getCurrentBox(), el = document.getElementById('vf-plan'), cnt = _vf('count'), pos = _vf('pos');
+  if (!el || !box || editingVialPos) return;
+  var txt, warn = false, note = '';
+  if (_fillTargets && _fillTargets.length){
+    var f = _fillTargets.filter(function(q){ return !box.vials[q]; });
+    txt = '<b>' + f.length + '</b> selected position' + (f.length === 1 ? '' : 's') + ': ' + esc(posRuns(f, box));
+    cnt.value = f.length; cnt.readOnly = true; pos.readOnly = true;
+  } else {
+    cnt.readOnly = false; pos.readOnly = false;
+    var plan = planVials(box, pos.value, cnt.value), ok = planOk(plan);
+    if (plan.explicit){ cnt.value = plan.positions.length; cnt.readOnly = true; }   // the run says how many
+    warn = !ok;
+    txt = esc(planText(plan, box)).replace(/^(\d+ vials?)/, '<b>$1</b>');
+  }
+  el.className = 'vf-plan' + (warn ? ' warn' : '');
+  el.innerHTML = txt + (note ? '<span class="vf-note">' + esc(note) + '</span>' : '');
+}
 function _vialFromForm(){
   var kind = _vf('kind').value || 'cells', name = _vf('cl').value.trim();
   var v = {
@@ -2229,48 +2350,51 @@ function _vialFromForm(){
 }
 function saveVial(){
   var box = getCurrentBox(); if (!box) return;
-  var pos = normalisePos(document.getElementById('vf-pos').value);
-  if (!pos) { toast('Position must be like A1, B12 etc.'); return; }
-  var rowIdx = pos.charCodeAt(0) - 65;
-  var colIdx = parseInt(pos.slice(1), 10);
-  if (rowIdx < 0 || rowIdx >= box.rows) { toast('Row out of range \u2014 this box has ' + box.rows + ' rows (A\u2013' + String.fromCharCode(64 + box.rows) + ')'); return; }
-  if (colIdx < 1 || colIdx > box.cols) { toast('Column out of range \u2014 this box has ' + box.cols + ' columns'); return; }
   var name = document.getElementById('vf-cl').value.trim();
   if (!name) { toast((_vf('kind').value === 'cells' ? 'Cell line' : 'A name') + ' is required'); return; }
-
-  if (!box.vials) box.vials = {};
-  // A position holds one vial. Typing the position of a vial that is already there (a new vial, or an
-  // edit that moves one) used to replace that record without a word; the one already there is kept
-  // and the person is told whose it is.
-  if (box.vials[pos] && pos !== editingVialPos) {
-    toast(pos + ' already holds ' + (vialLabel(box.vials[pos]) || 'a vial') + ' \u2014 pick a free position' );
-    return;
-  }
-  // If editing and position changed, delete the old key first
-  if (editingVialPos && editingVialPos !== pos) delete box.vials[editingVialPos];
-
   var base = _vialFromForm();
-  var howMany = editingVialPos ? 1 : Math.max(1, Math.min(200, parseInt(_vf('count').value, 10) || 1));
+  if (!box.vials) box.vials = {};
 
   if (editingVialPos){
+    // One vial: where it is, or where it moves to.
+    var pos = normalisePos(document.getElementById('vf-pos').value);
+    if (!pos) { toast('Position must be like A1, B12 etc.'); return; }
+    var rowIdx = pos.charCodeAt(0) - 65, colIdx = parseInt(pos.slice(1), 10);
+    if (rowIdx < 0 || rowIdx >= box.rows) { toast('Row out of range \u2014 this box has ' + box.rows + ' rows (A\u2013' + String.fromCharCode(64 + box.rows) + ')'); return; }
+    if (colIdx < 1 || colIdx > box.cols) { toast('Column out of range \u2014 this box has ' + box.cols + ' columns'); return; }
+    // A position holds one vial. Typing the position of a vial that is already there used to replace that
+    // record without a word; the one already there is kept and the person is told whose it is.
+    if (box.vials[pos] && pos !== editingVialPos) {
+      toast(pos + ' already holds ' + (vialLabel(box.vials[pos]) || 'a vial') + ' \u2014 pick a free position' );
+      return;
+    }
+    if (editingVialPos !== pos) delete box.vials[editingVialPos];
     base.vialCount = parseInt(_vf('count').value, 10) || 1;
     box.vials[pos] = base;
-  } else {
-    // N vials means N positions. Stacking them on one key was a picture of the box that the
-    // box does not agree with, and it made "how many are left" unanswerable by looking.
-    var targets = (_fillTargets && _fillTargets.length) ? _fillTargets.filter(function(p2){ return !box.vials[p2]; }).slice(0, howMany)
-      : [pos].concat(_freeFrom(box, pos, howMany).filter(function(p2){ return p2 !== pos; })).slice(0, howMany);
-    if (_fillTargets){ _fillTargets = null; SELW.clear(); SELMODE = false; }
-    if (targets.length < howMany) toast('Only ' + targets.length + ' free position' + (targets.length===1?'':'s') + ' left in this box');
-    targets.forEach(function(p2){ box.vials[p2] = JSON.parse(JSON.stringify(base)); });
-    pos = targets[0]; howMany = targets.length;
+    box._last = JSON.parse(JSON.stringify(base));
+    saveState(); closeVialModal(); renderBoxDetail();
+    toast('Vial updated');
+    return;
   }
-  box._last = JSON.parse(JSON.stringify(base));
-  saveState();
+
+  // New vials. N vials means N positions: stacking them on one key was a picture of the box that the box does
+  // not agree with, and it made "how many are left" unanswerable by looking. The positions are the ones the
+  // line under the form promised (planVials), never a different set.
+  var targets;
+  if (_fillTargets && _fillTargets.length){
+    targets = _fillTargets.filter(function(p2){ return !box.vials[p2]; });
+  } else {
+    var plan = planVials(box, document.getElementById('vf-pos').value, _vf('count').value);
+    if (!planOk(plan)) { toast(planText(plan, box)); return; }
+    targets = plan.positions;
+    if (plan.short) toast('Only ' + targets.length + ' free position' + (targets.length === 1 ? '' : 's') + ' left from there');
+  }
+  if (!targets.length) { toast('No free position to put them in'); return; }
+  if (_fillTargets){ _fillTargets = null; SELW.clear(); SELMODE = false; }
+  addVialsToBox(box.id, targets, base);
   closeVialModal();
   renderBoxDetail();
-  toast(editingVialPos ? 'Vial updated'
-        : (howMany > 1 ? (howMany + ' vials added') : ('Vial added at ' + pos)));
+  toast(targets.length > 1 ? (targets.length + ' vials added at ' + posRuns(targets, box)) : ('Vial added at ' + targets[0]));
 }
 function duplicateVial(){
   var box = getCurrentBox(); if (!box || !editingVialPos) return;

@@ -266,6 +266,18 @@ button:focus-visible,a:focus-visible,[tabindex]:focus-visible,select:focus-visib
 .mdl{background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-3);width:100%;max-width:640px;
   max-height:calc(100vh - 40px);max-height:calc(100dvh - 40px);display:flex;flex-direction:column;box-shadow:var(--shadow-md);overflow:hidden;}
 .mdl.sm{max-width:440px;}
+.frz-mono{font-family:var(--mono);text-transform:uppercase;}
+.frz-plan{background:var(--surface2);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:var(--r-2);padding:8px 11px;font-size:var(--fs-3);color:var(--text2);line-height:1.45;min-height:36px;}
+.frz-plan b{color:var(--text);font-family:var(--mono);font-weight:600;}
+.frz-plan.warn{border-left-color:var(--danger);color:var(--danger);}
+.frz-plan.warn b{color:inherit;}
+.frz-map-wrap{display:grid;gap:3px;padding:8px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-2);overflow:auto;}
+.frz-w{aspect-ratio:1;width:100%;max-width:34px;justify-self:center;min-width:0;min-height:18px;padding:0;border-radius:var(--r-1);border:1px dashed var(--border2);background:var(--surface);cursor:pointer;font:600 var(--fs-1)/1 var(--mono);color:var(--text3);}
+.frz-w:hover{border-color:var(--accent);}
+.frz-w.taken{background:var(--border);border:1px solid var(--border2);color:transparent;cursor:not-allowed;}
+.frz-w.plan{background:var(--accent);border:1px solid var(--accent);color:var(--on-accent);}
+.frz-w:focus-visible{outline:2px solid var(--accent);outline-offset:1px;}
+.frz-maphint{font-size:var(--fs-2);color:var(--text3);margin-top:5px;}
 .mdl-hd{display:flex;align-items:flex-start;gap:12px;padding:20px 24px 0;}
 .mdl-t{flex:1;font-size:var(--fs-5);font-weight:700;line-height:1.3;}
 .mdl-sub{font-size:var(--fs-2);color:var(--text2);margin-top:3px;font-weight:400;line-height:1.45;}
@@ -468,6 +480,32 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
     <div class="mdl-act">
       <button class="btn ghost" type="button" onclick="openCellArchiveApp()">New line in the Cell Archive</button>
       <button class="btn ghost" type="button" onclick="closeCellPicker()">Close</button>
+    </div>
+  </div>
+</div>
+<div class="mdl-back pick" id="frz-back" onclick="if(event.target===this)closeFreeze()">
+  <div class="mdl" role="dialog" aria-modal="true" aria-labelledby="frz-title">
+    <div class="mdl-hd">
+      <div class="mdl-t"><span id="frz-title">Freeze</span><div class="mdl-sub" id="frz-sub"></div></div>
+      <button class="drw-x" type="button" title="Close" aria-label="Close" onclick="closeFreeze()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <form class="mdl-body" id="frz-form" onsubmit="event.preventDefault();freezeGo();">
+      <div class="fgrid">
+        <div class="fld s4"><label for="frz-box">Box</label><select class="inp" id="frz-box" onchange="frzBoxChanged()"></select></div>
+        <div class="fld s2"><label for="frz-pos">Position <span class="opt">(start, or a run like G1-G5)</span></label><input class="inp frz-mono" id="frz-pos" autocomplete="off" spellcheck="false" oninput="frzRefresh()"></div>
+        <div class="fld s2"><label for="frz-n">How many vials</label><input class="inp" id="frz-n" type="number" min="1" max="200" value="4" oninput="frzRefresh()"></div>
+        <div class="frz-plan s4" id="frz-plan" role="status" aria-live="polite"></div>
+        <div class="s4"><div class="frz-map-wrap" id="frz-map" aria-label="Box map"></div><div class="frz-maphint">Click a free well to start there. Shift-click another to take the run between them.</div></div>
+        <div class="fld"><label for="frz-passage">Passage</label><input class="inp" id="frz-passage" autocomplete="off"></div>
+        <div class="fld"><label for="frz-date">Freeze date</label><input class="inp" id="frz-date" type="date"></div>
+        <div class="fld s2"><label for="frz-by">Frozen by</label><input class="inp" id="frz-by" autocomplete="off" placeholder="initials"></div>
+        <div class="fld s4"><label for="frz-media">Freezing media</label><input class="inp" id="frz-media" autocomplete="off" placeholder="e.g. FBS + 10% DMSO"></div>
+        <div class="fld s4"><label for="frz-notes">Notes</label><input class="inp" id="frz-notes" autocomplete="off"></div>
+      </div>
+    </form>
+    <div class="mdl-act">
+      <button class="btn ghost" type="button" onclick="closeFreeze()">Cancel</button>
+      <button class="btn" type="button" id="frz-go" onclick="freezeGo()">Freeze</button>
     </div>
   </div>
 </div>
@@ -1339,8 +1377,8 @@ function paintDrawer(){
 // Tab stays inside the dialog that is on top: the ask, the picker, the culture form or the drawer
 document.addEventListener('keydown', function(e){
   if(e.key!=='Tab') return;
-  var ask=el('inc-ask'), pk=el('cf-pick-back'), box=null;
-  if(ask && ask.style.display==='flex') box=ask; else if(pk && pk.classList.contains('open')) box=pk; else if(_cellForm) box=el('cf-back'); else if(_openCell) box=el('cell-drawer');
+  var ask=el('inc-ask'), pk=el('cf-pick-back'), fz=el('frz-back'), box=null;
+  if(ask && ask.style.display==='flex') box=ask; else if(fz && fz.classList.contains('open')) box=fz; else if(pk && pk.classList.contains('open')) box=pk; else if(_cellForm) box=el('cf-back'); else if(_openCell) box=el('cell-drawer');
   if(!box) return;
   var q=[].slice.call(box.querySelectorAll('button,input,select,textarea,a[href],[tabindex]:not([tabindex="-1"])')).filter(function(x){ return !x.disabled && x.offsetParent!==null && getComputedStyle(x).visibility!=='hidden'; });
   if(!q.length) return; var i=q.indexOf(document.activeElement);
@@ -1348,70 +1386,129 @@ document.addEventListener('keydown', function(e){
 });
 document.addEventListener('keydown', function(e){
   if(e.key!=='Escape') return;
-  var pk=el('cf-pick-back'), ask=el('inc-ask');
+  var pk=el('cf-pick-back'), ask=el('inc-ask'), fz=el('frz-back');
   if(ask && ask.style.display==='flex') return;          // the ask closes itself
-  if(pk && pk.classList.contains('open')) closeCellPicker();
+  if(fz && fz.classList.contains('open')) closeFreeze();
+  else if(pk && pk.classList.contains('open')) closeCellPicker();
   else if(_cellForm) closeCellForm();
   else if(_openCell) closeDrawer();
 });
 
 // ── Freeze: a flask becomes vials ────────────────────────────────────────
-// The counterpart to Thaw. Doing it by hand means finding a free run of positions in Iceberg
-// and retyping the line, passage and media that are already on the screen in front of you.
+// The counterpart to Thaw, and the same form as Add vials in the Freezer: pick the box, say where (a start, or a run
+// such as G1-G5) and how many, and see on the box itself where they will sit. The line, passage and culture medium come
+// from the flask; the freezing medium, who froze and the last box are remembered (first time: the box that already
+// holds this line, else the emptiest). Where the vials go is Iceberg's rule
+// (HUB_FREEZER_PLAN), not a second copy of it here.
+var _frz=null, _frzPrefs=function(){ try{ return JSON.parse(localStorage.getItem('incubator_freeze')||'{}')||{}; }catch(e){ return {}; } };
+function _frzHub(){ var H=null; try{ H=(window.parent&&window.parent!==window)?window.parent:null; }catch(e){} return H; }
 function freezeCulture(id){
   var c=STORE.get().incubator[id]; if(!c) return;
-  var H=null; try{ H=(window.parent&&window.parent!==window)?window.parent:null; }catch(e){}
-  if(!H||!H.HUB_FREEZER_BOXES){ showToast('Banking vials needs the dHUB shell (the freezer map lives there)'); return; }
+  var H=_frzHub();
+  if(!H||!H.HUB_FREEZER_BOXES||!H.HUB_FREEZER_PLAN){ showToast('Banking vials needs the dHUB shell (the freezer map lives there)'); return; }
   var boxes=H.HUB_FREEZER_BOXES();
   if(!boxes.length){ showToast('No boxes in the freezer yet — add one in Freezer first'); return; }
-  var listing=boxes.map(function(b,i){ return (i+1)+') '+b.storageLabel+' · '+b.rack+' · '+b.box+'  ('+b.filled+'/'+(b.rows*b.cols)+' full)'; }).join('\n');
-  incAsk('Freeze '+c.line+' (P'+(c.passage!=null?c.passage:'?')+')', 'Which box?\n\n'+listing,
-    {input:true, value:'1', ok:'Next'}, function(pick){
-      if(pick===null) return;
-      var bi=parseInt(pick,10)-1; var box=boxes[bi];
-      if(!box){ showToast('No box '+pick); return; }
-      incAsk('How many vials?', 'They go into consecutive free positions in '+box.box+'.',
-        {input:true, value:'4', ok:'Freeze'}, function(nStr){
-          if(nStr===null) return;
-          var n=parseInt(nStr,10);
-          if(!n || n<1) return;
-          _freezeIntoBox(id, c, H, box, n);
-        });
-    });
+  var pr=_frzPrefs(), base=cellsBaseLineLocal(c.line);
+  // the box to offer: the one used last, else one that already holds this line, else the first with room
+  function room(b){ return b.rows*b.cols-b.filled; }
+  var pick=boxes.filter(function(b){ return b.boxId===pr.boxId && room(b)>0; })[0]
+    || boxes.filter(function(b){ return room(b)>0 && Object.keys(b.vials).some(function(p){ var v=b.vials[p]; return v && cellsBaseLineLocal(v.cellLine||'')===base; }); })[0]
+    || boxes.filter(function(b){ return room(b)>0; }).sort(function(a,b){ return room(b)-room(a); })[0];   // else the emptiest
+  if(!pick){ showToast('Every box is full — add a box in Freezer first'); return; }
+  _frz={id:id, from:document.activeElement, boxId:pick.boxId};
+  el('frz-title').textContent='Freeze '+c.line;
+  el('frz-sub').textContent=[c.passage!=null?('P'+c.passage):'', c.vessel||''].filter(Boolean).join(' · ')+(c.passage!=null||c.vessel?' · ':'')+'the vials are added to the freezer map';
+  el('frz-box').innerHTML=boxes.map(function(b){
+    var free=room(b);
+    return '<option value="'+esc(b.boxId)+'"'+(free?'':' disabled')+'>'+esc(b.storageLabel+' › '+b.rack+' › '+b.box)+' — '+(free?(free+' free'):'full')+'</option>';
+  }).join('');
+  el('frz-box').value=pick.boxId;
+  el('frz-n').value=String(Math.max(1,Math.min(200,parseInt(pr.n,10)||4)));
+  el('frz-passage').value=c.passage!=null?('P'+c.passage):'';
+  el('frz-date').value=toDateInput(Date.now());
+  el('frz-by').value=pr.by||'';
+  el('frz-media').value=pr.media||'';
+  el('frz-notes').value='Frozen from culture in '+(c.vessel||'flask');
+  frzDefaultPos(H);
+  frzRefresh();
+  el('frz-back').classList.add('open');
+  setTimeout(function(){ var n=el('frz-n'); if(n){ n.focus(); n.select(); } },30);
 }
-function _freezeIntoBox(id, c, H, box, n){
-  // Reading order, so the vials sit where they look like they sit.
-  var free=[];
-  for(var r=0;r<box.rows && free.length<n;r++)
-    for(var col=1;col<=box.cols && free.length<n;col++){
-      var pos=String.fromCharCode(65+r)+col;
-      if(!box.vials[pos]) free.push(pos);
-    }
-  if(!free.length){ showToast('That box is full'); return; }
-  if(free.length<n){
-    incAsk('Only '+free.length+' free position'+(free.length===1?'':'s')+' in that box',
-      'Freeze '+free.length+' instead?', {ok:'Freeze '+free.length}, function(yes){
-        if (yes) _freezeVialsGo(id, c, H, box, free);
-      });
-    return;
+function cellsBaseLineLocal(name){ return String(name||'').split(',')[0].trim().split(/\s+/)[0].toLowerCase(); }
+function frzBox(H){ var id=el('frz-box').value, bs=H.HUB_FREEZER_BOXES(); for(var i=0;i<bs.length;i++) if(bs[i].boxId===id) return bs[i]; return null; }
+// where to start: the first run of free wells long enough for the vials, else the first free well
+function frzDefaultPos(H){
+  var b=frzBox(H||_frzHub()); if(!b) return;
+  var n=Math.max(1,parseInt(el('frz-n').value,10)||1), run=0, first=null, at=null;
+  for(var r=0;r<b.rows&&!at;r++) for(var k=1;k<=b.cols;k++){
+    var q=String.fromCharCode(65+r)+k;
+    if(b.vials[q]){ run=0; continue; }
+    if(!first) first=q;
+    if(++run===1) var runStart=q;
+    if(run>=n){ at=runStart; break; }
   }
-  _freezeVialsGo(id, c, H, box, free);
+  el('frz-pos').value=at||first||'A1';
 }
-function _freezeVialsGo(id, c, H, box, free){
-  var today=toDateInput(Date.now());
-  free.forEach(function(pos){
-    H.HUB_FREEZER_PLACE({boxId:box.boxId, pos:pos}, {
-      kind:'cells', cellLine:c.line, passage:'P'+(c.passage!=null?c.passage:''),
-      freezeDate:today, freezeMedia:'', cultureMedia:c.media||'', frozenBy:'',
-      notes:'Frozen from culture in '+(c.vessel||'flask')
-    });
-  });
+function frzBoxChanged(){ frzDefaultPos(); frzRefresh(); }
+function frzRefresh(){
+  if(!_frz) return; var H=_frzHub(), b=H&&frzBox(H); if(!b) return;
+  var spec=el('frz-pos').value, nIn=el('frz-n');
+  var plan=H.HUB_FREEZER_PLAN(b.boxId, spec, nIn.value)||{positions:[],ok:false,text:'The freezer is not loaded yet'};
+  if(plan.explicit){ nIn.value=plan.positions.length; nIn.readOnly=true; } else nIn.readOnly=false;
+  _frz.plan=plan; _frz.box=b;
+  var pl=el('frz-plan'); pl.className='frz-plan s4'+(plan.ok?'':' warn');
+  pl.innerHTML=esc(plan.text).replace(/^(\d+ vials?)/,'<b>$1</b>');
+  var on={}; plan.positions.forEach(function(q){ on[q]=1; });
+  var h='';
+  for(var r=0;r<b.rows;r++) for(var k=1;k<=b.cols;k++){
+    var q=String.fromCharCode(65+r)+k, v=b.vials[q];
+    h+='<button type="button" class="frz-w'+(v?' taken':'')+(on[q]?' plan':'')+'" data-pos="'+q+'" tabindex="'+(v?'-1':'0')+'" aria-label="'+q+(v?(' holds '+esc(v.cellLine||v.label||'a vial')):(on[q]?' will receive a vial':' free'))+'"'+(v?' title="'+esc((v.cellLine||v.label||'')+'')+'" aria-disabled="true"':'')+'>'+(on[q]?q:'')+'</button>';
+  }
+  var map=el('frz-map'); map.style.gridTemplateColumns='repeat('+b.cols+',minmax(0,1fr))'; map.innerHTML=h;
+  var n=plan.positions.length;
+  el('frz-go').textContent=n?('Freeze '+n+' vial'+(n===1?'':'s')):'Freeze';
+  el('frz-go').disabled=!plan.ok;
+}
+document.addEventListener('click', function(e){
+  var w=e.target.closest&&e.target.closest('.frz-w'); if(!w||!_frz||w.classList.contains("taken")) return;
+  var pos=w.dataset.pos, cur=el('frz-pos').value.trim().toUpperCase().split(/[\s,;-]+/)[0];
+  if(e.shiftKey && /^[A-Z]\d{1,2}$/.test(cur) && cur!==pos){ el('frz-pos').value=cur+'-'+pos; }
+  else { el('frz-pos').value=pos; }
+  frzRefresh();
+});
+function closeFreeze(){
+  var b=el('frz-back'); var was=b&&b.classList.contains('open'); if(b) b.classList.remove('open');
+  var o=_frz&&_frz.from; _frz=null; if(was&&o&&o.isConnected&&o.focus) o.focus();
+}
+function freezeGo(){
+  if(!_frz) return; var H=_frzHub();
+  frzRefresh();
+  var plan=_frz.plan; if(!plan||!plan.ok){ showToast(plan&&plan.text||'Choose where the vials go'); return; }
+  var c=STORE.get().incubator[_frz.id]; if(!c){ closeFreeze(); return; }
+  var over={passage:el('frz-passage').value.trim(), freezeDate:el('frz-date').value||toDateInput(Date.now()), frozenBy:el('frz-by').value.trim(), freezeMedia:el('frz-media').value.trim(), notes:el('frz-notes').value.trim(), runs:plan.runs};
+  var box=_frz.box, n=_freezeVialsGo(_frz.id, c, H, box, plan.positions, over);
+  if(!n) return;                       // nothing was written: the dialog stays, with what was typed
+  try{ localStorage.setItem('incubator_freeze', JSON.stringify({boxId:box.boxId, n:n, by:over.frozenBy, media:over.freezeMedia})); }catch(e){}
+  closeFreeze();
+}
+function _freezeVialsGo(id, c, H, box, free, over){
+  over=over||{};
+  var rec={
+    kind:'cells', cellLine:c.line, passage:over.passage!=null?over.passage:('P'+(c.passage!=null?c.passage:'')),
+    freezeDate:over.freezeDate||toDateInput(Date.now()), freezeMedia:over.freezeMedia||'', cultureMedia:c.media||'', frozenBy:over.frozenBy||'',
+    notes:over.notes!=null?over.notes:('Frozen from culture in '+(c.vessel||'flask'))
+  };
+  // one write for all of them; if the freezer did not take them, say so and log nothing (the history must not claim vials that are not there)
+  var n=(H&&H.HUB_FREEZER_ADD)?H.HUB_FREEZER_ADD(box.boxId, free, rec):0;
+  if(!n){ showToast('The freezer did not take them — open Freezer once, then try again'); return 0; }
+  var where=over.runs||(free.length>1?(free[0]+'–'+free[free.length-1]):free[0]);
   // the cell as it is NOW: the dialogs above can stay open for minutes, and writing back the copy taken when they opened would undo anything logged since
   var now=(STORE.get().incubator||{})[id]||c, hist=(now.history||[]).slice();
-  hist.push({action:'froze '+free.length+' vial'+(free.length===1?'':'s')+' → '+box.box, passage:now.passage, ts:Date.now()});
+  hist.push({action:'froze '+n+' vial'+(n===1?'':'s')+' → '+box.box+' ('+where+')', passage:now.passage, ts:Date.now()});
   STORE.updateCell(id, {history:hist});
-  showToast(free.length+' vial'+(free.length===1?'':'s')+' banked in '+box.box+' ('+free[0]+(free.length>1?('–'+free[free.length-1]):'')+')');
+  showToast(n+' vial'+(n===1?'':'s')+' banked in '+box.box+' ('+where+')');
   paintDrawer();
+  return n;
 }
 
 // ── Boot ───────────────────────────────────────────────────────────────────

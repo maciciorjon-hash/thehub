@@ -26,6 +26,10 @@
 //       vial               the add dialog offers a free position; a comma inside a tab-separated name is the name; an import
 //                          writes nothing outside a box, grows a box it created, sends a custom storage's sheet to that
 //                          storage, reads a spreadsheet date, and leaves the inventory as it was when it fails half way
+//   F15 add many at once    a position field reads a run (G1-G5, G1-5, G8-H2), a list or a start; a run is exactly the run and sets how many,
+//                           a start plus a number skips what is taken and never wraps to the front, and the line under the form is what
+//                           Save writes; a run onto occupied positions or outside the box is refused naming it; the Hub's two calls
+//                           (planVialsFor, addVialsToBox) write all the vials in one save and never replace a vial
 //
 //   node tools/iceberg_invariants.mjs [--only=F1,F4] [--file=apps/iceberg/iceberg.html]      exit 1 on any finding
 import { chromium } from 'playwright';
@@ -363,6 +367,59 @@ if (run('F14')) await guard('F14', async () => {
   r.custom === 'fr150' ? ok() : bad('F14', 'a sheet exported from a custom storage went to ' + r.custom);
   r.atomic ? ok() : bad('F14', 'an import that failed half way changed the inventory');
   p.errs.length ? bad('F14', 'errors: ' + p.errs.join(' | ')) : ok();
+  await p.context().close();
+});
+
+if (run('F15')) await guard('F15', async () => {
+  const p = await open(OLD);
+  const r = await p.evaluate(() => {
+    const out = {}, B = { rows: 9, cols: 9, vials: { G3: { cellLine: 'X' } } }, J = a => JSON.stringify(a);
+    // reading a spec: a run, a one-row shorthand, a list, a run across rows, reversed, with odd separators and case
+    out.run = J(parsePosSpec('G1-G5', { rows: 9, cols: 9 }).positions);
+    out.short = J(parsePosSpec('g1-5', B).positions);
+    out.list = J(parsePosSpec('G1, G3 h2;A01', B).positions);
+    out.across = J(parsePosSpec('G8 – H2', B).positions);
+    out.rev = J(parsePosSpec('G5..G3', B).positions);
+    out.bad = J(parsePosSpec('Z1, A12, G1', B));              // a position that is not in the box is named, never dropped
+    // planning: a typed run is exactly the run; a start plus a number skips what is taken and never wraps to the front
+    const a = planVials(B, 'G1-G5', 5); out.explicitTaken = J([a.explicit, a.taken, planOk(a)]);
+    const b = planVials(B, 'G1', 5); out.skip = J([b.positions, b.skipped, planOk(b)]);
+    const c = planVials(B, 'I8', 5); out.tail = J([c.positions, c.short]);
+    const d = planVials(B, 'G3', 2); out.startTaken = J([d.taken, planOk(d)]);
+    out.text = planText(b, B) + ' | ' + planText(a, B) + ' | ' + planText(planVials(B, 'Z1', 1), B);
+    out.runs = posRuns(['G1', 'G2', 'G3', 'G4', 'G5', 'H2'], B);
+    // the form: a run sets how many; Save writes exactly that run, once, and the next add starts from it
+    openBoxDetail('minus80', 'r1', 'b2');
+    const box = getCurrentBox(), set = (id, v) => { const e = document.getElementById(id); e.value = v; e.dispatchEvent(new Event('input', { bubbles: true })); };
+    openAddVial(); set('vf-cl', 'MV-4-11'); set('vf-pos', 'G1-G5');
+    out.formCount = document.getElementById('vf-count').value + '/' + document.getElementById('vf-count').readOnly; out.formPlan = document.getElementById('vf-plan').textContent;
+    saveVial();
+    out.written = Object.keys(box.vials).filter(k => box.vials[k].cellLine === 'MV-4-11').sort().join();
+    out.last = box._last && box._last.cellLine;
+    // a number from a start; the line under the form is what is written
+    openAddVial(); set('vf-cl', 'U2OS'); set('vf-pos', 'A1'); set('vf-count', '3');
+    const promised = document.getElementById('vf-plan').textContent; saveVial();
+    out.three = Object.keys(box.vials).filter(k => box.vials[k].cellLine === 'U2OS').sort().join(); out.promised = promised;
+    // a run onto vials already there: refused, nothing changes
+    const before = J(box.vials); openAddVial(); set('vf-cl', 'Intruder'); set('vf-pos', 'G4-G7'); out.warn = document.getElementById('vf-plan').classList.contains('warn'); saveVial();
+    out.refused = J(box.vials) === before;
+    document.getElementById('vial-modal').classList.remove('open');
+    // the Hub's two calls, which Freeze from Incubator uses
+    const pf = planVialsFor('b2', 'H1-H3', 3); out.bridge = J([pf.positions, pf.ok, pf.runs]);
+    out.added = addVialsToBox('b2', ['H1', 'H2', 'G1'], { cellLine: 'Late' }) + '/' + (box.vials.G1.cellLine) + '/' + box.vials.H1.cellLine;   // G1 is taken: kept, not replaced
+    return out;
+  });
+  r.run === '["G1","G2","G3","G4","G5"]' && r.short === r.run && r.list === '["G1","G3","H2","A1"]' && r.across === '["G8","G9","H1","H2"]' && r.rev === '["G3","G4","G5"]'
+    ? ok() : bad('F15', 'reading a position spec: ' + JSON.stringify([r.run, r.short, r.list, r.across, r.rev]));
+  JSON.parse(r.bad).bad.join() === 'Z1,A12' ? ok() : bad('F15', 'a position outside the box was dropped or accepted: ' + r.bad);
+  r.explicitTaken === '[true,["G3"],false]' && r.skip === '[["G1","G2","G4","G5","G6"],["G3"],true]' && r.tail === '[["I8","I9"],3]' && r.startTaken === '[["G3"],false]'
+    ? ok() : bad('F15', 'planning: ' + JSON.stringify([r.explicitTaken, r.skip, r.tail, r.startTaken]));
+  /G1–G5, H2/.test(r.runs) && /G3 holds X/.test(r.text) && /Not a position in this box: Z1/.test(r.text) ? ok() : bad('F15', 'the sentence under the form: ' + r.runs + ' | ' + r.text);
+  r.formCount === '5/true' && /5 vials/.test(r.formPlan) && r.written === 'G1,G2,G3,G4,G5' && r.last === 'MV-4-11' ? ok() : bad('F15', 'a typed run G1-G5 did not become five vials G1-G5: ' + JSON.stringify([r.formCount, r.formPlan, r.written]));
+  r.three === 'A1,A2,A3' && /A1–A3/.test(r.promised) ? ok() : bad('F15', 'a start and a number wrote ' + r.three + ' but the form promised "' + r.promised + '"');
+  r.warn && r.refused ? ok() : bad('F15', 'a run onto occupied positions was not refused, or changed the box');
+  r.bridge === '[["H1","H2","H3"],true,"H1–H3"]' && r.added === '2/MV-4-11/Late' ? ok() : bad('F15', 'the Hub bridge: ' + r.bridge + ' ' + r.added);
+  p.errs.length ? bad('F15', 'errors: ' + p.errs.join(' | ')) : ok();
   await p.context().close();
 });
 

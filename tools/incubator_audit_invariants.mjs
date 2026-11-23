@@ -8,6 +8,7 @@
 //                                  with a message and nothing is stored; a split or a myco test cannot be dated in the future
 //   IN4  a repaint keeps the form   a sync landing while the split or postpone panel is open does not empty what was typed
 //   IN5  freezing writes the cell as it is   the dialogs can stay open for minutes: the history written back is the cell's now, not the copy taken when they opened
+//   IN7  freezing is one dialog     box, positions (a start or a run such as G1-G5), how many and the box drawn; all the vials in ONE write; if the freezer does not take them nothing is logged and the dialog stays; the last box, medium and initials are remembered
 //   IN6  dialogs                    the drawer, the culture form, the picker and the ask take focus, hold Tab, close on Escape and give focus back; each is named;
 //                                  a closed drawer has nothing to tab to; search has a name; the toast is a status; a cell line named with a quote cannot break the picker
 //
@@ -64,7 +65,7 @@ try {
   if (RUN(2)) {
     const { ctx, p } = await fresh('Europe/London');
     await at(p, '2026-07-10T00:30:00+01:00');   // 23:30 UTC the day before
-    const r = await p.evaluate(() => { STORE.addCell({ line: 'X', passage: 4, history: [] }); const id = Object.keys(STORE.get().incubator)[0], got = []; _freezeVialsGo(id, STORE.get().incubator[id], { HUB_FREEZER_PLACE: (a, rec) => got.push(rec.freezeDate) }, { boxId: 'b', box: 'Box 1' }, ['A1']); return got; });
+    const r = await p.evaluate(() => { STORE.addCell({ line: 'X', passage: 4, history: [] }); const id = Object.keys(STORE.get().incubator)[0], got = []; _freezeVialsGo(id, STORE.get().incubator[id], { HUB_FREEZER_ADD: (b, pos, rec) => { got.push(rec.freezeDate); return pos.length; } }, { boxId: 'b', box: 'Box 1' }, ['A1']); return got; });
     check('IN2', 'vials frozen at 00:30 summer time are dated that day, not the day before', r[0] === '2026-07-10', JSON.stringify(r));
     await ctx.close();
   }
@@ -107,7 +108,7 @@ try {
     const r = await p.evaluate(() => {
       STORE.addCell({ line: 'X', passage: 4, history: [{ action: 'seeded', ts: 1 }] }); const id = Object.keys(STORE.get().incubator)[0], stale = JSON.parse(JSON.stringify(STORE.get().incubator[id]));
       STORE.updateCell(id, { passage: 5, history: stale.history.concat([{ action: 'media change', ts: 2 }]), needsMedia: 3 });   // logged while the dialogs were open
-      _freezeVialsGo(id, stale, { HUB_FREEZER_PLACE() {} }, { boxId: 'b', box: 'Box 1' }, ['A1']);
+      _freezeVialsGo(id, stale, { HUB_FREEZER_ADD(b, pos) { return pos.length; } }, { boxId: 'b', box: 'Box 1' }, ['A1']);
       const c = STORE.get().incubator[id]; return { passage: c.passage, needsMedia: c.needsMedia, hist: c.history.map(h => h.action).join('|') };
     });
     check('IN5', 'freezing keeps what was logged while its dialogs were open (history, passage, flags)', r.passage === 5 && r.needsMedia === 3 && /seeded\|media change\|froze 1 vial/.test(r.hist), JSON.stringify(r));
@@ -138,6 +139,63 @@ try {
     const ask = await p.evaluate(() => { const b = document.querySelector('#inc-ask [role=dialog]'), t = document.getElementById(b.getAttribute('aria-labelledby') || '_'); return { name: t && t.textContent, focus: document.activeElement.id }; });
     await p.keyboard.press('Escape'); await p.waitForTimeout(150);
     check('IN6', 'the ask is named by its title and focuses its answer', ask.name === 'Delete it?' && ask.focus === 'inc-ask-ok', JSON.stringify(ask));
+    await ctx.close();
+  }
+  /* IN7 freezing is one dialog: box, positions, how many, the map; one write; nothing logged that the freezer did not take */
+  if (RUN(7)) {
+    const { ctx, p } = await fresh('Europe/London');
+    const r = await p.evaluate(async () => {
+      const taken = {}; for (let r = 0; r < 6; r++) for (let c = 1; c <= 9; c++) if (!(r === 5 && c > 4)) taken['ABCDEF'[r] + c] = { cellLine: 'HEK293 X' };   // A1…F9 full, F5+ free? (F5..F9 free)
+      const boxes = [{ boxId: 'full', box: 'Box F', storageLabel: '−80°C', rack: 'R', rows: 1, cols: 2, filled: 2, vials: { A1: { cellLine: 'Z' }, A2: { cellLine: 'Z' } } },
+                     { boxId: 'b3', box: 'Box 03', storageLabel: '−80°C', rack: 'R', rows: 9, cols: 9, filled: Object.keys(taken).length, vials: taken }];
+      const calls = []; let take = true;
+      const all = b => { const o = []; for (let r = 0; r < b.rows; r++) for (let c = 1; c <= b.cols; c++) o.push(String.fromCharCode(65 + r) + c); return o; };
+      window.parent = {
+        HUB_FREEZER_BOXES: () => boxes,
+        HUB_FREEZER_PLAN: (id, spec, n) => {
+          const b = boxes.find(x => x.boxId === id), A = all(b), m = /^([A-Z]\d+)-([A-Z]\d+)$/.exec(String(spec).toUpperCase());
+          let pos; if (m) pos = A.slice(A.indexOf(m[1]), A.indexOf(m[2]) + 1); else { const i = A.indexOf(String(spec).toUpperCase()); pos = A.slice(i).filter(q => !b.vials[q]).slice(0, +n || 1); }
+          const bad = pos.filter(q => b.vials[q]);
+          return { positions: pos, ok: !bad.length && pos.length > 0, text: bad.length ? bad[0] + ' holds HEK293 X' : pos.length + ' vials → ' + pos.join(', '), runs: pos[0] + '–' + pos[pos.length - 1], explicit: !!m };
+        },
+        HUB_FREEZER_ADD: (id, pos, rec) => { calls.push({ id, pos, rec }); return take ? pos.length : 0; }
+      };
+      STORE.addCell({ line: 'MV-4-11', passage: 3, vessel: 'T75', media: 'RPMI + 10% FBS', history: [] });
+      const id = Object.keys(STORE.get().incubator)[0], out = {};
+      document.getElementById('cell-drawer'); const btn = document.activeElement; freezeCulture(id);
+      const back = document.getElementById('frz-back');
+      out.open = back.classList.contains('open'); out.name = back.querySelector('[role=dialog]').getAttribute('aria-labelledby');
+      out.title = document.getElementById('frz-title').textContent;
+      out.boxDefault = document.getElementById('frz-box').value;                       // the full box is not offered
+      out.fullDisabled = document.querySelector('#frz-box option[value=full]').disabled;
+      out.pos0 = document.getElementById('frz-pos').value; out.n0 = document.getElementById('frz-n').value;
+      out.cols = new Set([...document.querySelectorAll('.frz-w')].slice(0, 9).map(w => Math.round(w.getBoundingClientRect().x))).size;   // a class named like the form's own (.full) once took a whole row each
+      out.map = document.querySelectorAll('.frz-w').length; out.planned0 = document.querySelectorAll('.frz-w.plan').length;
+      // a run typed: the count follows it and cannot disagree
+      const set = (id, v) => { const e = document.getElementById(id); e.value = v; e.dispatchEvent(new Event('input', { bubbles: true })); };
+      set('frz-pos', 'g6-g8'); out.runN = document.getElementById('frz-n').value; out.runRO = document.getElementById('frz-n').readOnly; out.runGo = document.getElementById('frz-go').textContent;
+      // the map: a click starts there, shift-click takes the run
+      document.querySelector('.frz-w[data-pos=G1]').click(); out.click = document.getElementById('frz-pos').value;
+      document.querySelector('.frz-w[data-pos=G5]').dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true })); out.shift = document.getElementById('frz-pos').value; out.shiftN = document.getElementById('frz-n').value;
+      document.querySelector('.frz-w[data-pos=A1]').click(); out.fullClick = document.getElementById('frz-pos').value;    // a full well does nothing
+      set('frz-media', 'FBS + 10% DMSO'); set('frz-by', 'JM');
+      // the freezer refuses: nothing logged, dialog stays
+      take = false; document.getElementById('frz-go').click(); out.refusedOpen = back.classList.contains('open'); out.refusedHist = (STORE.get().incubator[id].history || []).length;
+      take = true; document.getElementById('frz-go').click();
+      out.closed = !back.classList.contains('open'); out.calls = calls.length; const c = calls[calls.length - 1];
+      out.pos = c.pos.join(); out.rec = c.rec; out.hist = STORE.get().incubator[id].history.map(h => h.action).join('|');
+      freezeCulture(id); out.boxRemembered = document.getElementById('frz-box').value; out.mediaRemembered = document.getElementById('frz-media').value; out.byRemembered = document.getElementById('frz-by').value; out.nRemembered = document.getElementById('frz-n').value;
+      return out;
+    });
+    check('IN7', 'Freeze opens one named dialog on a box with room (a full box is not offered), starting at a free run of wells, with the box drawn', r.open && r.name === 'frz-title' && /MV-4-11/.test(r.title) && r.boxDefault === 'b3' && r.fullDisabled && /^[A-Z]\d+$/.test(r.pos0) && r.map === 81 && r.cols === 9 && r.planned0 === +r.n0, JSON.stringify(r));
+    check('IN7', 'a run such as G6-G8 sets how many (3, read-only); clicking a free well starts there, shift-click takes the run, a full well does nothing', r.runN === '3' && r.runRO && /3 vials/.test(r.runGo) && r.click === 'G1' && r.shift === 'G1-G5' && r.shiftN === '5' && r.fullClick === 'G1-G5', JSON.stringify(r));
+    check('IN7', 'all the vials are written in ONE call to the freezer, with the line, passage, date, medium and initials of the form', r.calls === 2 && r.pos === 'G1,G2,G3,G4,G5' && r.rec.cellLine === 'MV-4-11' && r.rec.passage === 'P3' && r.rec.freezeMedia === 'FBS + 10% DMSO' && r.rec.frozenBy === 'JM' && r.rec.cultureMedia === 'RPMI + 10% FBS' && /^\d{4}-\d\d-\d\d$/.test(r.rec.freezeDate), JSON.stringify(r));
+    check('IN7', 'when the freezer does not take them nothing is logged and the dialog stays; when it does, the history says 5 vials', r.refusedOpen && r.refusedHist === 0 && r.closed && /froze 5 vials → Box 03 \(G1–G5\)/.test(r.hist), JSON.stringify(r));
+    check('IN7', 'the next Freeze starts from the last box, medium, initials and number', r.boxRemembered === 'b3' && r.mediaRemembered === 'FBS + 10% DMSO' && r.byRemembered === 'JM' && r.nRemembered === '5', JSON.stringify(r));
+    await p.evaluate(() => { freezeCulture(Object.keys(STORE.get().incubator)[0]); }); await p.waitForTimeout(150);
+    let leftF = false; for (let i = 0; i < 40 && !leftF; i++) { await p.keyboard.press(i % 4 ? 'Tab' : 'Shift+Tab'); leftF = await p.evaluate(() => !document.getElementById('frz-back').contains(document.activeElement)); }
+    await p.keyboard.press('Escape'); await p.waitForTimeout(100);
+    check('IN7', 'Tab stays inside the freeze dialog and Escape closes it', !leftF && await p.evaluate(() => !document.getElementById('frz-back').classList.contains('open')));
     await ctx.close();
   }
 } catch (e) { findings.push('✗ the run stopped: ' + (e && e.stack || e)); }
