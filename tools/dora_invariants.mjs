@@ -17,6 +17,15 @@
 //   DO9 the plot is its file   axes, log only above zero, a bound is an arrow, a pick is a count, the SVG keeps its text and the PNG is the same picture
 //   DO10 what leaves is whole   CSV and Excel carry the SMILES, the properties and the score as numbers with blanks for what is missing; the SDF has one record per structure with
 //                             the numbers as data fields; "only the picked" means only those
+//   DO11 the units are the user's  a header names its unit (µM, pM, a fraction, % remaining) and is read as it says; the unit shown changes no stored number and carries a typed range, a score limit and the
+//                             thresholds with it; a file with no unit is read as the user's default; a unit of one's own; the CSV and the plot name the unit; it is remembered, and a hostile name is only a name
+//   DO12 the data is still there   what was loaded comes back after a reload (compounds, bounds, SMILES, extra columns, a target called __proto__, thresholds, the score profile, the reading of the file);
+//                             the example is not kept; "keep" off and "forget" empty it; a record that is not one, or holds text where a number goes, is cleaned
+//   DO13 R-groups, pairs, core     a core is found on its compounds and each group is named by where it sits (one place, one name); a * in the core changes nothing; a bad core is said; matched pairs are counted
+//                             once and Δ is the second minus the first; linker changes between the same two ends are pairs; a series is drawn on its common core
+//   DO14 estimates are formulas    ESOL, Veber, Egan, LipE and the size-normalised potency are the published arithmetic on RDKit's numbers
+//   DO15 what is sent is shown     Labbook gets the table that is shown (or the picked), the same table twice has one id; Hit Finder gets one target in nM and % with bounds as bounds, and the structures; the unit on the screen never leaks; with no Hub or no access the item is off
+//   DO16 the new screens fit      the R-group, matched-pair and series cards and the Units card, with results on them, at 1440, 1024, 768 and 390 px in both themes: nothing wider than its box, no horizontal scroll, every text on the type scale
 //
 //   node tools/dora_invariants.mjs [--only=DO1,DO4] [--url=http://127.0.0.1:8791]      exit 1 on any finding
 import { chromium } from 'playwright';
@@ -37,6 +46,7 @@ const bad = (inv, msg) => findings.push(`✗ ${inv} — ${msg}`);
 const ok = () => { passed++; };
 async function guard(inv, fn) { try { await fn(); } catch (e) { bad(inv, 'threw: ' + String(e && e.message || e).split('\n')[0]); } }
 
+const RD_JS = fs.readFileSync(path.join(ROOT, 'vendor/rdkit-minimal-2026.9.1.js')), RD_WASM = fs.readFileSync(path.join(ROOT, 'vendor/rdkit-minimal-2026.9.1.wasm'));
 const VENDOR_PATH = path.join(ROOT, 'vendor/xlsx.full.min.js');
 const VENDOR = fs.readFileSync(VENDOR_PATH, 'utf8');
 const XLSX = createRequire(import.meta.url)(VENDOR_PATH);
@@ -205,7 +215,10 @@ async function openChem(w = 1440, h = 900) {
   const page = await ctx.newPage(); page.errs = [];
   page.on('pageerror', e => page.errs.push(e.message));
   await page.route('**/xlsx.full.min.js', r => r.fulfill({ contentType: 'application/javascript', body: VENDOR }));
-  await page.route(/^https?:/, r => { const u = r.request().url(); if (u.startsWith(BASE) || /cdnjs/.test(u) || /unpkg\.com\/@rdkit|cdn\.jsdelivr\.net\/npm\/@rdkit/.test(u)) return r.continue(); r.abort(); });
+  await page.route(/^https?:/, r => { const u = r.request().url(); if (u.startsWith(BASE) || /cdnjs/.test(u)) return r.continue(); r.abort(); });
+  // RDKit is served from vendor/ (the very bytes the loader's SHA-384 pins), so these checks need no network; registered after the catch-all, which a route registered later outranks
+  await page.route(/(unpkg\.com\/@rdkit|cdn\.jsdelivr\.net\/npm\/@rdkit).*RDKit_minimal\.js/, r => r.fulfill({ contentType: 'application/javascript', body: RD_JS }));
+  await page.route(/(unpkg\.com\/@rdkit|cdn\.jsdelivr\.net\/npm\/@rdkit).*RDKit_minimal\.wasm/, r => r.fulfill({ contentType: 'application/wasm', body: RD_WASM }));
   await page.addInitScript(() => { try { localStorage.setItem('hub_theme', 'light'); localStorage.setItem('assist_seen', '1'); localStorage.setItem('lb_tour_done', '1'); } catch (e) {} });
   await page.goto(BASE + FILE); await page.waitForTimeout(500);
   return page;
@@ -337,6 +350,295 @@ if (run('DO10')) await guard('DO10', async () => {
   } else skipped.push('DO10 — RDKit could not be loaded from its CDN (SDF not checked)');
   p.errs.length ? bad('DO10', 'errors: ' + p.errs.join(' | ')) : ok();
   await p.context().close();
+});
+
+
+// ── DO11: the units are the user's ──
+if (run('DO11')) await guard('DO11', async () => {
+  const p = await open();
+  // a header that names its unit is read as it says: µM, pM, a fraction, and "% remaining" (90 % degraded = 10 % left)
+  await feed(p, [['u.csv', 'Compound,A DC50 (µM),A Dmax (fraction),B DC50 (pM),B Dmax (% remaining)\nQ1,0.05,0.9,250,10\nQ2,"2,5",0.5,4000,70\n']]); await p.waitForTimeout(600);
+  let r = await snap(p);
+  const q1 = r.row.Q1.t, q2 = r.row.Q2.t;
+  q1.A[0] === 50 && q1.A[2] === 90 && q2.A[0] === 2500 && q2.A[2] === 50 ? ok() : bad('DO11', 'µM and a fraction read as ' + JSON.stringify([q1.A, q2.A]));
+  q1.B[0] === 0.25 && q1.B[2] === 90 && q2.B[0] === 4 && q2.B[2] === 30 ? ok() : bad('DO11', 'pM and "% remaining" read as ' + JSON.stringify([q1.B, q2.B]));
+  const mixed = await p.evaluate(() => [dgUnit, dmaxUnit]);
+  mixed.join() === 'nM,pct' ? ok() : bad('DO11', 'columns in different units must not change the display, it is ' + mixed.join());
+  // one unit in the whole file: the numbers are shown in it (until the user chooses)
+  await feed(p, [['one.csv', 'Compound,DC50 (uM),Dmax (fraction)\nR1,0.05,0.9\nR2,1.5,0.6\n']]); await p.waitForTimeout(600);
+  const one = await p.evaluate(() => { switchTab('table'); return { u: [dgUnit, dmaxUnit], row: document.querySelector('#table-body tr').textContent.replace(/\s+/g, ' '), head: document.querySelector('#th-dc50-0').textContent + '|' + document.querySelector('#th-dmax-0').textContent }; });
+  one.u.join() === 'uM,frac' && /0\.05/.test(one.row) && /0\.90/.test(one.row) && /µM/.test(one.head) && /fraction/.test(one.head) ? ok() : bad('DO11', 'a file in µM and a fraction is shown as ' + JSON.stringify(one));
+  // looking at it another way changes no stored number, and a typed range follows (10–100 nM is 0.01–0.1 µM is pDC50 7–8)
+  const sw = await p.evaluate(() => {
+    const before = JSON.stringify(RAW.map(c => c.targets)); const o = {};
+    setDgUnit('nM'); setDmaxUnit('pct'); FILT.ranges = [{ f: 'dc50', lo: 10, hi: 100 }, { f: 'dmax', lo: 80, hi: null }];
+    setDgUnit('uM'); o.uM = [FILT.ranges[0].lo, FILT.ranges[0].hi];
+    setDgUnit('p'); o.p = [FILT.ranges[0].lo, FILT.ranges[0].hi];
+    setDgUnit('pM'); o.pM = [FILT.ranges[0].lo, FILT.ranges[0].hi];
+    setDgUnit('nM'); o.back = [FILT.ranges[0].lo, FILT.ranges[0].hi];
+    setDmaxUnit('rem'); o.rem = [FILT.ranges[1].lo, FILT.ranges[1].hi];
+    setDmaxUnit('frac'); o.frac = [FILT.ranges[1].lo, FILT.ranges[1].hi];
+    setDmaxUnit('pct'); o.pct = [FILT.ranges[1].lo, FILT.ranges[1].hi];
+    o.same = before === JSON.stringify(RAW.map(c => c.targets)); FILT.ranges = []; return o;
+  });
+  sw.same ? ok() : bad('DO11', 'switching the unit shown rewrote a stored number');
+  sw.uM.join() === '0.01,0.1' && sw.p.join() === '7,8' && sw.pM.join() === '10000,100000' && sw.back.join() === '10,100' ? ok() : bad('DO11', 'a DC50 range 10–100 nM became ' + JSON.stringify([sw.uM, sw.p, sw.pM, sw.back]));
+  sw.rem.join() === ',20' && sw.frac.join() === '0.8,' && sw.pct.join() === '80,' ? ok() : bad('DO11', 'Dmax ≥ 80 % became ' + JSON.stringify([sw.rem, sw.frac, sw.pct]));
+  // the places that take a typed number take it in the unit shown: a score limit, "what excellent means"
+  const ty = await p.evaluate(() => {
+    const o = {}; setDgUnit('uM'); profileDefaults(false); const i = PROFILE.crit.findIndex(c => c.f === 'dc50');
+    scoreSet(i, 'good', '0.02'); o.good = PROFILE.crit[i].good; o.shown = critShown(PROFILE.crit[i], 'good');
+    renderDataCard(); $('q-dc50').value = '0.1'; setQThresh(); o.q = qThreshDC50;
+    setDgUnit('p'); renderDataCard(); $('q-dc50').value = '7'; setQThresh(); o.qp = qThreshDC50;
+    setDgUnit('nM'); setDmaxUnit('remfrac'); renderDataCard(); $('q-dmax').value = '0.2'; setQThresh(); o.qd = qThreshDmax; setDmaxUnit('pct');
+    return o;
+  });
+  Math.abs(ty.good - 20) < 1e-9 && ty.shown === 0.02 ? ok() : bad('DO11', 'a score limit typed as 0.02 µM is stored as ' + ty.good + ' nM (' + ty.shown + ' shown)');
+  Math.abs(ty.q - 100) < 1e-6 && Math.abs(ty.qp - 100) < 1e-6 && Math.abs(ty.qd - 80) < 1e-9 ? ok() : bad('DO11', 'thresholds typed as 0.1 µM / pDC50 7 / 0.2 remaining are ' + JSON.stringify([ty.q, ty.qp, ty.qd]));
+  // a file without a unit is read as the default the user set; a header beats it; a unit of one's own
+  const d = await p.evaluate(() => { importDef('dc50', 'uM'); return IMPORT_DEF.dc50; });
+  await feed(p, [['n.csv', 'Compound,DC50,Dmax\nK1,3,50\n']]); await p.waitForTimeout(500);
+  r = await snap(p); r.row.K1.t.Target[0] === 3000 && d === 'uM' ? ok() : bad('DO11', 'a bare DC50 of 3 with µM as the default is ' + JSON.stringify(r.row.K1.t));
+  await feed(p, [['n2.csv', 'Compound,DC50 (nM),Dmax\nK1,3,50\n']]); await p.waitForTimeout(500);
+  r = await snap(p); r.row.K1.t.Target[0] === 3 ? ok() : bad('DO11', 'a header that says nM lost to the default: ' + JSON.stringify(r.row.K1.t));
+  await p.evaluate(() => importDef('dc50', 'nM'));
+  const undef = await p.evaluate(() => { const k = LASTMAP.cols.findIndex(c => c.role === 'dc50'); mapSet(k, 'unit', 'custom'); mapApply(); return document.getElementById('load-preview').textContent; });
+  /own unit|not defined/i.test(undef) ? ok() : bad('DO11', 'an undefined unit of one\'s own was read without a word: ' + undef);
+  await p.evaluate(() => { $('cu-label').value = 'XX'; $('cu-f').value = '2.5'; customUnitSet(); });
+  await feed(p, [['c.csv', 'Compound,DC50 (XX),Dmax\nK2,4,50\n']]); await p.waitForTimeout(500);
+  r = await snap(p);
+  const cu = await p.evaluate(() => { setDgUnit('custom'); switchTab('table'); return { u: dgUnit, row: document.querySelector('#table-body tr').textContent.replace(/\s+/g, ' ') }; });
+  r.row.K2.t.Target[0] === 10 && cu.u === 'custom' && /4\.00/.test(cu.row) ? ok() : bad('DO11', 'a unit of 2.5 nM: 4 XX is ' + JSON.stringify(r.row.K2.t) + ' and shows ' + cu.row);
+  // what is written follows the unit shown
+  await p.evaluate(() => { setDgUnit('uM'); setDmaxUnit('rem'); });
+  const csv = (await grab(p, () => exportCSV())).buf.toString('utf8').replace(/^﻿/, '').split('\r\n').filter(Boolean);
+  const hd = csv[0].split(',');
+  hd.includes('Target DC50 (µM)') && hd.includes('Target Dmax (% remaining)') ? ok() : bad('DO11', 'the CSV does not name its units: ' + csv[0]);
+  const row = csv[1].split(','), ix = hd.indexOf('Target DC50 (µM)'), iy = hd.indexOf('Target Dmax (% remaining)');
+  Math.abs(+row[ix] - 0.01) < 1e-9 && +row[iy] === 50 ? ok() : bad('DO11', 'K2 (10 nM, 50 % degraded) is written as ' + row[ix] + ' µM, ' + row[iy] + ' % remaining');
+  const pl = await p.evaluate(async () => { switchTab('scatter'); plotDraw(); await new Promise(r => setTimeout(r, 200)); return plotFileSVG('white').svg.replace(/<[^>]+>/g, ' '); });
+  /DC50 \(µM\)/.test(pl) && /Dmax \(% remaining\)/.test(pl) ? ok() : bad('DO11', 'the plot axes do not name the units');
+  // remembered between sessions, and a hostile name of one's own is only a name
+  await p.evaluate(() => { setDgUnit('mM'); $('cu-label').value = '<img src=x onerror=window.__pwn=1>'; $('cu-f').value = '1'; customUnitSet(); });
+  await p.reload(); await p.waitForTimeout(700);
+  const rem = await p.evaluate(() => ({ u: dgUnit, inj: !!document.querySelector('#units-card img, .dg-unit-sel img'), pwn: !!window.__pwn, opt: [...document.querySelectorAll('#dg-unit option')].map(o => o.textContent).join('|') }));
+  rem.u === 'mM' && !rem.inj && !rem.pwn && /<img/.test(rem.opt) ? ok() : bad('DO11', 'after a reload: ' + JSON.stringify(rem));
+  // the units card is rebuilt under an open <details>: no error, and it stays open
+  const keep = await p.evaluate(async () => { switchTab('load'); document.getElementById('units-open').open = true; await new Promise(r => setTimeout(r, 100)); setDgUnit('nM'); setDgUnit('uM'); await new Promise(r => setTimeout(r, 200)); return document.getElementById('units-open').open; });
+  keep ? ok() : bad('DO11', 'the units card closed itself when a unit changed');
+  // the table's own header names the unit shown, also when the unit is changed after the table was drawn
+  await feed(p, [['h.csv', 'Compound,DC50 (nM),Dmax (%)\nH1,10,90\n']]); await p.waitForTimeout(500);
+  const hdr = await p.evaluate(() => { switchTab('table'); setDgUnit('p'); setDmaxUnit('frac'); const a = [document.querySelector('#th-dc50-0').textContent, document.querySelector('#th-dmax-0').textContent]; setDgUnit('mM'); setDmaxUnit('remfrac'); return a.concat([document.querySelector('#th-dc50-0').textContent, document.querySelector('#th-dmax-0').textContent, document.getElementById('pill-good').textContent]); });
+  /pDC50/.test(hdr[0]) && /fraction\)/.test(hdr[1]) && /mM/.test(hdr[2]) && /fraction remaining/.test(hdr[3]) && /remaining ≤ \d/.test(hdr[4]) && !/rem\./.test(hdr[4]) ? ok() : bad('DO11', 'the headers or the quality pill do not follow the unit: ' + JSON.stringify(hdr));
+  p.errs.length ? bad('DO11', 'errors: ' + p.errs.join(' | ')) : ok();
+  await p.context().close();
+});
+
+
+// ── DO12: the data is still there next time ──
+if (run('DO12')) await guard('DO12', async () => {
+  const p = await open();
+  const idbPut = (page, v) => page.evaluate(v => idbDo('readwrite', st => st.put(v, 'session')), v);
+  await feed(p, [['k.csv', 'Compound,SMILES,A DC50 (nM),A Dmax (%),Batch\nK1,CCO,"> 5000",20,b1\n__proto__,CCN,12,90,b2\n<b>x</b>,,30,70,b3\n']]); await p.waitForTimeout(400);
+  await p.evaluate(() => { qThreshDmax = 70; qThreshDC50 = 123; PROFILE.crit.push({ f: 'mw', on: true, w: 2, dir: 'min', good: 700, bad: 900 }); PROFILE.linked = false; PROFILE.rev++; DATA_REV++; refreshAll(); });
+  const before = await snap(p); await p.waitForTimeout(1500);
+  await p.reload(); await p.waitForTimeout(1200);
+  const after = await snap(p), st = await p.evaluate(() => ({ q: [qThreshDmax, qThreshDC50], crit: PROFILE.crit.some(c => c.f === 'mw' && c.w === 2 && c.good === 700), msg: document.getElementById('load-preview').textContent, tab: document.querySelector('[role=tab][aria-selected=true]') && document.querySelector('[role=tab][aria-selected=true]').id, map: !!(LASTMAP && LASTMAP.lay) }));
+  JSON.stringify(before.row) === JSON.stringify(after.row) && before.T.join() === after.T.join() && before.cols.join() === after.cols.join() ? ok() : bad('DO12', 'what came back is not what was saved: ' + JSON.stringify(after.row).slice(0, 300));
+  st.q.join() === '70,123' && st.crit ? ok() : bad('DO12', 'the thresholds or the score profile did not come back: ' + JSON.stringify(st));
+  /Back where you left it/.test(st.msg) && /k\.csv/.test(st.msg) ? ok() : bad('DO12', 'the restore does not say so: ' + st.msg);
+  // the saved reading can still be corrected
+  const fix = await p.evaluate(() => { if (!LASTMAP || !LASTMAP.lay) return null; const k = LASTMAP.cols.findIndex(c => c.role === 'dc50'); mapSet(k, 'unit', 'uM'); mapApply(); return RAW.find(c => c.compound === '__proto__').targets.A.dc50; });
+  fix === 12000 ? ok() : bad('DO12', 're-reading the restored file as µM gave ' + fix);
+  // the example is nobody's data; "keep" off forgets; a record that is not one is ignored
+  await p.evaluate(() => { clearAll(); }); await p.waitForTimeout(300);
+  await p.evaluate(() => loadTestData()); await p.waitForTimeout(1500); await p.reload(); await p.waitForTimeout(900);
+  (await p.evaluate(() => RAW.length)) === 0 ? ok() : bad('DO12', 'the example was kept as if it were the user\'s data');
+  await feed(p, [['k2.csv', 'Compound,DC50 (nM),Dmax (%)\nM1,10,90\n']]); await p.waitForTimeout(1500);
+  await p.evaluate(() => { keepSet(false); DATA_REV++; refreshAll(); }); await p.waitForTimeout(1600); await p.reload(); await p.waitForTimeout(900);
+  (await p.evaluate(() => RAW.length)) === 0 ? ok() : bad('DO12', 'with "keep" off the data came back');
+  await p.evaluate(() => keepSet(true));
+  await feed(p, [['k3.csv', 'Compound,DC50 (nM),Dmax (%)\nM2,10,90\n']]); await p.waitForTimeout(1500);
+  await p.evaluate(() => forgetSession(false)); await p.reload(); await p.waitForTimeout(900);
+  (await p.evaluate(() => RAW.length)) === 0 ? ok() : bad('DO12', '"Forget" left the data');
+  await idbPut(p, { v: 1, cpds: [{ compound: 5, t: 'x' }], targets: [] }); await p.reload(); await p.waitForTimeout(900);
+  await idbPut(p, { v: 1, cpds: [{ compound: 'ok', t: [['A', { dc50: 'abc', dmax: 1e999, dc50_q: '<script>' }]] }], targets: ['A'] }); await p.reload(); await p.waitForTimeout(900);
+  const odd = await p.evaluate(() => { const d = RAW[0] && RAW[0].targets.A; return RAW.length === 1 && d && d.dc50 === null && d.dc50_q === '' ; });
+  odd ? ok() : bad('DO12', 'a hand-made record was not cleaned: text kept as a number or a bound');
+  p.errs.length ? bad('DO12', 'errors: ' + p.errs.join(' | ')) : ok();
+  await p.context().close();
+});
+
+
+// ── DO13: R-groups, matched pairs and the common core ──
+if (run('DO13')) await guard('DO13', async () => {
+  const p = await openChem();
+  const up = await p.evaluate(async () => { try { await Chem.load(); return true; } catch (e) { return false; } });
+  if (!up) { skipped.push('DO13 — RDKit could not be loaded'); await p.context().close(); return; }
+  const R = await p.evaluate(async () => {
+    const pd = n => Math.pow(10, 9 - n);                         // a DC50 (nM) that is this pDC50
+    const set = [['A', 'CC(=O)Nc1ccc(F)cc1', 7], ['B', 'CC(=O)Nc1ccc(Cl)cc1', 8], ['C', 'CC(=O)Nc1ccc(OC)cc1', 6], ['D', 'CC(=O)Nc1ccccc1C', 5], ['E', 'CCC(=O)Nc1ccc(F)cc1', 7.5], ['F', 'c1ccccc1O', 4], ['G', 'CC(=O)Nc1ccccc1', 6.5], ['H', 'CC(=O)Nc1ccc(-c2ccccc2)cc1', 7.2], ['D2', 'CC(=O)Nc1c(Cl)cccc1', 5.5],
+      ['X1', 'c1ccccc1C(=O)NCCNC(=O)c1ccccc1', 6], ['X2', 'c1ccccc1C(=O)NCCCNC(=O)c1ccccc1', 7], ['X3', 'c1ccccc1C(=O)NCCCCNC(=O)c1ccccc1', 8]];
+    RAW = set.map(([n, s, p]) => ({ compound: n, smiles: s, targets: Object.assign(Object.create(null), { T: { dc50: pd(p), dc50_sd: null, dmax: 80, dmax_sd: null } }) })); TARGETS = ['T']; COLS = []; META = {};
+    _dataReplaced(); await Chem.computeAll();
+    const name = i => RAW[i].compound, out = {};
+    // R-groups: the same core written as a SMILES, with a * where a group goes, and badly
+    const rg = await Chem.rgroups('CC(=O)Nc1ccccc1', RAW.filter(c => c._ch && c._ch.ok));
+    const grp = (res, n) => { const r = res.rows.find(x => name(x.i) === n); return r ? r.groups.map(g => g.pos + '=' + g.smi).sort().join(' ') : null; };
+    out.rg = { n: rg.rows.length, no: rg.nomatch, pos: rg.pos.length, A: grp(rg, 'A'), B: grp(rg, 'B'), C: grp(rg, 'C'), D: grp(rg, 'D'), D2: grp(rg, 'D2'), H: grp(rg, 'H'), E: grp(rg, 'E'), G: grp(rg, 'G') };
+    const rg2 = await Chem.rgroups('O=C(C)Nc1ccc(*)cc1', RAW.filter(c => c._ch && c._ch.ok));
+    out.rg2 = { n: rg2.rows.length, A: grp(rg2, 'A'), G: grp(rg2, 'G') };
+    out.bad = (await Chem.rgroups('((not a core', RAW)).error;
+    // the screen: the leaderboard is by group, and a click shows exactly those compounds
+    switchTab('sar'); await new Promise(r => setTimeout(r, 300));
+    $('rg-core').value = 'CC(=O)Nc1ccccc1'; await rgRun(); await new Promise(r => setTimeout(r, 300));
+    const para = SAR.rg.pos.find(p => SAR.rg.rows.some(r => name(r.i) === 'A' && r.groups.some(g => g.pos === p.key)));
+    out.ui = { rows: document.querySelectorAll('#sar-rg .rg-t tbody tr').length, lead: document.querySelectorAll('#sar-rg .rg-g').length, svgs: document.querySelectorAll('#sar-rg .frag svg').length };
+    rgPick(para.key, '*F'); out.pick = [...FILT.ids].map(name).sort().join(); FILT.ids = null;
+    // matched pairs: F→Cl and F→OMe at the same place; Δ is the second minus the first; a pair is counted once
+    SAR.mmo = { maxVar: 10, linker: false, maxLinker: 24, minN: 1, sort: 'gain' };
+    SAR.mm = { res: await Chem.mmp(RAW.filter(c => c._ch && c._ch.ok), SAR.mmo) };
+    const st = mmpStats(), find = (a, b) => st.find(r => r.t.from === a && r.t.to === b);
+    const fc = find('Cl[*:1]', 'F[*:1]'), co = find('COC' + '', 'x');
+    out.mm = { n: st.length, once: !find('F[*:1]', 'Cl[*:1]'), ClF: fc && [fc.n, +fc.mean.toFixed(6)], pairsA: st.filter(r => r.t.pairs.some(([a, b]) => name(a) === 'A' && name(b) === 'B' || name(a) === 'B' && name(b) === 'A')).length, twice: st.some(r => r.t.pairs.length !== new Set(r.t.pairs.map(x => x.join())).size) };
+    // linker changes: NCCN → NCCCN → NCCCCN between the same ends
+    SAR.mmo.linker = true; SAR.mmo.minN = 1;
+    SAR.mm = { res: await Chem.mmp(RAW.filter(c => c._ch && c._ch.ok && /^X/.test(c.compound)), SAR.mmo) };
+    const st2 = mmpStats();
+    out.lk = { n: st2.length, two: st2.filter(r => /\[\*:2\]/.test(r.t.from)).length, pair12: st2.some(r => /\[\*:2\]/.test(r.t.from) && r.t.pairs.some(([a, b]) => [name(a), name(b)].sort().join() === 'X1,X2')), d12: (st2.find(r => /\[\*:2\]/.test(r.t.from) && r.t.pairs.some(([a, b]) => [name(a), name(b)].sort().join() === 'X1,X2')) || {}).mean, from12: (() => { const r = st2.find(r => /\[\*:2\]/.test(r.t.from) && r.t.pairs.some(([a, b]) => [name(a), name(b)].sort().join() === 'X1,X2')); const pr = r && r.t.pairs.find(([a, b]) => [name(a), name(b)].sort().join() === 'X1,X2'); return pr ? name(pr[0]) : null; })() };
+    // the common core, and a series drawn on it
+    const sm = Chem.mcs(RAW.filter(c => ['A', 'B', 'C', 'G'].includes(c.compound)));
+    out.mcs = sm ? (sm.match(/\[#/g) || []).length : 0;
+    RAW.forEach(c => { c._series = ['A', 'B', 'C', 'G'].includes(c.compound) ? 'S1' : null; }); FILT.series = 'S1'; SAR.align = true; await serCore();
+    switchTab('table'); setView('cards'); await new Promise(r => setTimeout(r, 900));
+    const tiles = [...document.querySelectorAll('#cards-host .tile.on, .card-c .tile.on')];
+    out.ser = { qo: !!SERCORE.qo, tiles: tiles.length, hl: tiles.filter(t => /#4[89A]75B5/i.test(t.innerHTML)).length };
+    SAR.align = false; await serCore(); Chem.clearSvg(); setView('cards'); await new Promise(r => setTimeout(r, 300)); setView('table'); FILT.series = null;
+    return out;
+  });
+  const q = R.rg;
+  q.n === 8 && q.no === 4 && q.pos >= 2 ? ok() : bad('DO13', 'the core of an acetanilide is carried by ' + q.n + ' of 12 (' + q.no + ' not), at ' + q.pos + ' positions: ' + JSON.stringify(q));
+  /=\*F$/.test(q.A) && /=\*Cl$/.test(q.B) && /=\*OC$/.test(q.C) && q.A.split('=')[0] === q.B.split('=')[0] && q.B.split('=')[0] === q.C.split('=')[0] ? ok() : bad('DO13', 'para F, Cl and OMe are not one position with their own groups: ' + JSON.stringify([q.A, q.B, q.C]));
+  q.H && q.H.split('=')[0] === q.A.split('=')[0] && /=\*c1ccccc1$/.test(q.H) ? ok() : bad('DO13', 'a ring in a group (para phenyl) is not written back as a ring: ' + q.H);
+  q.D && q.D.split('=')[0] !== q.A.split('=')[0] && /=\*C$/.test(q.D) ? ok() : bad('DO13', 'an ortho methyl sits in the para position: ' + JSON.stringify([q.A, q.D]));
+  q.D2 && q.D2.split('=')[0] === q.D.split('=')[0] && /=\*Cl$/.test(q.D2) ? ok() : bad('DO13', 'ortho on either side of a symmetric core is not one position: ' + JSON.stringify([q.D, q.D2]));
+  q.E && q.E.split(' ').length === 2 && q.E.includes(q.A) && q.G === null || q.G === '' || (q.G && q.G.length === 0) ? ok() : bad('DO13', 'a compound with two groups, or none: ' + JSON.stringify([q.E, q.G]));
+  R.rg2.n === 8 && R.rg2.A === q.A ? ok() : bad('DO13', 'a core written with a * is not the same core: ' + JSON.stringify(R.rg2));
+  /cannot read/i.test(R.bad || '') ? ok() : bad('DO13', 'an unreadable core says: ' + R.bad);
+  R.ui.rows === 8 && R.ui.lead >= 4 && R.ui.svgs >= 10 ? ok() : bad('DO13', 'the R-group card draws ' + JSON.stringify(R.ui));
+  R.pick === 'A,E' ? ok() : bad('DO13', 'clicking the group F shows ' + R.pick + ', expected A,E');
+  R.mm.ClF && R.mm.ClF[0] === 1 && Math.abs(R.mm.ClF[1] - (7 - 8)) < 1e-9 ? ok() : bad('DO13', 'Cl→F should be −1 over 1 pair: ' + JSON.stringify(R.mm));
+  !R.mm.twice && R.mm.once && R.mm.pairsA >= 1 ? ok() : bad('DO13', 'pairs counted twice or A–B missing: ' + JSON.stringify(R.mm));
+  R.lk.two >= 1 && R.lk.pair12 && Math.abs(Math.abs(R.lk.d12) - 1) < 1e-9 && (R.lk.from12 === 'X1' ? R.lk.d12 > 0 : R.lk.d12 < 0) ? ok() : bad('DO13', 'linker changes between the same two ends: ' + JSON.stringify(R.lk));
+  R.mcs >= 8 ? ok() : bad('DO13', 'the common core of four acetanilides has ' + R.mcs + ' atoms');
+  R.ser.qo && R.ser.tiles >= 3 && R.ser.hl === R.ser.tiles ? ok() : bad('DO13', 'the series is not drawn on its core: ' + JSON.stringify(R.ser));
+  p.errs.length ? bad('DO13', 'errors: ' + p.errs.join(' | ')) : ok();
+  await p.context().close();
+});
+
+// ── DO14: estimates are the published formulas ──
+if (run('DO14')) await guard('DO14', async () => {
+  const p = await openChem();
+  const up = await p.evaluate(async () => { try { await Chem.load(); return true; } catch (e) { return false; } });
+  if (!up) { skipped.push('DO14 — RDKit could not be loaded'); await p.context().close(); return; }
+  const R = await p.evaluate(async () => {
+    RAW = [['asp', 'CC(=O)Oc1ccccc1C(=O)O', 10], ['big', 'Nc1cccc2C(=O)N(C3CCC(=O)NC3=O)C(=O)c12', 100], ['pal', 'CCCCCCCCCCCCCCCC(=O)O', 1000], ['suc', 'OCC1OC(OC2(CO)OC(CO)C(O)C2O)C(O)C(O)C1O', 1000]].map(([n, s, d]) => ({ compound: n, smiles: s, targets: Object.assign(Object.create(null), { T: { dc50: d, dc50_sd: null, dmax: 90, dmax_sd: null } }) }));
+    TARGETS = ['T']; COLS = []; META = {}; _dataReplaced(); await Chem.computeAll();
+    const g = n => RAW.find(c => c.compound === n), pv = (n, k) => propVal(g(n), k), F = id => fieldById(id), o = {};
+    const a = g('asp')._ch.p, arom = 6 / 13;
+    o.logs = [pv('asp', 'logs'), 0.16 - 0.63 * a.clogp - 0.0062 * a.mw + 0.066 * a.rotb - 0.74 * arom];
+    o.veber = ['asp', 'pal', 'suc'].map(n => pv(n, 'veber')); o.egan = ['asp', 'pal', 'suc'].map(n => pv(n, 'egan'));
+    o.num = { palRot: pv('pal', 'rotb'), palTpsa: pv('pal', 'tpsa'), sucRot: pv('suc', 'rotb'), sucTpsa: pv('suc', 'tpsa') };
+    o.lipe = [F('lipe').get(g('asp'), null), 8 - a.clogp];
+    o.le = [F('le').get(g('asp'), null), 1.37 * 8 / a.heavy];
+    o.fields = ['logs', 'veber', 'egan', 'lipe', 'le'].every(id => !!F(id));
+    return o;
+  });
+  Math.abs(R.logs[0] - R.logs[1]) < 1e-9 && R.logs[0] < -1.5 && R.logs[0] > -2.5 ? ok() : bad('DO14', 'ESOL for aspirin is ' + R.logs[0] + ', the formula gives ' + R.logs[1]);
+  R.veber.join() === '0,1,1' && R.egan.join() === '0,0,1' ? ok() : bad('DO14', 'Veber / Egan violations of aspirin, palmitic acid (14 rotatable bonds, TPSA 37) and sucrose (TPSA 190): ' + R.veber.join() + ' / ' + R.egan.join() + ' ' + JSON.stringify(R.num));
+  Math.abs(R.lipe[0] - R.lipe[1]) < 1e-9 && Math.abs(R.le[0] - R.le[1]) < 1e-9 ? ok() : bad('DO14', 'LipE / efficiency of a 10 nM aspirin: ' + JSON.stringify([R.lipe, R.le]));
+  R.fields ? ok() : bad('DO14', 'the estimates are not offered as fields');
+  p.errs.length ? bad('DO14', 'errors: ' + p.errs.join(' | ')) : ok();
+  await p.context().close();
+});
+
+// ── DO15: what is sent is what is shown ──
+if (run('DO15')) await guard('DO15', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const page = await ctx.newPage(); page.errs = [];
+  page.on('pageerror', e => page.errs.push(e.message));
+  await page.route('**/xlsx.full.min.js', r => r.fulfill({ contentType: 'application/javascript', body: VENDOR }));
+  await page.route(/^https?:\/\/(?!127\.0\.0\.1|localhost|cdnjs)/, r => r.abort());
+  // a stand-in for the Hub: a page with Dora in a frame that answers openApp, so what Dora sends can be read
+  await page.route('**/__hub.html', r => r.fulfill({ contentType: 'text/html', body: '<!doctype html><script>window.__sent=[];window.APP_INFO={labbook:{},hitfinder:{}};window._isAppAccessible=function(id){return id!=="hitfinder"||window.__hf!==false;};window.openApp=function(id,a,b,ctx){window.__sent.push({id:id,ctx:ctx});};</script><iframe id="d" src="' + FILE + '" style="width:1400px;height:880px"></iframe>' }));
+  await page.addInitScript(() => { try { localStorage.setItem('assist_seen', '1'); } catch (e) {} });
+  await page.goto(BASE + '/__hub.html'); await page.waitForTimeout(900);
+  const fr = page.frames().find(f => f !== page.mainFrame());
+  await fr.evaluate(() => {
+    RAW = [['K1', 'CCO', '>', 5000, 20], ['K2', 'c1ccccc1', '', 12.5, 90], ['K3', '', '', null, null], ['K4', 'CCN', '', 300, 60]].map(([n, s, q, d, m]) => ({ compound: n, smiles: s, targets: Object.assign(Object.create(null), { BRD4: { dc50: d, dc50_sd: null, dmax: m, dmax_sd: null, dc50_q: q, nd: n === 'K3' }, BRD2: { dc50: null, dc50_sd: null, dmax: null, dmax_sd: null, dc50_q: '' } }) })); TARGETS = ['BRD4', 'BRD2']; COLS = []; META = {}; _dataReplaced();
+  });
+  await page.waitForTimeout(500);
+  const sent = () => page.evaluate(() => window.__sent.slice());
+  await fr.evaluate(() => { ddClose && 0; sendLabbook(false); });
+  let s = await sent();
+  const L = s[0] && s[0].ctx && s[0].ctx.tables && s[0].ctx.tables[0];
+  s[0] && s[0].id === 'labbook' && s[0].ctx.source === 'dora' && L && L.rows.length === 4 && L.columns.includes('Compound') && L.columns.includes('SMILES') && L.rows[0].includes('K1') ? ok() : bad('DO15', 'Labbook got ' + JSON.stringify(s[0]).slice(0, 300));
+  await fr.evaluate(() => sendLabbook(false)); s = await sent();
+  s[1] && s[1].ctx.tables[0].id === L.id ? ok() : bad('DO15', 'the same table sent twice has two ids (Labbook would file it twice)');
+  await fr.evaluate(() => { SELSET = new Set([1, 3]); sendLabbook(true); }); s = await sent();
+  s[2] && s[2].ctx.tables[0].rows.length === 2 && /picked/.test(s[2].ctx.tables[0].label) ? ok() : bad('DO15', 'only the picked: ' + JSON.stringify(s[2] && s[2].ctx.tables[0].label) + ' ' + (s[2] && s[2].ctx.tables[0].rows.length));
+  await fr.evaluate(() => { SELSET = new Set(); sendHitFinder(0, false); }); s = await sent();
+  const H = s[3] && s[3].ctx;
+  s[3] && s[3].id === 'hitfinder' && H.source === 'dora' && H.table[0].join() === 'Compound,DC50 (nM),Dmax (%)' && H.table.length === 5 && H.table[1][1] === '> 5000' && H.table[2][1] === 12.5 && H.table[3][1] === 'n.d.' && H.table[4][1] === 300 ? ok() : bad('DO15', 'Hit Finder got ' + JSON.stringify(H && H.table));
+  H && H.structures && H.structures.length === 4 && H.structures[1].join() === 'Compound,SMILES' || (H && H.structures && H.structures[1][0] === 'K1' && !H.structures.some(r => r[0] === 'K3')) ? ok() : bad('DO15', 'the structures sent: ' + JSON.stringify(H && H.structures));
+  // the numbers go in nM and Dmax in % whatever the screen shows
+  await fr.evaluate(() => { setDgUnit('uM'); setDmaxUnit('frac'); sendHitFinder(0, false); }); s = await sent();
+  s[4] && s[4].ctx.table[2][1] === 12.5 && s[4].ctx.table[2][2] === 90 ? ok() : bad('DO15', 'the unit shown leaked into what Hit Finder gets: ' + JSON.stringify(s[4] && s[4].ctx.table[2]));
+  await fr.evaluate(() => sendHitFinder(1, false)); s = await sent();
+  s.length === 5 ? ok() : bad('DO15', 'a target with nothing measured was sent anyway');
+  // outside the Hub, or without access, the items are off and nothing is sent
+  await page.evaluate(() => { window.__hf = false; });
+  const menu = await fr.evaluate(() => { renderExportMenu(); return [...document.querySelectorAll('#exp-menu .dd-i')].filter(b => /^Send to/.test(b.textContent)).map(b => [b.textContent.replace(/\s+/g, ' ').trim(), b.disabled]); });
+  menu.length === 3 && menu[0][1] === false && menu[1][1] === true && menu[2][1] === true ? ok() : bad('DO15', 'the Send items with no Hit Finder access: ' + JSON.stringify(menu));
+  const alone = await ctx.newPage(); await alone.route(/^https?:\/\/(?!127\.0\.0\.1|localhost)/, r => r.abort()); await alone.addInitScript(() => { try { localStorage.setItem('assist_seen', '1'); } catch (e) {} });
+  await alone.goto(BASE + FILE); await alone.waitForTimeout(600);
+  const solo = await alone.evaluate(() => { loadTestData(); renderExportMenu(); return [...document.querySelectorAll('#exp-menu .dd-i')].filter(b => /^Send to/.test(b.textContent)).every(b => b.disabled); });
+  solo ? ok() : bad('DO15', 'standalone Dora offers a Send it cannot do');
+  page.errs.length ? bad('DO15', 'errors: ' + page.errs.join(' | ')) : ok();
+  await ctx.close();
+});
+
+
+// ── DO16: the new screens fit and are on the type scale ──
+if (run('DO16')) await guard('DO16', async () => {
+  for (const [w, h] of [[1440, 900], [1024, 768], [768, 1024], [390, 844]]) for (const theme of ['light', 'dark']) {
+    const p = await openChem(w, h);
+    const up = await p.evaluate(async () => { try { await Chem.load(); return true; } catch (e) { return false; } });
+    if (!up) { skipped.push('DO16 — RDKit could not be loaded'); await p.context().close(); return; }
+    await p.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
+    const r = await p.evaluate(async () => {
+      loadTestData(); await Chem.computeAll(); await new Promise(r => setTimeout(r, 500));
+      const out = {};
+      const scale = new Set(['--fs-1', '--fs-2', '--fs-3', '--fs-4', '--fs-5', '--fs-6', '--fs-7', '--fs-8', '--fs-9'].map(v => { const e = document.createElement('i'); e.style.cssText = 'position:absolute;font-size:var(' + v + ')'; document.body.appendChild(e); const px = parseFloat(getComputedStyle(e).fontSize); e.remove(); return px; }));
+      const off = root => { const bad = []; root.querySelectorAll('*').forEach(el => { if (el.closest('svg') || el.closest('script,style') || el.closest('[hidden]')) return; const t = [...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim()); if (!t) return; const px = parseFloat(getComputedStyle(el).fontSize); if (![...scale].some(x => Math.abs(x - px) < 0.2)) bad.push(el.tagName + '.' + el.className + ' ' + px.toFixed(2) + 'px "' + el.textContent.trim().slice(0, 24) + '"'); }); return bad; };
+      const over = (root, name) => { const bad = []; root.querySelectorAll('.sar-card, .units-card, .map-card').forEach(c => { if (c.scrollWidth > c.clientWidth + 1) bad.push(name + ' ' + (c.id || c.className) + ' ' + c.scrollWidth + '>' + c.clientWidth); }); return bad; };
+      switchTab('sar'); await new Promise(r => setTimeout(r, 300));
+      $('rg-core').value = 'O=C1CCC(N2C(=O)c3ccccc3C2=O)C(=O)N1'; await rgRun(); await new Promise(r => setTimeout(r, 300));
+      await mmpRun(); SAR.mmOpen = 0; sarRender(); await new Promise(r => setTimeout(r, 500));
+      out.cards = document.querySelectorAll('#sar-ui .sar-card').length; out.rows = document.querySelectorAll('#sar-rg .rg-t tbody tr').length; out.tf = document.querySelectorAll('#sar-mmp .tf').length;
+      out.fs = off($('sar-ui')); out.over = over($('sar-ui'), 'sar');
+      out.page = document.documentElement.scrollWidth - document.documentElement.clientWidth;
+      switchTab('load'); document.getElementById('units-open').open = true; await new Promise(r => setTimeout(r, 200));
+      out.fsU = off($('units-card')); out.overU = over($('units-card').parentNode, 'data'); out.page2 = document.documentElement.scrollWidth - document.documentElement.clientWidth;
+      return out;
+    });
+    const tag = w + 'px ' + theme;
+    r.cards === 6 && r.rows > 5 && r.tf > 3 ? ok() : bad('DO16', tag + ': the SAR tab shows ' + JSON.stringify({ c: r.cards, rows: r.rows, tf: r.tf }));
+    !r.fs.length && !r.fsU.length ? ok() : bad('DO16', tag + ': text off the type scale: ' + r.fs.concat(r.fsU).slice(0, 3).join(' | '));
+    !r.over.length && !r.overU.length && r.page <= 1 && r.page2 <= 1 ? ok() : bad('DO16', tag + ': something is wider than its box: ' + r.over.concat(r.overU).join(' | ') + ' page ' + r.page + '/' + r.page2);
+    p.errs.length ? bad('DO16', tag + ' errors: ' + p.errs.join(' | ')) : ok();
+    await p.context().close();
+  }
 });
 
 await browser.close();

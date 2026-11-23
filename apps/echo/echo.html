@@ -9342,34 +9342,63 @@ async function downloadScatterHiRes() {
 }
 
 // ═══ RDKIT LOADER — BEGIN (canonical in Echo; tools/sync_screen_engine.py copies it into every app that draws structures) ═══
-// RDKit comes from a CDN, so the version is PINNED and both files are integrity-checked: an unpinned
-// '@rdkit/rdkit/dist/…' silently changes under us (Dora's old path now answers 404). The script is
-// loaded with an SRI tag; the wasm is fetched here with its own hash and handed to the module, so a
-// tampered or truncated file fails loudly instead of running. unpkg first, jsDelivr as the fallback —
-// the same bytes on both (hashes verified 2026-10-06).
+// One pinned RDKit (2026.9.1), three places to get the SAME bytes, tried in this order:
+//   1. the Hub shell's own copy (a personal dHUB.html carries it inline, so structures work with no signal at all);
+//   2. a copy next to the page (the deployed Hub writes rdkit/ beside index.html);
+//   3. a CDN (unpkg, then jsDelivr) - for an app opened on its own.
+// Every route is integrity-checked: the build hashes the embedded copy, a sibling file and a CDN file are fetched with
+// the SHA-384 below, so a tampered or truncated file fails loudly instead of running.
 var RDKIT_VERSION = '2026.9.1';
 var RDKIT_SRI = { js: 'sha384-gBdna7fxxnpz64Sewln4eBm8+sAiS6ur6q7X0xEum//b7MzSjJGK3ENuAmuRL5Y3',
                   wasm: 'sha384-o1WTb3ojy+rYWbWbFHMcvH3BDxTKFBRJoH2UQ5Y2GNCDxwp13z33o8ZNtWOBGBxL' };
 function loadRDKitPinned() {
   if (window._rdkitPromise) return window._rdkitPromise;
-  var bases = ['https://unpkg.com/@rdkit/rdkit@' + RDKIT_VERSION + '/dist/',
-               'https://cdn.jsdelivr.net/npm/@rdkit/rdkit@' + RDKIT_VERSION + '/dist/'];
+  function addScript(attrs, text) {
+    return new Promise(function (res, rej) {
+      var tag = document.createElement('script');
+      for (var k in attrs) tag[k] = attrs[k];
+      if (text != null) tag.text = text;
+      tag.onload = function () { res(tag); };
+      tag.onerror = function () { if (tag.parentNode) tag.parentNode.removeChild(tag); rej(new Error('script not loaded')); };
+      document.head.appendChild(tag);
+      if (text != null) res(tag);                    // an inline script has run by the time it is appended
+    });
+  }
+  function b64Bytes(b64) {                           // a Uint8Array of THIS frame's realm (a parent's buffer is not)
+    var bin = atob(b64), n = bin.length, out = new Uint8Array(n);
+    for (var i = 0; i < n; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+  // This build of RDKit ignores a `wasmBinary` option and fetches its .wasm beside the script (a 404 on a copy that is inline), so
+  // the bytes go in through emscripten's own hook instead.
+  function fromBytes(bytes) {
+    return function (imports, done) {
+      WebAssembly.instantiate(bytes, imports).then(function (r) { done(r.instance, r.module); });
+      return {};
+    };
+  }
   window._rdkitPromise = (async function () {
-    var lastErr = null;
+    var lastErr = null, hub = null;
+    try { if (window.parent && window.parent !== window && window.parent.hubRDKitSrc) hub = window.parent.hubRDKitSrc(); } catch (e) {}
+    if (hub) {                                       // 1. the Hub's own copy
+      try {
+        if (!window.initRDKitModule) await addScript({}, hub.js);
+        return await window.initRDKitModule({ instantiateWasm: fromBytes(b64Bytes(hub.wasm)) });
+      } catch (e) { lastErr = e; }
+    }
+    // a page opened from the disk (file://) cannot ask a sibling folder for a script: it would only log a CORS error before the CDN
+    var served = /^https?:/.test(document.baseURI || '');
+    var bases = (served ? ['rdkit/'] : []).concat(['https://unpkg.com/@rdkit/rdkit@' + RDKIT_VERSION + '/dist/',
+                 'https://cdn.jsdelivr.net/npm/@rdkit/rdkit@' + RDKIT_VERSION + '/dist/']);
     for (var i = 0; i < bases.length; i++) {
       var base = bases[i], tag = null;
       try {
         if (!window.initRDKitModule) {
-          await new Promise(function (res, rej) {
-            tag = document.createElement('script');
-            tag.src = base + 'RDKit_minimal.js'; tag.integrity = RDKIT_SRI.js; tag.crossOrigin = 'anonymous';
-            tag.onload = res; tag.onerror = function () { rej(new Error('script not loaded')); };
-            document.head.appendChild(tag);
-          });
+          tag = await addScript({ src: base + 'RDKit_minimal.js', integrity: RDKIT_SRI.js, crossOrigin: 'anonymous' });
         }
         var r = await fetch(base + 'RDKit_minimal.wasm', { integrity: RDKIT_SRI.wasm });
         if (!r.ok) throw new Error('wasm ' + r.status);
-        return await window.initRDKitModule({ wasmBinary: await r.arrayBuffer() });
+        return await window.initRDKitModule({ instantiateWasm: fromBytes(new Uint8Array(await r.arrayBuffer())) });
       } catch (e) {
         lastErr = e;
         if (tag && tag.parentNode) tag.parentNode.removeChild(tag);

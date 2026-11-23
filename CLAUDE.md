@@ -26,6 +26,7 @@ python3 embed.py                                    # dHUB.html, all apps (perso
 python3 embed.py dist/index.html                    # CI/Pages
 python3 embed.py --profile=product|labbook|archive|labbook-pwa
 ```
+RDKit (structures in Echo, Dora, Hit Finder) is vendored and hash-checked: `dHUB.html` carries it, `dist/` writes `rdkit/` beside `index.html`, an app opened alone fetches the CDN (`tools/inline_rdkit.py`, `tools/rdkit_embed_invariants.mjs`).
 Push to `main` → Actions builds all profiles and deploys Pages (`https://maciciorjon-hash.github.io/thehub/`). `deploy` depends only on `build`; invariant suites run in parallel and mark the commit without holding the deploy. `.githooks/pre-commit` (`tools/static_checks.sh`) runs the drift checks and refuses the commit, naming the sync script to run.
 
 ## Rules that always apply

@@ -71,6 +71,7 @@
 //       and only tables         header; numbers stay numbers and nothing starts as a formula; the same content has the same id and changed content a new one.
 //   H31 one door in            A Lumina results table, an Echo/Tempo Screen table and a file dropped on the page are read by the same readers: the same compounds, qualifiers
 //                              and potencies come out, a bound stays a bound, and sending twice does not double the screens.
+//   H33 Dora sends            A table and the structures sent by Dora arrive as one screen (a bound stays a bound, "n.d." is no effect) and the structures join the compounds by name.
 //   H32 the cloud never        Nothing is written to the cloud before its first read has landed; calls merge compound by compound (the later one wins), presets by name; a call
 //       overwrites               you cleared stays cleared on another device; a refused read leaves the app local and working.
 //
@@ -1391,6 +1392,20 @@ if (run('H32')) await guard('H32', async () => {
   check('H32', 'a hostile cloud (null, a number, text, nulls in the calls, presets with no rows) is merged as nothing and never throws', r.hostile.every(x => x === 'ok'), r.hostile);
   check('H32', 'nothing is written before the first read has landed; after it, what only this device knew goes up, merged with the cloud\'s', r.beforeRead === 0 && r.afterRead === 1 && r.pushed === 'mine,theirs' && r.ready === true && r.state === 'synced', { before: r.beforeRead, after: r.afterRead, pushed: r.pushed, ready: r.ready, state: r.state });
   check('H32', 'a refused read leaves the app local (and working); with no Firebase at all there is no cloud and the Export tab says where the calls are kept', r.refused[0] === 'local' && r.refused[1] === false && r.noFb[0] && r.noFb[1], { refused: r.refused, noFb: r.noFb });
+});
+
+if (run('H33')) await guard('H33', async () => {
+  const r = await E(async () => {
+    HF.recs.length = 0; HF.screens.clear(); HF.arms.clear(); HF.smiles = new Map(); hfAfterIngest();
+    const table = [['Compound', 'DC50 (nM)', 'Dmax (%)'], ['D-01', 12.5, 91], ['D-02', '> 5000', 20], ['D-03', 'n.d.', 5], ['D-04', 300, '']];
+    const structures = [['Compound', 'SMILES'], ['D-01', 'CCO'], ['D-02', 'c1ccccc1'], ['D-04', 'CCN']];
+    await hfReceiveFromEcho({ source: 'dora', name: 'Dora · BRD4', table, structures });
+    const recs = HF.recs.map(x => [x.Compound, x.Potency_nM, x.Potency_Qualifier, x.Effect_Fit]);
+    return { screens: HF.screens.size, src: [...HF.screens.values()].map(s => s.source).join('|'), recs, smi: [...HF.smiles.values()].map(v => v.id + ':' + v.smiles).sort() };
+  });
+  const by = Object.fromEntries((r.recs || []).map(x => [x[0], x]));
+  check('H33', 'a table sent by Dora arrives as one screen named after it, with a bound kept as a bound and "n.d." as no effect', r.screens === 1 && /Dora/.test(r.src) && by['D-01'][1] === 12.5 && by['D-02'][2] === '>' && by['D-03'][2] === 'n.d.' && by['D-04'][1] === 300, r);
+  check('H33', 'the structures that come with it are the structures of those compounds, by name', r.smi.join() === 'D-01:CCO,D-02:c1ccccc1,D-04:CCN', r.smi);
 });
 
 await browser.close(); server.close();

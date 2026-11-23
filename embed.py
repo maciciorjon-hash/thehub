@@ -4,6 +4,9 @@
 Usage:
   python embed.py                                  ->  ./dHUB.html     (local dev, everything)
   python embed.py dist/index.html                 ->  dist/index.html (CI / GitHub Pages)
+  python embed.py --embed-rdkit /some/where/offline.html
+        ->  the same, with RDKit (Echo, Dora and Hit Finder's structures) written into the file: it works with no network.
+            A build with no output path (dHUB.html) always does this; dist/ writes rdkit/ beside index.html instead.
   python embed.py --profile=product dist/index.html
         ->  only the apps that make up the product story (see PROFILES). Personal-workflow
             apps stay in the repo and in the default build; they just don't ship.
@@ -469,6 +472,7 @@ if profile != 'all':
 
 sys.path.insert(0, os.path.join(BASE, 'tools'))
 from inline_3dmol import inline as _inline_3dmol
+import inline_rdkit as _inline_rdkit
 
 src = open(SHELL, encoding='utf-8').read()
 errors = []
@@ -572,6 +576,24 @@ for key, rel in APPS:
     if n != 1:
         errors.append(f'{key}: expected 1 placeholder replacement, got {n}')
 
+# RDKit (structures, properties, SAR in Echo, Dora and Hit Finder). A personal build - no output path, the file you open from the
+# disk - carries it inline in the shell, so it works with no signal. A deployed build (dist/) writes it as rdkit/ beside
+# index.html instead and keeps the page small; an app opened on its own falls back to a CDN. tools/inline_rdkit.py checks both
+# files against the hashes the loader pins and refuses to build on a mismatch.
+_RDKIT_APPS = {'echo', 'dora', 'hitfinder'} & {k for k, _ in APPS}
+_RDKIT_BLOBS = None
+if _inline_rdkit.MARK in src:
+    try:
+        if _RDKIT_APPS and (not args or '--embed-rdkit' in flags):
+            src = src.replace(_inline_rdkit.MARK, _inline_rdkit.blobs())
+            _RDKIT_BLOBS = True
+        else:
+            src = src.replace(_inline_rdkit.MARK, '')
+    except (ValueError, OSError) as e:
+        errors.append('rdkit: could not embed it - %s' % e)
+else:
+    errors.append('shell: the <!--RDKIT-EMBED--> marker is missing - Echo, Dora and Hit Finder would have no RDKit to take')
+
 if errors:
     sys.stderr.write('\nembed.py FAILED — the bundle was NOT written:\n  - '
                      + '\n  - '.join(errors) + '\n')
@@ -586,6 +608,8 @@ print(f'Output: {OUT} ({len(src):,} chars)')
 if any(k == 'echo' for k, _ in APPS) and out_dir:
     open(os.path.join(out_dir, 'echo-testdata.js'), 'wb').write(ECHO_TESTDATA)
     print(f'Wrote {os.path.join(out_dir, "echo-testdata.js")} (Echo test data, fetched on first use)')
+if _RDKIT_APPS and args and out_dir and not _RDKIT_BLOBS:
+    print(f'Wrote {_inline_rdkit.write_siblings(out_dir)} (RDKit, pinned and hash-checked; fetched on first use)')
 if SELF_FONTS and out_dir:
     import shutil
     fdir = os.path.join(out_dir, 'fonts'); os.makedirs(fdir, exist_ok=True)
