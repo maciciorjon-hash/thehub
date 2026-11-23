@@ -61,9 +61,9 @@ const CHECKS = [
     var blockEdit=!!document.querySelector('#pane-ed .exh-setup-edit'), barSetup=l.indexOf('Setup')>=0;
     if(blockEdit&&barSetup) bad.push('the Setup block has Edit and the bar also says Setup (two buttons for one dialog)');
     if(!blockEdit&&!barSetup) bad.push('no way into the setup editor: no Edit in the block and no Setup in the bar');
-    var keep=JSON.stringify(e.setup); e.setup={}; e.imported=null; H.open(e); var l2=H.labels();
+    var keep=JSON.stringify(e.setup), keepB=e.blocks; e.setup={}; e.blocks=[]; e.imported=null; H.open(e); var l2=H.labels();
     if(document.querySelector('#pane-ed .exh-setup-edit')||l2.indexOf('Setup')<0) bad.push('a setup with no answers to show must keep the bar\\'s Setup ['+l2.join(', ')+']');
-    e.setup=JSON.parse(keep);
+    e.setup=JSON.parse(keep); e.blocks=keepB;
     if(l.indexOf('Refresh wording')>=0) bad.push('"Refresh wording" is a standing button again'); if(l.indexOf('Unarchive')>=0) bad.push('"Unarchive" is on an open run');
     l.forEach(function(x){ if(seen[x]) bad.push('two buttons say "'+x+'"'); seen[x]=1; });
     [].forEach.call(document.querySelectorAll('.exh .exh-grp .exh-act'),function(b){ if(!(b.title||'').trim()) bad.push('a button has no tooltip'); });

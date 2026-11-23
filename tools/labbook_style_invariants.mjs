@@ -201,7 +201,7 @@ const CHECKS = [
   ['T17', ['new_exp', 'setup_editor'], `(function(){ var bad=[], hosts=[['nm-setup','New experiment'],['es-fields','the setup editor']];
     hosts.forEach(function(h){ var host=document.getElementById(h[0]); if(!host||!host.offsetParent) return;
       var all=[].slice.call(host.querySelectorAll('[data-sf]')), ids=all.map(function(n){ return n.getAttribute('data-sf'); });
-      var want=h[0]==='nm-setup'?setupFieldsFor(document.getElementById('nm-type').value,NM_SETUP).length:expSetupFields(LB.data.experiments[ES_EXP],ES_SETUP).length;
+      var want=h[0]==='nm-setup'?setupFieldsFor(document.getElementById('nm-type').value,NM_SETUP).length:_setupQs(LB.data.experiments[ES_EXP].type,ES_HIDE,ES_ADD,ES_SETUP).length;
       if(all.length!==want) bad.push(h[1]+': '+all.length+' questions on screen, the setup asks '+want);
       if(ids.length!==new Set(ids).size) bad.push(h[1]+': a question is on screen twice');
       var grps=[].slice.call(host.querySelectorAll('.su-grp'));

@@ -1815,6 +1815,9 @@ details.pl-sec>*:not(summary):last-child{padding-bottom:11px;}
 .es-ar{color:var(--text3);}
 .es-b{color:var(--accent-ink);font-family:var(--mono);font-weight:600;}
 .es-note{font-size:var(--fs-2);color:var(--text2);line-height:1.55;}
+.es-plate-note{margin:12px 0 2px;font-size:var(--fs-3);color:var(--text2);line-height:1.5;}
+.es-plate-note b{color:var(--text);font-weight:600;margin-right:4px;}
+.es-was{white-space:nowrap;font-style:normal;font-weight:400;font-size:var(--fs-2);color:var(--text3);margin-left:6px;}
 .nm-setup .ci-f.lead span{color:var(--accent-ink);}
 .nm-setup .ci-f.lead select{border-color:var(--accent);font-weight:600;}
 /* The format question that comes with a plate on a preset that asks nothing else. */
@@ -4946,6 +4949,8 @@ function seedCellsFor(fmt){ var a=PLATE_AREA[String(fmt)]; return a?_seedRound(a
 // overwrote the number the format change had just rescaled correctly.
 var SEED_ASSAY_FMT={'96':1,'384':1};
 function lineCells(lineId,fmt){
+  // A line the list does not know has no density of its own, and the number already in the box is the person's, not ours to replace.
+  if(lineId!=null&&String(lineId).trim()!==''&&!cellLineKnown(lineId)) return null;
   fmt=String(fmt||'96');
   var a=PLATE_AREA[fmt]; if(!a) return null;
   if(!SEED_ASSAY_FMT[fmt]) return seedCellsFor(fmt);
@@ -5172,7 +5177,7 @@ function _applySetupGates(type,setup,blocks,prevSetup,presetKey,anchor){
     var nx=blocks[blocks.indexOf(o)+1]; o.waitSameDay=!!(o.waitMin&&nx&&(+nx.dayOffset||0)===off0);
     sync();
   }); }
-var SETUP_CALC_MAP={rtxmix:{ngPerWell:'dnaNg',fugeneRatio:'fugeneRatio',nWells:'nWells'}, spike:{nWells:'nSamples'}, mixparts:{nWells:'nSamples'}, seed:{nWells:'nSamples'},
+var SETUP_CALC_MAP={rtxmix:{ngPerWell:'dnaNg',fugeneRatio:'fugeneRatio',nWells:'nWells'}, spike:{nWells:'nSamples'}, mixparts:{nWells:'nSamples'}, seed:{nWells:'nSamples',volPerWell:'volPerWell'}, nbsusp:{volPerWell:'volPerWell'},
   echo:{nCompounds:'nCompounds',nConc:'nConc',nReps:'nReps',dmsoMax:'dmsoMax'}};
 // The read is as many days after the compound as the setup's hours say. "Treatment (h)" planted the wait and nothing else, so a
 // 6 h treatment still read the plate the next day (the preset's own Day 2) and the chip said "6 h → tomorrow" (Jon, 2026-11-18,
@@ -5198,14 +5203,18 @@ function _followTreatDays(blocks,setup,presetKey,fields){
       grp.forEach(function(x){ x.dayOffset=(+x.dayOffset||0)+delta; if(x.date) x.date=addDays(x.date,delta); });
       nx.dayAuto=nx.dayOffset; b.waitSameDay=(+nx.dayOffset||0)===(+b.dayOffset||0); n++; }); });
   return n; }
-function applySetupToBlocks(type,setup,blocks,prevSetup,presetKey){
+// `basis` (optional) is what the editor opened on. Given it, a number is written into the steps only if THIS edit changed it: opening Edit setup and
+// pressing Apply to change one thing used to put every other number back to what the setup said, which for an older run is not what its steps use
+// (440 wells counted from the plate map became 960 from "N plates of a format", 0.5 plates became 1). Without it — a run being made — everything is written.
+function applySetupToBlocks(type,setup,blocks,prevSetup,presetKey,basis){
   var S=setupSchema(type); if(!S||!setup) return blocks;
+  var chg=function(k){ return !basis||String(basis[k]==null?'':basis[k])!==String(setup[k]==null?'':setup[k]); };
   // A setup field marked `wait` is a duration, not just a word for the prose. "Treatment (h)"
   // filled {{treatH}} in the sentence and nothing else, so the wait chip, the day's clock and
   // the bench timer never learned it \u2014 you could set 20 h and the schedule stayed at whatever
   // the preset shipped. The block it belongs to is the one whose own text quotes it; a wait you
   // typed yourself (waitOwn) is never overwritten.
-  (S.fields||[]).concat(presetKey?presetSetupAdd(presetKey):[]).filter(function(f){ return f.wait; }).forEach(function(f){
+  (S.fields||[]).concat(presetKey?presetSetupAdd(presetKey):[]).filter(function(f){ return f.wait&&chg(f.f); }).forEach(function(f){
     var h=parseFloat(setup[f.f]); if(!isFinite(h)||h<=0) return;
     var tok='{{'+f.f+'}}';
     blocks.forEach(function(b){
@@ -5215,7 +5224,7 @@ function applySetupToBlocks(type,setup,blocks,prevSetup,presetKey){
       b.waitMin=Math.round(h*60);
     });
   });
-  try{ _followTreatDays(blocks,setup,presetKey,(S.fields||[]).concat(presetKey?presetSetupAdd(presetKey):[]).filter(function(f){ return f.wait; })); }catch(_e){}
+  try{ _followTreatDays(blocks,setup,presetKey,(S.fields||[]).concat(presetKey?presetSetupAdd(presetKey):[]).filter(function(f){ return f.wait&&chg(f.f); })); }catch(_e){}
   var fmt=(setup.format!=null&&setup.format!=='')?String(setup.format):null;
   // The seeding block's own plate count is the reference: readout blocks that originally used
   // a multiple of it (e.g. D2B lyses 2 plates per assay plate) keep that ratio.
@@ -5228,37 +5237,37 @@ function applySetupToBlocks(type,setup,blocks,prevSetup,presetKey){
     // 2 mL became 4,700 in 30 µL, under prose that still said "in a 6-well plate". Only the
     // cell line is shared with it.
     if(I&&_calcOwnPlate(b.calc)){
-      if(setup.cellLine!=null&&I.cellLine!=null&&!(b.calcSeed&&b.calcSeed.cellLine!==undefined&&String(b.calcSeed.cellLine)!==String(I.cellLine))) I.cellLine=setup.cellLine;
+      if(chg('cellLine')&&setup.cellLine!=null&&I.cellLine!=null&&!(b.calcSeed&&b.calcSeed.cellLine!==undefined&&String(b.calcSeed.cellLine)!==String(I.cellLine))) I.cellLine=setup.cellLine;
       I=null;
     }
     if(I){
       // Scale per-well volumes by how much the format itself changed, so a reagent that was
       // half the medium volume at 96-well is still half of it at 384-well.
       // rescaleSeedInputs moves the volumes AND the cell number, and sets I.format itself.
-      if(fmt&&I.format!=null) rescaleSeedInputs(I,fmt);
+      if(fmt&&I.format!=null&&chg('format')) rescaleSeedInputs(I,fmt);
       // A value typed over the setup is the number that run used, and the UI says so in as many
       // words ("yours · setup says 3000 — this step only"). It used to be overwritten by the next
       // setup save whatever it said, which is the one thing this notebook promises never to do.
       // b.calcSeed holds what the setup last planted, so "you changed it" is already knowable.
       var _own=function(k){ return b.calcSeed && b.calcSeed[k]!==undefined
         && String(b.calcSeed[k])!==String(I[k]); };
-      if(setup.cellLine!=null&&I.cellLine!=null&&!_own('cellLine')) I.cellLine=setup.cellLine;
-      if(setup.cellsPerWell!=null&&I.cellsPerWell!=null&&!_own('cellsPerWell')) I.cellsPerWell=+setup.cellsPerWell;
+      if(chg('cellLine')&&setup.cellLine!=null&&I.cellLine!=null&&!_own('cellLine')) I.cellLine=setup.cellLine;
+      if(chg('cellsPerWell')&&setup.cellsPerWell!=null&&I.cellsPerWell!=null&&!_own('cellsPerWell')) I.cellsPerWell=+setup.cellsPerWell;
       // The answers a calculator takes by another name: DNA per well is the master mix's ng per well.
       var _own2=function(k){ return _own(k)||!!(b.calc.own&&b.calc.own[k]); };
       var _mp=SETUP_CALC_MAP[b.calc.kind];
       if(_mp) Object.keys(_mp).forEach(function(ik){ var sv=setup[_mp[ik]];
-        if(sv!=null&&sv!==''&&isFinite(+sv)&&I[ik]!==undefined&&!_own2(ik)) I[ik]=+sv; });
+        if(chg(_mp[ik])&&sv!=null&&sv!==''&&isFinite(+sv)&&I[ik]!==undefined&&!_own2(ik)) I[ik]=+sv; });
       // A working solution whose components are written as stock>final ("Oligomycin {{oligoStockMM}} mM>{{oligoUM}} µM") follows
       // the setup's stocks and finals; the µL per mL are the calculator's. A list the person retyped is theirs.
       if(b.calc.kind==='mixparts'&&I.partsTpl!=null&&!_own2('parts')) I.parts=String(fillSetup(I.partsTpl,setup)).replace(/&micro;/g,'µ');
       // The ISRIB stock is the setup's too (mM there, µM in the calculator).
       // A step can name the setup fields that feed its own boxes ({finalUM:'isribUM', stockUM:['isribStockMM',1000]}: the field, then a factor, mM there and µM here).
       if(b.calc.setupMap) Object.keys(b.calc.setupMap).forEach(function(ik){ var m=b.calc.setupMap[ik], sv=setup[[].concat(m)[0]], f=Array.isArray(m)?m[1]:1;
-        if(sv!=null&&sv!==''&&isFinite(+sv)&&I[ik]!==undefined&&!_own2(ik)) I[ik]=+sv*f; });
+        if(chg([].concat(m)[0])&&sv!=null&&sv!==''&&isFinite(+sv)&&I[ik]!==undefined&&!_own2(ik)) I[ik]=+sv*f; });
       // A run said to be N plates of a format has N × that many wells, until a plate map says otherwise.
-      if(setup.nPlates!=null&&setup.nSamples==null&&fmt&&PLATE_FED[b.calc.kind]&&I.nWells!=null&&!_own2('nWells')&&(b.calc.kind!=='reagent'||+I.perWellUL>0)) I.nWells=wellsOf(fmt)*(+setup.nPlates||1);
-      if(setup.nPlates!=null&&I.nPlates!=null&&!_own('nPlates')){
+      if((chg('nPlates')||chg('format'))&&setup.nPlates!=null&&setup.nSamples==null&&fmt&&PLATE_FED[b.calc.kind]&&I.nWells!=null&&!_own2('nWells')&&(b.calc.kind!=='reagent'||+I.perWellUL>0)) I.nWells=wellsOf(fmt)*(+setup.nPlates||1);
+      if(chg('nPlates')&&setup.nPlates!=null&&I.nPlates!=null&&!_own('nPlates')){
         I.nPlates = base ? Math.max(1,Math.round((+I.nPlates/base)*(+setup.nPlates||1))) : (+setup.nPlates||1);
       }
     }
@@ -5283,7 +5292,10 @@ function applySetupToBlocks(type,setup,blocks,prevSetup,presetKey){
   // Where day 0 is, for any block the hook below has to date from scratch.
   var _anchor=null;
   (blocks||[]).forEach(function(b){ if(_anchor==null&&b.date&&b.dayOffset!=null) _anchor=addDays(b.date,-(+b.dayOffset||0)); });
-  if(S.apply){ try{ blocks=S.apply(setup,blocks)||blocks; }catch(e){} }
+  if(S.apply){ try{
+    // a hook (the constructs, the readout hours) is given only what this edit changed: an answer left as it was does not re-point a step the person has since edited
+    var _su=setup; if(basis){ _su={}; Object.keys(setup).forEach(function(k){ if(chg(k)) _su[k]=setup[k]; }); }
+    blocks=S.apply(_su,blocks)||blocks; }catch(e){} }
   blocks=_normBlocks(blocks,_anchor);
   _lineWaits(blocks);
   _applySetupGates(type,setup,blocks,prevSetup,presetKey,_anchor);
@@ -5311,6 +5323,25 @@ var CELL_LINES=[
   {id:'',label:'Other / custom',cpw:3000,cpwFmt:'384',medium:''}
 ];
 function cellLineDef(id){ for(var i=0;i<CELL_LINES.length;i++){ if(CELL_LINES[i].id===id) return CELL_LINES[i]; } return CELL_LINES[CELL_LINES.length-1]; }
+// A cell line is whatever the person calls it. The list is a convenience (it knows a medium and a seeding density for its own lines),
+// never a wall: a line that is not in it is stored as typed, called what it was typed as, and gets the "Other" line's generic density.
+// cellLineLabel is the one name for display; cellLineNorm turns what was typed into the list's id when it is one of its lines (by id or by
+// label, any case) and otherwise keeps the typed text; cellLineKnown says whether the list knows it.
+function cellLineKnown(v){ for(var i=0;i<CELL_LINES.length;i++){ if(CELL_LINES[i].id!==''&&CELL_LINES[i].id===v) return true; } return false; }
+function cellLineLabel(v){ if(v==null||v==='') return ''; for(var i=0;i<CELL_LINES.length;i++){ if(CELL_LINES[i].id!==''&&CELL_LINES[i].id===v) return CELL_LINES[i].label; } return String(v); }
+function cellLineNorm(t){ t=String(t==null?'':t).replace(/\s+/g,' ').trim(); if(!t) return ''; var l=t.toLowerCase();
+  for(var i=0;i<CELL_LINES.length;i++){ var c=CELL_LINES[i]; if(c.id!==''&&(c.id.toLowerCase()===l||c.label.toLowerCase()===l)) return c.id; }
+  return t; }
+// What the box offers while you type: the list's lines, then every line this notebook has already used.
+function cellLineSuggest(){ var seen={}, out=[];
+  CELL_LINES.forEach(function(c){ if(c.id===''||seen[c.label.toLowerCase()]) return; seen[c.label.toLowerCase()]=1; out.push(c.label); });
+  try{ Object.keys((LB.data&&LB.data.experiments)||{}).forEach(function(k){ var x=LB.data.experiments[k];
+    String((x&&x.cellLines)||'').split(/[,;]+/).forEach(function(n){ n=n.trim(); if(n&&!seen[n.toLowerCase()]){ seen[n.toLowerCase()]=1; out.push(n); } }); }); }catch(e){}
+  return out; }
+// One free-text box with a list behind it. `attrs` is the caller's own (data-sf, onchange …); the datalist is shared by every box on the page.
+function cellLineInputHtml(v,attrs,cls){
+  return '<input class="'+(cls||'')+'" list="cl-suggest" autocomplete="off" spellcheck="false" placeholder="e.g. HEK293T, U937, primary T cells" value="'+esc(cellLineLabel(v))+'" '+attrs+'>'
+    +'<datalist id="cl-suggest">'+cellLineSuggest().map(function(n){ return '<option value="'+esc(n)+'">'; }).join('')+'</datalist>'; }
 function nfmt(x){ x=+x; if(!isFinite(x)) return '—'; var a=Math.abs(x); if(a===0) return '0';
   if(a>=1000) return Math.round(x).toLocaleString('en-GB'); if(a>=100) return String(Math.round(x));
   if(a>=1) return String(Math.round(x*100)/100); return String(Math.round(x*1000)/1000); }
@@ -5586,7 +5617,7 @@ var CALC_VALUES={
     return {nMixes:nfmt(mixes.length)+' mixes', wells:nfmt(wells)+' wells', ngPerWell:nfmt(ng)+' ng', fugeneUL:nfmt(fu)+' µL', ratio:nfmt(v.fugeneRatio)+':1', optimemUL:nfmt(om)+' µL', dispense:_nbtxDispenseTxt(v), excess:nfmt(ex)+'×'}; },
   nbsusp:function(v){ var ex=+v.excess||1, vw=+v.volPerWell||0, cpw=+v.cellsPerWell||0, nP=+v.nPlus||0, nM=+v.nMinus||0, vP=nP*vw*ex, vM=nM*vw*ex, stockUM=+v.stockUM||0, finalNM=+v.finalNM||0;
     var ligUL=(stockUM>0)?(vP*(finalNM/1000)/stockUM):0, dens=vw?(cpw/vw*1000):0;
-    return {cellLine:((cellLineDef(v.cellLine)||{}).label||'cells').replace(/\s*\(.*\)$/,''), density:nfmt(dens/1e6)+' M cells/mL', volPlus:mlfmt(vP), volMinus:mlfmt(vM), volTotal:mlfmt(vP+vM), cellsTotal:nfmt(cpw*(nP+nM)*ex/1e6)+' M cells', cellsPlus:nfmt(cpw*nP*ex/1e6)+' M cells', cellsMinus:nfmt(cpw*nM*ex/1e6)+' M cells', ligUL:nfmt(ligUL)+' µL', ligStock:nfmt(stockUM)+' µM', ligFinal:nfmt(finalNM)+' nM', ligand:String(v.ligName||'ligand'), volPerWell:nfmt(vw)+' µL', cellsPerWell:nfmt(cpw)+' cells', nPlus:nfmt(nP)+' wells', nMinus:nfmt(nM)+' wells'}; },
+    return {cellLine:(cellLineLabel(v.cellLine)||'cells').replace(/\s*\(.*\)$/,''), density:nfmt(dens/1e6)+' M cells/mL', volPlus:mlfmt(vP), volMinus:mlfmt(vM), volTotal:mlfmt(vP+vM), cellsTotal:nfmt(cpw*(nP+nM)*ex/1e6)+' M cells', cellsPlus:nfmt(cpw*nP*ex/1e6)+' M cells', cellsMinus:nfmt(cpw*nM*ex/1e6)+' M cells', ligUL:nfmt(ligUL)+' µL', ligStock:nfmt(stockUM)+' µM', ligFinal:nfmt(finalNM)+' nM', ligand:String(v.ligName||'ligand'), volPerWell:nfmt(vw)+' µL', cellsPerWell:nfmt(cpw)+' cells', nPlus:nfmt(nP)+' wells', nMinus:nfmt(nM)+' wells'}; },
   spike:function(v,ctx){ var V=+v.wellVolUL||0, X=+v.foldX||0, fin=+v.finalUM||0, stock=+v.stockUM||0, n=+v.nWells||0, ex=+v.excess||1;
     // The series a dose-response plate carries, read off the wells: how many concentrations, how
     // far apart, from where. The top tube is that, made X-fold stronger.
@@ -5994,7 +6025,7 @@ function nbsuspRecipe(v){
   // µL of stock = volume × (final in µM) / (stock in µM); nM→µM is the /1000.
   var ligUL=(stockUM>0)?(vP*(finalNM/1000)/stockUM):null;
   var dens=vw?(cpw/vw*1000):0;   // cells per mL
-  var line=((cellLineDef(v.cellLine)||{}).label||'Cells').replace(/\s*\(.*\)$/,'');
+  var line=(cellLineLabel(v.cellLine)||'Cells').replace(/\s*\(.*\)$/,'');
   var rows='';
   if(nP>0) rows+='<tr><td><b>+ '+esc(v.ligName||'ligand')+'</b><br><span class="cc-dim">'+nP+' wells × '+nfmt(ex)+'</span></td>'
     +'<td>'+_amt(vP/1000,nfmt(vP)+' µL','', null,'mL')+'</td><td>'+_amt(cpw*nP*ex/1e6,'','',null,'M cells')+'</td>'
@@ -6336,8 +6367,8 @@ function calcInputsHtml(b){ if(b.calc.kind==='archive') return archiveCalcHtml(b
     // A box that only means something for some versions of a step (a total for the old way of
     // writing it, a per-well volume for the new) is not drawn for the others.
     if(f.show&&!f.show(inp)) return '';
-    if(f.t==='cellline'){ var opts=CELL_LINES.map(function(cl){ return '<option value="'+esc(cl.id)+'"'+(cl.id===v?' selected':'')+'>'+esc(cl.label)+'</option>'; }).join('');
-      return '<label class="'+ciWide(CELL_LINES.map(function(cl){return cl.label;}))+'"><span>'+f.lbl+'</span><select onchange="calcCellLine(\''+b.id+'\',this.value)">'+opts+'</select></label>'; }
+    if(f.t==='cellline'){
+      return '<label class="'+ciWide(CELL_LINES.map(function(cl){return cl.label;}))+'"><span>'+f.lbl+'</span>'+cellLineInputHtml(v,'onchange="calcCellLine(\''+b.id+'\',this.value)"')+'</label>'; }
     if(f.t==='format'){ var fo=['6','12','24','48','96','384'].map(function(x){ return '<option value="'+x+'"'+(String(v)===x?' selected':'')+'>'+x+'-well</option>'; }).join('');
       return '<label class="ci-f"><span>'+f.lbl+'</span><select data-k="'+f.k+'" onchange="calcUpd(\''+b.id+'\')">'+fo+'</select></label>'; }
     if(f.t==='select'){ var so=(f.opts||[]).map(function(x){ return '<option value="'+esc(x)+'"'+(String(v)===String(x)?' selected':'')+'>'+esc(x)+'</option>'; }).join('');
@@ -6486,7 +6517,7 @@ function refreshPlateCards(e){
     if(host) host.outerHTML=platePreviewHtml(plateOf(k),k,host.getAttribute('data-ro')==='1');
   });
 }
-function calcCellLine(id,clid){ var b=_blkById(id); if(!b||!b.calc) return; b.calc.inputs.cellLine=clid;
+function calcCellLine(id,clid){ var b=_blkById(id); if(!b||!b.calc) return; clid=cellLineNorm(clid); b.calc.inputs.cellLine=clid;
   if(b.calc.inputs.cellsPerWell!=null){ var n=lineCells(clid,b.calc.inputs.format); if(n) b.calc.inputs.cellsPerWell=n; }
   save(); renderEditor(); }
 function calcRemove(id){ var b=_blkById(id); if(!b) return; lbConfirm('Remove the prep calculator from this step? (Your written notes stay.)',{title:'Remove calculator'}).then(function(ok){ if(!ok) return; var _e=_curExp(); if(_e) undoMark('Remove calculator',['experiments.'+_e.id]); delete b.calc; save(); renderEditor(); }); }
@@ -14957,7 +14988,7 @@ function _htmlLines(html,forPub){
 function _plain(html){ return _htmlLines(html).join(' '); }
 // Past-tense Nature-methods sentence per native calculator kind.
 var CALC_PUB={
-  seed:function(v){ var line=((cellLineDef(v.cellLine)||{}).label||'Cells').replace(/\s*\(.*\)$/,''); var vol=+v.volPerWell, cpw=+v.cellsPerWell, dens=(isFinite(vol)&&vol>0)?(cpw/vol/1000):null;
+  seed:function(v){ var line=(cellLineLabel(v.cellLine)||'Cells').replace(/\s*\(.*\)$/,''); var vol=+v.volPerWell, cpw=+v.cellsPerWell, dens=(isFinite(vol)&&vol>0)?(cpw/vol/1000):null;
     // A Methods sentence must not carry an em-dash where a number belongs: with no volume
     // there is no density, so the clause is dropped rather than published as "(— M/mL) in 0 µL/well".
     var out=line+' cells were seeded';
@@ -14997,7 +15028,7 @@ var CALC_PUB={
     return s;
   },
   nbsusp:function(v){
-    var line=esc(((cellLineDef(v.cellLine)||{}).label||'Cells').replace(/\s*\(.*\)$/,''));
+    var line=esc((cellLineLabel(v.cellLine)||'Cells').replace(/\s*\(.*\)$/,''));
     var s=line+' cells were seeded at <b>'+nfmt(v.cellsPerWell)+' cells per well</b> in <b>'+nfmt(v.volPerWell)
       +' µL</b> directly onto the transfection complexes.';
     if(+v.nPlus>0) s+=' '+esc(v.ligName||'The HaloTag ligand')+' was included in the medium at <b>'+nfmt(v.finalNM)
@@ -15052,7 +15083,7 @@ function _pubSetupText(e, said){
   function said_(x){ x=String(x==null?'':x); if(!x) return false;
     try{ return new RegExp('(^|[^\\w.])'+x.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'(?![\\w]|\\.\\d)').test(said); }
     catch(e){ return said.indexOf(x)>=0; } }
-  var line = has('cellLine') ? String(((cellLineDef(v.cellLine)||{}).label)||v.cellLine).replace(/\s*\(.*\)$/,'') : '';
+  var line = has('cellLine') ? String(cellLineLabel(v.cellLine)).replace(/\s*\(.*\)$/,'') : '';
   // A calculator that already wrote the seeding sentence wrote it with the numbers; repeating
   // a vaguer version of it above is the padding a Methods section cannot carry.
   // A bare plate format is not a seeding step. A cloning experiment has no cells, and
@@ -15108,7 +15139,7 @@ function _pubSetupText(e, said){
     // A tick adds nothing: the step it switches on is either in the Methods or it is not.
     if(used[f.f] || f.t==='check' || !setupAsks(f,v) || (S.pubSkip||[]).indexOf(f.f)>=0) return;
     var x=v[f.f]; if(x==null||x==='') return;
-    if(f.t==='cellline'){ var d2=cellLineDef(x); x=(d2&&d2.label)||x; }
+    if(f.t==='cellline'){ x=cellLineLabel(x); }
     else if(f.t==='format') x=x+'-well';
     // Named somewhere in the Methods already — the reagent, the ligand, the target. Only for
     // values distinctive enough to match on: "4" appears in every Methods section ever written.
@@ -15560,8 +15591,8 @@ function nmSetupField(f,lead,src,upd){
   var v=src[f.f], cls='ci-f'+(lead?' lead':'');
   if(f.t==='format'){ var opts=(f.opts||['6','12','24','48','96','384']).map(function(x){ return '<option value="'+x+'"'+(String(v)===x?' selected':'')+'>'+x+'-well</option>'; }).join('');
     return '<label class="'+cls+'"><span>'+esc(f.lbl)+'</span><select data-sf="'+f.f+'" onchange="'+upd+'()">'+opts+'</select></label>'; }
-  if(f.t==='cellline'){ var co=CELL_LINES.map(function(cl){ return '<option value="'+esc(cl.id)+'"'+(cl.id===v?' selected':'')+'>'+esc(cl.label)+'</option>'; }).join('');
-    return '<label class="'+cls+_wideOnly(CELL_LINES.map(function(cl){return cl.label;}))+'"><span>'+esc(f.lbl)+'</span><select data-sf="'+f.f+'" onchange="'+upd+'(true)">'+co+'</select></label>'; }
+  if(f.t==='cellline'){
+    return '<label class="'+cls+_wideOnly(CELL_LINES.map(function(cl){return cl.label;}))+'"><span>'+esc(f.lbl)+'</span>'+cellLineInputHtml(v,'data-sf="'+f.f+'" data-cl="1" onchange="'+upd+'(true)"')+'</label>'; }
   if(f.t==='select'){ var so=(f.opts||[]).map(function(x){ return '<option value="'+esc(x)+'"'+(String(v)===String(x)?' selected':'')+'>'+esc(x)+'</option>'; }).join('');
     // 'cond': a choice can be what a later question hangs off (HiBiT's manual series).
     return '<label class="'+cls+_wideOnly(f.opts)+'"><span>'+esc(f.lbl)+'</span><select data-sf="'+f.f+'" onchange="'+upd+'(\'cond\')">'+so+'</select></label>'; }
@@ -15591,7 +15622,7 @@ function nmSetupField(f,lead,src,upd){
 // headings only appear when there are enough questions to need them, a key with no kind goes last under "Other", and questions keep their order
 // inside a kind. `build` is the one field renderer (nmSetupField), so what a field looks like and how it is read back do not change.
 var SETUP_GROUPS=[['plate','Plate and cells'],['constructs','Constructs'],['cmpd','Compounds'],['dose','Dosing'],['read','Readout'],['more','Other']];
-var SETUP_GROUP_OF={format:'plate',cellLine:'plate',cellsPerWell:'plate',nPlates:'plate',nSamples:'plate',nWells:'plate',nSetups:'plate',
+var SETUP_GROUP_OF={format:'plate',cellLine:'plate',cellsPerWell:'plate',volPerWell:'plate',nPlates:'plate',nSamples:'plate',nWells:'plate',nSetups:'plate',
   donors:'constructs',acceptors:'constructs',ratios:'constructs',plasmid:'constructs',dnaNg:'constructs',fugeneRatio:'constructs',nTransfect:'constructs',
   compounds:'cmpd',vehicle:'cmpd',vehiclePct:'cmpd',dmsoMax:'cmpd',nCompounds:'cmpd',nTotal:'cmpd',
   concs:'dose',treatH:'dose',dosing:'dose',doseResp:'dose',doseSeries:'dose',topConc:'dose',topUM:'dose',df:'dose',nPoints:'dose',nConc:'dose',nReps:'dose',minVol:'dose',timepoints:'dose',runMin:'dose',intervalMin:'dose',endpointD:'dose',ligand:'dose',mg132:'dose',
@@ -15639,10 +15670,12 @@ function nmSetup(){ var host=el('nm-setup'); if(!host) return;
 }
 // Read the panel back into NM_SETUP. reRender=true when a cell line changed, so its default
 // cells/well can follow (same behaviour as the seeding calculator's cell-line picker).
+// One reader for a setup box, whichever dialog it is in: a tick is a boolean, a number a number (blank stays blank), the cell line the list's id when it is one of its lines and the typed text when it is not.
+function _sfVal(n){ return (n.type==='checkbox')?n.checked:((n.type==='number')?(n.value===''?'':parseFloat(n.value)):(n.getAttribute('data-cl')?cellLineNorm(n.value):n.value)); }
 function nmSetupUpd(reRender){ var host=el('nm-setup'); if(!host) return;
   var oldFmt=NM_SETUP.format;
   host.querySelectorAll('[data-sf]').forEach(function(n){ var k=n.getAttribute('data-sf');
-    NM_SETUP[k]=(n.type==='checkbox')?n.checked:((n.type==='number')?(n.value===''?'':parseFloat(n.value)):n.value); });
+    NM_SETUP[k]=_sfVal(n); });
   // Changing the plate here has to move the cell number with it, exactly as it does inside a
   // step's calculator — otherwise the setup that seeds every block starts out inconsistent.
   if(oldFmt!=null && NM_SETUP.format!=null && String(oldFmt)!==String(NM_SETUP.format) && NM_SETUP.cellsPerWell!=null){
@@ -15931,7 +15964,7 @@ function buildExperimentFrom(sp){
       // is — had no plasmid to look up.
       title:title, status:'planned', startDate:startDate,
       plasmids:setupPlasmids(setup).join(', '),
-      cellLines:(setup.cellLine?((cellLineDef(setup.cellLine)||{}).label||String(setup.cellLine)):''),
+      cellLines:(setup.cellLine?cellLineLabel(setup.cellLine):''),
       setup:setup,
       protocols:protoList||[],
       blocks:all, created:Date.now(), updated:Date.now() };
@@ -16662,7 +16695,7 @@ function expActs(id,o){ var e=LB.data.experiments[id]||{}; o=o||{};
   // "Every step already carries the current wording" — for every experiment but the one in a hundred.
   // Setup is not here while the Setup block under the header shows its own Edit (setupSummaryHtml):
   // two buttons for one dialog. It stays for a setup with no answers to show, where the bar is the only way in.
-  var plan=(e.setup&&!setupSummaryHtml(e)?B('','Edit the setup — format, cell line, counts; re-applied to the steps',tbIco(P_SLIDERS,16),'Setup','openSetupEditor(\''+id+'\')'):'')
+  var plan=(!setupSummaryHtml(e)?B('','Edit the setup — format, cell line, counts; re-applied to the steps',tbIco(P_SLIDERS,16),'Setup','openSetupEditor(\''+id+'\')'):'')
     +(e.blocks&&e.blocks.length?B('','Save as a preset — this design (steps, calculators, setup, plate) to start the next experiment from. Nothing about this run comes with it.',tbIco(P_FILE,16),'Save as preset','saveExpAsPreset(\''+id+'\')'):'');
   var nRep=repSiblings(e).reduce(function(m,x){ return Math.max(m,x.repIndex||1); },1)+1;
   var life=(expReopenable(e)?B('','Reopen — back in the planner; its status follows the ticks again',tbIco(P_UNARCHIVE,16),'Reopen','reopenExperiment(\''+id+'\')')
@@ -16774,13 +16807,75 @@ function wireFileDrop(root){
 // experiment already carries, so this is one of the few places in Labbook where a preview
 // earns its keep.
 var ES_SETUP=null, ES_EXP=null, ES_HIDE=[], ES_ADD=[];
+// ── The setup asks about what the experiment is ────────────────────────────────────────────────
+// The questions an experiment's setup asks came from its TYPE, and a type cannot know what a run is made of: a NanoBRET never asked how many
+// cells went into a well, and a blank experiment with a seeding step asked only for the plate. And the answers were a copy: a setup saved
+// before a step's number was changed said 10 plates while the seeding step said 8, and Edit setup opened on the 10 and, on Apply, rescaled
+// every readout to it. So the steps are read first. What the calculators use is what the bench follows; the setup is what the editor shows
+// of it. `_stepsUse` reads the parameters the setup can drive out of the steps, `_ctxQs` is the extra questions those steps call for.
+var CTX_QS={
+  cellLine:{f:'cellLine',t:'cellline',lbl:'Cell line',d:''},
+  format:{f:'format',t:'format',lbl:'Plate format',d:'96'},
+  cellsPerWell:{f:'cellsPerWell',t:'num',lbl:'Cells / well',d:''},
+  nPlates:{f:'nPlates',t:'num',lbl:'# plates',d:''},
+  volPerWell:{f:'volPerWell',t:'num',lbl:'Seeding volume (µL / well)',d:'',step:'any'}
+};
+function _stepsUse(e){
+  var out={}, kindRank={seed:0,nbsusp:1};
+  var blocks=(e&&e.blocks||[]).filter(function(b){ return b.calc&&b.calc.inputs&&b.calc.kind!=='archive'&&!b.line; });
+  blocks=blocks.slice().sort(function(a,b){ var ra=kindRank[a.calc.kind], rb=kindRank[b.calc.kind]; ra=ra==null?9:ra; rb=rb==null?9:rb; return ra-rb; });
+  function has(v){ return v!=null&&v!==''; }
+  // The line is shared even by a step on its own plate; the numbers belong to the steps on the assay plate.
+  blocks.forEach(function(b){ if(out.cellLine===undefined&&has(b.calc.inputs.cellLine)) out.cellLine=b.calc.inputs.cellLine; });
+  blocks.forEach(function(b){ var I=b.calc.inputs; if(_calcOwnPlate(b.calc)) return;
+    ['cellsPerWell','format','nPlates','volPerWell'].forEach(function(k){ if(out[k]===undefined&&has(I[k])) out[k]=(k==='format'?String(I[k]):(isFinite(+I[k])?+I[k]:I[k])); }); });
+  // a volume only means "seeding volume" on the step that seeds
+  if(out.volPerWell!==undefined&&!blocks.some(function(b){ return (b.calc.kind==='seed'||b.calc.kind==='nbsusp')&&!_calcOwnPlate(b.calc)&&has(b.calc.inputs.volPerWell); })) delete out.volPerWell;
+  return out;
+}
+function _ctxQs(e,qs,hide,use){
+  use=use||_stepsUse(e); var have={}, add=[];
+  (qs||[]).forEach(function(f){ have[f.f]=1; });
+  Object.keys(CTX_QS).forEach(function(k){ if(use[k]===undefined||have[k]||(hide||[]).indexOf(k)>=0) return; add.push(JSON.parse(JSON.stringify(CTX_QS[k]))); });
+  return add;
+}
+// What the Setup block and the editor read: the experiment's own questions and the ones its steps call for, with the steps' numbers where the setup
+// disagrees or has none.
+function _expSetupView(e){
+  var q=_expQs(e), qs=_setupQs(e.type,q.hide,q.add), use=_stepsUse(e), su=JSON.parse(JSON.stringify(e.setup||{}));
+  qs=qs.concat(_ctxQs(e,qs,q.hide,use));
+  qs.forEach(function(f){ if(use[f.f]!==undefined) su[f.f]=use[f.f]; });
+  return {qs:qs,su:su,use:use};
+}
+// The compounds the plate map names. The map is where a run's compounds really are (a setup list is typed once, at creation); placeholders
+// ("Compound 3") and the vehicle are not compounds.
+function _plateCompounds(e){ var seen={}, out=[];
+  expPlateList(e).forEach(function(x){ var W=(x.p&&x.p.wells)||{};
+    Object.keys(W).forEach(function(k){ var c=String((W[k]&&W[k].compound)||'').replace(/\s+/g,' ').trim(); if(!c) return;
+      if(/^(dmso|vehicle|blank|media|medium|water|untreated|control|ctrl|no compound)$/i.test(c)||/^compound \d+$/i.test(c)) return;
+      var key=c.toLowerCase(); if(!seen[key]){ seen[key]=1; out.push(c); } }); });
+  return out; }
+function _plateCompoundsLine(e){ var L=_plateCompounds(e); if(!L.length) return '';
+  return L.length>12?(L.slice(0,12).join(', ')+' \u2026 +'+(L.length-12)):L.join(', '); }
+var ES_WAS={}, ES_BASE=null;
 function openSetupEditor(expId){
   var e=LB.data.experiments[expId]; if(!e) return;
   var S=setupSchema(e.type);
   ES_EXP=expId;
-  ES_SETUP=JSON.parse(JSON.stringify(e.setup||setupDefaults(e.type)));
-  var q=_expQs(e);
+  var q=_expQs(e), view=_expSetupView(e);
   ES_HIDE=q.hide.slice(); ES_ADD=JSON.parse(JSON.stringify(q.add));
+  // the questions the steps call for join the experiment's own, so that taking one out, editing it or adding to it works as it does for any other
+  _ctxQs(e,_setupQs(e.type,ES_HIDE,ES_ADD),ES_HIDE,view.use).forEach(function(f){ ES_ADD.push(f); });
+  var base=JSON.parse(JSON.stringify(e.setup||setupDefaults(e.type)));
+  ES_SETUP=JSON.parse(JSON.stringify(base)); ES_WAS={};
+  var asked={}; _setupQs(e.type,ES_HIDE,ES_ADD).forEach(function(f){ asked[f.f]=1; });
+  // The steps' numbers are the ones shown. A setup that said something else is told so beside the box, not silently carried into the steps.
+  Object.keys(view.use).forEach(function(k){ if(!asked[k]) return;
+    var was=ES_SETUP[k]; if(was!=null&&was!==''&&String(was)!==String(view.use[k])) ES_WAS[k]=was;
+    ES_SETUP[k]=view.use[k]; });
+  // A dose series an older run has numbers for is a dose series; a box left unticked beside its own top concentration contradicts itself.
+  if(asked.doseResp&&ES_SETUP.doseResp===undefined&&(ES_SETUP.topConc||ES_SETUP.df||ES_SETUP.nPoints)) ES_SETUP.doseResp=true;
+  ES_BASE=JSON.parse(JSON.stringify(ES_SETUP));
   el('es-modal').classList.add('open');
   esRender();
 }
@@ -16795,21 +16890,25 @@ function esRender(){
   el('es-fields').innerHTML=(flds.length
       ? setupFieldsHTML(flds,function(f,i){ return qWrap('es',f,nmSetupField(f,i===0&&f.t==='format',ES_SETUP,'esSetupUpd')); })
       : '<div class="ds-none">No questions left. Add the ones this run needs below.</div>')
+    +(_plateCompounds(e).length&&!String(ES_SETUP.compounds||'').trim()?('<div class="es-plate-note"><b>Compounds on the plate map ('+_plateCompounds(e).length+')</b> '+esc(_plateCompoundsLine(e))+' \u2014 named and changed on the plate map.</div>'):'')
     +qRestoreHtml('es');
   var sub=el('es-sub'); if(sub) sub.textContent=[e.code,e.title||e.name].filter(Boolean).join(' \u00b7 ');
+  Object.keys(ES_WAS||{}).forEach(function(k){
+    var n=el('es-fields').querySelector('[data-sf="'+k+'"]'), sp=n&&n.closest('label')&&n.closest('label').querySelector('span'); if(!sp) return;
+    sp.insertAdjacentHTML('beforeend',' <i class="es-was" title="An earlier save of the setup said '+esc(String(ES_WAS[k]))+'. The steps use the number in the box, so that is what is shown; change it here to change the steps.">setup said '+esc(String(ES_WAS[k]))+'</i>'); });
   el('es-diff').innerHTML=esDiffHtml(e);
 }
 function esSetupUpd(reRender){
   var host=el('es-fields'); if(!host) return;
   var oldFmt=ES_SETUP.format;
   host.querySelectorAll('[data-sf]').forEach(function(n){ var k=n.getAttribute('data-sf');
-    ES_SETUP[k]=(n.type==='checkbox')?n.checked:((n.type==='number')?(n.value===''?'':parseFloat(n.value)):n.value); });
-  // The edit form had no rescale at all, so changing the plate here left the cell number behind —
-  // the New-experiment modal has done this since the areas went in.
-  if(reRender!==true && oldFmt!=null && ES_SETUP.format!=null && String(oldFmt)!==String(ES_SETUP.format)
-     && ES_SETUP.cellsPerWell!=null){
-    var a1=PLATE_AREA[String(oldFmt)], a2=PLATE_AREA[String(ES_SETUP.format)];
-    if(a1&&a2){ ES_SETUP.cellsPerWell=_seedRound((+ES_SETUP.cellsPerWell)*(a2/a1)); esRender(); return; }
+    ES_SETUP[k]=_sfVal(n); });
+  // The plate and what goes in a well move together: the cell number by the well's area, the seeding volume by its capacity.
+  if(reRender!==true && oldFmt!=null && ES_SETUP.format!=null && String(oldFmt)!==String(ES_SETUP.format)){
+    var a1=PLATE_AREA[String(oldFmt)], a2=PLATE_AREA[String(ES_SETUP.format)], v1=PLATE_VOL[String(oldFmt)], v2=PLATE_VOL[String(ES_SETUP.format)], moved=false;
+    if(ES_SETUP.cellsPerWell!=null&&ES_SETUP.cellsPerWell!==''&&a1&&a2){ ES_SETUP.cellsPerWell=_seedRound((+ES_SETUP.cellsPerWell)*(a2/a1)); moved=true; }
+    if(ES_SETUP.volPerWell!=null&&ES_SETUP.volPerWell!==''&&v1&&v2){ ES_SETUP.volPerWell=Math.round((+ES_SETUP.volPerWell)*(v2/v1)*10)/10; moved=true; }
+    if(moved){ esRender(); return; }
   }
   if(reRender===true&&ES_SETUP.cellLine!=null&&ES_SETUP.cellsPerWell!=null){
     var _n=lineCells(ES_SETUP.cellLine, ES_SETUP.format); if(_n) ES_SETUP.cellsPerWell=_n; esRender(); return; }
@@ -16821,13 +16920,13 @@ function esSetupUpd(reRender){
 // implementation of it that could disagree with what actually happens.
 function esPreview(e){
   var clone=JSON.parse(JSON.stringify(e.blocks||[]));
-  clone=applySetupToBlocks(e.type,ES_SETUP,clone,e.setup||setupDefaults(e.type),e.presetKey);
+  clone=applySetupToBlocks(e.type,ES_SETUP,clone,e.setup||setupDefaults(e.type),e.presetKey,ES_BASE);
   return clone;
 }
 function esDiffHtml(e){
   if(!e||!ES_SETUP) return '';
-  var S=setupSchema(e.type), old=e.setup||{}, rows=[];
-  var was=expSetupFields(e), now=_setupQs(e.type,ES_HIDE,ES_ADD);
+  var S=setupSchema(e.type), old=ES_BASE||e.setup||{}, rows=[];
+  var was=_expSetupView(e).qs, now=_setupQs(e.type,ES_HIDE,ES_ADD);
   var gone=was.filter(function(f){ return !now.some(function(g){ return g.f===f.f; }); });
   now.concat(gone).forEach(function(f){
     var removed=gone.indexOf(f)>=0;
@@ -16836,7 +16935,7 @@ function esDiffHtml(e){
       +'</span><span class="es-ar">\u2192</span><span class="es-b">removed</span></div>'); return; }
     if(String(a==null?'':a)===String(b==null?'':b)) return;
     function show(v){ if(v==null||v==='') return '—';
-      if(f.t==='cellline'){ var d=cellLineDef(v); return (d&&d.label)||v; }
+      if(f.t==='cellline'){ return cellLineLabel(v); }
       if(f.t==='format') return v+'-well';
       if(f.t==='check') return v?'yes':'no';
       return String(v); }
@@ -16878,26 +16977,32 @@ function applySetupEdit(){
   // back — it had no undoMark at all, so a setup saved by mistake was recoverable only from the
   // version history, which is written at most once per record per 10 minutes.
   undoMark('Edit setup',['experiments.'+e.id]);
-  e.blocks=applySetupToBlocks(e.type,ES_SETUP,e.blocks||[],prev,e.presetKey);
+  e.blocks=applySetupToBlocks(e.type,ES_SETUP,e.blocks||[],prev,e.presetKey,ES_BASE);
   e.setup=JSON.parse(JSON.stringify(ES_SETUP));
+  // a question the steps called for, taken out here, stays out: it is hidden like a type's own
+  var _kept={}; _setupQs(e.type,ES_HIDE,ES_ADD).forEach(function(f){ _kept[f.f]=1; });
+  var _use=_stepsUse(e); Object.keys(CTX_QS).forEach(function(k){ if(_use[k]!==undefined&&!_kept[k]&&ES_HIDE.indexOf(k)<0) ES_HIDE.push(k); });
   e.setupHide=ES_HIDE.slice();
   e.setupAdd=JSON.parse(JSON.stringify(ES_ADD));
-  if(ES_SETUP.cellLine!=null){ var d=cellLineDef(ES_SETUP.cellLine); e.cellLines=(d&&d.label)||String(ES_SETUP.cellLine); }
+  if(ES_SETUP.cellLine!=null&&ES_SETUP.cellLine!==''){ e.cellLines=cellLineLabel(ES_SETUP.cellLine); }
   _syncExpLines(e);   // plates that say which line they are for are the record of it
   e.updated=Date.now(); save(); closeSetupEditor(); renderAll();
   toast('Setup applied.');
 }
 function setupSummaryHtml(e){
-  if(!e.setup) return '';
-  // The preset's own questions (setupAdd) are answers on the record too, so they are chips.
-  var S=setupSchema(e.type); var parts=expSetupFields(e).map(function(f){
-    var v=e.setup[f.f]; if(v==null||v==='') return '';
-    if(f.t==='cellline'){ var d=cellLineDef(v); v=(d&&d.label)||v; }
+  // The preset's own questions (setupAdd) are answers on the record too, so they are chips; so are the ones the steps call for (a seeding
+  // step has a cell line and a number of cells whether or not the type asked), read off the steps, so an older run shows them too.
+  var V=_expSetupView(e), S=setupSchema(e.type); var parts=V.qs.map(function(f){
+    var v=V.su[f.f]; if(v==null||v==='') return '';
+    if(f.t==='cellline') v=cellLineLabel(v);
     else if(f.t==='format') v=v+'-well';
     else if(f.t==='check') v=v?'yes':'no';
     // A list typed into a box (the compounds of a viability run) is a sentence, not a value: it takes the row and flows.
     return '<div class="exh-setup-i'+(String(v).length>48?' wide':'')+'"><b>'+esc(f.lbl)+'</b><span>'+esc(String(v))+'</span></div>';
   }).filter(Boolean).join('');
+  // Compounds the plate map names and the setup does not list (every older run: the list was typed once, if at all)
+  if(!String(V.su.compounds||'').trim()&&_plateCompounds(e).length)
+    parts+='<div class="exh-setup-i wide"><b>Compounds on the plate map ('+_plateCompounds(e).length+')</b><span>'+esc(_plateCompoundsLine(e))+'</span></div>';
   // The chips were read-only, which is where the dead end was: you could see the setup and
   // not change it.
   var edit='<button class="lean-tog exp-sec-tog exh-setup-edit" title="Change these and re-apply them to the steps" onclick="openSetupEditor(\''+e.id+'\')">Edit</button>';
@@ -24221,7 +24326,7 @@ function dsSetupUpd(reRender){
   var oldFmt=D.setup.format;
   D.setupTouched=D.setupTouched||{};
   host.querySelectorAll('[data-sf]').forEach(function(n){ var k=n.getAttribute('data-sf');
-    var nv=(n.type==='checkbox')?n.checked:((n.type==='number')?(n.value===''?'':parseFloat(n.value)):n.value);
+    var nv=_sfVal(n);
     if(String(nv)!==String(D.setup[k])) D.setupTouched[k]=1;
     D.setup[k]=nv; });
   // The plate and the cell number move together — the rule rescaleSeedInputs exists for.
@@ -24521,7 +24626,7 @@ function dsConfHtml(){
     +'<span class="v" id="ds-state-day">'+_dsDayTxt(D,days[i])+'</span>'
     +(here&&here.before>0?('<span class="v">'+nfmt(here.before)+' µL already in each well</span>'):'')
     +(pl.format?('<span class="v">'+(pl.nPlates?(nfmt(pl.nPlates)+' × '):'')+esc(pl.format)+'-well'+(pl.wells?(' · '+nfmt(pl.wells)+' wells'):'')+'</span>'):'')
-    +(D.setup.cellLine?('<span class="v">'+esc(((cellLineDef(D.setup.cellLine)||{}).label)||D.setup.cellLine)+'</span>'):'')
+    +(D.setup.cellLine?('<span class="v">'+esc(cellLineLabel(D.setup.cellLine))+'</span>'):'')
     +'</div>';
   // Always drawn, empty when the step adds nothing, so a number typed below can fill it in place.
   var adds='<div class="ds-adds" id="ds-adds"'+((here&&(here.add>0||here.set))?'':' hidden')+'>'+dsAddsHtml(here)+'</div>';
@@ -24638,7 +24743,7 @@ function dsCalcHtml(m,i){
     if(f.show&&!f.show(I)) return '';
     var v=I[f.k], own=owned[f.k];
     if(own){
-      var shown=v; if(f.t==='cellline'){ var cd=cellLineDef(v); shown=(cd&&cd.label)||v; }
+      var shown=v; if(f.t==='cellline'){ shown=cellLineLabel(v); }
       else if(f.t==='format') shown=String(v)+'-well';
       // `.ci-f` is space-between: the label at the top of the cell, the control at the bottom,
       // so every control on a row lines up however long the labels are. A note put AFTER the
@@ -24647,8 +24752,8 @@ function dsCalcHtml(m,i){
       return '<label class="ci-f ds-owned" title="Answered once, in the parameters — every module reads it."><span>'+esc(f.lbl)
         +'<i class="ds-from">from '+esc(own)+' · <button type="button" class="ds-link" onclick="event.preventDefault();DS.step=1;dsDraw()">change</button></i></span>'
         +'<input value="'+esc(shown==null?'':String(shown))+'" disabled></label>'; }
-    if(f.t==='cellline'){ var co=CELL_LINES.map(function(cl){ return '<option value="'+esc(cl.id)+'"'+(cl.id===v?' selected':'')+'>'+esc(cl.label)+'</option>'; }).join('');
-      return '<label class="'+ciWide(CELL_LINES.map(function(cl){return cl.label;}))+'"><span>'+esc(f.lbl)+'</span><select onchange="dsCalcSet('+i+',\''+f.k+'\',this.value)">'+co+'</select></label>'; }
+    if(f.t==='cellline'){
+      return '<label class="'+ciWide(CELL_LINES.map(function(cl){return cl.label;}))+'"><span>'+esc(f.lbl)+'</span>'+cellLineInputHtml(v,'onchange="dsCalcSet('+i+',\''+f.k+'\',cellLineNorm(this.value))"')+'</label>'; }
     if(f.t==='format'){ var fo=['6','12','24','48','96','384'].map(function(x){ return '<option value="'+x+'"'+(String(v)===x?' selected':'')+'>'+x+'-well</option>'; }).join('');
       return '<label class="ci-f"><span>'+esc(f.lbl)+'</span><select onchange="dsCalcSet('+i+',\''+f.k+'\',this.value)">'+fo+'</select></label>'; }
     if(f.t==='select'){ var so=(f.opts||[]).map(function(x){ return '<option value="'+esc(x)+'"'+(String(v)===String(x)?' selected':'')+'>'+esc(x)+'</option>'; }).join('');

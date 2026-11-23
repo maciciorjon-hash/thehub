@@ -65,6 +65,9 @@
 //   L7 an import is one undo step  Importing one experiment from a file is undone by one ⌘Z (the bundle had it; the single import did not)
 //
 //   node tools/labbook_audit_invariants.mjs [--url=URL] [--only=L1,L3]
+//   L31 the setup asks about the run  Edit setup opens on what the steps use (a setup saved earlier that said 10 plates beside a seeding step of 8 opened
+//                           on the 10 and, on Apply, rescaled every readout to it), asks what the steps call for even when the type did not (a NanoBRET's
+//                           cells per well and seeding volume), and takes any cell line typed, not only the seven in the list
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -831,8 +834,69 @@ try {
     }
     errs.forEach(m => bad('L30', 'page error: ' + m)); await ctx.close();
   }
+  // ── L31 ──
+  if (run('L31')) {
+    counts.L31 = 1;
+    const ctx = await newCtx(); const { page, errs } = await open(ctx);
+    const r = await page.evaluate(async () => {
+      const out = { bad: [] }, wait = ms => new Promise(r => setTimeout(r, ms));
+      const P = LB.data.projects.find(p => (p.sections || []).length), S = P.sections[0];
+      const mk = (key, code) => { const tpl = LB.data.presets[key] || EXTRA_PRESET_SEED[key]; if (!tpl) return null;
+        const su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup || {}))); const before = Object.assign({}, LB.data.experiments);
+        buildExperimentFrom({ pid: P.id, sid: S.id, key, tpl, startDate: todayStr(), type: presetBase(key), title: tpl.title || key, code, setup: su, plate: true });
+        return Object.values(LB.data.experiments).find(x => !before[x.id]); };
+      const open = e => { openSetupEditor(e.id); return wait(60); };
+      const rows = () => document.querySelectorAll('#es-diff .es-row').length;
+      const nb = mk('NB_SPARK_SCREEN96', 'AU_L31_NB'), ctg = mk('CTG', 'AU_L31_CTG');
+      if (!nb || !ctg) { out.gone = true; return out; }
+      // a. a fresh run opens on "nothing changes"
+      for (const e of [nb, ctg]) { await open(e); if (rows()) out.bad.push(e.code + ': a run just made opens with ' + rows() + ' changes pending'); closeSetupEditor(); }
+      // b. the type did not ask what the steps call for
+      await open(nb); const asked = [...document.querySelectorAll('#es-fields [data-sf]')].map(n => n.getAttribute('data-sf')); closeSetupEditor();
+      const nbSeeds = (nb.blocks || []).some(b => b.calc && b.calc.inputs && b.calc.inputs.cellsPerWell != null);
+      if (nbSeeds && asked.indexOf('cellsPerWell') < 0) out.bad.push('a NanoBRET with a seeded step does not ask the cells per well (asks: ' + asked.join(', ') + ')');
+      // c. a setup saved earlier disagrees with the steps: the editor shows the steps and Apply leaves every readout alone
+      const seed = ctg.blocks.find(b => b.calc && b.calc.kind === 'seed' && b.calc.inputs.nPlates != null);
+      if (seed) {
+        const readBefore = ctg.blocks.map(b => b.calc && b.calc.inputs ? b.calc.inputs.nPlates : null);
+        ctg.setup.nPlates = (+seed.calc.inputs.nPlates) + 5;
+        await open(ctg);
+        const shown = +document.querySelector('#es-fields [data-sf="nPlates"]').value;
+        if (shown !== +seed.calc.inputs.nPlates) out.bad.push('the editor opens on ' + shown + ' plates, the seeding step has ' + seed.calc.inputs.nPlates);
+        if (!document.querySelector('#es-fields .es-was')) out.bad.push('a setup that disagrees with the steps says nothing beside the box');
+        if (rows()) out.bad.push('opening a stale setup already lists ' + rows() + ' changes');
+        applySetupEdit();
+        const readAfter = ctg.blocks.map(b => b.calc && b.calc.inputs ? b.calc.inputs.nPlates : null);
+        if (JSON.stringify(readBefore) !== JSON.stringify(readAfter)) out.bad.push('Apply on an untouched stale setup moved the plates of the steps: ' + readBefore + ' -> ' + readAfter);
+      }
+      // d. a cell line is whatever is typed
+      const typed = 'HEK 293T (my clone)';
+      await open(ctg); const cpw0 = document.querySelector('#es-fields [data-sf="cellsPerWell"]').value;
+      const box = document.querySelector('#es-fields input[data-sf="cellLine"]');
+      if (!box) out.bad.push('the cell line is not a box you can type in');
+      else {
+        box.value = typed; box.dispatchEvent(new Event('change', { bubbles: true })); await wait(40);
+        if (document.querySelector('#es-fields [data-sf="cellsPerWell"]').value !== cpw0) out.bad.push('typing a line the list does not know replaced the cells per well');
+        applySetupEdit(); await wait(40);
+        const lines = ctg.blocks.map(b => b.calc && b.calc.inputs && b.calc.inputs.cellLine).filter(x => x != null);
+        if (ctg.setup.cellLine !== typed) out.bad.push('the setup kept "' + ctg.setup.cellLine + '", not what was typed');
+        if (!lines.length || lines.some(l => l !== typed)) out.bad.push('the steps got ' + JSON.stringify(lines) + ' for the line you typed');
+        if (ctg.cellLines !== typed) out.bad.push('the experiment\'s cell lines say "' + ctg.cellLines + '"');
+        const sum = setupSummaryHtml(ctg); if (sum.indexOf(typed) < 0 || /Other \/ custom/.test(sum)) out.bad.push('the Setup block does not say the typed line: ' + sum.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 160));
+        if (/Other \/ custom/.test(ctg.blocks.map(b => (b.html || '') + (b.title || '')).join(' '))) out.bad.push('a step calls the typed line "Other / custom"');
+        // a line of the list, typed by its label, is the list's own
+        await open(ctg); const b2 = document.querySelector('#es-fields input[data-sf="cellLine"]'); b2.value = 'hela'; b2.dispatchEvent(new Event('change', { bubbles: true })); await wait(40);
+        if (ES_SETUP.cellLine !== 'HeLa') out.bad.push('"hela" typed is stored as "' + ES_SETUP.cellLine + '", not the list\'s HeLa'); closeSetupEditor();
+      }
+      [nb, ctg].forEach(e => { delete LB.data.experiments[e.id]; });
+      return out;
+    });
+    if (r.gone) bad('L31', 'a preset used by the test is gone (the test is void)');
+    else r.bad.forEach(m => bad('L31', m));
+    errs.forEach(m => bad('L31', 'page error: ' + m)); await ctx.close();
+  }
 } finally { await browser.close(); if (srv) srv.kill(); }
-for (const id of ['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8', 'L9', 'L10', 'L11', 'L12', 'L13', 'L14', 'L15', 'L16', 'L17', 'L18', 'L19', 'L20', 'L21', 'L22', 'L23', 'L24', 'L25', 'L26', 'L27', 'L28', 'L29', 'L30']) { if (ONLY && !ONLY.includes(id)) continue; const fs_ = findings.filter(f => f.id === id); process.stdout.write(`  ${fs_.length ? '✗' : '✓'} ${id}${fs_.length ? '  — ' + fs_.length + ' finding(s)' : ''}\n`); }
+for (const id of ['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8', 'L9', 'L10', 'L11', 'L12', 'L13', 'L14', 'L15', 'L16', 'L17', 'L18', 'L19', 'L20', 'L21', 'L22', 'L23', 'L24', 'L25', 'L26', 'L27', 'L28', 'L29', 'L30', 'L31']) { if (ONLY && !ONLY.includes(id)) continue; const fs_ = findings.filter(f => f.id === id); process.stdout.write(`  ${fs_.length ? '✗' : '✓'} ${id}${fs_.length ? '  — ' + fs_.length + ' finding(s)' : ''}\n`); }
 const seen = new Set(); findings.forEach(f => { const k = f.id + f.m; if (seen.has(k)) return; seen.add(k); process.stdout.write(`     [${f.id}] ${f.m}\n`); });
 if (!findings.length) process.stdout.write('\nLabbook audit invariants hold.\n');
 process.exit(findings.length ? 1 : 0);
