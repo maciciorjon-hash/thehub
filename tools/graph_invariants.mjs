@@ -77,7 +77,7 @@ const exportsOk = (pg, kitName) => pg.evaluate(async name => {
 {
   const { pg, errs, ctx } = await open('dora', 'loadTestData(); switchTab("graph");');
   const f = await fig(pg), d = await pg.evaluate(() => { const doc = dgGraphDoc(); return { items: doc.items.map(i => [i.name, i.points.length]), names: new Set(doc.items.flatMap(i => i.points.map(p => p.label))).size, kind: doc.kind, raw: RAW.length, bounds: RAW.reduce((n, c) => n + Object.values(c.targets).filter(t => t && t.dc50_q).length, 0), hasKind: !!document.querySelector('.ck-kind') && getComputedStyle(document.querySelector('.ck-kind')).display !== 'none' }; });
-  check('GR5 Dora\'s Graph draws one series per target with each compound named', f && d.items.length === 2 && d.items.every(i => i[1] >= 4) && f.texts.includes('ARV-771') && f.texts.includes('DC50 against Dmax'), { f: f && f.texts.slice(0, 8), d });
+  check('GR5 Dora\'s Graph draws one series per target with each compound named', f && d.items.length === 2 && d.items.every(i => i[1] >= 4) && f.texts.includes('Demo-01') && f.texts.includes('DC50 against Dmax'), { f: f && f.texts.slice(0, 8), d });
   check('GR5 the figure is never bars: no Bars button', d.kind === 'xy' && d.hasKind === false, d);
   const bnd = await pg.evaluate(() => { const t = TARGETS[0], c = RAW.find(c => c.targets[t] && c.targets[t].dc50 > 0 && c.targets[t].dmax != null); const keep = c.targets[t].dc50_q; c.targets[t].dc50_q = '>'; const n = dgGraphDoc().items.find(i => i.id === t).points.length, all = RAW.filter(r => r.targets[t] && r.targets[t].dc50 > 0 && r.targets[t].dmax != null && !r.targets[t].dc50_q).length; c.targets[t].dc50_q = keep; return { n, all }; });
   check('GR5 a potency that is a bound is not drawn', bnd.n === bnd.all, bnd);

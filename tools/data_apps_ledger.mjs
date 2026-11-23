@@ -28,7 +28,7 @@ const APPS = {
   tempo: { file: 'apps/tempo/tempo.html', boot: `await tpLoadExample('degradation');`, tabs: ['plate', 'curves', 'results', 'compare', 'history'], go: t => `tpTab('${t}')` },
   tempoTC: { file: 'apps/tempo/tempo.html', boot: `await tpLoadExample('timecourse');`, tabs: ['plate', 'curves', 'results', 'compare'], go: t => `tpTab('${t}')` },
   hitfinder: { file: 'apps/hitfinder/hitfinder.html', boot: `loadHitFinderTestData();`, tabs: ['screens', 'criteria', 'hits', 'sens', 'plots', 'health', 'chem', 'export', 'guide'], go: t => `hfTab('${t}')` },
-  dora: { file: 'apps/dora/dora.html', boot: `loadTestData();`, tabs: ['load', 'table', 'scatter', 'props', 'guide'], go: t => `switchTab('${t}')` },
+  dora: { file: 'apps/dora/dora.html', boot: `loadTestData();`, tabs: ['load', 'table', 'scatter', 'sar', 'graph', 'guide'], go: t => `switchTab('${t}')` },
   bca: { file: 'apps/bca/bca.html', boot: `loadTestData();`, tabs: ['standards', 'history', 'guide'], go: t => `switchTab('${t}')` },
 };
 

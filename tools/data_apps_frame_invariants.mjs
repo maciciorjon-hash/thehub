@@ -26,7 +26,7 @@ const APPS = {
   beacon: { boot: `loadTestData(); switchTab('results')`, tabs: [`switchTab('plate')`, `switchTab('results')`, `switchTab('graph')`, `switchTab('history')`, `switchTab('guide')`] },
   tempo: { boot: `await tpLoadExample('degradation'); tpTab('results')`, tabs: [`tpTab('plate')`, `tpTab('curves')`, `tpTab('results')`, `tpTab('compare')`, `tpTab('history')`] },
   hitfinder: { boot: `loadHitFinderTestData(); hfTab('hits')`, tabs: [`hfTab('screens')`, `hfTab('criteria')`, `hfTab('hits')`, `hfTab('plots')`, `hfTab('guide')`] },
-  dora: { boot: `loadTestData(); switchTab('table')`, tabs: [`switchTab('load')`, `switchTab('table')`, `switchTab('scatter')`, `switchTab('props')`, `switchTab('guide')`] },
+  dora: { boot: `loadTestData(); switchTab('table')`, tabs: [`switchTab('load')`, `switchTab('table')`, `switchTab('scatter')`, `switchTab('sar')`, `switchTab('graph')`, `switchTab('guide')`] },
   bca: { boot: `loadTestData()`, tabs: [`switchTab('standards')`, `switchTab('history')`, `switchTab('guide')`] },
 };
 // F6  the order of the tabs: Data first, Results before Curves, History then Guide last — what each app has, in the one order (Echo's Run groups Console, Protocol and Source Plate)
@@ -36,7 +36,7 @@ const ORDER = {
   beacon: ['Plate', 'Results', 'Graph', 'History', 'Guide'],
   tempo: ['Plate', 'Results', 'Curves', 'Compare', 'History', 'Guide'],
   hitfinder: ['Screens', 'Criteria', 'Hits', 'Sensitivity', 'Plots', 'Graph', 'Health', 'Chemistry', 'Export', 'Guide'],
-  dora: ['Data', 'Results', 'Compare', 'Graph', 'Properties', 'Guide'],
+  dora: ['Data', 'Results', 'Plot', 'SAR', 'Graph', 'Guide'],
   bca: ['Workflow', 'Graph', 'History', 'Guide'],
 };
 const SCALE = [10, 11, 12, 13, 15, 17, 20, 26, 38];

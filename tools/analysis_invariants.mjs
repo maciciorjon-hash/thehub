@@ -406,7 +406,7 @@ if (run('D2')) await guard('D2', async () => {
   const r = await pg.evaluate(async () => {
     const row = (n, p, dc, dm, why, xmin, xmax) => ({ Sample_ID: n, Protein: p, DC50_nM: dc, Dmax_pct: dm, Flag: why ? 'Yes' : 'No', Flag_Reason: why, _xmin: xmin == null ? -9 : xmin, _xmax: xmax == null ? -5 : xmax });
     window._echoHist = [{ assayId: 'T', data: [row('EXACT', 'BRD4', 12, 90, ''), row('FLAT', 'BRD4', 0.4, 6, 'No effect (span 6%)'), row('HIGH', 'BRD4', 90000, 95, 'EC50>range', -9, -5), row('LOW', 'BRD4', 0.02, 95, 'EC50<range', -8, -5), row('ZERO', 'BRD4', 0, 70, '')] }];
-    loadFromEcho(0); const t = n => RAW.find(c => c.compound === n).targets.BRD4;
+    loadFromEcho(0); switchTab('table'); const t = n => RAW.find(c => c.compound === n).targets.BRD4;
     return { exact: [t('EXACT').dc50, t('EXACT').dc50_q], flat: [t('FLAT').dc50, t('FLAT').nd], high: [t('HIGH').dc50, t('HIGH').dc50_q], low: [t('LOW').dc50, t('LOW').dc50_q], zero: t('ZERO').dc50,
       cell: [...document.querySelectorAll('#table-body tr')].map(tr => tr.textContent.replace(/\s+/g, ' ').trim()) };
   });
@@ -428,7 +428,7 @@ if (run('D1')) await guard('D1', async () => {
     const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
     const { compounds, targets, meta } = parseXLSXBuf(new Uint8Array(buf));
     RAW = compounds; TARGETS = targets; META = meta; window.__x = 0;
-    updateDC50SliderMax(); updateMeta(); renderHeader(); renderProteinToggles(); updateStats(); renderTable();
+    _dataReplaced(); switchTab('table');
     const by = n => RAW.find(c => c.compound === n), t = (n, k) => by(n).targets[k];
     out.parsed = { exact: [t('EXACT', 'BRD2').dc50, t('EXACT', 'BRD2').dc50_q], upper: [t('UPPER', 'BRD2').dc50, t('UPPER', 'BRD2').dc50_q, t('UPPER', 'BRD4').dc50_q], lower: [t('LOWER', 'BRD2').dc50, t('LOWER', 'BRD2').dc50_q],
       zero: [t('ZERO', 'BRD2').dc50, t('ZERO', 'BRD4').dc50], na: [t('NA', 'BRD2').dc50, t('NA', 'BRD4').dc50], comma: t('COMMA', 'BRD2').dc50, noDmax: [t('NODMAX', 'BRD2').dmax] };
@@ -438,10 +438,10 @@ if (run('D1')) await guard('D1', async () => {
     out.cellMark = !![...document.querySelectorAll('#table-body tr')].find(tr => /UPPER/.test(tr.textContent)).querySelector('.bnd');
     selectCompound('NODMAX'); await new Promise(r => setTimeout(r, 200)); out.detail = [...document.querySelectorAll('#detail-grid .dp-row')].map(x => x.querySelector('.dp-label').textContent + '=' + x.querySelector('.dp-value').textContent);
     // the scatter: bounds are hollow triangles
-    switchTab('scatter'); await new Promise(r => setTimeout(r, 400)); updateChart(); await new Promise(r => setTimeout(r, 300));
-    const ds = chartInstance && chartInstance.data.datasets[0]; const bound = ds && ds.data.find(p => p.label === 'UPPER'), exact = ds && ds.data.find(p => p.label === 'EXACT');
-    const fn = f => typeof f === 'function' ? f : () => f;
-    out.scatter = ds ? { n: ds.data.length, boundStyle: fn(ds.pointStyle)({ raw: bound }), exactStyle: fn(ds.pointStyle)({ raw: exact }), boundFill: fn(ds.backgroundColor)({ raw: bound }), hasZero: ds.data.some(p => p.label === 'ZERO') } : null;
+    switchTab('scatter'); await new Promise(r => setTimeout(r, 500));
+    const mk = n => [...document.querySelectorAll('#plot-host .mk')].filter(g => RAW[+g.dataset.i].compound === n);
+    const ring = g => g.querySelector('circle:last-of-type');
+    out.scatter = { upper: mk('UPPER').map(g => [!!g.querySelector('path'), ring(g).getAttribute('fill-opacity')]), exact: mk('EXACT').map(g => [!!g.querySelector('path'), ring(g).getAttribute('fill-opacity')]), hasZero: mk('ZERO').length > 0, n: document.querySelectorAll('#plot-host .mk').length };
     // text is data
     switchTab('table'); renderTable(); await new Promise(r => setTimeout(r, 200)); out.xss = { ran: window.__x, imgs: document.querySelectorAll('img[src="x"]').length };
     const csvs = []; const old = URL.createObjectURL; URL.createObjectURL = b => { csvs.push(b); return 'blob:x'; }; HTMLAnchorElement.prototype.click = function () {}; exportCSV(); URL.createObjectURL = old;
@@ -452,7 +452,7 @@ if (run('D1')) await guard('D1', async () => {
   check('D1', '"> 10000", "> 5000" and "< 1" keep their direction next to the number', r.parsed.upper[0] === 10000 && r.parsed.upper[1] === '>' && r.parsed.upper[2] === '>' && r.parsed.lower[0] === 1 && r.parsed.lower[1] === '<' && r.parsed.exact[1] === '', r.parsed);
   check('D1', 'a lower bound can never pass "DC50 at most 100": > 10000 is not good however deep the degradation; < 1 with 96 % is; an exact 12.5 nM at 92 % is', r.quality.exact === 'good' && r.quality.upper !== 'good' && r.quality.lower === 'good' && r.quality.zero !== 'good' && r.quality.na === 'none', r.quality);
   check('D1', 'the table shows the sign (with a marker that explains it) and the detail card shows a missing Dmax as a dash with an empty bar, not "0"', r.cellMark && /^>/.test(r.cell.trim()) && r.detail.some(x => /Dmax/.test(x) && /=—/.test(x)), { cell: r.cell, detail: r.detail });
-  check('D1', 'in the scatter a bound is a hollow triangle and an exact value a filled circle; a compound with no potency is not drawn', r.scatter && r.scatter.boundStyle === 'triangle' && r.scatter.exactStyle === 'circle' && r.scatter.boundFill === 'transparent' && !r.scatter.hasZero, r.scatter);
+  check('D1', 'in the plot a bound is a faint dot with an arrow and an exact value a solid one; a compound with no potency is not drawn', r.scatter && r.scatter.upper.length === 2 && r.scatter.upper.every(u => u[0] && +u[1] < 0.5) && r.scatter.exact.every(u => !u[0] && +u[1] > 0.5) && !r.scatter.hasZero, r.scatter);
   check('D1', 'HTML in a name is text; a name that is a formula leaves the CSV with a quote in front', r.xss.ran === 0 && r.xss.imgs === 0 && /(^|\n)"?'=HYPERLINK/.test(r.csvText), { xss: r.xss, csv: r.csvText.split('\n').slice(0, 4) });
   await ctx.close();
 });
