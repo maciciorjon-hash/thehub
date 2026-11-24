@@ -169,7 +169,7 @@ try {
     // C6
     await f.evaluate(() => openDayPage(todayStr())); await p.waitForTimeout(400);
     const day = await f.evaluate(() => { const t = document.querySelector('.nb-day'); return t ? t.innerText.replace(/\s+/g, ' ') : ''; });
-    yes('C6', W + 'the journal day lists the answers', /Cell cultures/.test(day) && /HEK293T OK/.test(day) && /HCT116 KO Need to split/.test(day) && /Jurkat OK/.test(day));
+    yes('C6', W + 'the journal day lists what was done (the split that was logged), not the request', /Cell cultures/.test(day) && /HEK293T Checked · OK/.test(day) && /HCT116 KO Split/.test(day) && !/Need to split/.test(day) && /Jurkat Checked · OK/.test(day));
 
     // C8
     await f.evaluate(() => selectNode('journal')); await p.waitForTimeout(400);
@@ -295,6 +295,25 @@ try {
       eq('C16', W + 'the week grid shows the seed and the plain task, not the split or the media change', r.grid, ['SEEDX', 'PLAINX']);
       eq('C16', W + 'and so does the PDF', r.pdf, ['SEEDX', 'PLAINX']);
       eq('C16', W + 'the day page still lists all four', r.day, ['SPLITX', 'MEDIAX', 'SEEDX', 'PLAINX']);
+    }
+
+    // C17 — the Journal's day says what was DONE (Jon, 2026-11-24: it read "Need to split", not "Split")
+    {
+      const r = await f.evaluate(() => {
+        const D = todayStr(), inc = window.parent.JournalStore.get().incubator, now = Date.now(), T = LB.data.planner.tasks;
+        inc.a1.seeded = now - 3 * 86400000; inc.c3.history = [{ action: 'needs a split', note: 'morning check', ts: now }, { action: 'split', ratio: '1:6', passage: 21, ts: now }, { action: 'media change', ts: now }];
+        LB.data.cellCheck[D] = { a1: { s: 'split', at: now, line: 'HCT116 KO' }, c3: { s: 'split', at: now, line: 'Jurkat' }, b2: { s: 'ok', at: now, line: 'HEK293T' } };
+        T.d_plain = { id: 'd_plain', date: D, text: 'PLAINDONE', done: true, doneAt: now, created: now, updated: now };
+        T.d_cell = { id: 'd_cell', date: D, text: 'CELLDONE', done: true, doneAt: now, cellId: 'c3', cellKind: 'split', created: now, updated: now };
+        const flat = s => s.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+        const out = { cells: flat(cellsDayHtml(D)), done: flat(doneTodayHtml(D)) };
+        delete T.d_plain; delete T.d_cell; return out;
+      });
+      yes('C17', W + 'the performed split is written as a split with its passage', /Jurkat Split · P21 · 1:6/.test(r.cells));
+      yes('C17', W + 'and so is the media change', /Jurkat Media change/.test(r.cells));
+      yes('C17', W + 'a split asked for and not done says it is still to do, once', /HCT116 KO Split still to do/.test(r.cells) && (r.cells.match(/still to do/g) || []).length === 1);
+      yes('C17', W + 'an OK is a check, and the request words are not the record', /HEK293T Checked · OK/.test(r.cells) && !/Need to split/.test(r.cells));
+      yes('C17', W + 'a ticked plain task is under Done that day, the cell task is not repeated there', /PLAINDONE/.test(r.done) && !/CELLDONE/.test(r.done));
     }
 
     eq('C7', W + 'no console errors', errs, []);

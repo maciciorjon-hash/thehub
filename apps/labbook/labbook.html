@@ -317,9 +317,11 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 .jr-dx-code{font-family:var(--mono);font-weight:600;color:var(--accent-ink);cursor:pointer;flex:none;}
 .jr-dx-t{color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;}
 .jr-row{display:flex;align-items:center;gap:10px;padding:4px 0;min-width:0;}
-.jr-at{font-family:var(--mono);font-size:var(--fs-2);color:var(--text3);flex:none;width:44px;}
+.jr-at{font-family:var(--mono);font-size:var(--fs-2);color:var(--text3);flex:none;min-width:44px;white-space:nowrap;}
 .jr-step{font-size:var(--fs-3);font-weight:600;color:var(--text);cursor:pointer;flex:0 1 auto;min-width:80px;max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .jr-step:hover{color:var(--accent-ink);}
+.jr-what{font-size:var(--fs-3);color:var(--text2);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.jr-open .jr-what{color:var(--text3);font-style:italic;}
 .jr-log{flex:1 1 auto;min-width:0;background:none;border:none;border-bottom:1px dashed var(--border2);color:var(--text);font-family:var(--sans);font-size:var(--fs-3);padding:3px 2px;outline:none;}
 .jr-log:focus{border-bottom-color:var(--accent);border-bottom-style:solid;}
 .jr-log::placeholder{color:var(--text3);}
@@ -11643,6 +11645,8 @@ function _jrStats(){
       if(isCoded(e) && b.done && b.completedAt) g(_dateKey(b.completedAt)).done++;
       if(b.date && !expArchived(e)) g(b.date).plan++; }); });
   var t=plannerTasks(); Object.keys(t).forEach(function(k){ var x=t[k]; if(x&&x.date) g(x.date).tasks++; });
+  try{ var H=lbJS(), inc=(H&&H.JournalStore&&((H.JournalStore.get()||{}).incubator))||{};
+    Object.keys(inc).forEach(function(id){ ((inc[id]||{}).history||[]).forEach(function(h){ if(h&&h.ts&&CC_DONE_ACT[h.action]) g(_dateKey(h.ts)).done++; }); }); }catch(e){}
   return st;
 }
 // Days worth listing, newest first: today, the day that is open (so the list always says where you are, even on a
@@ -19725,8 +19729,14 @@ function renderDayPage(host,D){
 // What was done that day, written from the ticks: project · experiment, then each step with
 // the time it was ticked and a one-line log you can add (b.log — it goes on the step, so the
 // experiment's PDF and Cmd+K carry it too). Nothing to type for the line itself.
+// Planner tasks ticked that day (a cell split or media change is the culture's own line below, not repeated here).
+function doneTasksOnDay(D){ var T=plannerTasks();
+  return Object.keys(T).map(function(k){ return T[k]; }).filter(function(t){ return t&&t.done&&t.doneAt&&!t.cellId&&_dateKey(t.doneAt)===D; }).sort(function(a,b){ return a.doneAt-b.doneAt; }); }
 function doneTodayHtml(D){
-  var groups=doneOnDay(D); if(!groups.length) return '<div class="jr-sec-t">Done that day</div><div class="jr-none">Nothing ticked '+(D===todayStr()?'yet today':'that day')+'. Steps you tick appear here with the time.</div>';
+  var groups=doneOnDay(D), tasks=doneTasksOnDay(D);
+  if(!groups.length&&!tasks.length) return '<div class="jr-sec-t">Done that day</div><div class="jr-none">Nothing done '+(D===todayStr()?'yet today':'that day')+'. Steps and tasks you tick appear here with the time.</div>';
+  var tk=tasks.length?('<div class="jr-dx"><div class="jr-dx-hd"><span class="jr-dx-t">Tasks</span></div>'+tasks.map(function(t){
+    return '<div class="jr-row"><span class="jr-at">'+esc(_clock(t.doneAt))+'</span><span class="jr-what">'+esc(t.text||'Task')+'</span></div>'; }).join('')+'</div>'):'';
   return '<div class="jr-sec-t">Done that day</div><div class="jr-done">'+groups.map(function(g){
     var col=(g.proj&&g.proj.color)||'#5e87c5';
     return '<div class="jr-dx"><div class="jr-dx-hd"><span class="pdot" style="background:'+col+'"></span>'+(g.proj?('<span class="jr-dx-p" style="color:'+col+'">'+esc(g.proj.name)+'</span><span class="dfx-sep">\u00b7</span>'):'')
@@ -19734,7 +19744,7 @@ function doneTodayHtml(D){
       +g.rows.map(function(r){ var b=r.block;
         return '<div class="jr-row"><span class="jr-at">'+esc(_clock(r.at))+'</span><span class="jr-step" onclick="openBlk(\''+g.exp.id+'\',\''+b.id+'\')" title="Jump to the step">'+esc(b.title||'Step')+'</span>'
           +'<input class="jr-log" value="'+esc(b.log||'')+'" placeholder="What happened" onchange="setBlockLog(\''+g.exp.id+'\',\''+b.id+'\',this.value)"></div>'; }).join('')
-      +'</div>'; }).join('')+'</div>';
+      +'</div>'; }).join('')+tk+'</div>';
 }
 function setBlockLog(expId,blockId,text){ var f=blockFinder(expId,blockId); if(!f) return; text=(text||'').trim();
   undoMark('Step log',['experiments.'+expId]); if(text) f.block.log=text; else delete f.block.log; f.exp.updated=Date.now(); save(); }
@@ -20786,11 +20796,51 @@ function culturesHtml(D){
   if(!lbCultures()) return '';   // standalone build: no shell, no cultures — draw nothing
   return '<div style="margin-top:16px">'+lbl+'<div id="lb-cultures">'+culturesInnerHtml()+'</div></div>';
 }
-// The Journal's day page writes the check from the answers, like "Done that day" from the ticks.
+// The Journal's day page says what was DONE, not what the check asked for: "Need to split" is a request
+// (a planner task), the record is the split Incubator logged. Actions come from each culture's own history
+// (split, media change, thaw, issue, postponed), from the cell tasks ticked that day that Incubator does not
+// log (a seed), and from the morning check itself (checked, OK). A request that was never carried out is
+// shown as still open, with its words, so a day never claims a split that did not happen.
+var CC_DONE_ACT={'split':1,'media change':1,'thawed':1,'issue':1,'issue cleared':1,'split postponed':1};
+function _ccActText(h){
+  var a=h.action, n=h.note?(' · '+h.note):'';
+  if(a==='split') return 'Split'+(h.passage!=null?(' · P'+h.passage):'')+(h.ratio?(' · '+h.ratio):'')+n;
+  if(a==='media change') return 'Media change'+n;
+  if(a==='thawed') return 'Thawed'+(h.passage!=null?(' · P'+h.passage):'')+n;
+  if(a==='issue') return 'Issue'+n;
+  if(a==='issue cleared') return 'Issue resolved'+n;
+  if(a==='split postponed') return 'Split postponed'+n;
+  return a+n;
+}
+// [{at, id, line, text, kind}] for one day, oldest first. kind: done | open | check
+function cellDayActions(D){
+  var out=[], H=lbJS(), inc=(H&&H.JournalStore&&((H.JournalStore.get()||{}).incubator))||{}, seenCul={}, did={};
+  Object.keys(inc).forEach(function(id){ var c=inc[id]; if(!c) return;
+    (c.history||[]).forEach(function(h){ if(!h||!CC_DONE_ACT[h.action]||!h.ts||_dateKey(h.ts)!==D) return;
+      out.push({at:h.ts,id:id,line:c.line||'Culture',text:_ccActText(h),kind:'done'}); (did[id]||(did[id]={}))[h.action]=1; seenCul[id]=1; });
+    // a split that left no history line (an older record) still moved `seeded`
+    if(c.seeded&&_dateKey(c.seeded)===D&&!(did[id]&&(did[id].split||did[id].thawed))){ out.push({at:c.seeded,id:id,line:c.line||'Culture',text:'Split'+(c.passage!=null?(' · P'+c.passage):''),kind:'done'}); (did[id]||(did[id]={})).split=1; } });
+  var T=plannerTasks();
+  Object.keys(T).forEach(function(k){ var t=T[k]; if(!t||!t.cellId||t.cellKind!=='seed'||!t.done||!t.doneAt||_dateKey(t.doneAt)!==D) return;
+    out.push({at:t.doneAt,id:t.cellId,line:(inc[t.cellId]&&inc[t.cellId].line)||'Culture',text:t.text||'Seeded',kind:'done'}); });
+  var rec=cellChecks(D)||{};
+  Object.keys(rec).forEach(function(id){ var r=rec[id]; if(!r||!CC_LABEL[r.s]) return; var d=did[id]||{}, line=r.line||(inc[id]&&inc[id].line)||'Culture';
+    if(r.s==='ok') out.push({at:r.at||0,id:id,line:line,text:'Checked · OK',kind:'check'});
+    else if(r.s==='issue'&&!d.issue) out.push({at:r.at||0,id:id,line:line,text:'Issue'+(r.note?(' · '+r.note):''),kind:'done'});
+    else if(r.s==='media'&&!d['media change']&&!d.split) out.push({at:r.at||0,id:id,line:line,text:'Media change still to do',kind:'open'});
+    else if(r.s==='split'&&!d.split) out.push({at:r.at||0,id:id,line:line,text:'Split still to do',kind:'open'});
+    else if(r.s==='seed'){ var tk=T[r.tid||cellTaskId(id,D)], sd=_ccNote(r)?(' · '+_ccNote(r)):'';
+      if(r.keep===false){ if(!(tk&&tk.done)) out.push({at:r.at||0,id:id,line:line,text:'Seed'+sd+' still to do',kind:'open'}); }   // a ticked one is already its own row above
+      else if(d.split) out.push({at:r.at||0,id:id,line:line,text:'Seeded'+sd,kind:'done'});
+      else out.push({at:r.at||0,id:id,line:line,text:'Seed'+sd+' still to do',kind:'open'}); }
+  });
+  return out.sort(function(a,b){ return (a.at||0)-(b.at||0); });
+}
 function cellsDayHtml(D){
-  var h=_ccRecordHtml(D);
-  if(h) return '<div class="jr-sec-t">Cell cultures</div><div class="cul-list">'+h+'</div>';
-  if(D===todayStr()){ var l=lbCultures(); if(l&&l.length) return '<div class="jr-sec-t">Cell cultures</div><div class="jr-none">Not checked yet. <a class="nb-meta-link" onclick="selectNode(\'journal\')">Check them in Today →</a></div>'; }
+  var rows=cellDayActions(D), isT=D===todayStr();
+  if(rows.length) return '<div class="jr-sec-t">Cell cultures</div><div class="jr-done"><div class="jr-dx">'+rows.map(function(r){
+    return '<div class="jr-row'+(r.kind==='open'?' jr-open':'')+'"><span class="jr-at">'+(r.at?esc(_clock(r.at)):'')+'</span><span class="jr-step" onclick="openCultureLink(\''+r.id+'\')" title="Open this culture in Incubator">'+esc(r.line)+'</span><span class="jr-what">'+esc(r.text)+'</span></div>'; }).join('')+'</div></div>';
+  if(isT){ var l=lbCultures(); if(l&&l.length) return '<div class="jr-sec-t">Cell cultures</div><div class="jr-none">Nothing done on the cultures yet today. <a class="nb-meta-link" onclick="selectNode(\'journal\')">Check them in Today →</a></div>'; }
   return '';
 }
 // Subscribe once. Patch just this panel rather than re-rendering the view, or a change landing
