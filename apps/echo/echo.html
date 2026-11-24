@@ -438,7 +438,7 @@ td.nd{color:var(--text3);font-style:italic;text-decoration:underline dotted var(
 .pl-find input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:var(--text);font-family:var(--sans);font-size:var(--fs-2);}
 .pl-tsep{width:1px;height:18px;background:var(--border2);margin:0 2px;}
 .pl-lab{display:flex;align-items:center;gap:6px;font-size:var(--fs-2);color:var(--text2);white-space:nowrap;}
-.pl-lab{min-width:0;max-width:100%;} #plate-mode{min-width:0;max-width:100%;text-overflow:ellipsis;}   /* the colour menu's longest name is wider than a 320px phone */
+.pl-lab{min-width:0;max-width:100%;} #plate-mode{min-width:0;max-width:100%;width:236px;text-overflow:ellipsis;} #plate-scale{width:112px;}   /* a toolbar does not move when something is chosen in it: a select is as wide as its longest option, and a control that does not apply is hidden in place, not removed */   /* the colour menu's longest name is wider than a 320px phone */
 .pl-chk{cursor:pointer;}
 .pl-lab input[type=range]{width:72px;cursor:pointer;}
 input[type=range]{accent-color:var(--accent);}
@@ -764,7 +764,7 @@ th[tabindex]:focus-visible{outline-offset:-2px;}
 .props-table th{padding:8px 10px;text-align:left;font-size:var(--fs-1);font-weight:600;letter-spacing:0;text-transform:none;color:var(--text3);white-space:nowrap;}
 .props-table td{padding:6px 10px;border-bottom:1px solid var(--border);color:var(--text2);font-family:var(--sans);font-size:var(--fs-3);white-space:nowrap;vertical-align:middle;}
 .props-table td.struct-cell{white-space:normal;padding:4px 8px;}
-.props-table td.struct-cell svg{width:150px;height:auto;max-height:112px;display:block;}
+.props-table td.struct-cell svg{width:240px;height:auto;max-height:112px;display:block;}
 .props-table td.pp-aff{vertical-align:middle;line-height:1.35;}
 .pp-aff-grid{display:grid;grid-template-columns:auto auto;gap:0 14px;align-items:baseline;width:max-content;}
 .pp-aff-r{display:contents;}
@@ -8591,8 +8591,8 @@ function customTooltip({ chart, tooltip }) {
 
   if (hasStruct) {
     let svg = cd.svg
-      .replace(/width='\d+px'/g,"width='196'").replace(/height='\d+px'/g,"height='140'")
-      .replace(/width="\d+px"/g,'width="196"').replace(/height="\d+px"/g,'height="140"');
+      .replace(/width='\d+px'/g,"width='260'").replace(/height='\d+px'/g,"height='120'")
+      .replace(/width="\d+px"/g,'width="260"').replace(/height="\d+px"/g,'height="120"');
     inner += '<div style="background:#fff;border-radius:4px;padding:2px;margin-bottom:5px;line-height:0;">' + svg + '</div>';
   }
   if (hasCurve) {
@@ -9514,9 +9514,7 @@ async function processSmilesWithRDKit(file) {
 
       let svg='';
       try {
-        svg = mol.get_svg(220,165);
-        // Reduce bond stroke width for cleaner rendering
-        svg = svg.replace(/stroke-width:([\d.]+)px/g, (m,w) => 'stroke-width:'+Math.max(0.6, +w*0.55).toFixed(2)+'px');
+        svg = molSvg(mol, 300, 138);
       } catch(e){}
 
       let p={};
@@ -9724,7 +9722,7 @@ function renderProperties(results, cdata) {
   matched.forEach(({ sid, cd }) => {
     const viols = Object.entries(ro5Check).filter(([p,fn])=>cd[p]!=null&&fn(cd[p])).map(([p])=>p);
     let svg = (cd.svg||'')
-      .replace(/width=["']\d+["']/g, 'width="150"')
+      .replace(/width=["']\d+["']/g, 'width="240"')
       .replace(/height=["']\d+["']/g, 'height="110"');
     const sidKey = sid.toLowerCase();
     const resForSid = _propResMap[sidKey] || {};
@@ -10509,7 +10507,7 @@ function cvCanvasHover(e) {
   })();
   if(!cd?.svg){popup.style.display='none';return;}
 
-  const svg=cd.svg.replace(/width=["']\d+["']/g,"width='160'").replace(/height=["']\d+["']/g,"height='120'");
+  const svg=cd.svg.replace(/width=["']\d+["']/g,"width='240'").replace(/height=["']\d+["']/g,"height='110'");
   popup.innerHTML=`<div style="background:#fff;border-radius:4px;padding:2px;line-height:0;">${svg}</div>`
     +`<div style="font-size:10px;color:var(--text2);margin-top:5px;text-align:center;font-weight:500;">${esc(sid)} · ${esc(targetR.Protein||'')}</div>`;
   popup.style.display='block';
@@ -12917,8 +12915,8 @@ function redrawAllPlates() {
   U.mode = _plModeOf(U.mode);
   const ranged = U.mode === 'signal';
   const hint = document.getElementById('plate-hint'); if (hint) hint.textContent = (_PLATE_MODES.find(m => m.v === U.mode) || {}).h || '';
-  if (scaleWrap) scaleWrap.style.display = ranged ? '' : 'none';
-  if (clipWrap) clipWrap.style.display = ranged ? '' : 'none';
+  if (scaleWrap) scaleWrap.style.visibility = ranged ? '' : 'hidden';
+  if (clipWrap) clipWrap.style.visibility = ranged ? '' : 'hidden';
   const M = _plMatcher(U.q);
   st.barcodes.forEach(bc => drawPlateCanvas(bc, M));
   _renderPlateFound(M);
@@ -16253,6 +16251,16 @@ function openSetupModal(_initial) {
 // standalone Echo, and inside dHUB back through the Hub's own history.
 var _setupPushed = false;
 function closeSetupModal() { EchoSetup.close(); }
+// A structure drawn the way Dora draws it: heavier bonds and larger labels as the tile grows, a softer palette than RDKit's (no yellow sulphur on white), and a molecule
+// that is small keeps a bond of a drawing instead of filling its tile (ethanol would otherwise be drawn with a bond as long as the tile).
+const MOL_PAL = { 5: [.8, .5, .5], 6: [.13, .15, .2], 7: [.16, .31, .78], 8: [.8, .15, .15], 9: [.1, .55, .3], 15: [.75, .4, 0], 16: [.7, .5, 0], 17: [.1, .58, .3], 35: [.6, .3, .1], 53: [.5, .2, .6] };
+function molSvg(mol, w, h) {
+  let n = 0; try { n = mol.get_num_atoms(); } catch (e) {}
+  const big = w >= 300, mid = w >= 220;
+  const o = { width: w, height: h, clearBackground: false, addStereoAnnotation: false, bondLineWidth: big ? 2 : mid ? 1.8 : 1.5, padding: !(n > 0) ? 0.05 : n <= 8 ? 0.34 : n <= 14 ? 0.22 : n <= 22 ? 0.13 : n <= 34 ? 0.07 : 0.04, minFontSize: big ? 12 : mid ? 11 : 10, maxFontSize: big ? 26 : 22, atomColourPalette: MOL_PAL };
+  if (n > 0 && n <= 14) o.fixedBondLength = Math.round((n <= 9 ? 30 : 24) * h / 124);
+  try { return mol.get_svg_with_highlights(JSON.stringify(o)); } catch (e) { return mol.get_svg(w, h); }
+}
 // The dialog's own close (X, Esc, backdrop, Done) ends here too.
 function setupModalClosed() {
   if (_setupPushed && !_setupModalPopping) { _setupPushed = false; try { history.back(); } catch(e){} }

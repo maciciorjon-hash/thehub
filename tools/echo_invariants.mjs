@@ -3293,6 +3293,25 @@ if (run('E84')) await guard('E84', async () => {
   await c.close();
 });
 
+// E85 — nothing moves when a choice is made (Dora, 2026-11-24, found by a cross-check of every select). On Plate › Maps the Colour-by select was as wide as its longest option and Scale / Clip
+// were removed for the quality and layout views, so choosing a colour mode threw every control to its right by a few hundred px. Structures are drawn with one rule (molSvg): a small
+// molecule keeps a bond of a drawing, not the length of its tile, and the palette has no yellow sulphur.
+if (run('E85')) await guard('E85', async () => {
+  const mv = await E(async () => {
+    document.querySelector('[data-tab="plate"]').click(); await new Promise(r => setTimeout(r, 700));
+    const snap = () => [...document.querySelectorAll('#tab-plate .pl-find, #tab-plate .pl-lab, #tab-plate .pl-tsep, #tab-plate #plate-hint')].filter(e => e.offsetParent !== null || getComputedStyle(e).visibility === 'hidden').map(e => { const b = e.getBoundingClientRect(); return (e.id || e.className) + ':' + [Math.round(b.x), Math.round(b.y), Math.round(b.width)].join(','); }).join('|');
+    const sel = document.getElementById('plate-mode'), base = snap(), moved = [];
+    for (const o of [...sel.options].map(o => o.value)) { sel.value = o; plateUIChanged(); await new Promise(r => setTimeout(r, 120)); const n = snap(); if (n !== base) moved.push(o); }
+    sel.value = 'signal'; plateUIChanged();
+    return { n: sel.options.length, moved };
+  });
+  check('E85', 'Plate › Colour by: no mode moves the toolbar (' + mv.n + ' modes)', mv.n > 3 && !mv.moved.length, mv);
+  const bond = await E(() => typeof molSvg === 'function');
+  check('E85', 'molSvg is the one drawing rule', bond === true, bond);
+  const d = await E(async () => { const cd = Object.values(compoundData || {}).find(x => x && x.svg); if (!cd) return null; const svg = cd.svg; let mx = 0; for (const x of svg.matchAll(/d='M ([\d.]+),([\d.]+) L ([\d.]+),([\d.]+)/g)) mx = Math.max(mx, Math.hypot(x[3] - x[1], x[4] - x[2])); return { yellow: /#FFCC00|#CCCC00|#FFFF00/i.test(svg), mx: Math.round(mx), w: svg.match(/viewBox='0 0 (\d+)/) && +svg.match(/viewBox='0 0 (\d+)/)[1] }; });
+  check('E85', 'a stored structure carries the shared palette and a bond that is not the tile', d && !d.yellow && d.mx > 0 && d.mx < 150, d);
+});
+
 await browser.close();
 const invs = [...new Set([...Object.keys(counts), ...out.map(x => x.inv)])].sort((a, b) => parseInt(a.slice(1)) - parseInt(b.slice(1)));
 for (const inv of invs) {
