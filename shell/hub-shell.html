@@ -1812,6 +1812,9 @@ function _loadApp(id) {
     try { frame.contentDocument.documentElement.setAttribute('data-theme', t); } catch(e) {}
     try { frame.contentWindow.postMessage('setTheme:' + t, '*'); } catch(e) {}
     try { frame.contentDocument.addEventListener('keydown', _hubRailKey, true); } catch(e) {}
+    // Labbook has its own ⌘K (the same search, inside the notebook); every other app has none, and the app
+    // on screen holds the focus, so without this ⌘K only worked after clicking out onto the header.
+    if (id !== 'labbook') { try { frame.contentDocument.addEventListener('keydown', _hubSpotKey, true); } catch(e) {} }
   }, {once: true});
   loaded[id] = true;
 }
@@ -3567,6 +3570,12 @@ function _hubRailKey(e){
   e.preventDefault(); e.stopPropagation(); it.click();
 }
 document.addEventListener('keydown', _hubRailKey, true);
+// ⌘K / Ctrl+K from a key pressed inside an app's frame (the shell's own listener sits with the search).
+function _hubSpotKey(e){
+  if(!(e.metaKey||e.ctrlKey) || e.altKey || e.shiftKey || (e.key!=='k' && e.key!=='K')) return;
+  e.preventDefault(); e.stopPropagation();
+  if(window.hubSpot) window.hubSpot.toggle();
+}
 // Compact (icon over name) is the default; wide is remembered per device. A new key on purpose:
 // the old 'hub_rail' said 'open' for anyone who had ever folded and unfolded the 180px rail.
 function _railWide(){ return document.body.classList.contains('ws-wide'); }
@@ -4242,9 +4251,8 @@ var HUB_SEARCH_INDEX=[
   {t:'Hit Finder — Triage Echo screens',id:'hitfinder',tab:null,app:'Hit Finder',kw:'hit finder triage screen hits criteria ranking hook window selectivity viability drug-likeness cluster echo'},
   {t:'Tempo — Kinetic degradation and time courses',id:'tempo',tab:null,app:'Tempo',kw:'tempo kinetic kinetics degradation time course timecourse expression protein level doxycycline dox induction stress endogenous ug/ml ng/ml fold change peak live-cell hibit nanoluc endurazine glomax promega pronect rate kdeg k lambda dmax dc50 half-life t1/2 recovery lag onset michaelis menten efficiency cinetica degradacion'},
   {t:'Archive',id:'protocols',tab:null,app:'Archive',kw:'protocols assay experiment protocol calculator export pdf csv'},
-  {t:'Simple Dilution (C1V1)',id:'protocols',tab:'home',item:'dilution',app:'Archive',kw:'dilution c1v1 stock target concentration'},
-  {t:'Gibson Assembly',id:'protocols',tab:'home',item:'gibson',app:'Archive',kw:'gibson assembly cloning neb hifi pcr dpni'},
-  {t:'Western Blot',id:'protocols',tab:'home',item:'westernblot',app:'Archive',kw:'western blot sds-page transfer antibody bca lysis'},
+  {t:'Gibson Assembly',id:'protocols',tab:'protocol',item:'gibson',app:'Archive',kw:'gibson assembly cloning neb hifi pcr dpni'},
+  {t:'Western Blot',id:'protocols',tab:'protocol',item:'westernblot',app:'Archive',kw:'western blot sds-page transfer antibody bca lysis'},
   {t:'Blueprint',id:'pd',tab:null,app:'Blueprint',kw:'plate well 96 384 design layout compound dmso rubber band gel marker ladder dna protein lab designer'},
   {t:'Blot',id:'blot',tab:null,app:'Blot',kw:'western blot immunoblot figure builder crop tiff png jpeg kDa marker protein lane label bracket gel band panel publication image lab'},
   {t:'Helix — Plasmid Maps',id:'dna',tab:null,app:'Helix',kw:'vector plasmid map cloning pcr primer restriction'},
@@ -4283,9 +4291,15 @@ var HUB_SEARCH_INDEX=[
 // ── Ranked search scorer ─────────────────────────────────────────────────────
 // Returns a relevance score for one field. Higher = better. 0 = no match.
 // Signals (strongest→weakest): exact · prefix · word-start · substring · subsequence.
+// Accents folded and case folded, so "dilución" and "Dilucion" are one word.
+function _fold(s){
+  s=String(s==null?'':s).toLowerCase();
+  try{ s=s.normalize('NFD').replace(/[\u0300-\u036f]/g,''); }catch(e){}
+  return s;
+}
 function _fieldScore(q, text){
   if(!text) return 0;
-  text=text.toLowerCase();
+  text=_fold(text);
   if(text===q) return 1000;
   if(text.indexOf(q)===0) return 620 - Math.min(text.length,40);   // title prefix
   // word-boundary start (a word within the field begins with q)
@@ -4293,6 +4307,14 @@ function _fieldScore(q, text){
   for(var i=0;i<words.length;i++){ if(words[i] && words[i].indexOf(q)===0) return 420 - Math.min(i*8,60); }
   var pos=text.indexOf(q);
   if(pos>=0) return 260 - Math.min(pos,120);                        // substring anywhere
+  // spaces and dashes are not part of what people remember: "mini prep" is Miniprep, "c1 v1" is C1V1
+  var qc=q.replace(/[^a-z0-9]/g,''), tc=text.replace(/[^a-z0-9]/g,'');
+  if(qc.length>=3){ var cp=tc.indexOf(qc); if(cp>=0) return 230 - Math.min(cp,100); }
+  // initials: "wb" is Western Blot
+  if(/^[a-z]{2,4}$/.test(q)){
+    var ini=''; for(var w=0;w<words.length;w++){ if(words[w]) ini+=words[w].charAt(0); }
+    if(ini.indexOf(q)===0) return 200;
+  }
   // subsequence (typo/gap tolerant): all query chars appear in order
   var qi=0, gaps=0, last=-1;
   for(var j=0;j<text.length && qi<q.length;j++){ if(text[j]===q[qi]){ if(last>=0) gaps+=j-last-1; last=j; qi++; } }
@@ -4300,13 +4322,29 @@ function _fieldScore(q, text){
   return 0;
 }
 // Best score for an index entry: title weighted full, keywords ×0.75, app label ×0.4.
+// The words this lab types in Spanish, read as the English the index is written in. A table the
+// size of the problem; hasOwnProperty so that "constructor" is a word, not a function.
+var _HUB_ES={protocolo:'protocol',protocolos:'protocol',anticuerpo:'antibod',anticuerpos:'antibod',plasmido:'plasmid',
+  plasmidos:'plasmid',celula:'cell',celulas:'cell',siembra:'seeding',lisis:'lysis',dilucion:'dilution',curva:'curve',
+  cebador:'primer',cebadores:'primer',medio:'medium',congelar:'freez',descongelar:'thaw',tampon:'buffer'};
+function _hubVariants(q){
+  var out=[q], hit=false;
+  var m=q.split(/\s+/).map(function(w){ if(Object.prototype.hasOwnProperty.call(_HUB_ES,w)){ hit=true; return _HUB_ES[w]; } return w; }).join(' ');
+  if(hit) out.push(m);
+  return out;
+}
 function hubScore(q, it){
-  q=(q||'').toLowerCase().trim();
+  q=_fold(q).trim();
   if(!q) return 0;
-  var s=_fieldScore(q, it.t);
-  var k=_fieldScore(q, it.kw)*0.75;
-  var a=_fieldScore(q, it.app)*0.4;
-  return Math.max(s, k, a);
+  var best=0, V=_hubVariants(q);
+  for(var i=0;i<V.length;i++){
+    var s=_fieldScore(V[i], it.t);
+    var k=_fieldScore(V[i], it.kw)*0.75;
+    var a=_fieldScore(V[i], it.app)*0.4;
+    var b=Math.max(s, k, a)*(i?0.95:1);
+    if(b>best) best=b;
+  }
+  return best;
 }
 // Live protocol entries from Archive's published index (preloaded ~2.6s after boot),
 // so every Archive protocol (GeneJet/miniprep/etc.) is searchable without hand-listing.
@@ -4315,7 +4353,7 @@ function _archiveSearchEntries(){
     var idx = window.ARCHIVE_INDEX;
     if(!idx || !idx.length) return [];
     return idx.map(function(p){
-      return {t:p.name, id:'protocols', tab:'home', item:p.id, app:'Archive',
+      return {t:p.name, id:'protocols', tab:'protocol', item:p.id, app:'Archive',
               kw:(p.name+' '+(p.category||'')+' protocol').toLowerCase()};
     });
   } catch(e){ return []; }
@@ -4341,7 +4379,9 @@ function hubSearchResults(q, limit){
     var key=it.id+'|'+(it.item||'')+'|'+it.t;
     if(seen[key]) return; seen[key]=1; pool.push(it);
   });
+  var live=null; try{ if(window.ARCHIVE_INDEX && window.ARCHIVE_INDEX.length){ live=Object.create(null); window.ARCHIVE_INDEX.forEach(function(p){ live[p.id]=1; }); } }catch(e){}
   return pool.filter(function(it){ return it.id==='__egg__' || _isAppAccessible(it.id); })
+    .filter(function(it){ return !(live && it.id==='protocols' && it.item && !live[it.item]); })
     .map(function(it){ return {score:hubScore(q,it), item:it}; })
     .filter(function(r){ return r.score>0; })
     .sort(function(a,b){ return b.score-a.score; })

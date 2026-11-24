@@ -24,6 +24,9 @@
 //   H15 one SheetJS, shared        The shell carries the only copy of SheetJS (Echo, Beacon and BCA hold none and take the shell's), an .xlsx whose bytes were made
 //                                  as an ArrayBuffer INSIDE an app frame still reads there (a frame's ArrayBuffer is a foreign object to the shell's SheetJS), and Echo's
 //                                  test data is a file beside the build that 'Load test data' fetches on first use
+//   H16 the search opens what it finds   A protocol picked in the search (⌘K) opens ON the protocol: one tab showing, never a title over a blank page ('home' was
+//                                  sent as a tab); every protocol in the index is reachable and every listed one exists; ⌘K works with the focus inside an app's
+//                                  frame; "mini prep", "wb" and Spanish words find their protocol; signed in, Labbook's protocol row asks the hub to open Archive
 //
 //   node tools/hub_audit_invariants.mjs [--shell=PATH] [--only=H2]      exit 1 on any finding
 import { chromium } from 'playwright';
@@ -452,6 +455,68 @@ if (run('H15')) {
   });
   t.before === 'undefined' && t.after === 'string' && t.readers === 6 && t.echo === 1 ? ok() : bad('H15', 'Echo\'s test data was not fetched on first use: ' + JSON.stringify(t));
   const own = errs.filter(e => !/sandbox/.test(e)); if (own.length) bad('H15', own[0]);
+  await context.close();
+}
+
+if (run('H16')) {
+  const paneState = (page, pid) => page.evaluate(pid => {
+    const d = document.getElementById('frame-protocols') && document.getElementById('frame-protocols').contentDocument;
+    const w = d && d.getElementById('detail-' + pid);
+    return w ? { panes: Array.from(w.querySelectorAll('.dpane.active')).map(p => p.dataset.tab), btns: w.querySelectorAll('.dtab-btn.active').length, shown: w.offsetParent !== null } : null;
+  }, pid);
+  const good = st => st && st.panes.length === 1 && st.btns === 1 && st.shown;
+  const { context, page, errs } = await open({ mode: 'visitor' });
+  await page.evaluate(() => { _unlockedApps.add('protocols'); hubEnsureApp('protocols'); });
+  await page.waitForFunction(() => (window.ARCHIVE_INDEX || []).length > 0, null, { timeout: 15000 }).catch(() => {});
+  const ids = await page.evaluate(() => (window.ARCHIVE_INDEX || []).map(p => ({ id: p.id, name: p.name })));
+  if (!ids.length) bad('H16', 'Archive published no protocol index'); else ok();
+  // every listed protocol exists (a row that opens nothing is a bug), every protocol is the top answer to its own name, and opens on its protocol
+  const dead = await page.evaluate(() => HUB_SEARCH_INDEX.filter(it => it.id === 'protocols' && it.item && !window.ARCHIVE_INDEX.some(p => p.id === it.item)).map(it => it.t));
+  dead.length ? bad('H16', 'listed protocols that Archive does not have: ' + dead.join(', ')) : ok();
+  const miss = [];
+  for (const p of ids) {
+    const top = await page.evaluate(n => { const r = hubSearchResults(n, 3)[0]; return r ? { id: r.item.id, tab: r.item.tab, item: r.item.item } : null; }, p.name);
+    if (!top || top.id !== 'protocols' || top.item !== p.id) { miss.push(p.id + ' (top: ' + JSON.stringify(top) + ')'); continue; }
+    await page.evaluate(t => openApp(t.id, t.tab, t.item), top);
+    await page.waitForFunction(pid => { const f = document.getElementById('frame-protocols'); return f && f.contentDocument && f.contentDocument.getElementById('detail-' + pid) && f.contentDocument.getElementById('detail-' + pid).offsetParent !== null; }, p.id, { timeout: 6000 }).catch(() => {});
+    const st = await paneState(page, p.id);
+    if (!good(st)) miss.push(p.id + ' ' + JSON.stringify(st));
+  }
+  miss.length ? bad('H16', miss.length + ' protocol(s) did not open ON the protocol from the search: ' + miss.slice(0, 4).join('; ')) : ok();
+  // the keyboard route: type, Enter
+  await page.evaluate(() => backToHub());
+  await page.waitForFunction(() => currentApp === null && document.getElementById('view-protocols').style.display === 'none', null, { timeout: 6000 }).catch(() => {});
+  await page.waitForTimeout(300);
+  await page.keyboard.press('Control+k'); await page.waitForFunction(() => document.activeElement.id === 'hub-spot-in', null, { timeout: 3000 }).catch(() => {}); await page.keyboard.type('gibson'); await page.waitForTimeout(150); await page.keyboard.press('Enter');
+  await page.waitForFunction(() => { const f = document.getElementById('frame-protocols'); return f && f.contentDocument && f.contentDocument.getElementById('detail-gibson') && f.contentDocument.getElementById('detail-gibson').offsetParent !== null; }, null, { timeout: 6000 }).catch(() => {});
+  good(await paneState(page, 'gibson')) ? ok() : bad('H16', 'gibson + Enter in the search did not land on the protocol: ' + JSON.stringify(await paneState(page, 'gibson')));
+  // a link naming a tab the protocol does not have leaves the one that is showing
+  const keep = await page.evaluate(() => { const w = document.getElementById('frame-protocols').contentWindow; w.showDTab('gibson', 'home'); const d = w.document.getElementById('detail-gibson'); return d.querySelectorAll('.dpane.active').length; });
+  keep === 1 ? ok() : bad('H16', 'showDTab with an unknown tab switched every pane off (' + keep + ' showing)');
+  // ⌘K / Ctrl+K with the focus inside an app: opens, and the same key closes
+  const key = async () => { await page.evaluate(() => { const d = document.getElementById('frame-protocols').contentDocument; d.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true, cancelable: true })); }); await page.waitForTimeout(150); return page.evaluate(() => document.getElementById('hub-spot-back').classList.contains('open')); };
+  await page.evaluate(() => window.hubSpot.close()); await page.waitForTimeout(150);
+  const o1 = await key(), o2 = await key();
+  o1 && !o2 ? ok() : bad('H16', '⌘K pressed inside an app frame should open the search and, pressed again, close it (open=' + o1 + ' then ' + o2 + ')');
+  // how people type it
+  const first = q => page.evaluate(q => { const r = hubSearchResults(q, 3)[0]; return r ? r.item.t : ''; }, q);
+  for (const [q, want] of [['mini prep', /miniprep/i], ['wb', /western blot/i], ['gibsn', /gibson/i], ['siembra', /seeding/i], ['Cell Séeding', /seeding/i]]) {
+    const t = await first(q); want.test(t) ? ok() : bad('H16', 'searching "' + q + '" put "' + t + '" first');
+  }
+  const thr = await page.evaluate(() => { try { ['constructor', '__proto__', 'toString'].forEach(w => hubSearchResults(w, 5)); return ''; } catch (e) { return String(e); } });
+  thr ? bad('H16', 'a word that is a property name threw in the search: ' + thr) : ok();
+  const own = errs.filter(e => !/sandbox/.test(e)); if (own.length) bad('H16', own[0]);
+  await context.close();
+}
+if (run('H16')) {
+  // signed in, a protocol row of Labbook's search opens Archive in the hub rather than "Archive isn't part of this build"
+  const { context, page, errs } = await open({ mode: 'admin' });
+  await page.evaluate(() => { _loadApp('labbook'); hubEnsureApp('protocols'); });
+  await page.waitForFunction(() => { const f = document.getElementById('frame-labbook'); return f && f.contentWindow && f.contentWindow.openArchiveProtocol && (window.ARCHIVE_INDEX || []).length; }, null, { timeout: 25000 }).catch(() => {});
+  await page.evaluate(() => { document.getElementById('frame-labbook').contentWindow.openArchiveProtocol('gibson'); });
+  await page.waitForFunction(() => currentApp === 'protocols', null, { timeout: 8000 }).catch(() => {});
+  const r = await page.evaluate(() => ({ app: currentApp, notBuilt: (document.getElementById('frame-labbook').contentDocument.body.textContent || '').indexOf("isn't part of this build") >= 0 && currentApp === 'labbook' }));
+  r.app === 'protocols' ? ok() : bad('H16', "signed in, Labbook's protocol row did not open Archive in the hub: " + JSON.stringify(r));
   await context.close();
 }
 

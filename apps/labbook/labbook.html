@@ -22676,6 +22676,12 @@ function ensureArchive(cb){
   var tries=0; (function poll2(){ tries++; var ok=false; try{ ok=(window.parent.ARCHIVE_INDEX||[]).length>0; }catch(e){} if(ok) return cb(true); if(tries>20) return cb(false); setTimeout(poll2,150); })();
 }
 function openArchiveProtocol(pid,tab){
+  // Hosted by dHUB, Archive is the hub's own app, not a frame of this page: selectNode('archive') here lands on
+  // "Archive isn't part of this build" and the message below has no frame to go to. Ask the host to open it,
+  // the way openLibRecord does for a Library record.
+  if(!archiveEmbedded()){
+    try{ var H=lbHost(); if(H&&H.openApp){ H.openApp('protocols', tab||'protocol', pid?String(pid):undefined); return; } }catch(e){}
+  }
   selectNode('archive');
   ensureArchive(function(ok){ if(!ok||!pid) return;
     var rid='arc'+Date.now(), msg={type:'switchTab',tab:(tab||'protocol'),item:String(pid),requestId:rid}, tries=0, done=false;
