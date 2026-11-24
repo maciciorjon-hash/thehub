@@ -3294,7 +3294,7 @@ if (run('E84')) await guard('E84', async () => {
 });
 
 // E85 — nothing moves when a choice is made (Dora, 2026-11-24, found by a cross-check of every select). On Plate › Maps the Colour-by select was as wide as its longest option and Scale / Clip
-// were removed for the quality and layout views, so choosing a colour mode threw every control to its right by a few hundred px. Structures are drawn with one rule (molSvg): a small
+// were removed for the quality and layout views, so choosing a colour mode threw every control to its right by a few hundred px. Structures are drawn with one rule (ChemKit acsSvg): a small
 // molecule keeps a bond of a drawing, not the length of its tile, and the palette has no yellow sulphur.
 if (run('E85')) await guard('E85', async () => {
   const mv = await E(async () => {
@@ -3306,10 +3306,10 @@ if (run('E85')) await guard('E85', async () => {
     return { n: sel.options.length, moved };
   });
   check('E85', 'Plate › Colour by: no mode moves the toolbar (' + mv.n + ' modes)', mv.n > 3 && !mv.moved.length, mv);
-  const bond = await E(() => typeof molSvg === 'function');
-  check('E85', 'molSvg is the one drawing rule', bond === true, bond);
-  const d = await E(async () => { const cd = Object.values(compoundData || {}).find(x => x && x.svg); if (!cd) return null; const svg = cd.svg; let mx = 0; for (const x of svg.matchAll(/d='M ([\d.]+),([\d.]+) L ([\d.]+),([\d.]+)/g)) mx = Math.max(mx, Math.hypot(x[3] - x[1], x[4] - x[2])); return { yellow: /#FFCC00|#CCCC00|#FFFF00/i.test(svg), mx: Math.round(mx), w: svg.match(/viewBox='0 0 (\d+)/) && +svg.match(/viewBox='0 0 (\d+)/)[1] }; });
-  check('E85', 'a stored structure carries the shared palette and a bond that is not the tile', d && !d.yellow && d.mx > 0 && d.mx < 150, d);
+  const bond = await E(() => typeof acsSvg === 'function');
+  check('E85', 'acsSvg (ChemKit, ChemDraw ACS 1996) is the one drawing rule', bond === true, bond);
+  const d = await E(async () => { const cd = Object.values(compoundData || {}).find(x => x && x.svg); if (!cd) return null; const svg = cd.svg; let mx = 0; for (const x of svg.matchAll(/d='M ([\d.]+),([\d.]+) L ([\d.]+),([\d.]+)/g)) mx = Math.max(mx, Math.hypot(x[3] - x[1], x[4] - x[2])); return { yellow: /#FFCC00|#CCCC00|#FFFF00/i.test(svg), colour: /(?:stroke|fill):#(?!000000|FFFFFF)[0-9A-F]{6}/i.test(svg), mx: Math.round(mx), w: svg.match(/viewBox='0 0 (\d+)/) && +svg.match(/viewBox='0 0 (\d+)/)[1] }; });
+  check('E85', 'a stored structure is black ink with a bond that is not the tile', d && !d.yellow && !d.colour && d.mx > 0 && d.mx < 150, d);
 });
 
 await browser.close();
