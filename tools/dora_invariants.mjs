@@ -512,7 +512,7 @@ if (run('DO13')) await guard('DO13', async () => {
     RAW.forEach(c => { c._series = ['A', 'B', 'C', 'G'].includes(c.compound) ? 'S1' : null; }); FILT.series = 'S1'; SAR.align = true; await serCore();
     switchTab('table'); setView('cards'); await new Promise(r => setTimeout(r, 900));
     const tiles = [...document.querySelectorAll('#cards-host .tile.on, .card-c .tile.on')];
-    out.ser = { qo: !!SERCORE.qo, tiles: tiles.length, hl: tiles.filter(t => /#4[89A]75B5/i.test(t.innerHTML)).length };
+    out.ser = { qo: !!SERCORE.qo, tiles: tiles.length, hl: tiles.filter(t => /#8[Cc][Bb][78][Ff][9Aa]/i.test(t.innerHTML)).length };
     SAR.align = false; await serCore(); Chem.clearSvg(); setView('cards'); await new Promise(r => setTimeout(r, 300)); setView('table'); FILT.series = null;
     return out;
   });
@@ -661,6 +661,50 @@ if (run('DO17')) await guard('DO17', async () => {
   !r.bare.length ? ok() : bad('DO17', 'a popover with no role (the sweep reads what it covers as covered text): ' + r.bare.join(', '));
   r.opened.every(o => o.shown && o.layer) ? ok() : bad('DO17', 'an opened panel is not drawn as a layer: ' + JSON.stringify(r.opened));
   p.errs.length ? bad('DO17', 'errors: ' + p.errs.join(' | ')) : ok();
+  await p.context().close();
+});
+
+// DO18 — nothing moves when a choice is made. Changing the DC50 unit, the Dmax unit or the size of the structures moved every column of Results and reflowed the filter bar (an auto-width table
+// and readouts as wide as their text; Jon, 2026-11-24). The columns stay where they are, the toolbar controls stay where they are, the Plot toolbar is two rows, a header that says SMILES is
+// the SMILES column even when the molecules are short (CCO), and a small molecule is drawn with a bond of a drawing, not as long as its tile.
+if (run('DO18')) await guard('DO18', async () => {
+  const p = await openChem();
+  await p.evaluate(() => { loadTestData(); switchTab('table'); });
+  await p.waitForFunction(() => RAW.length && RAW.every(c => !c.smiles || c._ch), { timeout: 30000 }).catch(() => {});
+  await p.waitForTimeout(600);
+  const snap = () => p.evaluate(() => {
+    const r = e => { const b = e.getBoundingClientRect(); return [Math.round(b.x), Math.round(b.y), Math.round(b.width), Math.round(b.height)].join(','); };
+    return { ths: [...document.querySelectorAll('#main-thead tr:nth-child(2) th')].map(r), row: [...document.querySelector('#table-body tr').children].map(r),
+      bar: [...document.querySelectorAll('#fbar .ctl-l > *, #panel-table .tbar .ctl-l > *')].filter(e => e.offsetParent).map(e => (e.id || e.className) + ':' + r(e)),
+      w: document.getElementById('main-table').getBoundingClientRect().width };
+  });
+  const base = await snap(); const moved = [];
+  const steps = [['setDgUnit', ['pM', 'uM', 'mM', 'M', 'p', 'nM']], ['setDmaxUnit', ['frac', 'rem', 'remfrac', 'pct']]];
+  for (const [fn, vals] of steps) for (const v of vals) {
+    await p.evaluate(([f, x]) => window[f](x), [fn, v]); await p.waitForTimeout(250);
+    const n = await snap();
+    if (n.ths.join('|') !== base.ths.join('|')) moved.push(fn + '(' + v + ') moved the columns');
+    if (n.row.join('|') !== base.row.join('|')) moved.push(fn + '(' + v + ') moved the cells');
+    if (n.bar.join('|') !== base.bar.join('|')) moved.push(fn + '(' + v + ') moved the toolbar');
+  }
+  !moved.length ? ok() : bad('DO18', 'a choice moved the layout: ' + moved.slice(0, 4).join(' · '));
+  // the size of the structures changes the structure column and nothing else's width
+  const m0 = await snap(); await p.evaluate(() => setTileSize('l')); await p.waitForTimeout(250); const l1 = await snap(); await p.evaluate(() => setTileSize('m'));
+  const wOf = a => a.ths.map(t => +t.split(',')[2]);
+  JSON.stringify(wOf(m0).slice(1)) === JSON.stringify(wOf(l1).slice(1)) ? ok() : bad('DO18', 'the structure size changed another column: ' + wOf(m0).join('/') + ' → ' + wOf(l1).join('/'));
+  // the Plot toolbar is two rows at a laptop width, with every control inside the viewport
+  const pt = await p.evaluate(async () => { switchTab('scatter'); await new Promise(r => setTimeout(r, 500));
+    const ys = new Set(), out = [...document.querySelectorAll('#plot-ui .ctl-l > *, #plot-ui .ctl-r > *')].filter(e => e.offsetParent).map(e => { const b = e.getBoundingClientRect(); ys.add(Math.round(b.y / 8)); return b.right; });
+    return { rows: ys.size, right: Math.max(...out), vw: innerWidth }; });
+  pt.rows <= 4 && pt.right <= pt.vw ? ok() : bad('DO18', 'the Plot toolbar wraps into too many rows or leaves the window: ' + JSON.stringify(pt));
+  // SMILES by its header, short molecules and a typo
+  const sm = await p.evaluate(() => { const L = detectLayout([['Compound', 'SMILES', 'DC50 (nM)', 'Dmax (%)'], ['A', 'CCO', 10, 90], ['B', 'CCN', 20, 80], ['C', 'not a smiles', 30, 70]]); return L.cols.map(c => c.role).join(','); });
+  sm === 'compound,smiles,dc50,dmax' ? ok() : bad('DO18', 'a column headed SMILES holding CCO / CCN is read as ' + sm);
+  // a small molecule is not blown up to its tile: ethanol's longest bond in a medium tile is a bond of a drawing
+  const bond = await p.evaluate(async () => { const rd = Chem.get(); const m = rd.get_mol('CCO'); const c = { _ch: { ok: true, p: { heavy: 3 }, can: 'CCO' }, _i: 99999, smiles: 'CCO' };
+    const s = Chem.svg(Object.assign(c, {}), 270, 124); m.delete(); let mx = 0; for (const x of s.matchAll(/d='M ([\d.]+),([\d.]+) L ([\d.]+),([\d.]+)/g)) mx = Math.max(mx, Math.hypot(x[3] - x[1], x[4] - x[2])); return mx; });
+  bond > 5 && bond < 45 ? ok() : bad('DO18', 'ethanol in a 270×124 tile has a bond of ' + Math.round(bond) + ' px (RDKit fills the tile when nothing caps it)');
+  const e = p.errs.filter(x => !/Failed to load resource/.test(x)); e.length ? bad('DO18', 'errors: ' + e.join(' | ')) : ok();
   await p.context().close();
 });
 
