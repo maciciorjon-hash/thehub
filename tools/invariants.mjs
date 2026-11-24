@@ -207,6 +207,7 @@
 //   B65 seeding per line   With two or more cell lines the cell seeding is one step per line (first keeps its place, titled and worded for its line, each counts the plates of its line), the incubation wait sits on the last one only, the read prep follows the number of lines until a number is typed over it, a re-applied setup keeps all of it, a seeding already ticked is left as it was, one undo takes the lines and the split back
 //   B64 echo step         The Echo compound step has inputs and says only what they say: every preset and the library carry the echo calculator (plates, compounds, concentrations, replicates, DMSO — fed by the setup), the words quote its boxes, and no step names a time or a rule nobody recorded ("allow about 3 h", "working window", "first thing", "keep DMSO at or below", a backfill to load). A box left empty reads "—", never a hidden default. A run not started takes the new step; a ticked, noted, typed-wait or finished one is left as written.
 //   B67 hours from setup  The hours of a treatment are the setup's Treatment (h), not words in the step: no step says "note the time" (the chip and the timer do), the Echo step writes no number of hours, and the read is as many days after the compound as the hours say (6 h → the same day, 20 h → the next), for a new run, an edited setup and a run made before — never over a read someone moved by hand or one with a tick.
+//   B68 turboid           PR_TURBOID (Jon's TurboID proteomics): 8 six-well plates (4 replicates x a 6-condition bait plate and a 4-condition control plate), each step's wells equal the plate map's (24/16 seeded, 4+12+8+8+8 medium swaps = 40, 16 MLN4924, 20+16 biotin, 40 lysed), the design's media/dox/biotin/MLN4924 per condition, days 0,0,1x5,2x6, waits 900/240/60 = 20 h from T0 to lysis, the control biotin starting from 2,002 µL, dox dilutions equal the setup's ng/mL
 //   B54 plate labels      Words round the plate: select wells and a dashed + sits beside the plate on all four sides over exactly the selected columns/rows; a label
 //                            is typed, edited, removed and undone; a wider one stacks outside a narrower one; nothing written round the plate sits on a well, a header or
 //                            another label; the card, the PNG, the print table and a copied layout all carry it. (the plate map could not say what a column was)
@@ -508,7 +509,7 @@ async function suite(opts) {
         diffBlocks('I2', cs, A.blocks, B.blocks, 'quick', 'designer');
         for (const k of ['type', 'presetKey', 'plasmids', 'cellLines', 'setup', 'blank', 'startDate', 'protocols'])
           if (J(A[k] || null) !== J(B[k] || null)) bad('I2', cs, `${k}: quick ${String(J(A[k])).slice(0, 120)} vs designer ${String(J(B[k])).slice(0, 120)}`);
-        if (plateSig(A.plate) !== plateSig(B.plate)) bad('I2', cs, 'plate differs between quick and designer');
+        if (plateSig(A.plate) !== plateSig(B.plate)) bad('I2', cs, 'plate differs between quick and designer: ' + plateDiff(A.plate, B.plate));
         // Absolute, not relative: both routes can be wrong the same way.
         const isBlank = !!((LB.data.presets[key] || {}).blank || (EXTRA_PRESET_SEED[key] || {}).blank);
         if (isBlank && !A.blank) bad('I2', cs, 'a Blank experiment from the quick window is not marked blank');
@@ -1097,7 +1098,8 @@ async function suite(opts) {
   // the DOM, every row is checked against the total drawn before it, for every design and every
   // pair or triple of volume-changing library modules.
   if (run('I29')) {
-    const num = t => { const m = String(t).match(/-?\d+(?:\.\d+)?/); return m ? parseFloat(m[0]) : NaN; };
+    // a volume of 1,000 µL or more is drawn with its thousands comma: "2,002 µL" is 2002, not 2 (the first 6-well spike, PR_TURBOID, read 2 + 501 as "is not 2")
+    const num = t => { const m = String(t).replace(/(\d),(?=\d{3}(?!\d))/g, '$1').match(/-?\d+(?:\.\d+)?/); return m ? parseFloat(m[0]) : NaN; };
     const audit = (cs) => {
       const ps = dsPseudo(DS), ch = dsChain(ps);
       const box = document.createElement('div'); box.innerHTML = dsChainHtml(DS, ps, ch);
@@ -1114,7 +1116,7 @@ async function suite(opts) {
         if (!(tot > 0)) { bad('I29', cs, `"${name}" ends with "${t}"`); return; }
         if (/replaces/.test(v)) { if (!/Aspirates|^$/.test(note) && note) bad('I29', cs, `"${name}" replaces the medium and says "${note}"`); run = tot; return; }
         let base = run;
-        const fr = note.match(/Starts from (\d+(?:\.\d+)?)/); if (fr) base = parseFloat(fr[1]);
+        const fr = note.replace(/(\d),(?=\d{3}(?!\d))/g, '$1').match(/Starts from (\d+(?:\.\d+)?)/); if (fr) base = parseFloat(fr[1]);
         if (Math.abs(base + num(v) - tot) > (tot >= 100 ? 0.55 : 0.26)) bad('I29', cs, `"${name}": ${nfmt(base)} + ${num(v)} is not ${tot} — the table says ${v} → ${t} under a total of ${run}${note ? ' (' + note + ')' : ''}`);
         if (term && !/own copy/.test(note)) bad('I29', cs, `"${name}" is a read on its own copy and does not say so`);
         if (!term) run = tot;
@@ -3693,6 +3695,60 @@ async function suite(opts) {
       const h1 = echo(pl).html, d1 = read(pl).date; seedPresets(); if (echo(pl).html !== h1 || read(pl).date !== d1) bad('B67', 'idempotent', 'a second pass changed the run again');
       const fin = old('INV_B67F', 'done'); const fr = read(fin).dayOffset; seedPresets();
       if (read(fin).dayOffset !== fr) bad('B67', 'finished run', 'a finished run\'s read was moved: it is a record');
+    });
+
+    // B68 — TurboID proteomics (PR_TURBOID): the wells each step counts are the wells of the plate map, the timing is the design's, and the control line's biotin does not start from the bait line's.
+    if (run('B68')) await guard('B68', 'turboid', async () => {
+      const P = (LB.data.projects || []).find(p => (p.sections || []).length);
+      const key = 'PR_TURBOID', tpl = LB.data.presets[key];
+      if (!tpl) { bad('B68', key, 'the preset is not in the notebook'); return; }
+      if (presetBase(key) !== 'PR' || tpl.layout !== 'turboid6' || !tpl.plateOn) bad('B68', 'identity', 'type ' + presetBase(key) + ', layout ' + tpl.layout + ', plateOn ' + tpl.plateOn);
+      const su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup || {})));
+      const before = new Set(Object.keys(LB.data.experiments));
+      buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-11-30', type: 'PR', title: 'INV turboid', code: 'INV_B68', setup: su, plate: true });
+      const e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); if (!e) { bad('B68', 'create', 'no experiment was made'); return; }
+      clean.push(e); tick('B68');
+      // the plates: a replicate is a bait plate (6 conditions) and a control plate (4), 4 replicates
+      const pl = [e.plate].concat(e.morePlates || []);
+      if (pl.length !== 8) { bad('B68', 'plates', pl.length + ' plates, expected 8 (4 replicates x bait + control)'); return; }
+      const typesOf = p => Object.keys(p.wells).map(k => p.wells[k].typeId).sort().join();
+      pl.forEach((p, i) => { const bait = i % 2 === 0, want = bait ? 'b1,b2,b3,b4,b5,b6' : 'c1,c2,c3,c4';
+        if (typesOf(p) !== want) bad('B68', 'plate ' + (i + 1), 'wells ' + typesOf(p) + ', expected ' + want);
+        if (p.cellLine !== (bait ? 'mT-LRRC58' : 'mT-EGFP')) bad('B68', 'plate ' + (i + 1) + ' line', 'the plate is for "' + p.cellLine + '"');
+        if (String(p.format) !== '6') bad('B68', 'plate ' + (i + 1) + ' format', p.format); });
+      // the design: media, dox, biotin, MLN4924 of each condition (Jon's Proteomics List)
+      const want = { b1: [0, 1, 0, 0], b2: [0, 1, 1, 0], b3: [0, 0, 1, 0], b4: [0, 1, 1, 1], b5: [1, 1, 1, 0], b6: [1, 1, 1, 1], c1: [0, 1, 1, 0], c2: [0, 1, 1, 1], c3: [1, 1, 1, 0], c4: [1, 1, 1, 1] };
+      _TID_CONDS.forEach(c => { if (J([c.cf, c.dox, c.bio, c.mln]) !== J(want[c.id])) bad('B68', 'condition ' + c.id, 'cys-free/dox/biotin/MLN is ' + [c.cf, c.dox, c.bio, c.mln] + ', the list says ' + want[c.id]); });
+      const wells = (pred) => { let n = 0; pl.forEach(p => Object.keys(p.wells).forEach(k => { if (pred(_TID_CONDS.find(c => c.id === p.wells[k].typeId))) n++; })); return n; };
+      const blk = re => e.blocks.find(b => re.test(b.title)), nW = re => { const b = blk(re); return b && b.calc && b.calc.inputs && +b.calc.inputs.nWells; };
+      const CNT = [[/Seeding, bait/, c => c.line === 'b', 24], [/Seeding, control/, c => c.line === 'c', 16], [/without dox, bait/, c => c.line === 'b' && !c.dox, 4],
+        [/Dox medium, bait line, normal/, c => c.line === 'b' && c.dox && !c.cf, 12], [/Dox medium, bait line, Cys/, c => c.line === 'b' && c.dox && c.cf, 8],
+        [/Dox medium, control line, normal/, c => c.line === 'c' && !c.cf, 8], [/Dox medium, control line, Cys/, c => c.line === 'c' && c.cf, 8],
+        [/MLN4924/, c => c.mln, 16], [/Biotin pulse, bait/, c => c.line === 'b' && c.bio, 20], [/Biotin pulse, control/, c => c.line === 'c' && c.bio, 16], [/^Lysis/, c => true, 40]];
+      CNT.forEach(([re, pred, n]) => { const got = nW(re), real = wells(pred);
+        if (real !== n) bad('B68', String(re) + ' plate', 'the plate has ' + real + ' such wells, the check expects ' + n);
+        if (got !== real) bad('B68', String(re) + ' wells', 'the step counts ' + got + ' wells, the plate map has ' + real); });
+      // every well takes exactly one medium swap (the five steps together are the 40 wells)
+      const swap = [/without dox, bait/, /Dox medium, bait line, normal/, /Dox medium, bait line, Cys/, /Dox medium, control line, normal/, /Dox medium, control line, Cys/].reduce((a, re) => a + (nW(re) || 0), 0);
+      if (swap !== 40) bad('B68', 'medium swap', 'the five medium steps cover ' + swap + ' wells, not the 40 on the plates');
+      // the days: seeding 0, the swap 1, MLN4924 / biotin / wash / lysis / BCA 2; the waits make T0 to lysis 20 h and sit once each
+      const days = e.blocks.map(b => b.dayOffset).join();
+      if (days !== '0,0,1,1,1,1,1,2,2,2,2,2,2') bad('B68', 'days', 'steps on days ' + days);
+      const waits = e.blocks.map(b => b.waitMin || 0);
+      const w = (re) => (blk(re) || {}).waitMin || 0;
+      if (w(/Dox medium, control line, Cys/) !== 900 || w(/MLN4924/) !== 240 || w(/Biotin pulse, control/) !== 60) bad('B68', 'waits', 'overnight ' + w(/Dox medium, control line, Cys/) + ' min, MLN4924 ' + w(/MLN4924/) + ' min, biotin ' + w(/Biotin pulse, control/) + ' min (want 900, 240, 60)');
+      if (waits.reduce((a, b) => a + b, 0) !== 1200) bad('B68', 'T0 to lysis', 'the waits add up to ' + waits.reduce((a, b) => a + b, 0) + ' min, not the 20 h of the design');
+      // the control line's biotin starts from the well as the MLN4924 / DMSO left it, not from the bait line's biotin
+      const ct = blk(/Biotin pulse, control/), bt = blk(/Biotin pulse, bait/);
+      if (!ct || +ct.calc.inputs.wellVolUL !== 2002 || !(ct.calc.own || {}).wellVolUL) bad('B68', 'control biotin', 'starts from ' + (ct && ct.calc.inputs.wellVolUL) + ' µL, own ' + J(ct && ct.calc.own) + ' (want 2,002 µL typed: the wells hold 2,000 + the 2 µL of MLN4924 or DMSO)');
+      if (bt && Math.abs(+bt.calc.inputs.wellVolUL - 2002.002) > 0.01) bad('B68', 'bait biotin', 'starts from ' + bt.calc.inputs.wellVolUL + ' µL, not the 2,002 µL the MLN4924 step leaves');
+      // the words: no unfilled token, no "the medium", the dox dilutions are the setup's ng/mL from a 1 mg/mL stock
+      openExp(e.id); await sleep(80);
+      const txt = document.body.innerText; if (/\{\{[^}]*\}\}/.test(txt)) bad('B68', 'tokens', 'an unfilled token on the page: ' + (txt.match(/\{\{[^}]*\}\}/) || [])[0]);
+      [['Dox medium, bait line, normal', 'doxNg'], ['Dox medium, control line, normal', 'doxCtrlNg']].forEach(([t, f]) => { const b = blk(new RegExp(t)), d = b && b.calc.inputs.dilution, ng = 1e6 / d;
+        if (!b || Math.abs(ng - +e.setup[f]) > 0.01) bad('B68', t, 'the dilution 1:' + Math.round(d) + ' from 1 mg/mL is ' + ng.toFixed(2) + ' ng/mL, the setup says ' + e.setup[f]); });
+      // the plates follow the setup's replicates: 2 replicates is 4 plates
+      const two = _tidPlates({ nReps: 2, baitLine: 'A', ctrlLine: 'B' }); if (two.length !== 4 || two[1].cellLine !== 'B') bad('B68', 'replicates', '2 replicates make ' + two.length + ' plates');
     });
 
     // B54 — words round the plate: what a column or a row is, written beside it.

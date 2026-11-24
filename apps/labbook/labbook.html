@@ -4728,6 +4728,78 @@ function _nbSparkPairs(){
   return b;
 }
 EXTRA_PRESET_SEED.NB_SPARK_PAIRS96=_nbSparkPairs();
+// TurboID proteomics, the cells half (Jon, 2026-11-24, LRRC58): a bait line and a control line, each in biological replicates (one flask a
+// replicate), seeded in normal DMEM; at T0 the medium is swapped for normal or Cys-free DMEM (tet-free FBS, Met and Gln put back in the
+// Cys-free) with dox; the next day MLN4924 (DMSO in the other wells) 4 h before a 60 min biotin pulse, then lysis, all arms at the same time
+// (T0 to lysis about 20 h). The wells of each step are the design's, typed in `own` calculators: the plate map holds the same conditions.
+// What the run does after the lysate (KingFisher, digestion, desalting) is the Archive protocol `turboid`, added to the run as dated stages.
+// The dox is a dilution from a 1 mg/mL stock (30 ng/mL = 1:33,333), as in the Western run. No `pub` quotes a number the calculator does not.
+EXTRA_PRESET_SEED.PR_TURBOID={name:'TurboID_Proteomics',baseType:'PR',
+  title:'TurboID proteomics — bait vs control line, normal and Cys-free DMEM, ± dox ± biotin ± MLN4924',
+  setup:{format:'6',baitLine:'mT-LRRC58',ctrlLine:'mT-EGFP',nReps:4,cellsPerWell:800000,doxNg:30,doxCtrlNg:30,doxH:15,mlnH:4,biotinH:1,nSamples:40,proteinUg:300,maxUL:400},
+  setupHide:['samples','trypsinRatio','acq'],
+  setupAdd:[{f:'format',t:'format',lbl:'Format',d:'6',opts:['6']},
+            {f:'baitLine',t:'txt',lbl:'Bait cell line',d:'mT-LRRC58'},
+            {f:'ctrlLine',t:'txt',lbl:'Control cell line',d:'mT-EGFP'},
+            {f:'nReps',t:'num',lbl:'Biological replicates (one flask each)',d:4,hint:'Each replicate is one flask and two 6-well plates, one for each line. The conditions are the design (the plate map); the wells counted in the steps are for the replicates the preset starts from, so change them by hand if this changes.'},
+            {f:'cellsPerWell',t:'num',lbl:'Cells / well',d:800000},
+            {f:'doxNg',t:'num',lbl:'Doxycycline, bait line (ng/mL)',d:30,hint:'Also the dilution in the bait-line dox steps (1 mg/mL stock: 30 ng/mL is 1:33,333).'},
+            {f:'doxCtrlNg',t:'num',lbl:'Doxycycline, control line (ng/mL)',d:30,hint:'To be set by Western blot (anti-bait and streptavidin-HRP) so that the control matches the bait’s expression; it starts at the bait’s dose. Also the dilution in the control-line dox steps.'},
+            {f:'doxH',t:'num',lbl:'Dox and medium swap to the MLN4924 day (h)',d:15},
+            {f:'mlnH',t:'num',lbl:'MLN4924 before the biotin pulse (h)',d:4,wait:1},
+            {f:'biotinH',t:'num',lbl:'Biotin pulse (h)',d:1,wait:1},
+            {f:'maxUL',t:'num',lbl:'Largest lysate volume per sample (µL)',d:400,hint:'The Deepwell 96/500 µL plate works to about 400 µL.'}],
+  plateOn:true, layout:'turboid6', blocks:[
+    {d:0,title:'Seeding, bait line',
+     calc:{kind:'seed',inputs:{cellLine:'HEK293 Flp-In T-REx',cellsPerWell:800000,volPerWell:2000,format:'6',nPlates:4,nWells:24,excess:1.1},own:{nWells:true}},
+     pub:'{{baitLine}} cells were seeded at {{c.cellsPerWell}} per well in {{c.volPerWell}} of {{c.medium}} in 6-well plates, each replicate from its own flask.',
+     html:'<ol><li>Count the {{baitLine}} cells and resuspend them in {{c.medium}} at {{c.density}} &mdash; {{c.totalVol}} for {{c.wells}}.</li><li>Add {{c.volPerWell}} of the suspension to each well ({{c.cellsPerWell}}) of the bait-line plates, as on the plate map: one plate for each replicate, seeded from that replicate&rsquo;s own flask. Note the passage, the count and the viability.</li><li>Incubate overnight at 37 &deg;C, 5% CO&#8322;.</li></ol>'},
+    {d:0,title:'Seeding, control line',
+     calc:{kind:'seed',inputs:{cellLine:'HEK293 Flp-In T-REx',cellsPerWell:800000,volPerWell:2000,format:'6',nPlates:4,nWells:16,excess:1.1},own:{nWells:true}},
+     pub:'{{ctrlLine}} cells were seeded at {{c.cellsPerWell}} per well in {{c.volPerWell}} of {{c.medium}} in 6-well plates, each replicate from its own flask.',
+     html:'<ol><li>Count the {{ctrlLine}} cells and resuspend them in {{c.medium}} at {{c.density}} &mdash; {{c.totalVol}} for {{c.wells}}.</li><li>Add {{c.volPerWell}} of the suspension to each well ({{c.cellsPerWell}}) of the control-line plates, as on the plate map: one plate for each replicate, seeded from that replicate&rsquo;s own flask. Note the passage, the count and the viability.</li><li>Incubate overnight at 37 &deg;C, 5% CO&#8322;.</li></ol>'},
+    {d:1,title:'Wash and fresh medium without dox, bait line',
+     calc:{kind:'mixparts',inputs:{name:'normal medium',parts:'',diluent:'DMEM + tet-free FBS',volPerWell:2000,nWells:4,excess:1.1,replace:true},own:{nWells:true}},
+     pub:'The {{baitLine}} wells without doxycycline were washed once with PBS and given {{c.perWell}} of {{c.diluent}}.',
+     html:'<ol><li>Wash the {{c.wells}} bait-line wells without dox once with PBS, as on the plate map.</li><li>Replace the PBS with {{c.perWell}} of {{c.diluent}} ({{c.total}} for {{c.wells}}).</li></ol>'},
+    {d:1,title:'Dox medium, bait line, normal DMEM',
+     calc:{kind:'reagent',inputs:{name:'doxycycline',diluent:'DMEM + tet-free FBS',dilution:33333.333333333336,perWellUL:2000,nWells:12,excess:1.1,replace:true,wellVolUL:2000},own:{nWells:true}},
+     pub:'The {{baitLine}} wells were washed once with PBS and given {{c.perWell}} of {{c.diluent}} containing doxycycline at {{doxNg}} ng/mL.',
+     html:'<ol><li>Make the 1&times; doxycycline medium ({{doxNg}} ng/mL): add {{c.reagentUL}} of {{c.name}} ({{c.dilution}}) to {{c.diluentUL}} of {{c.diluent}} ({{c.total}}: {{c.perWell}} per well for {{c.nWells}}).</li><li>Wash the {{c.nWells}} bait-line wells that take normal medium with dox once with PBS, as on the plate map, and add {{c.perWell}} of the dox medium to each.</li></ol>'},
+    {d:1,title:'Dox medium, bait line, Cys-free DMEM',
+     calc:{kind:'reagent',inputs:{name:'doxycycline',diluent:'Cys-free DMEM + tet-free FBS (Met and Gln re-supplemented)',dilution:33333.333333333336,perWellUL:2000,nWells:8,excess:1.1,replace:true,wellVolUL:2000},own:{nWells:true}},
+     pub:'The {{baitLine}} wells in Cys-free medium were washed once with PBS and given {{c.perWell}} of {{c.diluent}} containing doxycycline at {{doxNg}} ng/mL.',
+     html:'<ol><li>Make the 1&times; doxycycline medium ({{doxNg}} ng/mL): add {{c.reagentUL}} of {{c.name}} ({{c.dilution}}) to {{c.diluentUL}} of {{c.diluent}} ({{c.total}}: {{c.perWell}} per well for {{c.nWells}}).</li><li>Wash the {{c.nWells}} bait-line wells in Cys-free medium once with PBS, as on the plate map, and add {{c.perWell}} of the dox medium to each. The Cys-free swap happens now, with the dox, and only in these wells.</li></ol>'},
+    {d:1,title:'Dox medium, control line, normal DMEM',
+     calc:{kind:'reagent',inputs:{name:'doxycycline',diluent:'DMEM + tet-free FBS',dilution:33333.333333333336,perWellUL:2000,nWells:8,excess:1.1,replace:true,wellVolUL:2000},own:{nWells:true}},
+     pub:'The {{ctrlLine}} wells were washed once with PBS and given {{c.perWell}} of {{c.diluent}} containing doxycycline at {{doxCtrlNg}} ng/mL.',
+     html:'<ol><li>Make the 1&times; doxycycline medium ({{doxCtrlNg}} ng/mL): add {{c.reagentUL}} of {{c.name}} ({{c.dilution}}) to {{c.diluentUL}} of {{c.diluent}} ({{c.total}}: {{c.perWell}} per well for {{c.nWells}}).</li><li>Wash the {{c.nWells}} control-line wells that take normal medium once with PBS, as on the plate map, and add {{c.perWell}} of the dox medium to each.</li></ol>'},
+    {d:1,title:'Dox medium, control line, Cys-free DMEM',w:900,
+     calc:{kind:'reagent',inputs:{name:'doxycycline',diluent:'Cys-free DMEM + tet-free FBS (Met and Gln re-supplemented)',dilution:33333.333333333336,perWellUL:2000,nWells:8,excess:1.1,replace:true,wellVolUL:2000},own:{nWells:true}},
+     pub:'The {{ctrlLine}} wells in Cys-free medium were washed once with PBS and given {{c.perWell}} of {{c.diluent}} containing doxycycline at {{doxCtrlNg}} ng/mL, and all the plates were incubated overnight (about {{doxH}} h) at 37 &deg;C, 5% CO&#8322;.',
+     html:'<ol><li>Make the 1&times; doxycycline medium ({{doxCtrlNg}} ng/mL): add {{c.reagentUL}} of {{c.name}} ({{c.dilution}}) to {{c.diluentUL}} of {{c.diluent}} ({{c.total}}: {{c.perWell}} per well for {{c.nWells}}).</li><li>Wash the {{c.nWells}} control-line wells in Cys-free medium once with PBS, as on the plate map, and add {{c.perWell}} of the dox medium to each. The Cys-free swap happens now, with the dox, and only in these wells.</li><li>Incubate overnight, about {{doxH}} h, at 37 &deg;C, 5% CO&#8322;.</li></ol>'},
+    {d:2,title:'MLN4924 (DMSO in the other wells)',
+     calc:{kind:'spike',inputs:{name:'MLN4924',wellVolUL:2000,foldX:1000,series:false,finalUM:1,stockUM:10000,nWells:16,excess:1.1,diluent:'DMSO'},own:{nWells:true}},
+     pub:'MLN4924 ({{c.finalConc}}) was added directly to each of the MLN4924 wells ({{c.addUL}} into {{c.wellVol}}) and the same volume of DMSO to each of the others, {{mlnH}} h before the biotin pulse.',
+     html:'<ol><li>Make the {{c.fold}} {{c.name}}: {{c.stockUL}} of the {{c.stockConc}} stock + {{c.diluentUL}} {{c.diluent}} = {{c.totalUL}} at {{c.interConc}} ({{c.dilution}}).</li><li>Add {{c.addUL}} straight into each of the {{c.nWells}} that take MLN4924, as on the plate map ({{c.wellVol}} already there &rarr; {{c.newVol}}, {{c.finalConc}} in the well); do not aspirate.</li><li>Add the same {{c.addUL}} of DMSO to each of the other wells, so the vehicle is matched.</li><li>Leave it {{mlnH}} h before the biotin; the MLN4924 stays in the wells until the lysis.</li></ol>'},
+    {d:2,title:'Biotin pulse, bait line',
+     calc:{kind:'spike',inputs:{name:'biotin',wellVolUL:2000,foldX:5,series:false,finalUM:200,stockUM:1000,nWells:20,excess:1.1,diluent:'water'},own:{nWells:true}},
+     pub:'Biotin (stock in water, {{c.stockConc}}) was added directly to each of the {{baitLine}} wells that take it ({{c.addUL}} into {{c.wellVol}}, {{c.finalConc}} in the well); the no-biotin wells received nothing.',
+     html:'<ol><li>Take {{c.totalUL}} of the {{c.stockConc}} biotin stock in {{c.diluent}} ({{c.addUL}} per well for {{c.nWells}}, plus overage); it goes straight into the wells, no intermediate dilution.</li><li>Add {{c.addUL}} of the stock per well ({{c.wellVol}} already in the well &rarr; {{c.newVol}}) to the {{c.nWells}} bait-line wells that take biotin ({{c.finalConc}}), as on the plate map; do not aspirate. The wells without biotin get nothing.</li><li>The pulse runs together with the control line&rsquo;s, with the MLN4924 still in the wells.</li></ol>'},
+    {d:2,title:'Biotin pulse, control line',
+     calc:{kind:'spike',inputs:{name:'biotin',wellVolUL:2002,foldX:5,series:false,finalUM:200,stockUM:1000,nWells:16,excess:1.1,diluent:'water'},own:{nWells:true,wellVolUL:true}},
+     pub:'Biotin (stock in water, {{c.stockConc}}) was added directly to each of the {{ctrlLine}} wells ({{c.addUL}} into {{c.wellVol}}, {{c.finalConc}} in the well) for {{biotinH}} h, together with the bait line, with the MLN4924 still in the wells.',
+     html:'<ol><li>Take {{c.totalUL}} of the {{c.stockConc}} biotin stock in {{c.diluent}} ({{c.addUL}} per well for {{c.nWells}}, plus overage); it goes straight into the wells, no intermediate dilution.</li><li>Add {{c.addUL}} of the stock per well ({{c.wellVol}} already in the well &rarr; {{c.newVol}}) to the {{c.nWells}} control-line wells ({{c.finalConc}}), as on the plate map, at the same time as the bait line; do not aspirate. The conditions for this line may change once the Western blot has set them.</li><li>The pulse is {{biotinH}} h, with the MLN4924 still in the wells.</li></ol>'},
+    {d:2,title:'Stop and wash',
+     pub:'Plates were placed on ice and washed two to three times with ice-cold PBS.',
+     html:'<ol><li>At the end of the pulse put the plates on ice and wash 2&ndash;3&times; with ice-cold PBS.</li></ol>'},
+    {d:2,title:'Lysis',
+     calc:{kind:'mixparts',inputs:{diluent:'RIPA buffer',excess:1.2,nWells:40,name:'lysis buffer',parts:'Protease inhibitors 100x 10',replace:true,volPerWell:80}},
+     pub:'Cells were lysed in {{c.perWell}} per well of RIPA buffer with protease inhibitors for 15 min on ice, and the lysates cleared at 15,000 g for 10 min at 4 &deg;C.',
+     html:'<ol><li>Lyse in {{c.perWell}} per well: {{c.total}} of {{c.name}} for {{c.wells}} &mdash; {{c.partsText}} in {{c.diluent}}. 15 min on ice.</li><li>Spin at 15,000 g for 10 min at 4 &deg;C and keep the supernatant.</li></ol>'},
+    {d:2,title:'BCA',
+     pub:'Protein was quantified by BCA in all {{nSamples}} lysates.',
+     html:'<ol><li>BCA protein quantification of the supernatants ({{nSamples}} lysates).</li><li>Aim for {{proteinUg}} &micro;g of protein per sample in no more than {{maxUL}} &micro;L; note each lysate&rsquo;s concentration for the KingFisher day.</li><li>Store the lysates until the KingFisher run.</li></ol>'}]};
 
 // ── Setup parameters (asked once, up front, in the New-experiment modal) ──
 // Each experiment type declares the handful of decisions you actually make when you plan it.
@@ -4904,7 +4976,8 @@ var SETUP_SCHEMA={
    // levels" across the wells they occupy. Repeating them as "# concentrations 7; Technical
    // replicates 2" is the form dump _pubSetupText exists to stop.
    pubSkip:['nCompounds','nTotal','nConc','nReps']},
-  PR:{plate:false,pubSkip:['samples'],fields:[
+  // A proteomics run may have a plate map too (Jon, 2026-11-24: the TurboID run is 8 six-well plates and later the KingFisher's 96-well plates); off unless a design asks for it.
+  PR:{plate:true,plateOn:false,pubSkip:['samples'],fields:[
     {f:'samples',t:'list',lbl:'Samples',d:'',ph:'One per line \u2014 condition, replicate, what the tube says'},
     {f:'nSamples',t:'num',lbl:'# samples',d:12},
     {f:'proteinUg',t:'num',lbl:'Protein / sample (µg)',d:50},
@@ -7521,8 +7594,45 @@ var PLATE_LAYOUTS=[
      for(var r=0;r<d.r;r++) for(var c=0;c<d.c;c++){
        var half=c<d.c/2?'s2':'s4';
        p.wells[wellIdOf(r,c)]={typeId:half,groupId:'g_'+half}; }
-     return p; }}
+     return p; }},
+  // TurboID proteomics (Jon, 2026-11-24): the bait line has six conditions and the control line four, each in four biological
+  // replicates, and each replicate is its own flask, so a replicate is two 6-well plates (the bait's six wells; the control's four,
+  // two empty). The conditions are the design (Jon's Proteomics List.xlsx), not a setup question: media (normal or Cys-free DMEM),
+  // dox, biotin, MLN4924. The replicates and the two line names are the setup's.
+  {id:'turboid6', label:'TurboID proteomics — a plate per cell line per replicate, 6 + 4 conditions', format:'6',
+   sub:'bait line: 6 conditions (normal or Cys-free DMEM, ± dox, ± biotin, ± MLN4924); control line: 4 (± MLN4924, normal or Cys-free); one plate each per replicate',
+   build:function(o){ return _tidPlates(o)[0]; },
+   more:function(o){ return _tidPlates(o).slice(1); }}
 ];
+// line: 'b' bait, 'c' control · media: Cys-free or normal DMEM · dox, biotin, MLN4924 on (1) or off (0). Colour: the line's hue, darker with MLN4924, warm for Cys-free.
+var _TID_CONDS=[
+  {id:'b1',line:'b',cf:0,dox:1,bio:0,mln:0,color:'#d4e3f5'},
+  {id:'b2',line:'b',cf:0,dox:1,bio:1,mln:0,color:'#a9c8ec'},
+  {id:'b3',line:'b',cf:0,dox:0,bio:1,mln:0,color:'#dfe2ea'},
+  {id:'b4',line:'b',cf:0,dox:1,bio:1,mln:1,color:'#6aa0dc'},
+  {id:'b5',line:'b',cf:1,dox:1,bio:1,mln:0,color:'#f3d3b0'},
+  {id:'b6',line:'b',cf:1,dox:1,bio:1,mln:1,color:'#e9a05c'},
+  {id:'c1',line:'c',cf:0,dox:1,bio:1,mln:0,color:'#c4e5cd'},
+  {id:'c2',line:'c',cf:0,dox:1,bio:1,mln:1,color:'#84c89b'},
+  {id:'c3',line:'c',cf:1,dox:1,bio:1,mln:0,color:'#e6dfa4'},
+  {id:'c4',line:'c',cf:1,dox:1,bio:1,mln:1,color:'#d1c35f'}];
+function _tidName(c){ return (c.cf?'Cys-free':'Normal')+' · '+(c.dox?'+dox':'−dox')+' · '+(c.bio?'+biotin':'−biotin')+' · '+(c.mln?'+MLN4924':'−MLN4924'); }
+function _tidLabel(c){ return [c.cf?'Cys-free':null,c.dox?'dox':null,c.bio?'biotin':null,c.mln?'MLN':null].filter(Boolean).join(' + ')||'none'; }
+// The plates, in the order of the bench: replicate 1's bait plate, replicate 1's control plate, replicate 2's, and so on.
+function _tidPlates(o){
+  o=o||{};
+  var nReps=Math.max(1,Math.min(Math.round(+o.nReps||4),12));
+  var line={b:String(o.baitLine||'mT-LRRC58').trim()||'mT-LRRC58', c:String(o.ctrlLine||'mT-EGFP').trim()||'mT-EGFP'};
+  var out=[];
+  for(var r=1;r<=nReps;r++) ['b','c'].forEach(function(ln){
+    var p=newPlate('6'), list=_TID_CONDS.filter(function(c){ return c.line===ln; });
+    p.title='Replicate '+r+' — '+line[ln];
+    p.cellLine=line[ln];
+    p.note='Replicate '+r+' (its own flask), '+line[ln]+': one well per condition, '+list.length+' of the plate’s 6'+(list.length<6?' (the others stay empty)':'')+'.';
+    p.types=list.map(function(c){ return {id:c.id,name:_tidName(c),color:c.color}; });
+    list.forEach(function(c,i){ p.wells[wellIdOf(Math.floor(i/3),i%3)]={typeId:c.id,label:_tidLabel(c)}; });
+    out.push(p); });
+  return out; }
 function plLayoutMenu(){
   var items=PLATE_LAYOUTS.map(function(L){ return {id:L.id,label:L.label,sub:L.sub,svg:tbSvg(P_GRID),c:'#6d7bd0'}; });
   lbPicker('Start from a layout',items,function(it){
