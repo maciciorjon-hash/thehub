@@ -30,8 +30,9 @@
 //   AR20 one type                every protocol x Protocol/Calculate/Output x every method tab draws its words in the ten roles of docs/UI.md > Protocol type
 //                                (title, heading, subhead, body, caption, label, data, control, badge) and nothing else; no inline font-size/font-family in the source
 //   AR21 stored notes            a stored sticky-notes record missing half of its shape (only `steps`, only `floating`, an array, a string) does not stop Archive starting: it still publishes
-//                                its 35-protocol index and ARCHIVE_PROTOCOL('alphalisa') to the page that hosts it (Labbook), with no page error
-//   AR11 offline                 the installable build, after one visit, reloads with the network gone and still lists 35 protocols
+//                                its 36-protocol index and ARCHIVE_PROTOCOL('alphalisa') to the page that hosts it (Labbook), with no page error
+//   AR22 turboid                 the TurboID / BioID pulldown protocol: its five calculators against hand arithmetic (lysate = ug / conc, every buffer = volume x wells x overage, 10% TFA = V / 9, trypsin ratio from the vial), the sheet's own 4 uL read as 1:300, a lysate too dilute for the well warned about, five stages on the KingFisher day, five boxes
+//   AR11 offline                 the installable build, after one visit, reloads with the network gone and still lists 36 protocols
 //
 //   node tools/archive_audit_invariants.mjs [--only=AR3] [--url=http://127.0.0.1:8807]      exit 1 on any finding
 import { chromium, devices } from 'playwright';
@@ -318,7 +319,7 @@ if (run('AR7')) await guard('AR7', 'data', async () => {
     return out;
   });
   if (r.leftovers.length) bad('AR7', 'protocols that render a leftover token, undefined or NaN: ' + r.leftovers.join(', ')); else ok();
-  if (r.n !== 35 || r.cards !== 35) bad('AR7', `35 protocols expected, data ${r.n} / cards ${r.cards}`); else ok();
+  if (r.n !== 36 || r.cards !== 36) bad('AR7', `36 protocols expected, data ${r.n} / cards ${r.cards}`); else ok();
   if (/Q9NWF9/.test(r.text) || !/DCAF15[^<]{0,12}Q66K64/.test(r.text.replace(/<[^>]+>/g, '').replace(/&quot;/g, '"'))) bad('AR7', 'the AlphaFold example must pair DCAF15 with Q66K64 (Q9NWF9 is RNF216)'); else ok();
   const txt = r.text.replace(/<[^>]+>/g, '');
   if (/multi-cycle kinetics \(MCK\) for high-affinity/i.test(txt) || !/single-cycle kinetics \(SCK\) for high-affinity/i.test(txt)) bad('AR7', 'SPR: single-cycle is for slow off-rates (no regeneration), multi-cycle for fast ones — the text had them the wrong way round'); else ok();
@@ -334,7 +335,7 @@ if (run('AR8')) await guard('AR8', 'bridge', async () => {
   const r = await host.evaluate(() => {
     const out = { bad: [], n: 0 };
     const idx = window.ARCHIVE_INDEX || [];
-    if (idx.length !== 35) out.bad.push('ARCHIVE_INDEX has ' + idx.length);
+    if (idx.length !== 36) out.bad.push('ARCHIVE_INDEX has ' + idx.length);
     const fr = document.getElementById('a').contentDocument;
     idx.filter(p => p.hasCalc).forEach(p => {
       const sch = window.ARCHIVE_CALC_SCHEMA(p.id); if (!sch) { out.bad.push(p.id + ': no schema'); return; }
@@ -820,9 +821,67 @@ if (run('AR21')) await guard('AR21', 'stored notes', async () => {
   if (!r || r.status() !== 200) { await ctx.close(); return; }   // a --url run has no host page
   const d = await p.evaluate(() => ({ n: (window.ARCHIVE_INDEX || []).length, st: (typeof window.ARCHIVE_PROTOCOL === 'function' && (window.ARCHIVE_PROTOCOL('alphalisa') || {}).stages || []).length }));
   if (errs.length) bad('AR21', 'a stored notes record made startup throw: ' + errs[0]); else ok();
-  if (d.n !== 35) bad('AR21', 'the host page received ' + d.n + ' protocols from Archive instead of 35'); else ok();
+  if (d.n !== 36) bad('AR21', 'the host page received ' + d.n + ' protocols from Archive instead of 36'); else ok();
   if (!d.st) bad('AR21', "ARCHIVE_PROTOCOL('alphalisa') returned no stages to the host page"); else ok();
   await ctx.close();
+});
+
+// ═════════ AR22 — the TurboID / BioID pulldown protocol and its five calculators ═════════
+if (run('AR22')) await guard('AR22', 'turboid', async () => {
+  const p = await open();
+  const rows = (vals) => p.evaluate((vals) => {
+    for (const [id, v] of Object.entries(vals)) { const el = document.getElementById(id); if (!el) throw new Error('no #' + id); el.value = v; }
+    calcTurboid();
+    const out = {};
+    ['tk-r1', 'tk-r2', 'tk-r3', 'tk-r4', 'tk-r5'].forEach(r => document.querySelectorAll('#' + r + ' .result-row').forEach(x => {
+      out[x.querySelector('.result-label').textContent.replace(/\s+/g, ' ')] = x.querySelector('.result-val').textContent.replace(/\s+/g, ' '); }));
+    out.__notes = [...document.querySelectorAll('#detail-turboid .proto-note')].map(n => n.textContent).join(' | ');
+    return out;
+  }, vals);
+  const num = (label, r, key, want, tol) => {
+    const k = Object.keys(r).find(x => x.startsWith(key)); if (!k) { bad('AR22', label + ': no row "' + key + '"'); return; }
+    const got = parseFloat(String(r[k]).replace(/,/g, '').match(/[\d.]+/)[0]);
+    if (!(Math.abs(got - want) <= tol)) bad('AR22', label + ': the box says ' + got + ', the arithmetic gives ' + want); else ok();
+  };
+  // 24 samples, overage 1.2 (1.25 for the digestion), the lysate at 1.5 ug/uL
+  let r = await rows({ 'tk-n': 24, 'tk-ug': 300, 'tk-maxvol': 400, 'tk-conc': 1.5, 'tk-resin': 30, 'tk-inputpct': 2.5, 'tk-ex1': 1.2,
+    'tk-n2': 24, 'tk-bead': 30, 'tk-nwash': 2, 'tk-washvol': 200, 'tk-ex2': 1.2,
+    'tk-n3': 24, 'tk-wellvol': 400, 'tk-nrip': 5, 'tk-ndf': 1, 'tk-teab': 100, 'tk-ex3': 1.2,
+    'tk-n4': 24, 'tk-dtt': 10, 'tk-iaa': 12, 'tk-tryp': 5, 'tk-vialug': 100, 'tk-vialul': 400, 'tk-ugin': 300, 'tk-ex4': 1.25,
+    'tk-n5': 24, 'tk-dig': 135, 'tk-load': 300, 'tk-acn': 200, 'tk-eq': 800, 'tk-w1': 800, 'tk-w2': 200, 'tk-elu': 400, 'tk-fa': 40, 'tk-ex5': 1.2 });
+  num('lysate uL (300 / 1.5)', r, 'Lysate per sample', 200, 0.01);
+  num('input uL (2.5% of 200)', r, 'Input kept', 5, 0.01);
+  num('resin uL (30 x 24 x 1.2)', r, 'Agarose Control Resin, in total', 864, 0.5);
+  num('bead slurry uL (30 x 24 x 1.2)', r, 'Bead slurry, in total', 864, 0.5);
+  num('bead wash buffer mL (2 x 200 x 24 x 1.2)', r, 'Binding/Wash Buffer for', 11.52, 0.006);
+  num('each plate of washes mL (400 x 24 x 1.2)', r, 'Each plate of washes', 11.52, 0.006);
+  num('Tris-NP-40 mL (5 plates)', r, '50 mM Tris-HCl + 0.5% NP-40', 57.6, 0.06);
+  num('TEAB mL (100 x 24 x 1.2)', r, '50 mM TEAB, Plate 8', 2.88, 0.006);
+  num('DTT uL (10 x 24 x 1.25)', r, '100 mM DTT, in total', 300, 0.5);
+  num('IAA uL (12 x 24 x 1.25)', r, '100 mM IAA, in total', 360, 0.5);
+  num('trypsin uL (5 x 24 x 1.25)', r, 'Trypsin solution, in total', 150, 0.5);
+  num('trypsin vials (150 uL of a 400 uL vial)', r, 'Trypsin vials to reconstitute', 1, 0);
+  num('trypsin ug per well (5 uL x 0.25)', r, 'Trypsin per well', 1.25, 0.006);
+  if (!/1:240 on 300 µg/.test(r['Trypsin per well'] || '')) bad('AR22', 'the trypsin ratio is not 1:240 (300 ug / 1.25 ug): ' + r['Trypsin per well']); else ok();
+  num('10% TFA uL (135 / 9)', r, '10% TFA into the digest', 15, 0.01);
+  if (!/to 1% in 150 µL/.test(r['10% TFA into the digest'] || '')) bad('AR22', 'the acidified digest is not 135 + 15 = 150 uL: ' + r['10% TFA into the digest']); else ok();
+  num('top-up uL (300 - 150)', r, '1% TFA to bring it to the load volume', 150, 0.01);
+  num('acetonitrile mL (200 x 24 x 1.2)', r, '100% acetonitrile to wet', 5.76, 0.006);
+  num('0.1% TFA mL (1800 x 24 x 1.2)', r, '0.1% TFA (equilibrate', 51.84, 0.006);
+  num('elution mL (400 x 24 x 1.2)', r, '50% acetonitrile / 0.1% TFA to elute', 11.52, 0.006);
+  num('formic acid mL (40 x 24 x 1.2)', r, '5% formic acid to resuspend', 1.15, 0.006);
+  // the sheet's own volumes: 4 uL of a 0.25 ug/uL trypsin on 300 ug is 1:300, not the 1:15 its summary names
+  r = await rows({ 'tk-tryp': 4, 'tk-vialug': 100, 'tk-vialul': 400, 'tk-ugin': 300 });
+  if (!/1:300 on 300 µg/.test(r['Trypsin per well'] || '')) bad('AR22', "the sheet's 4 uL of trypsin is not shown as 1:300: " + r['Trypsin per well']); else ok();
+  // a lysate too dilute for the well says so, with the most the well can hold
+  r = await rows({ 'tk-ug': 300, 'tk-maxvol': 400, 'tk-conc': 0.5 });
+  if (!/most one well can hold is 200 µg/.test(r.__notes)) bad('AR22', 'a lysate at 0.5 ug/uL (600 uL for 300 ug) is not warned about: ' + r.__notes.slice(0, 200)); else ok();
+  const d = await p.evaluate(() => { const D = PROTOCOL_DATA.turboid, c = PROTOCOLS.find(x => x.id === 'turboid');
+    return { days: (D.stages || []).map(s => s.day), cat: c && c.category, boxes: document.querySelectorAll('#detail-turboid .calc-box').length, calc: !!(c && c.hasCalc) }; });
+  if (d.days.join() !== '0,0,0,0,0') bad('AR22', 'the stages fall on days ' + d.days.join() + ', not all on the KingFisher day'); else ok();
+  if (d.cat !== 'proteomics') bad('AR22', 'the card is under ' + d.cat); else ok();
+  if (d.boxes !== 5) bad('AR22', d.boxes + ' calculator boxes, not 5'); else ok();
+  await p.context().close();
 });
 
 // ═════════ AR11 — offline ═════════
@@ -838,7 +897,7 @@ if (run('AR11')) await guard('AR11', 'offline', async () => {
   await pg.evaluate(() => navigator.serviceWorker.ready); await pg.waitForTimeout(1500);
   await ctx.setOffline(true); await pg.reload(); await pg.waitForTimeout(800);
   const n = await pg.evaluate(() => document.querySelectorAll('.proto-card').length);
-  if (n !== 35) bad('AR11', 'offline, the installed build shows ' + n + ' protocols instead of 35'); else ok();
+  if (n !== 36) bad('AR11', 'offline, the installed build shows ' + n + ' protocols instead of 36'); else ok();
   await pg.evaluate(() => { openProtocol('gibson'); showDTab('gibson', 'calc'); }); await pg.waitForTimeout(200);
   const calc = await pg.evaluate(() => document.getElementById('gb-result').textContent.length); if (calc < 40) bad('AR11', 'a calculator is empty offline'); else ok();
   await ctx.close(); s.close();

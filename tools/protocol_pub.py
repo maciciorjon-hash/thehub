@@ -85,6 +85,13 @@ PUB = {
    '{{rvDonorVol}} of Donor mix was added under subdued light, the plate sealed, covered with foil and incubated for {{rvDonorTime}} at room temperature in the dark.',
    'The plate was read on an Alpha Technology-compatible plate reader with the standard AlphaLISA settings.',
  ],
+ 'turboid': [
+   'Lysates (up to {{lysateMaxVol}}, {{lysateUg}} of protein per sample) were precleared with {{resinVol}} of Agarose Control Resin per sample by rotating for {{preclear4C}} at 4 °C and {{preclearRT}} at room temperature and centrifuging at {{spinRpm}} for {{spinTime}}; {{inputPct}} of the lysate was kept as the input.',
+   'Pierce Streptavidin Magnetic Beads ({{beadVol}} of slurry per sample) were washed {{nWash}} with {{washVol}} of Binding/Wash Buffer (50 mM Tris-HCl pH 7.5, 1% NP-40) and resuspended in their original buffer volume.',
+   'Biotinylated proteins were captured on a KingFisher Flex with a 96 deep-well head and 96-tip comb: binding for {{bindTime}} at room temperature, five washes of {{washTime}} in 50 mM Tris-HCl with 0.5% NP-40, a final wash of {{washTime}} in 50 mM Tris-HCl with 150 mM NaCl, and release into {{teabVol}} of 50 mM TEAB; {{beadsKept}} of the washed beads was kept to check the enrichment by western blot.',
+   'The beads were reduced with {{dttVol}} of 100 mM DTT at {{dttTemp}} for {{dttTime}}, alkylated with {{iaaVol}} of 100 mM iodoacetamide for {{iaaTime}} in the dark and digested on the beads with {{trypVol}} of Trypsin Protease Mix for {{digestTime}} at {{digestTemp}}; the released peptides were moved to a low-binding 96-well plate.',
+   'The digests were acidified to {{acidPct}} TFA and desalted on a Sep-Pak tC18 96-well µElution plate (wetted with {{acnVol}} of acetonitrile, equilibrated with {{eqVol}} of 0.1% TFA, washed with {{wash1Vol}} and then {{wash2Vol}} of 0.1% TFA and eluted with {{eluVol}} of 50% acetonitrile, 0.1% TFA), dried in a SpeedVac without heating and resuspended in {{faVol}} of 5% formic acid.',
+ ],
  'ctg2': [
    '',   # reagent thawing
    'Plates were equilibrated to room temperature for ~30 min, CellTiter-Glo 2.0 reagent added at a volume equal to the culture medium, mixed on an orbital shaker for 2 min and luminescence recorded after a 10 min incubation.',
