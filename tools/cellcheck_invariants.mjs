@@ -27,6 +27,8 @@
 //   C14 one logic     the shell's alerts and actions and the copy Incubator carries for standalone use agree on a battery of
 //                     cultures and on every action (node-side, no browser)
 //   C15 sync          the tick that Incubator's log gives a task needs a log made after the task existed; a task you un-ticked is only ticked by hand
+//   C16 week planner  the week grid and its PDF leave out a culture's split and media tasks (chores, not experiments) but keep
+//                     a seed linked to an experiment and every plain task; Today and the day page still list all of them
 //   C7  stable        the rows keep their order while they are answered; no console errors
 //
 //   node tools/cellcheck_invariants.mjs [--base=http://127.0.0.1:PORT]      exit 1 on any finding
@@ -277,6 +279,23 @@ try {
     eq('C15', W + 'not even a log dated later puts the tick back: an un-ticked task is only ticked by hand', await f.evaluate(i => !!LB.data.planner.tasks[i].done, rid), false);
     await f.evaluate(i => togglePlannerTask(i), rid); await p.waitForTimeout(200);
     eq('C15', W + 'and by hand it ticks', await f.evaluate(i => !!LB.data.planner.tasks[i].done, rid), true);
+
+    // C16 — the week planner is for experiments: culture chores stay off it
+    {
+      const r = await f.evaluate(() => {
+        const D = todayStr(), T = LB.data.planner.tasks, mk = (id, text, x) => T[id] = Object.assign({ id, date: D, text, done: false, expId: null, blockId: null, created: Date.now(), updated: Date.now() }, x);
+        mk('w_split', 'SPLITX', { cellId: 'a1', cellKind: 'split' }); mk('w_media', 'MEDIAX', { cellId: 'a1', cellKind: 'media' });
+        mk('w_seed', 'SEEDX', { cellId: 'a1', cellKind: 'seed', expId: 'x1' }); mk('w_plain', 'PLAINX', {});
+        const h = document.createElement('div'); renderWeekPlanner(h);
+        const grid = h.innerText, pdf = buildWeekPrintDoc().replace(/<[^>]+>/g, ' '), day = nbTasksHtml(D);
+        ['w_split', 'w_media', 'w_seed', 'w_plain'].forEach(k => delete T[k]);
+        const has = (s) => ['SPLITX', 'MEDIAX', 'SEEDX', 'PLAINX'].filter(w => s.includes(w));
+        return { grid: has(grid), pdf: has(pdf), day: has(day) };
+      });
+      eq('C16', W + 'the week grid shows the seed and the plain task, not the split or the media change', r.grid, ['SEEDX', 'PLAINX']);
+      eq('C16', W + 'and so does the PDF', r.pdf, ['SEEDX', 'PLAINX']);
+      eq('C16', W + 'the day page still lists all four', r.day, ['SPLITX', 'MEDIAX', 'SEEDX', 'PLAINX']);
+    }
 
     eq('C7', W + 'no console errors', errs, []);
     await ctx.close();

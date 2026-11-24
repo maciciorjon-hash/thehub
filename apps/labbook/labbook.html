@@ -20247,6 +20247,9 @@ var WK_ANCHOR=null; // a date string inside the shown week; null → this week
 var WK_DOW=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 function wkMonday(D){ var d=new Date(D+'T00:00:00'); var off=(d.getDay()+6)%7; return addDays(D,-off); }
 function plannerTasks(){ return (LB.data.planner&&LB.data.planner.tasks)||(LB.data.planner={tasks:{}}).tasks; }
+// The week grid and its PDF are for the experiments: a culture's split or media change is a chore of the day
+// (Today, the day page and Incubator keep it), so it is not drawn there unless it belongs to an experiment (a seed).
+function wkShowsTask(t){ return !(t&&t.cellId&&!t.expId); }
 function tasksForDate(D){ var t=plannerTasks(); return Object.keys(t).map(function(k){return t[k];}).filter(function(x){return x&&x.date===D;}).sort(function(a,b){ return (a.done?1:0)-(b.done?1:0) || (a.created||0)-(b.created||0); }); }
 function wkPrev(){ WK_ANCHOR=addDays(wkMonday(WK_ANCHOR||todayStr()),-7); renderEditor(); }
 function wkNext(){ WK_ANCHOR=addDays(wkMonday(WK_ANCHOR||todayStr()),7); renderEditor(); }
@@ -20452,7 +20455,7 @@ function wkDayBodyHtml(D){
   var groups=[], at={}, free=[];
   function grp(e){ if(!at[e.id]){ at[e.id]={exp:e,blks:[],tks:[]}; groups.push(at[e.id]); } return at[e.id]; }
   blocksForDate(D).forEach(function(bt){ grp(bt.exp).blks.push(bt.block); });
-  tasksForDate(D).forEach(function(t){ var le=t.expId&&LB.data.experiments[t.expId]; if(le) grp(le).tks.push(t); else free.push(t); });
+  tasksForDate(D).filter(wkShowsTask).forEach(function(t){ var le=t.expId&&LB.data.experiments[t.expId]; if(le) grp(le).tks.push(t); else free.push(t); });
   return groups.map(wkExpGroupHtml).join('')+free.map(function(t){ return wkTaskHtml(t,false); }).join('');
 }
 function renderWeekPlanner(host){
@@ -20518,7 +20521,7 @@ function buildWeekPrintDoc(){
     var d=new Date(D+'T00:00:00'), weekend=i>=5, isToday=D===today;
     var blks=blocksForDate(D).map(function(bt){ var e=bt.exp,b=bt.block; var p=projById(e.projectId); var pc=(p&&p.color)||'#5e87c5';
       return '<div class="wp-blk'+(b.done?' done':'')+'" style="border-left-color:'+pc+'"><span class="wp-box"></span><span class="wp-m"><b>'+esc(e.code||e.title||'Exp')+'</b>'+(b.title?'<span>'+esc(b.title)+'</span>':'')+'</span></div>'; }).join('');
-    var tks=tasksForDate(D).map(function(t){ var ex=''; if(t.expId){ var le=LB.data.experiments[t.expId]; if(le) ex=' <span class="wp-ex">['+esc(le.code||le.title||'exp')+']</span>'; }
+    var tks=tasksForDate(D).filter(wkShowsTask).map(function(t){ var ex=''; if(t.expId){ var le=LB.data.experiments[t.expId]; if(le) ex=' <span class="wp-ex">['+esc(le.code||le.title||'exp')+']</span>'; }
       return '<div class="wp-task'+(t.done?' done':'')+'"><span class="wp-box"></span><span>'+esc(t.text)+ex+'</span></div>'; }).join('');
     var body=blks+tks; if(!body) body='<div class="wp-empty">—</div>';
     return '<div class="wp-col'+(weekend?' wp-weekend':'')+(isToday?' wp-today':'')+'"><div class="wp-chd"><div class="wp-dow">'+WK_DOW[i]+'</div><div class="wp-dnum">'+d.getDate()+' '+d.toLocaleDateString('en-GB',{month:'short'})+'</div></div><div class="wp-body">'+body+'</div></div>';
