@@ -8865,7 +8865,12 @@ function plateColLabelsOf(p){ var out={}; if(!p) return out; var per={};
   return out; }
 // What every renderer draws from: the record plus the colours and headers its concentrations give.
 function plateView(p){ if(!p) return p; var v=Object.assign({},p); v.colLabels=plateColLabelsOf(p); v._shW=plateShadeMap(p); return v; }
+// A type's swatch: the colour it paints, or for 'Unused' the hollow ring an unused well is drawn as.
+function _plSwatchCss(t){ return (t&&t.id==='blank')?'background:transparent;box-shadow:inset 0 0 0 1.5px var(--border2)':('background:'+(t&&t.color)); }
 function plateWellColor(p,w){ if(!w) return null;
+  // An unused well is a hollow ring, like a well nobody drew: the grey the palette gave it ('Unused') sat darker than the pastel of the
+  // wells in use, so on a 384 plate with a few used wells the blank ones shouted. Filled = in use, hollow = not (Jon, 2026-11-25).
+  if(w.typeId==='blank') return null;
   // A well that holds a concentration is a point on a dose series even when its type is not in this plate's palette (a
   // layout with its own types, a series painted on fresh wells): it takes the dose colour rather than none, so the series shows.
   var t=plateTypeById(p,w.typeId)||(w.conc?PLATE_TYPES.filter(function(x){ return x.id==='dose'; })[0]:null); if(!t) return null;
@@ -9514,7 +9519,7 @@ function plateToPNG(p,name){
     var ly=top+d.r*W+botH+16;
     x.textAlign='left'; x.font='500 10px ui-sans-serif,system-ui,sans-serif';
     legLines.forEach(function(ln){ var lx=PAD;
-      ln.forEach(function(it){ x.fillStyle=it.t.color; _plRoundRect(x,lx,ly-5,10,10,2); x.fill();
+      ln.forEach(function(it){ x.fillStyle=(it.t.id==='blank')?'#f4f5f8':it.t.color; _plRoundRect(x,lx,ly-5,10,10,2); x.fill();
         x.strokeStyle=line; x.lineWidth=0.7; x.stroke();
         x.fillStyle=ink; x.fillText(it.lbl,lx+15,ly); lx+=it.w; });
       ly+=16; });
@@ -10873,7 +10878,7 @@ function platePreviewHtml(p,key,readonly){ if(!p) return ''; p=plateView(p);
       if(w&&w.groupId&&grouped[w.groupId]) return '';
       return showText?('<span>'+esc(plateWellShort(w))+'</span>'):''; })();
     var wfl=plateWellFlags(w);
-    grid+='<div class="pp-w'+(w?'':' empty')+(_nos?' pp-wn':'')+(wfl?(' '+wfl):'')+'" style="grid-row:'+(r+glOff+RO)+';grid-column:'+(c+1+CO)+';'+(col?'background:'+col:'')+'" title="'+esc(plateWellTip(p,id,w)+((_hasV&&p.values.data[id]!=null)?(' \u00b7 read '+_plTrim(p.values.data[id])):''))+'">'
+    grid+='<div class="pp-w'+((w&&w.typeId!=='blank')?'':' empty')+(_nos?' pp-wn':'')+(wfl?(' '+wfl):'')+'" style="grid-row:'+(r+glOff+RO)+';grid-column:'+(c+1+CO)+';'+(col?'background:'+col:'')+'" title="'+esc(plateWellTip(p,id,w)+((_hasV&&p.values.data[id]!=null)?(' \u00b7 read '+_plTrim(p.values.data[id])):''))+'">'
       +inner+'</div>'; }
   // One number, once, over the wells that hold it.
   nboxes.forEach(function(b){ if(b.n<=1) return;
@@ -10894,7 +10899,7 @@ function platePreviewHtml(p,key,readonly){ if(!p) return ''; p=plateView(p);
     grid+='<div class="pp-gl'+(n?' pp-gl-n':'')+(b.dose?' pp-gl-dose':'')+'" style="grid-row:'+(b.r1+glOff+RO)+'/'+(b.r2+glOff+RO+1)+';grid-column:'+(b.c1+1+CO)+'/'+(b.c2+2+CO)+'" title="'+esc(lbl)+'"><span>'+esc(n||lbl)+'</span></div>'; });
   var _no={RO:RO,CO:CO,hdr:glOff-1,c0:1,d:d};
   NG.items.forEach(function(n){ grid+=_plEdgeHtml(n,_no,false); });
-  var leg=plateUsedTypes(p).map(function(t){ return '<span class="pp-leg-i"><i style="background:'+t.color+'"></i>'
+  var leg=plateUsedTypes(p).map(function(t){ return '<span class="pp-leg-i"><i style="'+_plSwatchCss(t)+'"></i>'
     +(t.no?('<b>'+t.no+'</b> '):'')+esc(t.name)+'</span>'; }).join('');
   var _ow=_plateOwner(key), _nb=(_ow&&_ow.exp&&_ow.exp.type==='NB');
   // Two controls, not seven: Edit is the one you reach for, and the ⋯ (plateMenu) lists the
@@ -11334,7 +11339,7 @@ function plRenderGrid(){ var p=plCur(), host=el('pl-grid'); if(!p||!host) return
       var col=plValueColor(p,id)||plateWellColor(p,w);
       var txt=_nos?plateWellNo(p,w):((w&&w.groupId&&grouped[w.groupId])?'':plateWellShort(w));
       var fl=plateWellFlags(w);
-      h+='<div class="pl-w'+(PL.sel[id]?' sel':'')+(w?'':' empty')+(fl?(' '+fl):'')+'" data-w="'+id+'" style="'+at(r+base,c2+2)+(col?'background:'+col:'')+'"'
+      h+='<div class="pl-w'+(PL.sel[id]?' sel':'')+((w&&w.typeId!=='blank')?'':' empty')+(fl?(' '+fl):'')+'" data-w="'+id+'" style="'+at(r+base,c2+2)+(col?'background:'+col:'')+'"'
         +' title="'+esc(plateWellTip(p,id,w))+'" onmousedown="plWellDown(\''+id+'\',event)" ondblclick="plSelectBlockOf(\''+id+'\')">'
         +(function(){ var vv=(p.values&&p.values.data)?p.values.data[id]:null;
             if(vv!=null&&wpx>=22) return '<span class="pl-wt pl-wv">'+esc(_plTrim(vv))+'</span>';
@@ -11962,7 +11967,7 @@ function plRenderSide(){ plSyncGhosts(); var p=plCur(), host=el('pl-side'); if(!
   var pal=plateTypes(p).map(function(t){ var c=_counts[t.id]||0;
     return '<button class="pl-type'+(_nos?' pl-cond':'')+(PL.type===t.id?' on':'')+(_nos&&!c?' none':'')+'" onclick="plSetType(\''+t.id+'\')" oncontextmenu="ctxPlType(event,\''+t.id+'\')" title="'+esc(t.name)+' — right-click to rename, recolour or remove">'
       +(_nos?('<b class="pl-cond-n">'+(t.no!=null?t.no:'&middot;')+'</b>'):'')
-      +'<i style="background:'+t.color+'"></i><span class="pl-cond-nm">'+esc(t.name)+'</span>'
+      +'<i style="'+_plSwatchCss(t)+'"></i><span class="pl-cond-nm">'+esc(t.name)+'</span>'
       +(_nos?('<span class="pl-cond-c">'+(c?(c+' well'+(c===1?'':'s')):'—')+'</span>'):'')+'</button>'; }).join('')
     +'<button class="pl-type pl-type-add" onclick="plAddType()" title="Add a well type">+</button>';
   var _expFlags=PLATE_FLAGS.filter(function(f){ return (f.types||[]).indexOf((_plExp()||{}).type)>=0; });

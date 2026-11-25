@@ -3796,6 +3796,18 @@ async function suite(opts) {
         if (/edge/i.test(all)) bad('B69', nm + ' edge', 'a step still talks about edge wells');
         if (/\{\{[^}]*\}\}/.test(all)) bad('B69', nm + ' tokens', 'an unfilled token in the steps');
       });
+      // an unused well is a hollow ring (no fill), a used one is a pastel fill: the grey the 'Unused' type carried made the blank wells darker than the wells in use (Jon, 2026-11-25)
+      if (plateWellColor(ea.plate, { typeId: 'blank' }) !== null) bad('B69', 'unused colour', 'an unused well is painted ' + plateWellColor(ea.plate, { typeId: 'blank' }));
+      if (!plateWellColor(ea.plate, ea.plate.wells['D2'])) bad('B69', 'used colour', 'a well in use has no fill');
+      if (!/transparent/.test(_plSwatchCss({ id: 'blank', color: '#b9bcc6' }))) bad('B69', 'unused swatch', 'the legend swatch of Unused is filled');
+      openExp(ea.id); await sleep(400);
+      const pps = [...document.querySelectorAll('.pp-grid .pp-w')];
+      if (pps.length) {
+        const emptyFilled = pps.filter(el => el.classList.contains('empty') && /background:/.test(el.getAttribute('style') || '')).length;
+        const usedHollow = pps.filter(el => !el.classList.contains('empty') && !/background:/.test(el.getAttribute('style') || '')).length;
+        const nEmpty = pps.filter(el => el.classList.contains('empty')).length;
+        if (emptyFilled || usedHollow || nEmpty !== 384 - 136) bad('B69', 'plate drawing', 'hollow wells ' + nEmpty + ' (expected 248), hollow wells with a fill ' + emptyFilled + ', wells in use without one ' + usedHollow);
+      } else bad('B69', 'plate drawing', 'no plate preview was drawn');
       // live: the compounds go on the same day, onto 36 µL (4 µL), after a 2 h wait that follows the seeding; the read is the day after
       const ca = blk(ea, /Compound addition/), sa = blk(ea, /Seed the cells/), ra = blk(ea, /substrate/);
       if (+ca.dayOffset !== 0 || +sa.waitMin !== 120 || +ra.dayOffset !== 1 || +ca.calc.inputs.wellVolUL !== 36 || !/Add 4 µL of the 10×/.test(txt(ea, /Compound addition/)))
