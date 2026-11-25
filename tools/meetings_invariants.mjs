@@ -5,7 +5,7 @@
 //
 //   MT1  nav       Meetings is its own workspace (one entry in Labbook's own switcher, none per project, none in the Experiments column);
 //                  it opens the overview across every project and topic and remembers where you left it; the crumb says where
-//   MT2  create    each of the eight kinds makes a record under the project, with its agenda and notes skeleton; place and
+//   MT2  create    each of the nine kinds makes a record under the project, with its agenda and notes skeleton; place and
 //                  times come from the last meeting of that kind, people from the project's regulars; dated ahead = Planned
 //   MT12 dialog    "+ New" asks for the project or topic (dropdown, with "new project or topic"), the kind and the date, and
 //                  says who is invited; the meeting is filed under what was picked
@@ -29,6 +29,9 @@
 //                  the bulk one has a cover with every open action; the dialog opens on the meeting you are in
 //   MT9  search    the meeting is in the search (title and the words of its notes, actions and people)
 //   MT10 fit       no horizontal overflow and every control inside the sheet at 1280 and 390; the list rows name type and date
+//   MT17 sections  each project decides what its meetings are made of: sections switched off, renamed, moved, and sections of its own (list,
+//                  checklist, text) in the dialog; nothing stored for the default; a template (Safety committee) sets them and the kind; what a
+//                  hidden section holds stays; the page, the PDF and the plain text all follow; hiding Notes takes the toolbar with it
 //   MT11 text      the plain-text copy carries the minutes; no console errors
 //
 //   node tools/meetings_invariants.mjs      exit 1 on any finding
@@ -83,7 +86,7 @@ try {
 
   // ── MT2 create
   const types = await E(() => MTG_TYPES.map(t => t.id));
-  eq('MT2', 'eight kinds', types.length, 8);
+  eq('MT2', 'nine kinds', types.length, 9);
   const pid = await E(() => LB.data.projects[0].id);
   for (const t of types) {
     const r = await E(a => { var m = mtgNew(a.pid, a.t); var T = mtgType(a.t); return { proj: m.projectId, type: m.type, ag: m.agenda.length, want: T.agenda.length, notes: (m.html.match(/<h3>/g) || []).length, wantN: T.notes.length, held: m.status, open: SEL.page === m.id }; }, { pid, t });
@@ -232,7 +235,7 @@ try {
     eq('MT8', 'the project export is a cover and one page per meeting', [r.pages, /Open actions/.test(r.bulk)], [r.n, true]);
     await E(() => openPdfExport()); await p.waitForTimeout(900);
     const dlg = await E(() => ({ rows: [...document.querySelectorAll('#lb-dialog-card .pdfx-row')].filter(x => x.style.display !== 'none').length, sel: document.getElementById('pdfx-scope').value.split(':')[0], frame: !!(document.getElementById('pdfx-frame').srcdoc || '').includes('pd-mt') }));
-    eq('MT8', 'the dialog shows only the meeting boxes, and previews the minutes', [dlg.rows, dlg.sel, dlg.frame], [9, 'meeting', true]);
+    eq('MT8', 'the dialog shows only the meeting boxes, and previews the minutes', [dlg.rows, dlg.sel, dlg.frame], [10, 'meeting', true]);
     await E(() => _lbDlgClose());
   }
 
@@ -268,7 +271,7 @@ try {
     await p.waitForTimeout(300);
     await p.locator('#pane-pages .pages-new').click(); await p.waitForTimeout(300);
     const d = await E(() => ({ opts: [...document.querySelectorAll('#mtg-nd-p option')].map(o => o.textContent), kinds: document.querySelectorAll('#mtg-nd-t option').length, date: document.getElementById('mtg-nd-d').value === todayStr(), ppl: document.getElementById('mtg-nd-ppl').textContent }));
-    eq('MT12', 'the dialog offers every project, "new", eight kinds and today', [d.opts.length, /New project or topic/.test(d.opts[d.opts.length - 1]), d.kinds, d.date], [pj.length + 1, true, 8, true]);
+    eq('MT12', 'the dialog offers every project, "new", nine kinds and today', [d.opts.length, /New project or topic/.test(d.opts[d.opts.length - 1]), d.kinds, d.date], [pj.length + 1, true, 9, true]);
     yes('MT12', 'a project with no history says it has no regulars: ' + d.ppl, /No regulars yet/.test(d.ppl));
     const B = pj[1], A = pj[0];
     await p.locator('#mtg-nd-p').selectOption(B); await p.locator('#mtg-nd-t').selectOption('tap'); await p.locator('#lb-dialog-card .modal-act .btn', { hasText: 'Create' }).click(); await p.waitForTimeout(400);
@@ -379,6 +382,80 @@ try {
     eq('MT16', 'Delete its meetings empties the project and keeps it', await E(a => [mtgList(a.other).length, !!projById(a.other)], { other }), [0, true]);
     yes('MT16', 'the deleted meetings are in Deleted items (' + want + ')', await E(w => Object.values(LB.data.trash || {}).filter(t => t.kind === 'meeting').length >= w || (LB.data.trash || []).filter && (LB.data.trash || []).filter(t => t.kind === 'meeting').length >= w, want));
     await E(() => { MTG_PROJ = ''; Object.keys(LB.data.meetings).forEach(k => delete LB.data.meetings[k]); });
+  }
+
+  // ── MT17 sections: a project that is not science
+  {
+    const pj = await E(() => { addProject('Safety zz'); return LB.data.projects[LB.data.projects.length - 1].id; });
+    const heads = () => E(() => [...document.querySelectorAll('#pane-ed .mtg-sh .exp-sec-t')].map(x => x.textContent));
+    await E(a => { mtgNew(a.pj, 'group'); }, { pj }); await p.waitForTimeout(350);
+    eq('MT17', 'no layout stored = every section, in the default order', [await E(a => projById(a.pj).mtgLayout === undefined, { pj }), await heads()],
+      [true, ['Purpose', 'People', 'Agenda', 'Notes', 'Decisions', 'Action items', 'In one line', 'Experiments discussed', 'Next meeting']]);
+    const mid = await E(() => mtgCur().id);
+    await E(a => { var m = mtgCur(); m.exps = []; m.decisions = [{ id: 'dd1', t: 'Wear goggles' }]; m.actions = [{ id: 'aa1', t: 'Check the eyewash', who: 'Ana', due: '', done: 0 }]; m.purpose = 'Quarterly look'; m.attendees = [{ n: 'Ana Ruiz', a: 0 }, { n: 'Bo Li', a: 1 }]; save(); renderEditor(); }, { pj });
+    // the dialog: pick the Safety template, save
+    await p.locator('#pane-ed .mtg-acts button', { hasText: 'Sections' }).click(); await p.waitForSelector('#lb-dialog.open .mtg-sd');
+    await p.selectOption('#mtg-sd-pre', 'safety'); await p.waitForTimeout(150);
+    await p.locator('#lb-dialog-card .btn', { hasText: /^Save$/ }).click(); await p.waitForTimeout(350);
+    eq('MT17', 'the Safety template reorders, renames and adds the lists',
+      await heads(), ['Attendance', 'Agenda', 'Incidents and near misses', 'Inspections and audits', 'Risk assessments and COSHH', 'Training and compliance', 'Minutes', 'Decisions', 'Action items', 'Key message', 'Next meeting']);
+    eq('MT17', 'no Purpose and no Experiments on the page, the toolbar and the editor are still there', await E(() => [!/Purpose|Experiments discussed/.test(document.getElementById('pane-ed').innerText), !!document.querySelector('#pane-ed .jr-b'), !!document.querySelector('#pane-ed .jr-ed')]), [true, true, true]);
+    const k = await E(a => Object.fromEntries(_mtgLayout(a.pj).secs.filter(s => s.custom).map(s => [s.n, s.k])), { pj });
+    // type a list with real keys
+    const inc = '#mtg-cx-' + k['Incidents and near misses'];
+    await p.locator(inc + ' ~ .mtg-add').first().click(); await p.waitForTimeout(150);
+    await p.keyboard.type('Slip in corridor'); await p.keyboard.press('Enter'); await p.waitForTimeout(150); await p.keyboard.type('Near miss at the fume hood'); await p.waitForTimeout(150);
+    eq('MT17', 'a list of your own takes lines with Enter and keeps them in the meeting', await E(a => (mtgMap()[a.mid].cx[a.k] || []).map(x => x.t), { mid, k: k['Incidents and near misses'] }), ['Slip in corridor', 'Near miss at the fume hood']);
+    eq('MT17', 'its rows are numbered', await E(a => [...document.querySelectorAll('#pane-ed .mtg-sec-cx-' + a.k + ' .mtg-dn')].map(x => x.textContent), { k: k['Incidents and near misses'] }), ['1', '2']);
+    // a checklist and a text section added in the dialog
+    await p.locator('#pane-ed .mtg-acts button', { hasText: 'Sections' }).click(); await p.waitForSelector('#lb-dialog.open .mtg-sd');
+    await p.fill('#mtg-sd-newn', 'Fire drill'); await p.selectOption('#mtg-sd-newk', 'checks'); await p.locator('#lb-dialog-card .btn', { hasText: /^Add section$/ }).click(); await p.waitForTimeout(120);
+    await p.fill('#mtg-sd-newn', 'Note for the fire warden'); await p.selectOption('#mtg-sd-newk', 'text'); await p.locator('#lb-dialog-card .btn', { hasText: /^Add section$/ }).click(); await p.waitForTimeout(120);
+    // rename Action items, hide Decisions, move Minutes up one
+    const row = n => p.locator('#lb-dialog-card .mtg-sd-row', { has: p.locator('input.mtg-sd-name[value="' + n + '"]') });
+    await row('Action items').locator('input.mtg-sd-name').fill('Actions and owners');
+    await row('Decisions').locator('input[type=checkbox]').first().uncheck(); await p.waitForTimeout(120);
+    await row('Minutes').locator('button[aria-label="Move up"]').click(); await p.waitForTimeout(120);
+    yes('MT17', 'a hidden section says how many meetings still hold something in it', await E(() => /in 1/.test(document.querySelector('#lb-dialog-card .mtg-sd-row.off .mtg-sd-used')?.textContent || '')));
+    await p.locator('#lb-dialog-card .btn', { hasText: /^Save$/ }).click(); await p.waitForTimeout(350);
+    const h2 = await heads();
+    eq('MT17', 'renamed, hidden and moved: the page follows', h2, ['Attendance', 'Agenda', 'Incidents and near misses', 'Inspections and audits', 'Risk assessments and COSHH', 'Minutes', 'Training and compliance', 'Actions and owners', 'Key message', 'Next meeting', 'Fire drill', 'Note for the fire warden']);
+    yes('MT17', 'Decisions is gone from the page, Actions and owners is there, Minutes sits before Training and compliance', h2.indexOf('Decisions') < 0 && h2.includes('Actions and owners') && h2.indexOf('Minutes') < h2.indexOf('Training and compliance') && h2.indexOf('Minutes') >= 0);
+    eq('MT17', 'the two new sections are at the end', h2.slice(-2), ['Fire drill', 'Note for the fire warden']);
+    eq('MT17', 'hiding a section does not empty it', await E(a => [mtgMap()[a.mid].decisions.length, mtgMap()[a.mid].decisions[0].t], { mid }), [1, 'Wear goggles']);
+    // checklist: add, tick, count; text: typed
+    await p.locator('#mtg-cx-' + (await E(a => _mtgLayout(a.pj).secs.filter(s => s.n === 'Fire drill')[0].k, { pj })) + ' ~ .mtg-add').first().click(); await p.waitForTimeout(150);
+    await p.keyboard.type('Exits clear'); await p.waitForTimeout(100);
+    await p.locator('#pane-ed .mtg-row input[type=checkbox][onchange*="mtgCxTick"]').first().check(); await p.waitForTimeout(150);
+    eq('MT17', 'ticking a check updates the row and the header count', await E(() => [document.querySelector('#pane-ed .mtg-row.done input[onchange*="mtgCxTick"]') !== null, /1\/1 done/.test(document.getElementById('pane-ed').innerText)]), [true, true]);
+    await p.locator('#pane-ed textarea.mtg-ta').fill('Warden: Ana\nAssembly point: car park'); await p.waitForTimeout(150);
+    eq('MT17', 'a text section keeps what was typed, with its line break', await E(a => { var s = _mtgLayout(a.pj).secs.filter(x => x.n === 'Note for the fire warden')[0]; return _mtgCxText(mtgMap()[a.mid], s.k); }, { pj, mid }), 'Warden: Ana\nAssembly point: car park');
+    // the PDF and the plain text follow the layout
+    const out = await E(a => { var m = mtgMap()[a.mid], doc = _pdMeetingHtml(m, pdfOpts()), off = _pdMeetingHtml(m, Object.assign(pdfOpts(), { mCustom: 0 })); return { doc: doc.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' '), off: off.replace(/<[^>]+>/g, ' '), txt: _mtgText(m), srch: _mtgSearchText(m) }; }, { mid });
+    for (const w of ['Attendance', 'Incidents and near misses', 'Slip in corridor', 'Near miss at the fume hood', 'Fire drill', 'Exits clear', 'Note for the fire warden', 'Assembly point: car park', 'Actions and owners'])
+      yes('MT17', 'the PDF carries "' + w + '"', out.doc.includes(w));
+    yes('MT17', 'the PDF leaves out the hidden Decisions and the experiments', !/Decisions|Wear goggles|Experiments discussed/.test(out.doc));
+    yes('MT17', 'the "Sections of your own" box takes them off the paper', !/Incidents and near misses|Slip in corridor|Fire drill/.test(out.off) && /Actions and owners/.test(out.off));
+    yes('MT17', 'the plain text has the lists, the check state and the renamed heading', /Incidents and near misses\n1\. Slip in corridor\n2\. Near miss/.test(out.txt) && /\[ \] Exits clear|\[x\] Exits clear/.test(out.txt) && /Actions and owners/.test(out.txt) && !/Wear goggles/.test(out.txt));
+    yes('MT17', 'the search reads sections of your own', /fume hood/.test(out.srch) && /car park/.test(out.srch));
+    // the other meeting kinds of a project with the template start as a Safety committee, with its agenda
+    eq('MT17', 'the template offers the Safety committee kind, with its agenda', await E(() => [mtgType('safety').name, mtgType('safety').agenda.length, mtgType('safety').agenda[2]]), ['Safety committee', 7, 'Incidents and near misses']);
+    // hide Minutes: the toolbar and the editor go, the minutes stay
+    await E(a => { var p = projById(a.pj); p.mtgLayout.secs.forEach(s => { if (s.k === 'notes') s.on = 0; }); mtgMap()[a.mid].html = '<div>Kept text</div>'; save(); renderEditor(); }, { pj, mid }); await p.waitForTimeout(300);
+    eq('MT17', 'with Minutes hidden there is no toolbar and no editor, and the text is kept', await E(a => [!!document.querySelector('#pane-ed .jr-b'), !!document.querySelector('#pane-ed .jr-ed'), mtgMap()[a.mid].html], { mid }), [false, false, '<div>Kept text</div>']);
+    // a new project from the New meeting dialog with the template: layout saved, kind chosen
+    await E(() => { mtgOpen('', null); }); await p.waitForTimeout(250);
+    await E(() => { mtgNewDialog(); }); await p.waitForSelector('#mtg-nd-p');
+    await p.selectOption('#mtg-nd-p', '__new'); await p.fill('#mtg-nd-new', 'H&S committee'); await p.selectOption('#mtg-nd-lay', 'safety'); await p.waitForTimeout(100);
+    eq('MT17', 'choosing the template in the dialog picks the Safety committee kind', await E(() => document.getElementById('mtg-nd-t').value), 'safety');
+    await p.locator('#lb-dialog-card .btn', { hasText: /^Create$/ }).click(); await p.waitForTimeout(500);
+    const np = await E(() => { var m = mtgCur(), p = projById(m.projectId); return { name: p.name, type: m.type, secs: (p.mtgLayout && p.mtgLayout.secs.filter(s => s.on).map(s => s.n)) || [], agenda: m.agenda.length }; });
+    eq('MT17', 'a new project made with the template carries its layout; the first meeting is a Safety committee', [np.name, np.type, np.agenda, np.secs.includes('Incidents and near misses'), np.secs.includes('Experiments discussed')], ['H&S committee', 'safety', 7, true, false]);
+    // back to the default: nothing stored again
+    await p.locator('#pane-ed .mtg-acts button', { hasText: 'Sections' }).click(); await p.waitForSelector('#lb-dialog.open .mtg-sd');
+    await p.selectOption('#mtg-sd-pre', 'research'); await p.waitForTimeout(120); await p.locator('#lb-dialog-card .btn', { hasText: /^Save$/ }).click(); await p.waitForTimeout(350);
+    eq('MT17', 'saving the research template stores nothing', await E(() => [mtgCur() && projById(mtgCur().projectId).mtgLayout === undefined, [...document.querySelectorAll('#pane-ed .mtg-sh .exp-sec-t')].length]), [true, 9]);
+    await E(() => { Object.keys(LB.data.meetings).forEach(k => delete LB.data.meetings[k]); });
   }
 
   eq('MT11', 'no console errors', errs, []);

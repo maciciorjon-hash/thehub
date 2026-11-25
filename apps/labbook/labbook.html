@@ -2826,6 +2826,33 @@ body.lb-nonav #mobile-nav-btn{display:none!important;}
 .mtg-quick{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;}
 .mtg-quick .mtg-add{margin-top:0;}
 .mtg-sheet .rt.jr-ed{min-height:260px;}
+.mtg-ta{display:block;width:100%;box-sizing:border-box;resize:vertical;min-height:84px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-2);color:var(--text);font:var(--fs-4)/1.5 var(--sans);padding:8px 10px;outline:none;}
+.mtg-ta:focus{border-color:var(--accent);}
+.mtg-ta::placeholder{color:var(--text3);}
+/* the sections dialog */
+.modal.mtg-sd{display:flex;flex-direction:column;overflow:hidden;width:min(640px,94vw);}
+.mtg-sd-body{overflow-y:auto;min-height:0;flex:1 1 auto;margin:0 -6px;padding:0 6px;}
+.mtg-sd-top{display:flex;align-items:center;gap:10px;}
+.mtg-sd-top label{font-size:var(--fs-3);font-weight:600;color:var(--text2);}
+.mtg-sd-top select{flex:1 1 auto;min-width:0;}
+.mtg-sd-note{font-size:var(--fs-2);color:var(--text3);margin:6px 0 10px;line-height:1.45;}
+.mtg-sd-list{display:grid;gap:2px;}
+.mtg-sd-row{display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid var(--border);}
+.mtg-sd-row.off .mtg-sd-name{color:var(--text3);}
+.mtg-sd-name{flex:1 1 auto;min-width:0;background:none;border:0;border-bottom:1px dashed var(--border2);color:var(--text);font:var(--fs-4) var(--sans);padding:5px 2px;outline:none;border-radius:0;}
+.mtg-sd-name:focus{border-bottom-color:var(--accent);border-bottom-style:solid;}
+.mtg-sd-tag{flex:none;min-width:0;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fs-1);color:var(--text3);}
+.mtg-sd-used{flex:none;font-size:var(--fs-1);color:var(--warn-ink);background:color-mix(in srgb,var(--warn) 12%,var(--surface));border-radius:var(--r-4);padding:1px 7px;}
+.mtg-sd-nox{flex:none;width:26px;}
+.mtg-sd-add{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;}
+.mtg-sd-add input{flex:1 1 180px;min-width:0;}
+.mtg-sd-add select{flex:1 1 180px;min-width:0;}
+.mtg-sd-fh{font-size:var(--fs-3);font-weight:600;color:var(--text2);margin:16px 0 6px;}
+.mtg-sd-fields{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:var(--fs-3);}
+.mtg-sd-fields label{display:inline-flex;align-items:center;gap:6px;cursor:pointer;}
+.mtg-sd-hint{font-size:var(--fs-2);color:var(--text3);line-height:1.45;margin-top:14px;}
+.mtg-sd-top select,.mtg-sd-add input,.mtg-sd-add select{background:var(--surface2);border:1px solid var(--border2);border-radius:var(--r-1);padding:6px 9px;font-family:var(--sans);font-size:var(--fs-3);color:var(--text);outline:none;box-sizing:border-box;}
+.mtg-sd-top select:focus,.mtg-sd-add input:focus,.mtg-sd-add select:focus{border-color:var(--accent);}
 @media (max-width:640px){
   .mtg-act{flex-wrap:wrap;}
   .mtg-act .mtg-in:not(.mtg-who-in):not(.mtg-due-in){flex:1 1 60%;}
@@ -19780,13 +19807,66 @@ var MTG_TYPES=[
   {id:'planning',name:'Planning',c:'olive',
    agenda:['Goals','Experiments to run','Reagents and resources','Timeline','Who does what'],
    notes:['Plan','Open questions']},
+  {id:'safety',name:'Safety committee',c:'amber',
+   agenda:['Apologies and minutes of the last meeting','Matters arising and open actions','Incidents and near misses','Inspections and audits','Risk assessments and COSHH','Training and compliance','Any other business'],
+   notes:['Discussion']},
   {id:'other',name:'Other',c:'slate',agenda:[],notes:[]}
 ];
+// ── Sections ─────────────────────────────────────────────────────────────────────────────────────────
+// A project or topic decides what its meetings are made of: which sections show, in which order, and what each is called
+// (`p.mtgLayout={secs:[{k,on,n,custom,kind}],fields:{place,link,chair,scribe}}`; nothing stored = the research default).
+// A section switched off is hidden, never emptied: what the meetings already hold stays and comes back when it is switched on.
+// Sections of your own hold a list, a checklist or a paragraph per meeting, in `m.cx[key]`.
+var MTG_SECS=[{k:'purpose',n:'Purpose'},{k:'people',n:'People'},{k:'carry',n:'Open from earlier meetings'},{k:'agenda',n:'Agenda'},{k:'notes',n:'Notes'},
+  {k:'decisions',n:'Decisions'},{k:'actions',n:'Action items'},{k:'summary',n:'In one line'},{k:'exps',n:'Experiments discussed'},{k:'next',n:'Next meeting'}];
+var MTG_FIELDS=[['place','Where'],['link','Call link'],['chair','Chair'],['scribe','Minutes by']];
+var MTG_CKINDS=[['list','List','numbered lines'],['checks','Checklist','tick boxes'],['text','Text','a paragraph']];
+// entries: [key, name|null, on(0|1), kind]; key '+' makes a section of your own
+var MTG_PRESETS=[
+  {id:'research',name:'Research group',note:'The lot: purpose, agenda, notes, decisions, actions, experiments.',secs:null},
+  {id:'committee',name:'Committee or admin',note:'Attendance, agenda, minutes, decisions and actions. No experiments.',kind:'tap',
+   secs:[['people','Attendance'],['carry'],['agenda'],['notes','Minutes'],['decisions'],['actions'],['summary','Key message'],['next'],['purpose',null,0],['exps',null,0]]},
+  {id:'safety',name:'Safety committee',note:'Attendance, agenda, incidents, inspections, risk assessments, training, minutes, decisions, actions.',kind:'safety',
+   secs:[['people','Attendance'],['carry'],['agenda'],['+','Incidents and near misses','list'],['+','Inspections and audits','list'],['+','Risk assessments and COSHH','list'],['+','Training and compliance','list'],
+     ['notes','Minutes'],['decisions'],['actions'],['summary','Key message'],['next'],['purpose',null,0],['exps',null,0]]}
+];
+function _mtgBuiltin(k){ return MTG_SECS.filter(function(b){ return b.k===k; })[0]||null; }
+function _mtgPresetLayout(pr){ if(!pr||!pr.secs) return null;
+  return {secs:pr.secs.map(function(e){ var b=e[0]==='+'?null:_mtgBuiltin(e[0]);
+    return b?{k:b.k,on:e[2]===0?0:1,n:e[1]||b.n}:{k:'c'+uid(),on:1,n:e[1],custom:1,kind:e[2]||'list'}; }),fields:null,defKind:pr.kind||''}; }
+// The layout a project's meetings really use: every built-in section once, saved order first, plus its own sections.
+function _mtgLayout(pid){ var p=projById(pid), sv=p&&p.mtgLayout, secs=[], seen={};
+  ((sv&&sv.secs)||[]).forEach(function(s){ if(!s||!s.k||seen[s.k]) return; var b=_mtgBuiltin(s.k); if(!b&&!s.custom) return; seen[s.k]=1;
+    secs.push({k:s.k,on:s.on===0?0:1,n:String(s.n||'').trim()||(b?b.n:'Section'),custom:b?0:1,kind:b?'':(s.kind==='checks'||s.kind==='text'?s.kind:'list')}); });
+  MTG_SECS.forEach(function(b){ if(!seen[b.k]) secs.push({k:b.k,on:1,n:b.n,custom:0,kind:''}); });
+  var f={}; MTG_FIELDS.forEach(function(x){ f[x[0]]=!(sv&&sv.fields&&sv.fields[x[0]]===0); });
+  return {secs:secs,fields:f,defKind:(sv&&sv.defKind)||''}; }
+function _mtgSecOn(L,k){ for(var i=0;i<L.secs.length;i++) if(L.secs[i].k===k) return !!L.secs[i].on; return false; }
+function _mtgSecName(L,k){ for(var i=0;i<L.secs.length;i++) if(L.secs[i].k===k) return L.secs[i].n; var b=_mtgBuiltin(k); return b?b.n:k; }
+function _mtgLayoutIsDefault(L){ if(MTG_FIELDS.some(function(x){ return !L.fields[x[0]]; })) return false; if(L.defKind) return false;
+  return L.secs.length===MTG_SECS.length&&L.secs.every(function(s,i){ return s.k===MTG_SECS[i].k&&s.on&&s.n===MTG_SECS[i].n; }); }
+function _mtgLayoutSave(pid,L){ var p=projById(pid); if(!p) return; undoMark('Meeting sections',['projects']);
+  if(_mtgLayoutIsDefault(L)) delete p.mtgLayout;
+  else p.mtgLayout={secs:L.secs.map(function(s){ var o={k:s.k,on:s.on?1:0,n:s.n}; if(s.custom){ o.custom=1; o.kind=s.kind; } return o; }),fields:MTG_FIELDS.reduce(function(o,x){ if(!L.fields[x[0]]) o[x[0]]=0; return o; },{}),defKind:L.defKind||''};
+  save(); }
+// A meeting's section of its own: the rows of a list or checklist, or the text of a paragraph.
+function _mtgCx(m,k){ return (m.cx&&m.cx[k])||null; }
+function _mtgCxRows(m,k){ var a=_mtgCx(m,k); return Array.isArray(a)?a.filter(function(x){ return x&&(x.t||'').trim(); }):[]; }
+function _mtgCxText(m,k){ var v=_mtgCx(m,k); return typeof v==='string'?v:''; }
+function _mtgCxHas(m,s){ return s.kind==='text'?!!_mtgCxText(m,s.k).trim():_mtgCxRows(m,s.k).length>0; }
+// How many of a project's meetings hold something in a section (shown beside a section that is switched off).
+function _mtgSecUsed(pid,k){ var n=0; mtgList(pid).forEach(function(m){
+  var has=k==='purpose'?!!(m.purpose||'').trim():k==='people'?(m.attendees||[]).length>0:k==='agenda'?(m.agenda||[]).some(function(a){ return (a.t||'').trim(); }):k==='notes'?_noteHasContent(m.html):
+    k==='decisions'?(m.decisions||[]).some(function(a){ return (a.t||'').trim(); }):k==='actions'?_mtgOpenCount(m)>0||(m.actions||[]).length>0:k==='summary'?!!(m.summary||'').trim():k==='exps'?(m.exps||[]).length>0:
+    k==='next'?!!(m.next&&m.next.date):(!_mtgBuiltin(k)?(_mtgCxRows(m,k).length>0||!!_mtgCxText(m,k).trim()):false);
+  if(has) n++; }); return n; }
 var MTG_STATUS=[['planned','Planned'],['held','Held'],['cancelled','Cancelled']];
 var MTG_ICON='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><path d="M3.5 19c.6-3 2.8-4.6 5.5-4.6s4.9 1.6 5.5 4.6"/><circle cx="17" cy="9" r="2.3"/><path d="M16 14.3c2.4-.2 4.3 1.1 4.8 3.7"/></svg>';
 var MTG_P_DL='<path d="M12 3v12"/><path d="M8 11l4 4 4-4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/>';
 var MTG_P_COPY='<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2"/>';
 var MTG_P_OPEN='<path d="M14 4h6v6M20 4l-9 9M18 14v4a2 2 0 01-2 2H6a2 2 0 01-2-2V8a2 2 0 012-2h4"/>';
+var MTG_P_SEC='<rect x="3.5" y="4.5" width="17" height="5" rx="1.5"/><rect x="3.5" y="13" width="9" height="6.5" rx="1.5"/><path d="M16 14.5h4.5M16 18h4.5"/>';
+var MTG_P_UP='<path d="M6 15l6-6 6 6"/>', MTG_P_DOWN='<path d="M6 9l6 6 6-6"/>';
 var MTG_P_CAL='<rect x="3.5" y="4.5" width="17" height="16" rx="2"/><path d="M3.5 9.5h17M8 2.5v4M16 2.5v4"/>';
 var MTG_Q='', MTG_OWNER='', MTG_PROJ='', MTG_VIEW='project', _mtgListT=null;
 
@@ -19870,17 +19950,22 @@ function mtgNewDialog(pid,tid){
     +'<div class="exh-fld"><label for="mtg-nd-p">Project or topic</label><select id="mtg-nd-p" onchange="_mtgNdChange()">'
     +LB.data.projects.map(function(p){ return '<option value="'+esc(p.id)+'"'+(p.id===cur?' selected':'')+'>'+esc(p.name)+'</option>'; }).join('')+'<option value="__new">+ New project or topic\u2026</option></select>'
     +'<input id="mtg-nd-new" type="text" placeholder="Name of the project or topic" style="display:none" onkeydown="if(event.key===\'Enter\'){event.preventDefault();_mtgNdGo();}"></div>'
+    +'<div class="exh-fld" id="mtg-nd-layw" style="display:none"><label for="mtg-nd-lay">What its meetings are made of</label><select id="mtg-nd-lay" onchange="_mtgNdLay()">'+MTG_PRESETS.map(function(x){ return '<option value="'+x.id+'">'+esc(x.name)+'</option>'; }).join('')+'</select><div class="mtg-sd-note" id="mtg-nd-layn">'+esc(MTG_PRESETS[0].note)+' You can change the sections later from any meeting.</div></div>'
     +'<div class="exh-fld"><label for="mtg-nd-t">Kind</label><select id="mtg-nd-t">'+MTG_TYPES.map(function(t){ return '<option value="'+t.id+'"'+(t.id===(tid||'group')?' selected':'')+'>'+esc(t.name)+'</option>'; }).join('')+'</select></div>'
     +'<div class="exh-fld"><label for="mtg-nd-d">Date</label><input id="mtg-nd-d" type="date" value="'+todayStr()+'"></div>'
     +'<div class="mtg-nd-ppl" id="mtg-nd-ppl"></div></div>'
     +'<div class="modal-act"><span class="grow"></span><button class="btn ghost" onclick="_lbDlgClose()">Cancel</button><button class="btn" onclick="_mtgNdGo()">Create</button></div>';
-  d._onCancel=_lbDlgClose; d.classList.add('open'); _mtgNdChange(); setTimeout(function(){ var t=el('mtg-nd-t'); if(t) t.focus(); },40); }
-function _mtgNdChange(){ var s=el('mtg-nd-p'), n=el('mtg-nd-new'), b=el('mtg-nd-ppl'); if(!s||!b) return;
-  var isNew=s.value==='__new'; if(n){ n.style.display=isNew?'':'none'; if(isNew) n.focus(); }
+  d._onCancel=_lbDlgClose; d.classList.add('open'); _mtgNdChange(!!tid); setTimeout(function(){ var t=el('mtg-nd-t'); if(t) t.focus(); },40); }
+function _mtgNdLay(){ var l=el('mtg-nd-lay'), pr=l&&MTG_PRESETS.filter(function(x){ return x.id===l.value; })[0], t=el('mtg-nd-t'), n=el('mtg-nd-layn'); if(!pr) return;
+  if(n) n.textContent=pr.note+' You can change the sections later from any meeting.'; if(t&&pr.kind) t.value=pr.kind; }
+function _mtgNdChange(keepKind){ var s=el('mtg-nd-p'), n=el('mtg-nd-new'), b=el('mtg-nd-ppl'); if(!s||!b) return;
+  var isNew=s.value==='__new'; if(n){ n.style.display=isNew?'':'none'; if(isNew) n.focus(); } var lw=el('mtg-nd-layw'); if(lw) lw.style.display=isNew?'':'none';
+  if(!keepKind&&!isNew){ var t=el('mtg-nd-t'), L=mtgList(s.value), k=(L[0]&&L[0].type)||_mtgLayout(s.value).defKind; if(t&&k) t.value=k; }
   var r=isNew?[]:_mtgRoster(s.value);
   b.innerHTML=isNew?'A new project has no regulars yet; add people on the meeting and star the ones who always come.':(r.length?('<b>Invited</b> '+r.map(esc).join(', ')+'<span>the regulars of this project; take anyone off on the meeting</span>'):'No regulars yet: add people on the meeting and star the ones who always come.'); }
 function _mtgNdGo(){ var s=el('mtg-nd-p'), t=el('mtg-nd-t'), dt=el('mtg-nd-d'); if(!s||!t) return; var pid=s.value, nm=(el('mtg-nd-new')||{}).value;
-  if(pid==='__new'){ nm=String(nm||'').trim(); if(!nm){ toast('Name the project or topic first.'); return; } addProject(nm); pid=LB.data.projects[LB.data.projects.length-1].id; }
+  if(pid==='__new'){ nm=String(nm||'').trim(); if(!nm){ toast('Name the project or topic first.'); return; } addProject(nm); pid=LB.data.projects[LB.data.projects.length-1].id;
+    var lay=el('mtg-nd-lay'), pr=lay&&MTG_PRESETS.filter(function(x){ return x.id===lay.value; })[0], pl=_mtgPresetLayout(pr); if(pl) _mtgLayoutSave(pid,{secs:pl.secs,fields:_mtgLayout(pid).fields,defKind:pl.defKind}); }
   try{ localStorage.setItem('lb_mtg_proj',pid); }catch(e){}
   var kind=t.value, date=(dt&&dt.value)||todayStr(); _lbDlgClose(); MTG_PROJ=MTG_PROJ&&MTG_PROJ!==pid?pid:MTG_PROJ; mtgNew(pid,kind,{date:date}); }
 function delMeeting(id){ var m=mtgMap()[id]; if(!m) return;
@@ -19974,23 +20059,29 @@ function mtgDate(v){ var m=mtgCur(); if(!m||!v) return; mtgSet('date',v,true);
 function mtgTime(f,v){ mtgSet(f,v,true); var w=document.querySelector('#pane-ed .mtg-when'); var m=mtgCur(); if(w&&m) w.textContent=_mtgWhen(m,false); }
 function mtgOpenLink(){ var m=mtgCur(); if(!m||!m.link) return; var u=String(m.link).trim(); if(!/^https?:\/\//i.test(u)) u='https://'+u; try{ window.open(u,'_blank','noopener'); }catch(e){} }
 // A row of a list (agenda, decisions, actions): find it, change it, keep focus where it was.
-function _mtgRow(list,id){ var m=mtgCur(); if(!m) return null; var a=m[list]||[]; for(var i=0;i<a.length;i++) if(a[i].id===id) return {m:m,a:a,i:i,r:a[i]}; return null; }
+// `list` is a field of the meeting ('agenda', 'decisions', 'actions') or 'cx:<key>', a section of the project's own.
+function _mtgArr(m,list,make){ var cx=list.indexOf('cx:')===0, k=cx?list.slice(3):list, host=cx?(make?(m.cx=m.cx||{}):(m.cx||{})):m, a=host[k];
+  if(!Array.isArray(a)){ a=[]; if(make) host[k]=a; } return a; }
+function _mtgCxIsChecks(list){ var m=mtgCur(), L=m&&_mtgLayout(m.projectId), k=list.slice(3); return !!(L&&L.secs.some(function(s){ return s.k===k&&s.kind==='checks'; })); }
+function _mtgArrSet(m,list,a){ if(list.indexOf('cx:')===0){ m.cx=m.cx||{}; m.cx[list.slice(3)]=a; } else m[list]=a; }
+function _mtgLc(list){ return String(list).replace(/[^a-z0-9_]/gi,'-'); }
+function _mtgRow(list,id){ var m=mtgCur(); if(!m) return null; var a=_mtgArr(m,list); for(var i=0;i<a.length;i++) if(a[i].id===id) return {m:m,a:a,i:i,r:a[i]}; return null; }
 function mtgRowSet(list,id,f,v,redraw){ var q=_mtgRow(list,id); if(!q) return; undoMark('Meeting',['meetings.'+q.m.id],true);
   q.r[f]=v; q.m.updated=Date.now(); queueSave(); if(f==='done'||f==='t'||f==='who') _mtgListSoon(); if(redraw) renderEditor(); }
-function mtgRowAdd(list,afterId,init){ var m=mtgCur(); if(!m) return; undoMark('Meeting',['meetings.'+m.id]); m[list]=m[list]||[];
-  var r=Object.assign({id:uid(),t:''},init||{}); var i=-1; if(afterId){ m[list].forEach(function(x,k){ if(x.id===afterId) i=k; }); }
-  if(i>=0) m[list].splice(i+1,0,r); else m[list].push(r); m.updated=Date.now(); save(); renderEditor();
+function mtgRowAdd(list,afterId,init){ var m=mtgCur(); if(!m) return; undoMark('Meeting',['meetings.'+m.id]); var arr=_mtgArr(m,list,true);
+  var r=Object.assign({id:uid(),t:''},init||{}); var i=-1; if(afterId){ arr.forEach(function(x,k){ if(x.id===afterId) i=k; }); }
+  if(i>=0) arr.splice(i+1,0,r); else arr.push(r); m.updated=Date.now(); save(); renderEditor();
   setTimeout(function(){ var n=document.querySelector('#pane-ed [data-r="'+r.id+'"]'); if(n) n.focus(); },30); }
 function mtgRowDel(list,id){ var m=mtgCur(); if(!m) return; undoMark('Meeting',['meetings.'+m.id]);
-  m[list]=(m[list]||[]).filter(function(x){ return x.id!==id; }); m.updated=Date.now(); save(); renderEditor(); }
+  _mtgArrSet(m,list,_mtgArr(m,list).filter(function(x){ return x.id!==id; })); m.updated=Date.now(); save(); renderEditor(); }
 function mtgRowKey(e,list,id){
-  if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); mtgRowAdd(list,id,list==='agenda'?{m:0,d:0}:(list==='actions'?{who:'',due:'',done:0}:{})); }
-  else if(e.key==='Backspace'&&!e.target.value){ e.preventDefault(); var m=mtgCur(), a=m&&m[list]||[], k=a.map(function(x){ return x.id; }).indexOf(id), prev=a[k-1];
+  if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); mtgRowAdd(list,id,list==='agenda'?{m:0,d:0}:(list==='actions'?{who:'',due:'',done:0}:(/^cx:/.test(list)&&_mtgCxIsChecks(list)?{d:0}:{}))); }
+  else if(e.key==='Backspace'&&!e.target.value){ e.preventDefault(); var m=mtgCur(), a=m?_mtgArr(m,list):[], k=a.map(function(x){ return x.id; }).indexOf(id), prev=a[k-1];
     mtgRowDel(list,id); if(prev) setTimeout(function(){ var n=document.querySelector('#pane-ed [data-r="'+prev.id+'"]'); if(n){ n.focus(); try{ n.setSelectionRange(n.value.length,n.value.length); }catch(x){} } },40); }
-  else if(e.altKey&&(e.key==='ArrowUp'||e.key==='ArrowDown')){ e.preventDefault(); var mm=mtgCur(); if(!mm) return; var ar=mm[list], i=ar.map(function(x){ return x.id; }).indexOf(id), j=i+(e.key==='ArrowUp'?-1:1);
+  else if(e.altKey&&(e.key==='ArrowUp'||e.key==='ArrowDown')){ e.preventDefault(); var mm=mtgCur(); if(!mm) return; var ar=_mtgArr(mm,list), i=ar.map(function(x){ return x.id; }).indexOf(id), j=i+(e.key==='ArrowUp'?-1:1);
     if(i<0||j<0||j>=ar.length) return; undoMark('Meeting',['meetings.'+mm.id]); var tmp=ar[i]; ar[i]=ar[j]; ar[j]=tmp; mm.updated=Date.now(); save(); renderEditor();
     setTimeout(function(){ var n=document.querySelector('#pane-ed [data-r="'+id+'"]'); if(n) n.focus(); },30); }
-  else if(e.key==='ArrowDown'||e.key==='ArrowUp'){ var rows=Array.prototype.slice.call(document.querySelectorAll('#pane-ed .mtg-sec-'+list+' [data-r]')).filter(function(n){ return n.classList.contains('mtg-in'); }), at=rows.indexOf(e.target), to=rows[at+(e.key==='ArrowUp'?-1:1)];
+  else if(e.key==='ArrowDown'||e.key==='ArrowUp'){ var rows=Array.prototype.slice.call(document.querySelectorAll('#pane-ed .mtg-sec-'+_mtgLc(list)+' [data-r]')).filter(function(n){ return n.classList.contains('mtg-in'); }), at=rows.indexOf(e.target), to=rows[at+(e.key==='ArrowUp'?-1:1)];
     if(to&&at>=0){ e.preventDefault(); to.focus(); } } }
 function _mtgAgendaMeta(m){ var A=m.agenda||[], mins=A.reduce(function(s,a){ return s+(+a.m||0); },0), dur=_mtgDur(m);
   return (A.length?(A.filter(function(a){ return a.d; }).length+'/'+A.length+' covered'):'')+(mins?(' · '+mins+' min'+(dur?(' of '+dur):'')):''); }
@@ -20122,7 +20213,7 @@ function renderMeetingsHome(host){
   var owners={}; open.forEach(function(x){ var w=x.a.who||'Nobody yet'; owners[w]=(owners[w]||0)+1; });
   var shown=open.filter(function(x){ return !MTG_OWNER||(x.a.who||'Nobody yet')===MTG_OWNER; });
   var h='<div class="nb-desk"><div class="nb-wrap"><div class="nb-page mtg-sheet mtg-home" style="--nb-c:'+esc(col)+'">'
-    +'<div class="mtg-top"><div class="nb-crumb">'+(p?esc(p.name):'Every project and topic')+'</div><div class="mtg-acts"><button class="exh-act" title="Export these meetings as one PDF" onclick="openPdfExport({kind:\'meetings\',id:\''+pid+'\'})">'+tbIco(MTG_P_DL,15)+'<span class="exh-act-l">Export PDF</span></button></div></div>'
+    +'<div class="mtg-top"><div class="nb-crumb">'+(p?esc(p.name):'Every project and topic')+'</div><div class="mtg-acts">'+(p?('<button class="exh-act" title="Choose which sections this project\'s meetings have, what they are called and in which order" onclick="mtgSectionsDialog(\''+pid+'\')">'+tbIco(MTG_P_SEC,15)+'<span class="exh-act-l">Sections</span></button>'):'')+'<button class="exh-act" title="Export these meetings as one PDF" onclick="openPdfExport({kind:\'meetings\',id:\''+pid+'\'})">'+tbIco(MTG_P_DL,15)+'<span class="exh-act-l">Export PDF</span></button></div></div>'
     +'<div class="exh-title nb-title" style="cursor:default;">Meetings</div><div class="nb-meta">'+(L.length?(L.length+' meeting'+(L.length===1?'':'s')+' \u00b7 '+esc(fmtDate(L[L.length-1].date))+' to '+esc(fmtDate(L[0].date))):'None yet')+'</div><div class="nb-rule"></div>'
     +'<div class="mtg-tiles">'
     +'<div class="mtg-tile"><b>'+L.filter(function(m){ return (m.date||'').slice(0,7)===mo&&m.status!=='cancelled'; }).length+'</b><span>this month</span></div>'
@@ -20163,16 +20254,59 @@ function _mtgNames(m){ var seen={}, out=[]; (m.attendees||[]).forEach(function(x
 function _mtgSel(f,val,names,none){ var has=!val||names.indexOf(val)>=0;
   return '<select onchange="mtgSet(\''+f+'\',this.value,true)"><option value="">'+esc(none)+'</option>'+(has?'':('<option selected value="'+esc(val)+'">'+esc(val)+'</option>'))
     +names.map(function(n){ return '<option'+(n===val?' selected':'')+' value="'+esc(n)+'">'+esc(n)+'</option>'; }).join('')+'</select>'; }
+// ── The sections dialog ──────────────────────────────────────────────────────────────────────────────
+// Works on a copy; nothing changes until Save. Switching a section off hides it (its content stays); sections of your own can be removed.
+var _MSD=null;
+function mtgSectionsDialog(pid){ var p=projById(pid); if(!p) return; var L=_mtgLayout(pid);
+  _MSD={pid:pid,secs:L.secs.map(function(x){ return Object.assign({},x); }),fields:Object.assign({},L.fields),defKind:L.defKind||''};
+  var d=_lbDlg(), card=el('lb-dialog-card'); card.className='modal mtg-sd'; d._onCancel=_lbDlgClose;
+  card.innerHTML='<div class="modal-t">Meeting sections <span class="modal-sub">'+esc(p.name)+'</span></div><div class="mtg-sd-body" id="mtg-sd-body"></div>'
+    +'<div class="modal-act"><span class="grow"></span><button class="btn ghost" onclick="_lbDlgClose()">Cancel</button><button class="btn" onclick="mtgSdSave()">Save</button></div>';
+  d.classList.add('open'); _mtgSdPaint(); }
+function _mtgSdPaint(){ var b=el('mtg-sd-body'), S=_MSD; if(!b||!S) return; var pid=S.pid, note=el('mtg-sd-note'), nt=note?note.textContent:'Pick a template to replace the list below with a ready-made one, then adjust it.';
+  b.innerHTML='<div class="mtg-sd-top"><label for="mtg-sd-pre">Start from</label><select id="mtg-sd-pre" onchange="mtgSdPreset(this.value)"><option value="">Choose a template…</option>'
+    +MTG_PRESETS.map(function(x){ return '<option value="'+x.id+'">'+esc(x.name)+'</option>'; }).join('')+'</select></div>'
+    +'<div class="mtg-sd-note" id="mtg-sd-note">'+esc(nt)+'</div>'
+    +'<div class="mtg-sd-list">'+S.secs.map(function(x,i){ var bi=_mtgBuiltin(x.k), used=x.on?0:_mtgSecUsed(pid,x.k);
+      return '<div class="mtg-sd-row'+(x.on?'':' off')+'"><input type="checkbox" '+(x.on?'checked ':'')+'aria-label="Show this section" onchange="mtgSdOn('+i+',this.checked)">'
+        +'<input class="mtg-sd-name" value="'+esc(x.n)+'" aria-label="Name of the section" oninput="mtgSdName('+i+',this.value)" placeholder="'+esc(bi?bi.n:'Name')+'">'
+        +'<span class="mtg-sd-tag">'+(x.custom?esc((MTG_CKINDS.filter(function(c){ return c[0]===x.kind; })[0]||MTG_CKINDS[0])[1]):(bi&&bi.n!==x.n?esc(bi.n):''))+'</span>'
+        +(used?('<span class="mtg-sd-used" title="Meetings that hold something in this section">in '+used+'</span>'):'')
+        +'<button class="exh-act" aria-label="Move up" '+(i?'':'disabled ')+'onclick="mtgSdMove('+i+',-1)">'+tbIco(MTG_P_UP,14)+'</button>'
+        +'<button class="exh-act" aria-label="Move down" '+(i<S.secs.length-1?'':'disabled ')+'onclick="mtgSdMove('+i+',1)">'+tbIco(MTG_P_DOWN,14)+'</button>'
+        +(x.custom?('<button class="mtg-x" aria-label="Remove the section" title="Remove this section of your own" onclick="mtgSdDel('+i+')">&times;</button>'):'<span class="mtg-sd-nox"></span>')+'</div>'; }).join('')+'</div>'
+    +'<div class="mtg-sd-add"><input id="mtg-sd-newn" placeholder="A new section, e.g. Incidents" onkeydown="if(event.key===\'Enter\'){event.preventDefault();mtgSdAdd();}">'
+    +'<select id="mtg-sd-newk" aria-label="What the section holds">'+MTG_CKINDS.map(function(c){ return '<option value="'+c[0]+'">'+esc(c[1])+' – '+esc(c[2])+'</option>'; }).join('')+'</select>'
+    +'<button class="btn ghost" onclick="mtgSdAdd()">Add section</button></div>'
+    +'<div class="mtg-sd-fh">Details under the title</div><div class="mtg-sd-fields">'+MTG_FIELDS.map(function(f){ return '<label><input type="checkbox" '+(S.fields[f[0]]?'checked ':'')+'onchange="mtgSdField(\''+f[0]+'\',this.checked)"> '+esc(f[1])+'</label>'; }).join('')+'</div>'
+    +'<div class="mtg-sd-hint">Applies to every meeting of this project. A section you switch off is hidden, not deleted: what the meetings hold in it comes back when you switch it on.</div>';
+  var card=el('lb-dialog-card'); if(card){ var bd=card.querySelector('.mtg-sd-body'); if(bd) bd.style.maxHeight=_dlgRoom(card,240)+'px'; } }
+function mtgSdOn(i,on){ if(_MSD&&_MSD.secs[i]){ _MSD.secs[i].on=on?1:0; _mtgSdPaint(); } }
+function mtgSdName(i,v){ if(_MSD&&_MSD.secs[i]) _MSD.secs[i].n=v; }
+function mtgSdMove(i,d){ var a=_MSD&&_MSD.secs, j=i+d; if(!a||j<0||j>=a.length) return; var t=a[i]; a[i]=a[j]; a[j]=t; _mtgSdPaint(); }
+function mtgSdDel(i){ if(!_MSD) return; var x=_MSD.secs[i]; if(!x||!x.custom) return; _MSD.secs.splice(i,1); _mtgSdPaint(); }
+function mtgSdAdd(){ if(!_MSD) return; var n=el('mtg-sd-newn'), k=el('mtg-sd-newk'), nm=String((n&&n.value)||'').trim(); if(!nm){ toast('Name the section first.'); if(n) n.focus(); return; }
+  _MSD.secs.push({k:'c'+uid(),on:1,n:nm,custom:1,kind:(k&&k.value)||'list'}); _mtgSdPaint(); var b=el('mtg-sd-body'); if(b) b.scrollTop=b.scrollHeight; setTimeout(function(){ var q=el('mtg-sd-newn'); if(q) q.focus(); },20); }
+function mtgSdField(f,on){ if(_MSD) _MSD.fields[f]=!!on; }
+function mtgSdPreset(id){ var pr=MTG_PRESETS.filter(function(x){ return x.id===id; })[0]; if(!pr||!_MSD) return;
+  var keep=_MSD.secs.filter(function(x){ return x.custom&&_mtgSecUsed(_MSD.pid,x.k); }); // sections of your own that already hold something are not thrown away
+  var pl=_mtgPresetLayout(pr), base=(pl?pl.secs:MTG_SECS.map(function(b){ return {k:b.k,on:1,n:b.n}; })).map(function(x){ return Object.assign({custom:0,kind:''},x); });
+  keep.forEach(function(x){ base.push(Object.assign({},x,{on:0})); });
+  _MSD.secs=base; _MSD.fields=MTG_FIELDS.reduce(function(o,f){ o[f[0]]=true; return o; },{}); _MSD.defKind=pr.kind||'';
+  var note=el('mtg-sd-note'); if(note) note.textContent=pr.name+': '+pr.note+(keep.length?' Sections of yours that hold text stay, switched off.':''); _mtgSdPaint(); var q=el('mtg-sd-pre'); if(q) q.value=id; }
+function mtgSdSave(){ var S=_MSD; if(!S||!projById(S.pid)) return; S.secs.forEach(function(x){ x.n=String(x.n||'').trim(); if(!x.n){ var b=_mtgBuiltin(x.k); x.n=b?b.n:'Section'; } });
+  _mtgLayoutSave(S.pid,{secs:S.secs,fields:S.fields,defKind:S.defKind}); _lbDlgClose(); _MSD=null; renderAll(); toast('Meeting sections saved.'); }
+
 function renderMeetingPage(host,m){
-  var t=mtgType(m.type), col=NB_COLORS[t.c], p=projById(m.projectId), has=_noteHasContent(m.html), names=_mtgNames(m), ppl=_mtgPeople(m.projectId);
+  var t=mtgType(m.type), col=NB_COLORS[t.c], p=projById(m.projectId), has=_noteHasContent(m.html), names=_mtgNames(m), ppl=_mtgPeople(m.projectId), LY=_mtgLayout(m.projectId), who=(names.length||_mtgSecOn(LY,'people'))?names:_mtgRoster(m.projectId);
   var L=mtgList(m.projectId), at=L.map(function(x){ return x.id; }).indexOf(m.id);
   var nav=L.length>1?('<span class="exh-nav"><button class="exh-act" title="Newer meeting" aria-label="Newer meeting" '+(at>0?('onclick="mtgOpen(\''+m.projectId+'\',\''+L[at-1].id+'\')"'):'disabled')+'>'+tbIco(P_CHEV_L,15)+'</button><span class="exh-nav-n">'+(L.length-at)+'/'+L.length+'</span>'
     +'<button class="exh-act" title="Older meeting" aria-label="Older meeting" '+(at<L.length-1?('onclick="mtgOpen(\''+m.projectId+'\',\''+L[at+1].id+'\')"'):'disabled')+'>'+tbIco(P_CHEV_R,15)+'</button></span>'):'';
   var carry=_mtgOpenActions(m.projectId,m);
-  var h='<div class="nb-desk jr-desk">'+jrBarHtml()+'<div class="nb-wrap"><div class="nb-page jr-sheet mtg-sheet" style="--nb-c:'+col+';--mc:'+col+'">'
+  var h='<div class="nb-desk jr-desk">'+(_mtgSecOn(LY,'notes')?jrBarHtml():'')+'<div class="nb-wrap"><div class="nb-page jr-sheet mtg-sheet" style="--nb-c:'+col+';--mc:'+col+'">'
   // top: where it is, and what you can do with it
     +'<div class="mtg-top"><div class="nb-crumb"><a class="mtg-back" onclick="mtgOpen(\''+m.projectId+'\',null)" title="All meetings of this project">Meetings · '+esc(p?p.name:'')+'</a>'+nav+'</div>'
-    +'<div class="mtg-acts"><button class="exh-act" title="Export this meeting as a PDF" onclick="openPdfExport({kind:\'meeting\',id:\''+m.id+'\'})">'+tbIco(MTG_P_DL,15)+'<span class="exh-act-l">PDF</span></button>'
+    +'<div class="mtg-acts"><button class="exh-act" title="Choose which sections this project\'s meetings have, what they are called and in which order" onclick="mtgSectionsDialog(\''+m.projectId+'\')">'+tbIco(MTG_P_SEC,15)+'<span class="exh-act-l">Sections</span></button><button class="exh-act" title="Export this meeting as a PDF" onclick="openPdfExport({kind:\'meeting\',id:\''+m.id+'\'})">'+tbIco(MTG_P_DL,15)+'<span class="exh-act-l">PDF</span></button>'
     +'<button class="exh-act" title="Copy the minutes as plain text, for an email" onclick="mtgCopyText()">'+tbIco(MTG_P_COPY,15)+'<span class="exh-act-l">Copy</span></button>'
     +'<button class="exh-act danger" title="Delete this meeting (it goes to Deleted items for '+TRASH_DAYS+' days)" onclick="delMeeting(\''+m.id+'\')">'+tbIco(P_TRASH,16)+'<span class="exh-act-l">Delete</span></button></div></div>'
     +'<div class="exh-title nb-title mtg-title" contenteditable="true" data-ph="'+esc(t.name)+'" oninput="mtgTitleInput(this)" onkeydown="mtgTitleKey(event)" onfocus="_activeEd=null">'+esc(m.title||'')+'</div>'
@@ -20185,38 +20319,38 @@ function renderMeetingPage(host,m){
     +_mtgFld('Date','<input type="date" value="'+esc(m.date||'')+'" onchange="mtgDate(this.value)">')
     +_mtgFld('Start','<input type="time" value="'+esc(m.start||'')+'" onchange="mtgTime(\'start\',this.value)">')
     +_mtgFld('End','<input type="time" value="'+esc(m.end||'')+'" onchange="mtgTime(\'end\',this.value)">')
-    +_mtgFld('Where','<input type="text" value="'+esc(m.place||'')+'" placeholder="Room, building, lab" oninput="mtgSet(\'place\',this.value)">')
-    +_mtgFld('Call link','<div class="mtg-linkrow"><input type="text" value="'+esc(m.link||'')+'" placeholder="Teams, Zoom, Meet" oninput="mtgSet(\'link\',this.value)">'+(m.link?('<button class="exh-act" title="Open the link" aria-label="Open the link" onclick="mtgOpenLink()">'+tbIco(MTG_P_OPEN,15)+'</button>'):'')+'</div>')
-    +_mtgFld('Chair','<span id="mtg-sel-chair" class="mtg-selh">'+_mtgSel('chair',m.chair,names,'Nobody')+'</span>')
-    +_mtgFld('Minutes by','<span id="mtg-sel-scribe" class="mtg-selh">'+_mtgSel('scribe',m.scribe,names,'Nobody')+'</span>')
+    +(LY.fields.place?_mtgFld('Where','<input type="text" value="'+esc(m.place||'')+'" placeholder="Room, building, lab" oninput="mtgSet(\'place\',this.value)">'):'')
+    +(LY.fields.link?_mtgFld('Call link','<div class="mtg-linkrow"><input type="text" value="'+esc(m.link||'')+'" placeholder="Teams, Zoom, Meet" oninput="mtgSet(\'link\',this.value)">'+(m.link?('<button class="exh-act" title="Open the link" aria-label="Open the link" onclick="mtgOpenLink()">'+tbIco(MTG_P_OPEN,15)+'</button>'):'')+'</div>'):'')
+    +(LY.fields.chair?_mtgFld('Chair','<span id="mtg-sel-chair" class="mtg-selh">'+_mtgSel('chair',m.chair,who,'Nobody')+'</span>'):'')
+    +(LY.fields.scribe?_mtgFld('Minutes by','<span id="mtg-sel-scribe" class="mtg-selh">'+_mtgSel('scribe',m.scribe,who,'Nobody')+'</span>'):'')
     +'</div>'
-  // purpose
-    +_mtgSecH('Purpose','')+'<input class="mtg-in mtg-purpose" value="'+esc(m.purpose||'')+'" placeholder="Why we are meeting, in one line" oninput="mtgSet(\'purpose\',this.value)">'
-  // people
-    +_mtgSecH('People',_mtgPeopleMeta(m),'mtg-pp-h')
+  // sections, in the order the project chose
+    +LY.secs.filter(function(x){ return x.on; }).map(function(x){ return _mtgSecHtml(x,m,{ppl:ppl,carry:carry,col:col}); }).join('')
+    +'</div></div></div>';
+  host.innerHTML=h; hydrateAtt(host,{lazy:true}); hydrateFloatLayers(host); jrCount(); }
+
+// One section of the page. `s` is the project's entry for it (its name may be the project's own), `c` carries what the page already worked out.
+function _mtgSecHtml(s,m,c){ var k=s.k, nm=s.n, ppl=c.ppl;
+  if(k==='purpose') return _mtgSecH(nm,'')+'<input class="mtg-in mtg-purpose" value="'+esc(m.purpose||'')+'" placeholder="Why we are meeting, in one line" oninput="mtgSet(\'purpose\',this.value)">';
+  if(k==='people') return _mtgSecH(nm,_mtgPeopleMeta(m),'mtg-pp-h')
     +'<div class="mtg-ppl"><span id="mtg-chips" class="mtg-chips">'+_mtgChipsHtml(m)+'</span>'
     +'<input id="mtg-att-in" class="mtg-att-in" list="mtg-ppl" placeholder="Add a person, then Enter" onkeydown="mtgAttKey(event)" onblur="mtgAttBlur(this)" autocomplete="off"><datalist id="mtg-ppl">'+_mtgPplOptions(m,ppl)+'</datalist></div>'
-    +'<div class="mtg-quick" id="mtg-quick">'+_mtgQuickHtml(m)+'</div>'
-  // carried over
-    +(carry.length?('<div class="mtg-carry"><div class="mtg-carry-h">Open from earlier meetings<span>'+carry.length+'</span></div>'+carry.map(function(x){ return _mtgActRowRO(x.m,x.a); }).join('')+'</div>'):'')
-  // agenda
-    +_mtgSecH('Agenda',_mtgAgendaMeta(m),'mtg-ag-h')
+    +'<div class="mtg-quick" id="mtg-quick">'+_mtgQuickHtml(m)+'</div>';
+  if(k==='carry') return c.carry.length?('<div class="mtg-carry"><div class="mtg-carry-h">'+esc(nm)+'<span>'+c.carry.length+'</span></div>'+c.carry.map(function(x){ return _mtgActRowRO(x.m,x.a); }).join('')+'</div>'):'';
+  if(k==='agenda') return _mtgSecH(nm,_mtgAgendaMeta(m),'mtg-ag-h')
     +'<div class="mtg-sec-agenda">'+(m.agenda||[]).map(function(a){ return '<div class="mtg-row'+(a.d?' done':'')+'"><input type="checkbox" '+(a.d?'checked ':'')+'aria-label="Covered" title="Covered" onchange="mtgAgendaTick(\''+a.id+'\',this.checked,this)">'
       +'<input class="mtg-in" data-r="'+a.id+'" value="'+esc(a.t||'')+'" placeholder="Agenda item" oninput="mtgRowSet(\'agenda\',\''+a.id+'\',\'t\',this.value)" onkeydown="mtgRowKey(event,\'agenda\',\''+a.id+'\')">'
       +'<input class="mtg-in mtg-min" type="number" min="0" step="5" value="'+(a.m?esc(a.m):'')+'" placeholder="min" aria-label="Minutes" oninput="mtgMinIn(\''+a.id+'\',this.value)">'
       +'<button class="mtg-x" aria-label="Remove the item" onclick="mtgRowDel(\'agenda\',\''+a.id+'\')">&times;</button></div>'; }).join('')+'</div>'
-    +_mtgAddBtn('Agenda item','mtgRowAdd(\'agenda\',null,{m:0,d:0})')
-  // notes (the Journal's editor)
-    +_mtgSecH('Notes','<span id="jr-wc" class="jr-wc"></span>')
-    +'<div class="rt jr-ed'+(has?'':' jr-empty')+'" contenteditable="true" spellcheck="true" role="textbox" aria-multiline="true" aria-label="Meeting notes" data-ph="What was said. @ links an experiment, a protocol or an antibody; # tags it." data-ctx="meeting:'+m.id+'" data-mtg="'+m.id+'" oninput="jrInput(this)" onfocus="jrFocused(this)">'+jrLoadHtml(m.html||'')+'</div>'
-  // decisions
-    +_mtgSecH('Decisions',(m.decisions||[]).length?String(m.decisions.length):'')
+    +_mtgAddBtn('Agenda item','mtgRowAdd(\'agenda\',null,{m:0,d:0})');
+  if(k==='notes') return _mtgSecH(nm,'<span id="jr-wc" class="jr-wc"></span>')
+    +'<div class="rt jr-ed'+(_noteHasContent(m.html)?'':' jr-empty')+'" contenteditable="true" spellcheck="true" role="textbox" aria-multiline="true" aria-label="Meeting '+esc(nm.toLowerCase())+'" data-ph="What was said. @ links an experiment, a protocol or an antibody; # tags it." data-ctx="meeting:'+m.id+'" data-mtg="'+m.id+'" oninput="jrInput(this)" onfocus="jrFocused(this)">'+jrLoadHtml(m.html||'')+'</div>';
+  if(k==='decisions') return _mtgSecH(nm,(m.decisions||[]).length?String(m.decisions.length):'')
     +'<div class="mtg-sec-decisions">'+(m.decisions||[]).map(function(d,i){ return '<div class="mtg-row"><span class="mtg-dn">D'+(i+1)+'</span>'
       +'<input class="mtg-in" data-r="'+d.id+'" value="'+esc(d.t||'')+'" placeholder="What was decided" oninput="mtgRowSet(\'decisions\',\''+d.id+'\',\'t\',this.value)" onkeydown="mtgRowKey(event,\'decisions\',\''+d.id+'\')">'
       +'<button class="mtg-x" aria-label="Remove the decision" onclick="mtgRowDel(\'decisions\',\''+d.id+'\')">&times;</button></div>'; }).join('')+'</div>'
-    +_mtgAddBtn('Decision','mtgRowAdd(\'decisions\',null,{})')
-  // actions
-    +_mtgSecH('Action items',_mtgActMeta(m),'mtg-ac-h')
+    +_mtgAddBtn('Decision','mtgRowAdd(\'decisions\',null,{})');
+  if(k==='actions') return _mtgSecH(nm,_mtgActMeta(m),'mtg-ac-h')
     +'<div class="mtg-sec-actions">'+(m.actions||[]).map(function(a){ var late=a.due&&!a.done&&a.due<todayStr();
       return '<div class="mtg-row mtg-act'+(a.done?' done':'')+'"><input type="checkbox" '+(a.done?'checked ':'')+'aria-label="Done" onchange="mtgActTick(\''+a.id+'\',this.checked,this)">'
       +'<input class="mtg-in" data-r="'+a.id+'" value="'+esc(a.t||'')+'" placeholder="What has to happen" oninput="mtgRowSet(\'actions\',\''+a.id+'\',\'t\',this.value)" onkeydown="mtgRowKey(event,\'actions\',\''+a.id+'\')">'
@@ -20225,34 +20359,48 @@ function renderMeetingPage(host,m){
       +(a.task?'<span class="mtg-inpl" title="This action is in the Planner">'+tbIco(MTG_P_CAL,13)+'</span>':'<button class="exh-act" title="Add it to the Planner on its due date" aria-label="Add to the Planner" onclick="mtgActToPlanner(\''+a.id+'\')">'+tbIco(MTG_P_CAL,15)+'</button>')
       +'<button class="mtg-x" aria-label="Remove the action" onclick="mtgRowDel(\'actions\',\''+a.id+'\')">&times;</button></div>'; }).join('')
     +'<datalist id="mtg-ppl-a">'+ppl.map(function(n){ return '<option value="'+esc(n)+'">'; }).join('')+'</datalist></div>'
-    +_mtgAddBtn('Action item','mtgRowAdd(\'actions\',null,{who:\'\',due:\'\',done:0})')
-  // takeaway
-    +_mtgSecH('In one line','')+'<input class="mtg-in mtg-take" value="'+esc(m.summary||'')+'" placeholder="The one thing to remember from this meeting" oninput="mtgSet(\'summary\',this.value,true)">'
-  // experiments
-    +_mtgSecH('Experiments discussed','')
+    +_mtgAddBtn('Action item','mtgRowAdd(\'actions\',null,{who:\'\',due:\'\',done:0})');
+  if(k==='summary') return _mtgSecH(nm,'')+'<input class="mtg-in mtg-take" value="'+esc(m.summary||'')+'" placeholder="The one thing to remember from this meeting" oninput="mtgSet(\'summary\',this.value,true)">';
+  if(k==='exps') return _mtgSecH(nm,'')
     +'<div class="mtg-ppl">'+(m.exps||[]).map(function(id){ var e=LB.data.experiments[id]; if(!e) return '';
       return '<span class="mtg-chip exp" onclick="openExp(\''+id+'\')" title="Open the experiment"><span class="mtg-cn">'+esc(e.code||e.title||'Experiment')+(e.code&&e.title?(' · '+esc(e.title)):'')+'</span><button class="mtg-x" aria-label="Unlink" onclick="event.stopPropagation();mtgExpDel(\''+id+'\')">&times;</button></span>'; }).join('')
-    +_mtgAddBtn('Link an experiment','mtgExpLink()')+'</div>'
-  // next
-    +_mtgSecH('Next meeting','')
+    +_mtgAddBtn('Link an experiment','mtgExpLink()')+'</div>';
+  if(k==='next') return _mtgSecH(nm,'')
     +'<div class="mtg-next">'+((m.next&&m.next.id&&mtgMap()[m.next.id])
       ?('<span class="mtg-when">'+esc(_mtgWhen(mtgMap()[m.next.id],false))+'</span><button class="lean-tog" onclick="mtgOpen(\''+m.projectId+'\',\''+m.next.id+'\')">Open it</button>')
       :('<input id="mtg-next-d" type="date" value="'+esc((m.next&&m.next.date)||'')+'" aria-label="Date of the next meeting" onchange="mtgNextSet(\'date\',this.value)"><input type="time" value="'+esc((m.next&&m.next.time)||'')+'" aria-label="Time" onchange="mtgNextSet(\'time\',this.value)">'
-        +'<button class="lean-tog" onclick="mtgSchedule()">Schedule it</button><span class="mtg-hint">Same people and place; open actions go on its agenda.</span>'))+'</div>'
-    +'</div></div></div>';
-  host.innerHTML=h; hydrateAtt(host,{lazy:true}); hydrateFloatLayers(host); jrCount(); }
+        +'<button class="lean-tog" onclick="mtgSchedule()">Schedule it</button><span class="mtg-hint">Same people and place; open actions go on its agenda.</span>'))+'</div>';
+  return _mtgCxHtml(s,m); }
+// A section of the project's own.
+function _mtgCxMeta(s,m){ if(s.kind==='text') return ''; var A=_mtgCxRows(m,s.k), all=_mtgArr(m,'cx:'+s.k).length;
+  if(s.kind==='checks') return all?(_mtgArr(m,'cx:'+s.k).filter(function(x){ return x.d; }).length+'/'+all+' done'):''; return all?String(all):''; }
+function _mtgCxHtml(s,m){ var key='cx:'+s.k, id='mtg-cx-'+_mtgLc(s.k);
+  if(s.kind==='text') return _mtgSecH(s.n,'',null)+'<textarea class="mtg-ta" data-cx="'+esc(s.k)+'" rows="'+Math.max(4,Math.min(14,_mtgCxText(m,s.k).split('\n').length+1))+'" aria-label="'+esc(s.n)+'" placeholder="Write here" oninput="mtgCxText(\''+s.k+'\',this.value)">'+esc(_mtgCxText(m,s.k))+'</textarea>';
+  var rows=_mtgArr(m,key), checks=s.kind==='checks';
+  return _mtgSecH(s.n,_mtgCxMeta(s,m),id)+'<div class="mtg-sec-'+_mtgLc(key)+'">'+rows.map(function(r,i){
+    return '<div class="mtg-row'+(checks&&r.d?' done':'')+'">'+(checks?('<input type="checkbox" '+(r.d?'checked ':'')+'aria-label="Done" onchange="mtgCxTick(\''+s.k+'\',\''+r.id+'\',this.checked,this)">'):('<span class="mtg-dn">'+(i+1)+'</span>'))
+      +'<input class="mtg-in" data-r="'+r.id+'" value="'+esc(r.t||'')+'" placeholder="'+(checks?'What to check':'Write it here')+'" oninput="mtgRowSet(\''+key+'\',\''+r.id+'\',\'t\',this.value)" onkeydown="mtgRowKey(event,\''+key+'\',\''+r.id+'\')">'
+      +'<button class="mtg-x" aria-label="Remove the line" onclick="mtgRowDel(\''+key+'\',\''+r.id+'\')">&times;</button></div>'; }).join('')+'</div>'
+    +_mtgAddBtn(checks?'Check':'Line','mtgRowAdd(\''+key+'\',null,'+(checks?'{d:0}':'{}')+')'); }
+function mtgCxText(k,v){ var m=mtgCur(); if(!m) return; undoMark('Meeting',['meetings.'+m.id],true); m.cx=m.cx||{}; m.cx[k]=v; m.updated=Date.now(); queueSave(); _mtgListSoon(); }
+function mtgCxTick(k,id,on,box){ mtgRowSet('cx:'+k,id,'d',on?1:0); var r=box&&box.closest('.mtg-row'); if(r) r.classList.toggle('done',!!on);
+  var m=mtgCur(), L=m&&_mtgLayout(m.projectId), s=L&&L.secs.filter(function(x){ return x.k===k; })[0], h=el('mtg-cx-'+_mtgLc(k)), t=h&&h.querySelector('.mtg-sh-m'); if(t&&s) t.textContent=_mtgCxMeta(s,m); }
+
 
 // Plain text for an email.
-function _mtgText(m){ var t=mtgType(m.type), p=projById(m.projectId), L=[];
-  L.push(mtgTitle(m)+' ('+t.name+(p?(', '+p.name):'')+')'); L.push(_mtgWhen(m,true)+(m.place?(' · '+m.place):''));
-  if(m.summary) L.push('','In one line: '+m.summary); if(m.purpose) L.push('Purpose: '+m.purpose);
+function _mtgText(m){ var t=mtgType(m.type), p=projById(m.projectId), L=[], LY=_mtgLayout(m.projectId), N=function(k){ return _mtgSecName(LY,k); };
+  L.push(mtgTitle(m)+' ('+t.name+(p?(', '+p.name):'')+')'); L.push(_mtgWhen(m,true)+((m.place&&LY.fields.place)?(' · '+m.place):''));
+  if(_mtgSecOn(LY,'summary')&&m.summary) L.push('',N('summary')+': '+m.summary); if(_mtgSecOn(LY,'purpose')&&m.purpose) L.push(N('purpose')+': '+m.purpose);
   var pr=_mtgPresent(m).map(function(x){ return x.n; }), ab=(m.attendees||[]).filter(function(x){ return x.a; }).map(function(x){ return x.n; });
-  if(pr.length) L.push('','Present: '+pr.join(', ')); if(ab.length) L.push('Apologies: '+ab.join(', '));
-  if((m.agenda||[]).length){ L.push('','Agenda'); m.agenda.forEach(function(a,i){ L.push((i+1)+'. '+a.t+(a.m?(' ('+a.m+' min)'):'')+(a.d?' [covered]':'')); }); }
-  var notes=_htmlLines(m.html||'').join('\n').trim(); if(notes) L.push('','Notes',notes);
-  if((m.decisions||[]).length){ L.push('','Decisions'); m.decisions.forEach(function(d,i){ L.push('D'+(i+1)+'. '+d.t); }); }
-  if((m.actions||[]).length){ L.push('','Actions'); m.actions.forEach(function(a){ L.push((a.done?'[x] ':'[ ] ')+a.t+(a.who?(' — '+a.who):'')+(a.due?(' (by '+fmtDate(a.due)+')'):'')); }); }
-  if(m.next&&m.next.date) L.push('','Next meeting: '+_mtgDayMid(m.next.date)+(m.next.time?(' '+m.next.time):''));
+  LY.secs.forEach(function(s){ if(!s.on) return; var k=s.k;
+    if(k==='people'){ if(pr.length) L.push('','Present: '+pr.join(', ')); if(ab.length) L.push('Apologies: '+ab.join(', ')); }
+    else if(k==='agenda'){ if((m.agenda||[]).length){ L.push('',s.n); m.agenda.forEach(function(a,i){ L.push((i+1)+'. '+a.t+(a.m?(' ('+a.m+' min)'):'')+(a.d?' [covered]':'')); }); } }
+    else if(k==='notes'){ var notes=_htmlLines(m.html||'').join('\n').trim(); if(notes) L.push('',s.n,notes); }
+    else if(k==='decisions'){ if((m.decisions||[]).length){ L.push('',s.n); m.decisions.forEach(function(d,i){ L.push('D'+(i+1)+'. '+d.t); }); } }
+    else if(k==='actions'){ if((m.actions||[]).length){ L.push('',s.n); m.actions.forEach(function(a){ L.push((a.done?'[x] ':'[ ] ')+a.t+(a.who?(' — '+a.who):'')+(a.due?(' (by '+fmtDate(a.due)+')'):'')); }); } }
+    else if(k==='next'){ if(m.next&&m.next.date) L.push('',s.n+': '+_mtgDayMid(m.next.date)+(m.next.time?(' '+m.next.time):'')); }
+    else if(s.custom){ if(s.kind==='text'){ var tx=_mtgCxText(m,s.k).trim(); if(tx) L.push('',s.n,tx); }
+      else { var rows=_mtgCxRows(m,s.k); if(rows.length){ L.push('',s.n); rows.forEach(function(r,i){ L.push(s.kind==='checks'?((r.d?'[x] ':'[ ] ')+r.t):((i+1)+'. '+r.t)); }); } } } });
   return L.join('\n'); }
 function mtgCopyText(){ var m=mtgCur(); if(!m) return; var s=_mtgText(m);
   try{ navigator.clipboard.writeText(s).then(function(){ toast('Minutes copied as text.'); },function(){ toast('The browser would not let Labbook copy.'); }); }catch(e){ toast('The browser would not let Labbook copy.'); } }
@@ -20268,25 +20416,31 @@ function _pdMeetingHtml(m,o,opts){ opts=opts||{}; o=o||pdfOpts();
     +'<div class="pd-mt-head"><div class="pd-mt-kick"><i></i>'+esc((p?p.name:'')+(p?' · ':'')+t.name+st)+'</div>'
     +'<div class="pd-mt-title">'+esc(mtgTitle(m))+'</div>'
     +'<div class="pd-mt-when">'+esc((m.date?_mtgDayLong(m.date):'No date')+(m.start?(' · '+m.start+(m.end?('–'+m.end):'')):''))+(d?('<span>'+esc(_mtgDurTxt(d))+'</span>'):'')+'</div></div>';
-  var facts=[['Where',m.place],['Link',m.link],['Chair',m.chair],['Minutes by',m.scribe]].filter(function(x){ return x[1]; });
+  var LY=_mtgLayout(m.projectId), facts=[['Where',m.place,'place'],['Link',m.link,'link'],['Chair',m.chair,'chair'],['Minutes by',m.scribe,'scribe']].filter(function(x){ return x[1]&&LY.fields[x[2]]; });
   if(facts.length) h+='<div class="pd-mt-facts">'+facts.map(function(x){ return '<div><span>'+esc(x[0])+'</span>'+esc(x[1])+'</div>'; }).join('')+'</div>';
-  if(m.purpose) h+='<div class="pd-mt-purpose"><span>Purpose</span>'+esc(m.purpose)+'</div>';
-  if(o.mSummary&&m.summary) h+='<div class="pd-mt-take">'+esc(m.summary)+'</div>';
-  var pr=_mtgPresent(m), ab=(m.attendees||[]).filter(function(x){ return x.a; });
-  if(o.mPeople&&(pr.length||ab.length)) h+=_mtgPdfH('People')+'<div class="pd-mt-ppl">'
-    +(pr.length?('<div><span>Present ('+pr.length+')</span>'+pr.map(function(x){ return esc(x.n); }).join(', ')+'</div>'):'')
-    +(ab.length?('<div><span>Apologies</span>'+ab.map(function(x){ return esc(x.n); }).join(', ')+'</div>'):'')+'</div>';
-  if(o.mAgenda&&(m.agenda||[]).length) h+=_mtgPdfH('Agenda')+'<table class="pd-mt-tbl pd-mt-ag">'+m.agenda.map(function(a,i){
-      return '<tr><td class="n">'+(i+1)+'</td><td class="b"><i class="'+(a.d?'on':'')+'"></i></td><td>'+esc(a.t||'')+'</td><td class="m">'+(a.m?(a.m+' min'):'')+'</td></tr>'; }).join('')+'</table>';
-  if(o.mNotes&&_noteHasContent(m.html)) h+=_mtgPdfH('Notes')+'<div class="pd-body pd-mt-notes" data-ctx="meeting:'+m.id+'">'+m.html+'</div>';
-  if(o.mDecisions&&(m.decisions||[]).some(function(x){ return (x.t||'').trim(); })) h+=_mtgPdfH('Decisions')+'<table class="pd-mt-tbl pd-mt-dc">'+m.decisions.filter(function(x){ return (x.t||'').trim(); }).map(function(x,i){
-      return '<tr><td class="n">D'+(i+1)+'</td><td>'+esc(x.t)+'</td></tr>'; }).join('')+'</table>';
-  var acts=(m.actions||[]).filter(function(x){ return (x.t||'').trim(); });
-  if(o.mActions&&acts.length) h+=_mtgPdfH('Action items')+_mtgActTable(acts.map(function(a){ return {a:a}; }),false);
-  if(o.mCarry){ var c=_mtgOpenActions(m.projectId,m); if(c.length) h+=_mtgPdfH('Open from earlier meetings')+_mtgActTable(c,true); }
-  var ex=(m.exps||[]).map(function(id){ return LB.data.experiments[id]; }).filter(Boolean);
-  if(o.mExps&&ex.length) h+=_mtgPdfH('Experiments discussed')+'<div class="pd-mt-exps">'+ex.map(function(e){ return '<div><b>'+esc(e.code||'')+'</b> '+esc(e.title||'')+'</div>'; }).join('')+'</div>';
-  if(o.mNext&&m.next&&m.next.date) h+='<div class="pd-mt-next"><span>Next meeting</span>'+esc(_mtgDayMid(m.next.date)+(m.next.time?(' · '+m.next.time):''))+'</div>';
+  if(_mtgSecOn(LY,'purpose')&&m.purpose) h+='<div class="pd-mt-purpose"><span>'+esc(_mtgSecName(LY,'purpose'))+'</span>'+esc(m.purpose)+'</div>';
+  if(_mtgSecOn(LY,'summary')&&o.mSummary&&m.summary) h+='<div class="pd-mt-take">'+esc(m.summary)+'</div>';
+  var pr=_mtgPresent(m), ab=(m.attendees||[]).filter(function(x){ return x.a; }), acts=(m.actions||[]).filter(function(x){ return (x.t||'').trim(); });
+  function carry(s){ if(!o.mCarry) return ''; var c=_mtgOpenActions(m.projectId,m); return c.length?(_mtgPdfH(s.n)+_mtgActTable(c,true)):''; }
+  function sec(s){ var k=s.k;
+    if(k==='people') return (o.mPeople&&(pr.length||ab.length))?(_mtgPdfH(s.n)+'<div class="pd-mt-ppl">'
+      +(pr.length?('<div><span>Present ('+pr.length+')</span>'+pr.map(function(x){ return esc(x.n); }).join(', ')+'</div>'):'')
+      +(ab.length?('<div><span>Apologies</span>'+ab.map(function(x){ return esc(x.n); }).join(', ')+'</div>'):'')+'</div>'):'';
+    if(k==='agenda') return (o.mAgenda&&(m.agenda||[]).length)?(_mtgPdfH(s.n)+'<table class="pd-mt-tbl pd-mt-ag">'+m.agenda.map(function(a,i){
+      return '<tr><td class="n">'+(i+1)+'</td><td class="b"><i class="'+(a.d?'on':'')+'"></i></td><td>'+esc(a.t||'')+'</td><td class="m">'+(a.m?(a.m+' min'):'')+'</td></tr>'; }).join('')+'</table>'):'';
+    if(k==='notes') return (o.mNotes&&_noteHasContent(m.html))?(_mtgPdfH(s.n)+'<div class="pd-body pd-mt-notes" data-ctx="meeting:'+m.id+'">'+m.html+'</div>'):'';
+    if(k==='decisions') return (o.mDecisions&&(m.decisions||[]).some(function(x){ return (x.t||'').trim(); }))?(_mtgPdfH(s.n)+'<table class="pd-mt-tbl pd-mt-dc">'+m.decisions.filter(function(x){ return (x.t||'').trim(); }).map(function(x,i){
+      return '<tr><td class="n">D'+(i+1)+'</td><td>'+esc(x.t)+'</td></tr>'; }).join('')+'</table>'):'';
+    if(k==='actions') return ((o.mActions&&acts.length)?(_mtgPdfH(s.n)+_mtgActTable(acts.map(function(a){ return {a:a}; }),false)):'')+(_mtgSecOn(LY,'carry')?carry({n:_mtgSecName(LY,'carry')}):'');
+    if(k==='carry') return _mtgSecOn(LY,'actions')?'':carry(s);
+    if(k==='exps'){ var ex=(m.exps||[]).map(function(id){ return LB.data.experiments[id]; }).filter(Boolean);
+      return (o.mExps&&ex.length)?(_mtgPdfH(s.n)+'<div class="pd-mt-exps">'+ex.map(function(e){ return '<div><b>'+esc(e.code||'')+'</b> '+esc(e.title||'')+'</div>'; }).join('')+'</div>'):''; }
+    if(k==='next') return (o.mNext&&m.next&&m.next.date)?('<div class="pd-mt-next"><span>'+esc(s.n)+'</span>'+esc(_mtgDayMid(m.next.date)+(m.next.time?(' · '+m.next.time):''))+'</div>'):'';
+    if(!s.custom||o.mCustom===0||!_mtgCxHas(m,s)) return '';
+    if(s.kind==='text') return _mtgPdfH(s.n)+'<div class="pd-mt-ctext">'+esc(_mtgCxText(m,s.k))+'</div>';
+    if(s.kind==='checks') return _mtgPdfH(s.n)+'<table class="pd-mt-tbl pd-mt-ag">'+_mtgCxRows(m,s.k).map(function(r){ return '<tr><td class="b"><i class="'+(r.d?'on':'')+'"></i></td><td>'+esc(r.t)+'</td></tr>'; }).join('')+'</table>';
+    return _mtgPdfH(s.n)+'<table class="pd-mt-tbl pd-mt-dc">'+_mtgCxRows(m,s.k).map(function(r,i){ return '<tr><td class="n">'+(i+1)+'</td><td>'+esc(r.t)+'</td></tr>'; }).join('')+'</table>'; }
+  LY.secs.forEach(function(x){ if(x.on) h+=sec(x); });
   return h+'</div>'; }
 function _mtgActTable(rows,from){
   return '<table class="pd-mt-tbl pd-mt-ac"><thead><tr><th class="b"></th><th>Action</th><th>Owner</th><th>Due</th>'+(from?'<th>From</th>':'')+'</tr></thead><tbody>'
@@ -20308,7 +20462,7 @@ function _mtgOf(pid){ var o={}, M=mtgMap(); Object.keys(M).forEach(function(k){ 
 function mtgSetHtml(html){ var id=(jrEd()||{getAttribute:function(){}}).getAttribute('data-mtg'), m=id&&mtgMap()[id]; if(!m) return;
   m.html=_persistImgHtml(html); m.updated=Date.now(); queueSave(); _mtgListSoon(); }
 function _mtgSearchText(m){ return [m.purpose,m.summary,m.place,(m.attendees||[]).map(function(x){ return x.n; }).join(' '),(m.decisions||[]).map(function(x){ return x.t; }).join(' '),
-  (m.actions||[]).map(function(x){ return x.t+' '+(x.who||''); }).join(' '),(m.agenda||[]).map(function(x){ return x.t; }).join(' '),_plain(m.html||'')].join(' '); }
+  (m.actions||[]).map(function(x){ return x.t+' '+(x.who||''); }).join(' '),(m.agenda||[]).map(function(x){ return x.t; }).join(' '),_plain(m.html||''),Object.keys(m.cx||{}).map(function(k){ var v=m.cx[k]; return typeof v==='string'?v:(Array.isArray(v)?v.map(function(x){ return x&&x.t; }).join(' '):''); }).join(' ')].join(' '); }
 
 function renderNotebookEmpty(host){
   host.innerHTML='<div class="ed-empty">'+NB_ICON.replace('width="15" height="15"','')+'<div class="t">Pick a day or a note on the left.</div><button class="btn" onclick="newPage()">+ Note</button></div>'; }
@@ -25726,6 +25880,7 @@ var MTG_PRINT_CSS='<style>'
  +'#print-root .pd-mt-notes{font:400 10pt/1.5 sans-serif;color:#111}#print-root .pd-mt-notes h1,#print-root .pd-mt-notes h2,#print-root .pd-mt-notes h3{font-family:sans-serif;color:#000;margin:9px 0 3px;line-height:1.25}'
  +'#print-root .pd-mt-notes h3{font-size:10.5pt;border-left:2.5pt solid var(--mc,#444);padding-left:7px}#print-root .pd-mt-notes div,#print-root .pd-mt-notes p{margin:0 0 3px}'
  +'#print-root .pd-mt-exps{font:400 9.5pt/1.5 sans-serif}#print-root .pd-mt-exps b{font-family:ui-monospace,Menlo,monospace;font-weight:700}'
+ +'#print-root .pd-mt-ctext{font:400 10pt/1.5 sans-serif;color:#111;white-space:pre-wrap;margin:0 0 4px}'
  +'#print-root .pd-mt-next{margin-top:14px;padding:7px 12px;border:.8pt solid #333;border-radius:3px;font:600 10.5pt/1.3 sans-serif;color:#000}'
  +'</style>';
 function projCrumb(e){ var p=projById(e.projectId); var s=p?(p.sections||[]).filter(function(x){return x.id===e.sectionId;})[0]:null; return (p?p.name:'')+(s?' › '+s.name:''); }
@@ -26070,7 +26225,7 @@ function buildPrintDoc(o,scope,opts){
 // someone to repeat the experiment. Not a to-do list (no ticks), not the rationale under every
 // recipe, not the well-by-well list under a map that already shows the wells. Each of those is a
 // box in the export dialog, off by default; the dialog previews the page as the boxes change.
-var PDF_DEFAULTS={mSummary:1,mPeople:1,mAgenda:1,mNotes:1,mDecisions:1,mActions:1,mCarry:1,mExps:1,mNext:1,summary:0,aim:1,obs:1,plate:1,plateText:0,plateNote:0,steps:1,recipes:1,why:0,ticks:0,log:1,results:1,curves:1,curvesSplit:0,deviations:1,methods:1,files:1};
+var PDF_DEFAULTS={mSummary:1,mPeople:1,mAgenda:1,mNotes:1,mDecisions:1,mActions:1,mCarry:1,mExps:1,mNext:1,mCustom:1,summary:0,aim:1,obs:1,plate:1,plateText:0,plateNote:0,steps:1,recipes:1,why:0,ticks:0,log:1,results:1,curves:1,curvesSplit:0,deviations:1,methods:1,files:1};
 // The fourth entry says which scopes the box applies to: an experiment's sections mean nothing
 // on a Journal day, so the dialog hides them there rather than offering a box that does nothing.
 var PDF_FIELDS=[
@@ -26088,7 +26243,7 @@ var PDF_FIELDS=[
   ['mSummary','The one line on top','the takeaway, set apart under the head','mtg'],['mPeople','People','who was there and who sent apologies','mtg'],
   ['mAgenda','Agenda','with a box for each item covered','mtg'],['mNotes','Notes','as written','mtg'],['mDecisions','Decisions','','mtg'],
   ['mActions','Action items','owner, due date and whether it is done','mtg'],['mCarry','Open from earlier meetings','what was still open when this one started','mtg'],
-  ['mExps','Experiments discussed','','mtg'],['mNext','Next meeting','','mtg']];
+  ['mExps','Experiments discussed','','mtg'],['mNext','Next meeting','','mtg'],['mCustom','Sections of your own','the lists, checklists and text the project added','mtg']];
 // "A summary" is a choice about this export, not a habit: remembered, it would silently turn the
 // next folder's full records into a summary. The content boxes are remembered; it is not.
 function _pdfPersisted(o){ var c=Object.assign({},o); delete c.summary; return c; }
