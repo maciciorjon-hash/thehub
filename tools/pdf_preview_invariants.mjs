@@ -17,6 +17,8 @@
 //                stage, "Width" never enlarges past the paper, and the dialog does not grow a scrollbar of its own
 //   PV5 live     a box ticked off changes the preview (and only after the layout is done), the dark theme keeps white paper,
 //                and a late layout from an older render never replaces a newer one
+//   PV7 flows    every other print in Labbook (bench sheet, Methods, week planner, day sheet) shows the sheets first and prints only on
+//                "Print / save PDF"; Cancel prints nothing; the Export PDF dialog is itself the preview
 //   PV6 media    the app's own @media print rules are read as always and its @media screen rules as never
 //
 //   node tools/pdf_preview_invariants.mjs      exit 1 on any finding
@@ -79,13 +81,13 @@ try {
 
   // The words of the document, page by page, as the preview lays it out: the same srcdoc a sheet gets, unshifted, so column n is page n.
   const WORDS = `(async function(host){
-    var S=host._pgv, f=document.createElement('iframe'); f.style.cssText='position:fixed;left:-30000px;top:0;border:0;width:'+S.g.cw+'px;height:'+S.g.ch+'px';
-    document.body.appendChild(f); await new Promise(function(r){ f.onload=r; f.srcdoc=_pgvDoc(S.inner,S.g,0); });
+    var S=host._pgv, G=S.G||S.g, f=document.createElement('iframe'); f.style.cssText='position:fixed;left:-30000px;top:0;border:0;width:'+G.sw+'px;height:'+G.sh+'px';
+    document.body.appendChild(f); await new Promise(function(r){ f.onload=r; f.srcdoc=PrintKit.doc(S,0); });
     var d=f.contentDocument, out=[]; for(var i=0;i<S.pages;i++) out.push([]);
     var tw=d.createTreeWalker(d.getElementById('print-root'),NodeFilter.SHOW_TEXT), n;
     while((n=tw.nextNode())){ var pe=n.parentElement; if(!pe||/^(STYLE|SCRIPT)$/.test(pe.tagName)) continue;
       var re=/\\S+/g, m; while((m=re.exec(n.nodeValue))){ var r=d.createRange(); r.setStart(n,m.index); r.setEnd(n,m.index+m[0].length); var b=r.getClientRects()[0]; if(!b||!b.width) continue;
-        var c=Math.floor(b.left/S.g.cw+0.001); if(c>=0&&c<S.pages) out[c].push(m[0]); } }
+        var c=Math.floor((b.left-G.ml*96/25.4)/G.cw+0.001); if(c>=0&&c<S.pages) out[c].push(m[0]); } }
     f.remove(); return out; })`;
 
   // One fixture: the preview and the printer, side by side.
@@ -158,7 +160,10 @@ try {
     yes('PV4', `${tag}: the stage is inside the dialog`, m.stage[0] >= m.card[0] - 1 && m.stage[2] <= m.card[2] + 1 && m.stage[3] <= m.card[3] + 1);
     yes('PV4', `${tag}: the dialog grew a scrollbar of its own (${m.cardScroll}px, ${m.cardScrollX}px across)`, m.cardScroll <= 1 && m.cardScrollX <= 1);
     yes('PV4', `${tag}: "Width" enlarged the paper (z ${m.z})`, m.z <= 1.0001);
-    yes('PV3', `${tag}: the text sits ${m.win[0].toFixed(1)}px in from the paper's left edge, ${m.win[2].toFixed(1)}px from the right, ${m.win[1].toFixed(1)}px from the top`, m.win[0] > 20 * m.z && m.win[2] > 20 * m.z && m.win[1] > 20 * m.z);
+    const edge = await page.evaluate(`(function(){ var S=document.getElementById('pdfx-prev')._pgv, fr=document.querySelector('#pdfx-prev .pgv-win iframe'); if(!fr||!fr.contentDocument) return null; var d=fr.contentDocument, b=d.body.getBoundingClientRect(), cp=getComputedStyle(d.documentElement).clipPath;
+      return {left:b.left, top:b.top, want:[S.g.ml*96/25.4, S.g.mt*96/25.4], clip:cp, vw:fr.contentWindow.innerWidth, sw:S.g.sw}; })()`);
+    yes('PV3', `${tag}: the text starts ${edge && edge.left.toFixed(1)}px in from the paper's left edge and ${edge && edge.top.toFixed(1)}px from the top (the margins are ${edge && edge.want.map(x => x.toFixed(1))}), and the page is clipped to its printable area`, edge && Math.abs(edge.left - edge.want[0]) < 1 && Math.abs(edge.top - edge.want[1]) < 1 && /inset/.test(edge.clip));
+    yes('PV3', `${tag}: the frame is as wide as the paper, so a print's width queries see the page (frame ${edge && edge.vw}px, paper ${edge && Math.round(edge.sw)}px)`, edge && Math.abs(edge.vw - edge.sw) <= 1);
     // Page: one whole sheet inside the stage
     await page.evaluate(`document.querySelector('#pdfx-prev [data-a=page]').click()`); await page.waitForTimeout(250);
     const f = await page.evaluate(`(function(){ var host=document.getElementById('pdfx-prev'), st=host.querySelector('.pgv-stage'), pg=host.querySelector('.pgv-pg').getBoundingClientRect(), sr=st.getBoundingClientRect(), cs=getComputedStyle(st);
@@ -193,12 +198,33 @@ try {
   eq('PV5', 'the frame carries the dark theme', lightInk.theme, 'dark'); yes('PV5', `light text on the white paper in the dark theme (${lightInk.bad})`, lightInk.n > 50 && lightInk.bad.length === 0);
   await page.evaluate(`document.documentElement.setAttribute('data-theme','light'); _lbDlgClose()`);
 
+  // PV7 every print is previewed first: the bench sheet, the Methods sheet, the week planner and a day sheet open the sheets, print
+  // nothing until "Print / save PDF", and Cancel prints nothing; the Export PDF dialog is itself the preview (no second one after it).
+  await page.evaluate(`window.__prints=0; window.print=function(){ window.__prints++; }`);
+  for (const [tag, call] of [['bench sheet', `exportLab('${ids.bio}')`], ['Methods sheet', `exportMethods('${ids.bio}')`], ['week planner', `exportWeekPDF()`], ['day sheet', `exportDaySheet('${ids.today}')`]]) {
+    await page.evaluate(`window.__prints=0; document.getElementById('lb-dialog-card').innerHTML=''; ${call}`);   // no stale host from the flow before
+    await page.waitForFunction(`(function(){ var h=document.getElementById('pvw-prev'); return h&&h._pgv&&h._pgv.pages>0&&!h.classList.contains('pgv-busy'); })()`, null, { timeout: 30000 });
+    const r = await page.evaluate(`({prints:window.__prints, pages:document.getElementById('pvw-prev')._pgv.pages, sub:document.querySelector('#lb-dialog-card .modal-sub').textContent})`);
+    eq('PV7', `${tag}: nothing printed before the preview is confirmed`, r.prints, 0); yes('PV7', `${tag}: the preview has pages`, r.pages >= 1);
+    await page.evaluate(`_printCancel(); document.getElementById('lb-dialog-card').innerHTML=''`); await page.waitForTimeout(150);
+    eq('PV7', `${tag}: Cancel prints nothing`, await page.evaluate(`window.__prints`), 0);
+    await page.evaluate(`document.getElementById('lb-dialog-card').innerHTML=''; ${call}`);
+    await page.waitForFunction(`(function(){ var h=document.getElementById('pvw-prev'); return h&&h._pgv&&h._pgv.pages>0&&!h.classList.contains('pgv-busy'); })()`, null, { timeout: 30000 });
+    await page.evaluate(`_printGo()`); await page.waitForTimeout(400);
+    eq('PV7', `${tag}: "Print / save PDF" prints once`, await page.evaluate(`window.__prints`), 1);
+    yes('PV7', `${tag}: the dialog is gone after printing`, await page.evaluate(`!document.getElementById('lb-dialog').classList.contains('open')`));
+  }
+  await page.evaluate(`window.__prints=0; openExp('${ids.bio}'); openPdfExport()`);
+  await page.waitForFunction(`(function(){ var h=document.getElementById('pdfx-prev'); return h&&h._pgv&&h._pgv.pages>0&&!h.classList.contains('pgv-busy'); })()`, null, { timeout: 30000 });
+  await page.evaluate(`_pdfxPrint()`); await page.waitForTimeout(1200);
+  eq('PV7', 'the Export PDF dialog prints once, with no second preview after it', [await page.evaluate(`window.__prints`), await page.evaluate(`!!document.getElementById('pvw-prev')&&document.getElementById('lb-dialog').classList.contains('open')`)], [1, false]);
+
   // PV6 media
-  const med = await page.evaluate(`({print:_pgvMedia('print'), screen:_pgvMedia('screen'), both:_pgvMedia('screen, print'), w:_pgvMedia('(max-width:760px)'), pw:_pgvMedia('print and (max-width:760px)'), sw:_pgvMedia('screen and (min-width:900px)'), nots:_pgvMedia('not screen')})`);
+  const med = await page.evaluate(`({print:PrintKit.media('print'), screen:PrintKit.media('screen'), both:PrintKit.media('screen, print'), w:PrintKit.media('(max-width:760px)'), pw:PrintKit.media('print and (max-width:760px)'), sw:PrintKit.media('screen and (min-width:900px)'), nots:PrintKit.media('not screen')})`);
   eq('PV6', '@media print is always', med.print, ''); eq('PV6', '@media screen is never', med.screen, null);
   eq('PV6', 'screen, print is always', med.both, ''); eq('PV6', 'a bare width query stays', med.w, '(max-width:760px)');
   eq('PV6', 'print and a width query keeps the width query', med.pw, '(max-width:760px)'); eq('PV6', 'screen and a width query is never', med.sw, null);
-  const css = await page.evaluate(`_pgvAppCss()`);
+  const css = await page.evaluate(`PrintKit.appCss()`);
   yes('PV6', "the app's `body>*{display:none}` print rule is read (the preview structure depends on it being harmless)", /body>\*\{display:none!important/.test(css.replace(/\s+/g, '')));
   yes('PV6', "no @page of the app's own reaches a preview frame", !/@page/.test(css));
 
