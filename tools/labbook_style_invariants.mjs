@@ -29,6 +29,9 @@
 //                           Readout), every question under the heading of its own kind, none lost and none twice — in New experiment and in the
 //                           setup editor. It was one grid of thirteen unlike boxes, a checkbox and a pipetting limit mixed in with the plate
 //                           (Jon, 2026-10-19: "desordenado, agrupa")
+//   T23 toggles in a setup  a setup's tick-boxes ("Run each series down the rows", "Leave the outer rows empty") are rows of their own, the width of the grid and starting at its
+//                           left edge, under "Plate layout" with their sentence under them. align-self:end, meant to sit a box on its neighbours' input line, threw the
+//                           row against the right edge inside the question's flex column, and the toggles landed in "Other", under nothing (Jon, 2026-11-25)
 //   T18 one sheet, centred  the Journal page, the Planner's Day and its Week are the same sheet (a bordered .nb-page on the grey desk), centred in
 //                           the pane with desk down both sides — the Journal's sat against the left edge and the Planner had no sheet, so the
 //                           margins of a wide screen were empty white (Jon, 2026-10-19)
@@ -117,6 +120,9 @@ const SCENES = {
   pdf_export: `openPdfExport({kind:'exp',id:window.__SW.spark})`,
   outcome_picker: `askOutcome(window.__SW.spark)`,
   /* a D2B-style screen, the one whose setup carries the "Total compounds" field and the plate note under it; last, because it stays in the notebook */
+  /* a manual HiBiT screen: Dosing plus the two plate-layout toggles; last-but-one, it too stays in the notebook */
+  setup_editor_hb: `(function(){ LB.data.experiments.x_hb={id:'x_hb',type:'HB',name:'HiBiT fixture',blocks:[],
+    setup:{format:'96',cellLine:'hela',cellsPerWell:3000,nPlates:1,treatH:6,dosing:'Manual (serial dilution)',topConc:20000,df:3,nPoints:7,nReps:2,seriesDown:false,edgeRows:true,vehicle:'DMSO'}}; openSetupEditor('x_hb'); })()`,
   setup_editor_plates: `(function(){ LB.data.experiments.x_plates={id:'x_plates',type:'D2B',name:'Plates fixture',blocks:[],
     setup:{format:'384',cellLine:'hela',cellsPerWell:4000,nPlates:10,nCompounds:20,nTotal:96,nConc:7,nReps:2,dmsoMax:0.25,treatH:6}}; openSetupEditor('x_plates'); })()`,
 };
@@ -213,6 +219,15 @@ const CHECKS = [
           if(kind!==t) bad.push(h[1]+': "'+k+'" is under "'+t+'", it is a "'+kind+'" question'); }); });
       if(grps.length&&!grps.some(function(g){ return g.querySelector('[data-sf="format"]'); })) bad.push(h[1]+': the plate format is not under a heading'); });
     return bad; })()`],
+  ['T23', ['setup_editor_hb'], `(function(){ var bad=[], host=document.getElementById('es-fields'); if(!host) return ['no setup editor'];
+    var chk=[].slice.call(host.querySelectorAll('label.ci-f.chk')); if(!chk.length) return ['no toggle on screen to measure'];
+    chk.forEach(function(l){ var grid=l.closest('.cc-inputs'), g=l.closest('.su-grp'), r=l.getBoundingClientRect(), gr=grid.getBoundingClientRect(), t=(l.querySelector('.chk-t')||l).textContent.trim().slice(0,24);
+      if(Math.abs(r.left-gr.left)>1.5) bad.push('the toggle "'+t+'" starts '+Math.round(r.left-gr.left)+'px from the grid\\'s left edge (it was thrown to the right)');
+      if(Math.abs(r.right-gr.right)>1.5) bad.push('the toggle "'+t+'" ends '+Math.round(gr.right-r.right)+'px short of the grid\\'s right edge');
+      var first=grid.querySelector('input:not([type=checkbox]),select,textarea'); if(first&&Math.abs(first.getBoundingClientRect().left-gr.left)>1.5) bad.push('the fields of the group do not start at the grid edge');
+      var k=l.querySelector('input').getAttribute('data-sf'), h=g&&g.querySelector('.su-gh'); if((k==='seriesDown'||k==='edgeRows')&&(!h||h.textContent!=='Plate layout')) bad.push('"'+k+'" is a plate-layout toggle and is under "'+(h&&h.textContent)+'"');
+      var hint=l.querySelector('.chk-h'), tit=l.querySelector('.chk-t'); if(hint&&tit&&hint.getBoundingClientRect().top<tit.getBoundingClientRect().bottom-1) bad.push('the sentence under "'+t+'" is not under it'); });
+    return bad.slice(0,6); })()`],
   ['T18', ['journal_day', 'planner_today', 'week'], `(function(){ var bad=[], pane=document.getElementById('pane-ed'), sh=pane.querySelector('.nb-page'); if(!sh) return ['no sheet on this screen'];
     var pr=pane.getBoundingClientRect(), r=sh.getBoundingClientRect(), L=r.left-pr.left, R=pr.right-r.right, desk=sh.closest('.nb-desk,.wk-desk');
     if(Math.abs(L-R)>20) bad.push('the sheet is not centred: '+Math.round(L)+'px of desk on the left, '+Math.round(R)+'px on the right');
