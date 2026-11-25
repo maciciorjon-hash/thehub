@@ -27457,7 +27457,44 @@ function _idbSet(v){ return _idb().then(function(db){ return new Promise(functio
 function _verify(hn){ if(!hn||!hn.queryPermission) return Promise.resolve(false); return hn.queryPermission({mode:'readwrite'}).then(function(p){ if(p==='granted') return true; return hn.requestPermission({mode:'readwrite'}).then(function(p2){return p2==='granted';}); }); }
 function _drainKeys(it,arr){ return it.next().then(function(r){ if(r.done) return arr; arr.push(r.value); return _drainKeys(it,arr); }); }
 // Standalone-only fallback (embedded-in-dHUB uses window.parent.rotateBackups instead).
-function _rotateSelfBackups(prefix,keep){ return (_selfDir?Promise.resolve(_selfDir):_idbGet()).then(function(h){ if(!h||!h.keys||!h.removeEntry) return; return _verify(h).then(function(ok){ if(!ok) return; return _drainKeys(h.keys(),[]).then(function(names){ names=names.filter(function(n){return n.indexOf(prefix)===0;}).sort(); var extra=names.length-keep; if(extra<=0) return; return Promise.all(names.slice(0,extra).map(function(n){ return h.removeEntry(n).catch(function(){}); })); }); }); }).catch(function(){}); }
+// backup-retention:begin — one text in hub-shell.html and labbook.html; tools/backup_retention_invariants.mjs compares them
+// Which automatic backups survive: a file for every day of the last `days` days, and past that one per week
+// (or month), never fewer than the newest. Pure: it only names the files to delete.
+var BACKUP_POLICY_KEY = 'hub_backup_keep';
+function backupPolicyClean(s){ var p = { days: 30, older: 'week' }; if (s && typeof s === 'object') { if ([7, 14, 30, 60, 90].indexOf(s.days) >= 0) p.days = s.days; if (['week', 'month', 'none'].indexOf(s.older) >= 0) p.older = s.older; } return p; }
+function backupPolicyRead(){ try { return backupPolicyClean(JSON.parse(localStorage.getItem(BACKUP_POLICY_KEY) || 'null')); } catch (e) { return backupPolicyClean(null); } }
+function backupPolicyWrite(p){ p = backupPolicyClean(p); try { localStorage.setItem(BACKUP_POLICY_KEY, JSON.stringify(p)); } catch (e) {} return p; }
+function backupPolicyText(p){ p = backupPolicyClean(p); return 'The last ' + p.days + ' days keep a backup for every day. ' + (p.older === 'week' ? 'Before that, one backup a week is kept.' : p.older === 'month' ? 'Before that, one backup a month is kept.' : 'Older backups are deleted.'); }
+function backupPrune(names, today, p){
+  p = backupPolicyClean(p);
+  var DAY = 864e5;
+  function dn(s){ var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s); return m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) / DAY : null; }
+  var t = dn(today); if (t == null) return [];
+  var groups = {};
+  (names || []).forEach(function(n){
+    var m = /^(.*?)(\d{4}-\d{2}-\d{2})(\..*)?$/.exec(n);
+    if (!m || dn(m[2]) == null) return;                       // a file that is not one of ours is never touched
+    var g = groups[m[1]] || (groups[m[1]] = {});              // 'dhub-backup-' and 'dhub-backup-local-' thin separately
+    (g[m[2]] || (g[m[2]] = [])).push(n);                      // a day's .json and .json.gz go together
+  });
+  var del = [];
+  Object.keys(groups).forEach(function(k){
+    var g = groups[k], days = Object.keys(g).sort(), seen = {};
+    days.forEach(function(d, i){
+      var keep = (t - dn(d)) < p.days || i === days.length - 1;
+      if (!keep && p.older !== 'none') { var key = p.older === 'week' ? Math.floor((dn(d) + 3) / 7) : d.slice(0, 7); if (!seen[key]) { seen[key] = 1; keep = true; } }
+      if (!keep) g[d].forEach(function(n){ del.push(n); });
+    });
+  });
+  return del;
+}
+// backup-retention:end
+function _rotateSelfBackups(prefix){ return (_selfDir?Promise.resolve(_selfDir):_idbGet()).then(function(h){ if(!h||!h.keys||!h.removeEntry) return; return _verify(h).then(function(ok){ if(!ok) return; return _drainKeys(h.keys(),[]).then(function(names){ names=names.filter(function(n){return n.indexOf(prefix)===0;}); return Promise.all(backupPrune(names,todayStr(),_bkPolRead()).map(function(n){ return h.removeEntry(n).catch(function(){}); })); }); }); }).catch(function(){}); }
+// The retention policy is the dHUB shell's when this notebook is embedded in it, its own when it runs alone.
+function _bkPolRead(){ try{ if(window.parent&&window.parent!==window&&window.parent.backupPolicyRead) return window.parent.backupPolicyRead(); }catch(e){} return backupPolicyRead(); }
+function _bkPolSet(){ var a=document.getElementById('rc-bk-days'), b=document.getElementById('rc-bk-older'), p={days:parseInt(a&&a.value,10),older:b&&b.value};
+  try{ if(window.parent&&window.parent!==window&&window.parent.backupPolicyWrite) window.parent.backupPolicyWrite(p); else backupPolicyWrite(p); }catch(e){ backupPolicyWrite(p); }
+  var n=document.getElementById('rc-bk-note'); if(n) n.textContent=backupPolicyText(_bkPolRead())+' A change takes effect after the next backup; nothing is deleted when you change it.'; }
 function chooseBackupDir(){ var pb=_parentBackup(); if(pb&&pb.pickDir){ return pb.pickDir().then(function(n){ toast('Backup folder: '+n); }).catch(function(){ toast('Could not open folder picker — backups will download.'); }); }
   if(typeof window.showDirectoryPicker==='function'){ return window.showDirectoryPicker({mode:'readwrite'}).then(function(h){ _selfDir=h; return _idbSet(h).then(function(){ toast('Backup folder: '+h.name); }); }).catch(function(){ toast('Folder picker unavailable — backups will download.'); }); }
   toast('No folder access — backups will download.'); return Promise.resolve(); }
@@ -27508,7 +27545,6 @@ function _verRestoreBackup(versions){
 // The backup file is gzip-compressed JSON — the whole record, attachment bytes and versions included, at a
 // fifth to a tenth of the size — and Recover → Backup file reads it back as it is. A browser with no
 // CompressionStream writes plain JSON instead; both restore.
-var BACKUP_KEEP=30;
 function _gzipBlob(text){
   if(typeof CompressionStream!=='function') return Promise.resolve(null);
   try{ return new Response(new Blob([text]).stream().pipeThrough(new CompressionStream('gzip'))).blob().then(function(b){ return new Blob([b],{type:'application/gzip'}); }).catch(function(){ return null; }); }
@@ -27535,8 +27571,8 @@ function _doBackupWrite(name,body,manual,info,pb){
     : (function(){ if(typeof window.showDirectoryPicker!=='function') return Promise.reject(); return (_selfDir?Promise.resolve(_selfDir):_idbGet()).then(function(h){ if(!h) return Promise.reject(); _selfDir=h; return _verify(h).then(function(v){ if(!v) return Promise.reject(); return h.getFileHandle(name,{create:true}).then(function(fh){ return fh.createWritable().then(function(w){ return w.write(body).then(function(){ return w.close(); }); }); }).then(function(){return 'fs';}); }); }); })();
   return chain.then(function(){
       _markBackup('folder'); _bkPill(false);
-      if(pb&&pb.writeFile){ try{ window.parent.rotateBackups && window.parent.rotateBackups('labbook-',BACKUP_KEEP); }catch(e){} }
-      else { _rotateSelfBackups('labbook-',BACKUP_KEEP); }
+      if(pb&&pb.writeFile){ try{ window.parent.rotateBackups && window.parent.rotateBackups('labbook-'); }catch(e){} }
+      else { _rotateSelfBackups('labbook-'); }
       if(manual) toast('Backup saved to folder ✓'+note);
       return true; })
     .catch(function(){
@@ -28116,7 +28152,13 @@ function _recoverBody(){
     // The honest counter. Attachments added before Storage was enabled, and any whose upload
     // failed, exist in exactly one browser — and until now nothing said so or offered to fix it.
     var pend=0; try{ pend=attNeedingUpload().length; }catch(e){}
-    return '<div class="rc-note">A backup file is the only copy that leaves this machine on its own. One is written <b>every day at noon</b> to the folder you choose (if the notebook is closed at noon, the next time it opens) — compressed JSON (<code>.json.gz</code>) holding the whole notebook, its attachments and its recent versions; the last '+BACKUP_KEEP+' days are kept. Restoring one <b>replaces the entire notebook</b>.</div>'
+    return '<div class="rc-note">A backup file is the only copy that leaves this machine on its own. One is written <b>every day at noon</b> to the folder you choose (if the notebook is closed at noon, the next time it opens) — compressed JSON (<code>.json.gz</code>) holding the whole notebook, its attachments and its recent versions. Restoring one <b>replaces the entire notebook</b>.</div>'
+      +(function(){ var p=_bkPolRead(); function o(v,l,c){ return '<option value="'+v+'"'+(String(c)===String(v)?' selected':'')+'>'+l+'</option>'; }
+        return '<div class="rc-act" style="align-items:center"><label for="rc-bk-days" class="rc-note" style="margin:0">A backup for every day of the last</label>'
+          +'<select class="btn ghost" id="rc-bk-days" onchange="_bkPolSet()">'+[7,14,30,60,90].map(function(d){ return o(d,d+' days',p.days); }).join('')+'</select>'
+          +'<label for="rc-bk-older" class="rc-note" style="margin:0">then keep</label>'
+          +'<select class="btn ghost" id="rc-bk-older" onchange="_bkPolSet()">'+o('week','one a week',p.older)+o('month','one a month',p.older)+o('none','nothing',p.older)+'</select></div>'
+          +'<div class="rc-note" id="rc-bk-note" style="margin-top:6px">'+esc(backupPolicyText(p))+' A change takes effect after the next backup; nothing is deleted when you change it.</div>'; })()
       +'<div class="rc-act"><button class="btn" onclick="_lbDlgClose();openRestoreBackup()">Choose a backup file…</button>'
       +'<button class="btn ghost" onclick="_lbDlgClose();openRestoreProjectsFile()" title="Put the project list from a backup back, by id, without touching experiments, pages or notes">Projects only…</button>'
       +'<button class="btn ghost" onclick="_lbDlgClose();doBackup(true)">Back up now</button></div>'

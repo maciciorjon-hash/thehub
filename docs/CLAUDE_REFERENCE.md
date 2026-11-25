@@ -726,6 +726,29 @@ Backup button ("Last backup today") and in its tooltip ("Saved today to your bac
 The one-time nudge now leads with **"Nothing was downloaded"**, because that is the thing the
 user is confused about.
 
+## Backup retention: a day each for a month, a week each after (2026-11-25)
+
+Jon asked for the automatic backups to keep **every day of the last month and one per week of everything
+older**, chosen in the app. Before, both jobs (`dhub-backup-*` from the shell, `labbook-*` from Labbook) just kept
+the newest 30 *files* (`rotateBackups(prefix, 30)` / `_rotateSelfBackups`), which is not the same thing: a gap in
+use made the "month" reach back months.
+
+One pure function, `backupPrune(names, today, policy)`, between `// backup-retention:begin/end` markers — the
+**same text in `shell/hub-shell.html` and `apps/labbook/labbook.html`** (the standalone Labbook has no shell to
+call); `tools/backup_retention_invariants.mjs` runs it from both and fails if the two differ (R1–R15).
+It only *names the files to delete*:
+- age < `days` (7/14/30/60/90, default 30) → kept, one per day;
+- older → the **first** file of each ISO week (`older:'week'`, default), or of each month, or none — the earliest,
+  so the survivor of an old week never changes as the days go by (R3, R5);
+- the **newest file of each kind is always kept**, even if everything is old or the choice is "nothing" (R9);
+- `.json` and `.json.gz` of one day go together; `dhub-backup-local-*` (cloud unreadable) thins apart from the real
+  ones; anything not named `<prefix>…YYYY-MM-DD…` is never touched; a file dated in the future is kept.
+
+The choice is `localStorage.hub_backup_keep` = `{days, older}` (a bad value reads as 30 + week). Settings → Data →
+Backup has the two selects; Labbook → Recover → Backup file has the same two (inside dHUB it reads and writes the
+**shell's** policy through `window.parent.backupPolicyRead/Write`, standalone its own storage). **Changing the
+choice deletes nothing**; it applies at the next backup's rotation (the note says so).
+
 ## Visual system, and what dHUB stopped being
 
 Jon's read was that Labbook felt "frágil y poco compacto" and dHUB "una página genérica hecha
