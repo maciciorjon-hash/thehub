@@ -207,6 +207,7 @@
 //   B65 seeding per line   With two or more cell lines the cell seeding is one step per line (first keeps its place, titled and worded for its line, each counts the plates of its line), the incubation wait sits on the last one only, the read prep follows the number of lines until a number is typed over it, a re-applied setup keeps all of it, a seeding already ticked is left as it was, one undo takes the lines and the split back
 //   B64 echo step         The Echo compound step has inputs and says only what they say: every preset and the library carry the echo calculator (plates, compounds, concentrations, replicates, DMSO — fed by the setup), the words quote its boxes, and no step names a time or a rule nobody recorded ("allow about 3 h", "working window", "first thing", "keep DMSO at or below", a backfill to load). A box left empty reads "—", never a hidden default. A run not started takes the new step; a ticked, noted, typed-wait or finished one is left as written.
 //   B67 hours from setup  The hours of a treatment are the setup's Treatment (h), not words in the step: no step says "note the time" (the chip and the timer do), the Echo step writes no number of hours, and the read is as many days after the compound as the hours say (6 h → the same day, 20 h → the next), for a new run, an edited setup and a run made before — never over a read someone moved by hand or one with a tick.
+//   B69 nb 384 edge       NanoBRET SPARK screen on 384 wells (NB_SPARK_SCREEN384 live, NB_SPARK_SCREEN384_PERM): the 76 rim wells are cells + medium only (flag edge: no mix, no ligand, nothing added, counted into the no-ligand suspension, not into digitonin or the substrate), five controls of four wells, 12 compounds x 3 conc x 3 wells, the mix spiked into the cells (4 µL inside the 36), live compounds the same day after a 2 h wait, permeabilised digitonin 4 µL then the compound 4.44 µL onto 40 µL
 //   B68 turboid           PR_TURBOID (Jon's TurboID proteomics): 8 six-well plates (4 replicates x a 6-condition bait plate and a 4-condition control plate), each step's wells equal the plate map's (24/16 seeded, 4+12+8+8+8 medium swaps = 40, 16 MLN4924, 20+16 biotin, 40 lysed), the design's media/dox/biotin/MLN4924 per condition, days 0,0,1x5,2x6, waits 900/240/60 = 20 h from T0 to lysis, the control biotin starting from 2,002 µL, dox dilutions equal the setup's ng/mL
 //   B54 plate labels      Words round the plate: select wells and a dashed + sits beside the plate on all four sides over exactly the selected columns/rows; a label
 //                            is typed, edited, removed and undone; a wider one stacks outside a narrower one; nothing written round the plate sits on a well, a header or
@@ -3749,6 +3750,57 @@ async function suite(opts) {
         if (!b || Math.abs(ng - +e.setup[f]) > 0.01) bad('B68', t, 'the dilution 1:' + Math.round(d) + ' from 1 mg/mL is ' + ng.toFixed(2) + ' ng/mL, the setup says ' + e.setup[f]); });
       // the plates follow the setup's replicates: 2 replicates is 4 plates
       const two = _tidPlates({ nReps: 2, baitLine: 'A', ctrlLine: 'B' }); if (two.length !== 4 || two[1].cellLine !== 'B') bad('B68', 'replicates', '2 replicates make ' + two.length + ' plates');
+    });
+
+    // B69 — NanoBRET SPARK screen on a 384-well plate with the rim left alone and the mix spiked into the cells (live and permeabilised).
+    if (run('B69')) await guard('B69', 'nb 384 edge', async () => {
+      const P = (LB.data.projects || []).find(p => (p.sections || []).length);
+      const mk = (key, code, over) => { const tpl = LB.data.presets[key]; if (!tpl) { bad('B69', key, 'the preset is not in the notebook'); return null; }
+        const su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup || {})), over || {});
+        const before = new Set(Object.keys(LB.data.experiments));
+        buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-11-25', type: 'NB', title: 'INV 384', code, setup: su, plate: true });
+        const e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); if (e) clean.push(e); return e; };
+      const ea = mk('NB_SPARK_SCREEN384', 'INV_B69A'), eb = mk('NB_SPARK_SCREEN384_PERM', 'INV_B69B');
+      if (!ea || !eb) return; tick('B69');
+      const txt = (e, re) => { const b = blocksInRunOrder(e).find(x => re.test(x.title)); return b ? fillCalcText(b.html, b, e).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ') : ''; };
+      const blk = (e, re) => blocksInRunOrder(e).find(x => re.test(x.title));
+      [['live', ea], ['perm', eb]].forEach(([nm, e]) => {
+        const p = e.plate, ids = Object.keys(p.wells || {});
+        if (p.format !== '384' || ids.length !== 384) bad('B69', nm + ' plate', 'format ' + p.format + ', ' + ids.length + ' wells');
+        // the rim (76 wells) is cells + medium only; the 14 x 22 inside holds the assay
+        const rim = ids.filter(i => { const m = /^([A-P])(\d+)$/.exec(i), r = m[1].charCodeAt(0) - 65, c = +m[2] - 1; return r === 0 || r === 15 || c === 0 || c === 23; });
+        if (rim.length !== 76 || rim.some(i => !p.wells[i].edge || p.wells[i].compound || p.wells[i].conc)) bad('B69', nm + ' rim', 'the 76 outer wells are not all edge wells without compound');
+        if (ids.some(i => p.wells[i].edge && !rim.includes(i))) bad('B69', nm + ' inside', 'an edge flag inside the plate');
+        const cnt = {}; ids.forEach(i => { const w = p.wells[i]; if (w.edge || w.typeId === 'blank') return; const k = w.typeId + (w.noLig ? '|noLig' : '') + (w.compound === 'DMSO' ? '|DMSO' : ''); cnt[k] = (cnt[k] || 0) + 1; });
+        const comp = {}; ids.forEach(i => { const w = p.wells[i]; if (w.compound && /^Compound /.test(w.compound)) comp[w.compound] = (comp[w.compound] || 0) + 1; });
+        if (Object.keys(comp).length !== 12 || Object.values(comp).some(n => n !== 9)) bad('B69', nm + ' compounds', '12 compounds x 3 concentrations x 3 wells expected, got ' + JSON.stringify(comp));
+        const ctl = Object.entries(cnt).filter(([k]) => !/^p:.*$/.test(k) || /noLig|DMSO/.test(k));
+        if (ctl.length !== 5 || ctl.some(([, n]) => n !== 4)) bad('B69', nm + ' controls', 'five controls of four wells expected, got ' + JSON.stringify(ctl));
+        const susp = blk(e, /Cell suspension/).calc.inputs, tx = blk(e, /Transfection mix/).calc.inputs;
+        if (+susp.cellsPerWell !== 4000 || +susp.volPerWell !== 32 || !susp.withMix || +tx.optimemPerWell !== 4 || !tx.intoCells || +tx.acceptorNg !== 10)
+          bad('B69', nm + ' inputs', 'cells ' + susp.cellsPerWell + ' in ' + susp.volPerWell + ' µL, mix ' + tx.optimemPerWell + ' µL, acceptor ' + tx.acceptorNg + ' ng, withMix/intoCells ' + susp.withMix + '/' + tx.intoCells);
+        // the rim takes the no-ligand suspension and no mix: 76 + 4 = 80 without ligand, 124 with
+        if (+susp.nMinus !== 80 || +susp.nPlus !== 124) bad('B69', nm + ' suspension', 'counts ' + susp.nPlus + ' + / ' + susp.nMinus + ' - ligand, expected 124 / 80');
+        if (!/36 µL of each tube of cells/.test(txt(e, /Seed the cells/))) bad('B69', nm + ' seeding', 'the seeding does not say 36 µL: ' + txt(e, /Seed the cells/));
+        // nothing is added to the rim: the substrate and (permeabilised) the digitonin count the 128 assay wells
+        const rd = blk(e, /substrate/).calc.inputs; if (+rd.nWells !== 128) bad('B69', nm + ' read', 'the substrate counts ' + rd.nWells + ' wells, not the 128 inside');
+        // the mix is spiked into the cells, so no step puts it in the wells first
+        const all = blocksInRunOrder(e).map(b => fillCalcText(b.html, b, e)).join(' ') + ' ' + blocksInRunOrder(e).map(b => String(pubSentence(b, e) || '')).join(' ');
+        if (/onto the \d+ µL of transfection mix|dispense [\d.]+ µL of the mix into every well|dispensed into the plate before the cells|straight onto the transfection mix/i.test(all)) bad('B69', nm + ' wording', 'a step still puts the mix into the wells first');
+        if (/\{\{[^}]*\}\}/.test(all)) bad('B69', nm + ' tokens', 'an unfilled token in the steps');
+      });
+      // live: the compounds go on the same day, onto 36 µL (4 µL), after a 2 h wait that follows the seeding; the read is the day after
+      const ca = blk(ea, /Compound addition/), sa = blk(ea, /Seed the cells/), ra = blk(ea, /substrate/);
+      if (+ca.dayOffset !== 0 || +sa.waitMin !== 120 || +ra.dayOffset !== 1 || +ca.calc.inputs.wellVolUL !== 36 || !/Add 4 µL of the 10×/.test(txt(ea, /Compound addition/)))
+        bad('B69', 'live timing', 'compound day ' + ca.dayOffset + ', wait after seeding ' + sa.waitMin + ', read day ' + ra.dayOffset + ', well ' + ca.calc.inputs.wellVolUL + ' µL: ' + txt(ea, /Compound addition/).slice(0, 160));
+      if (blocksInRunOrder(ea).some(b => /Digitonin/.test(b.title))) bad('B69', 'live', 'the live run has a digitonin step');
+      // permeabilised: seed 36, digitonin 4 µL (day 1), then the compound 10x onto 40 µL (4.44 µL), 1 h, read the same day
+      const da = blk(eb, /Digitonin/), cb = blk(eb, /Compound addition/), rb = blk(eb, /substrate/);
+      if (!da || !/Add 4 µL of the 10×/.test(txt(eb, /Digitonin/)) || !/\(36 µL already in the well → 40 µL\)|\(36 µL already in the well &rarr; 40 µL\)|36 µL already in the well/.test(txt(eb, /Digitonin/)))
+        bad('B69', 'perm digitonin', 'the digitonin step says: ' + txt(eb, /Digitonin/));
+      if (!cb || +cb.calc.inputs.wellVolUL !== 40 || !/Add 4\.44 µL of the 10×/.test(txt(eb, /Compound addition/)) || +cb.waitMin !== 60 || +cb.dayOffset !== 1 || +rb.dayOffset !== 1)
+        bad('B69', 'perm compounds', 'compound well ' + (cb && cb.calc.inputs.wellVolUL) + ' µL, wait ' + (cb && cb.waitMin) + ', days ' + (cb && cb.dayOffset) + '/' + rb.dayOffset);
+      if (+da.calc.inputs.nWells !== 128) bad('B69', 'perm digitonin wells', 'the digitonin counts ' + da.calc.inputs.nWells + ' wells, not the 128 inside the rim');
     });
 
     // B54 — words round the plate: what a column or a row is, written beside it.

@@ -1365,6 +1365,7 @@ html.lb-loading body > *{visibility:hidden;}
    same number — which made it invisible here. Same two marks the editor already uses. */
 .pp-w.noLig{background-image:repeating-linear-gradient(45deg,rgba(0,0,0,.16) 0 2px,transparent 2px 5px);}
 .pp-w.noSub{box-shadow:inset 0 0 0 1.5px rgba(0,0,0,.3);}
+.pp-w.edge{background-image:radial-gradient(rgba(0,0,0,.28) 1px,transparent 1.6px);background-size:4px 4px;}
 .plate-chk{font-size:var(--fs-1);font-weight:600;padding:2px 8px;border-radius:var(--r-1);color:var(--accent-ink);}
 /* Echo picklist: the square the CSV is dropped on, and the card it becomes */
 .echo-drop{display:flex;align-items:center;gap:14px;margin:0 0 14px;padding:14px 16px;border:1px dashed var(--border2);border-radius:var(--r-3);background:var(--surface2);color:var(--text2);cursor:pointer;transition:background-color var(--dur-1),border-color var(--dur-1);}
@@ -1580,6 +1581,7 @@ details.pl-sec>*:not(summary):last-child{padding-bottom:11px;}
    there, and the hatch says the ligand or the substrate is missing. */
 .pl-w.noLig{background-image:repeating-linear-gradient(45deg,rgba(0,0,0,.16) 0 2px,transparent 2px 5px);}
 .pl-w.noSub{box-shadow:inset 0 0 0 2px rgba(0,0,0,.28);}
+.pl-w.edge{background-image:radial-gradient(rgba(0,0,0,.28) 1px,transparent 1.6px);background-size:5px 5px;}
 .pl-flags{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px;}
 .pl-flag{font-family:var(--sans);font-size:var(--fs-2);border:1px solid var(--border2);background:var(--surface);
   color:var(--text2);border-radius:var(--r-3);padding:3px 10px;cursor:pointer;}
@@ -5722,6 +5724,54 @@ function _nbSparkPairs(){
   return b;
 }
 EXTRA_PRESET_SEED.NB_SPARK_PAIRS96=_nbSparkPairs();
+// ── SPARK NanoBRET compound screen on a 384-well plate, the mix spiked into the cells (Jon, 2026-11-25) ──
+// SP_NB20261117 (96-well, permeabilised) redone for 384: 4,000 cells and 36 µL per well, the rim left as cells + medium only, the
+// transfection mix added to the tube of cells of its condition (4 µL per well inside the 36) and the cells seeded with it, twelve
+// compounds in triplicate at three concentrations, the controls in fours. Two presets, one text: live cells (the compounds go on
+// after the cells have settled, so they are on overnight) and permeabilised (digitonin 10×, then the compounds, then a short wait, the
+// same day-1 times as the 96-well run). Every number is a calculator input; the plate map corrects the well counts condition by condition.
+function _nbSparkScreen384(perm){
+  var b=JSON.parse(JSON.stringify(EXTRA_PRESET_SEED.NB_SPARK_SCREEN96));
+  var mix=b.blocks[0], sus=b.blocks[1], seed=b.blocks[2], cmp=b.blocks[3], rd=b.blocks[4];
+  var tx=mix.calc.inputs, su=sus.calc.inputs;
+  // 12 compounds × 3 concentrations × 3 wells = 108 compound wells; + 4 DMSO, 4 −ligand on the pair mix, 4 donor, 4 acceptor, 4 mock; 76 rim wells.
+  tx.acceptorNg=10; tx.ratios='10'; tx.ctrlRatio=10; tx.minVolUL=0.1; tx.excess=1.1; tx.optimemPerWell=4; tx.intoCells=true;
+  tx.nPair=112; tx.nPairCtrl=4; tx.nDonor=4; tx.nAcceptor=4; tx.nMock=4; tx.nUntr=76;
+  mix.w=15;
+  mix.html='<ol><li>Prepare {{c.nMixes}} as in the table below, one tube per condition, each made to {{c.dispense}} per well: the Opti-MEM in the volume of its row first, then the plasmids and the carrier DNA in theirs ({{c.ngPerWell}} of DNA per well).</li><li>Add the FuGENE HD straight into the liquid, not down the tube wall &mdash; {{c.ratio}} on the DNA, {{c.fugeneUL}} per well. Mix gently; do not vortex.</li><li>Incubate 10&ndash;15 min at room temperature.</li><li>The mixes do not go into the plate: each is added to the tube of cells of its condition in the next step. The edge wells take no mix.</li></ol>';
+  su.cellsPerWell=4000; su.volPerWell=32; su.nPlus=124; su.nMinus=80; su.excess=1.1; su.withMix=true;
+  sus.html='<ol><li>Trypsinize {{c.cellLine}} and prepare {{c.volTotal}} of cell suspension at {{c.density}} in phenol-red-free Opti-MEM + 4% FBS ({{c.cellsTotal}}; {{c.cellsPerWell}} in {{c.volPerWell}} of cells per well, with the {{c.dispense}} of mix added to each well&rsquo;s share).</li><li>Set {{c.volMinus}} aside for the {{c.nMinus}} without ligand: the edge wells, which take no mix, and the &minus;ligand controls, which take the pair mix.</li><li>Add {{c.ligUL}} of {{c.ligand}} ({{c.ligStock}} stock &rarr; {{c.ligFinal}}) to the remaining {{c.volPlus}}; mix gently.</li><li>Split the cells into one tube per transfection mix, as many wells to a tube as the mix table says (the pair mix into + ligand cells and into no-ligand cells for the &minus;ligand wells), and add each mix at {{c.dispense}} per well of its tube. Mix gently. Leave the edge-well cells as they are.</li></ol>';
+  seed.title='Seed the cells with their mix';
+  seed.aka=['Seed onto the transfection mix','Seed onto the complexes'];
+  seed.pub='Cells were seeded together with their transfection mix ({{c.volAfter}} per well) and incubated at 37 &deg;C, 5% CO&#8322;.';
+  seed.html='<ol><li>Add {{c.volAfter}} of each tube of cells (cells and mix) to each well, following the plate map. The edge wells get the cells without mix and without ligand.</li><li>Rock gently to distribute.</li><li>Incubate at 37 &deg;C, 5% CO&#8322;.</li></ol>';
+  if(!perm) seed.w=120;
+  // Compounds: the same spike, onto the 36 µL the seeding leaves (the permeabilised run: onto the 40 µL the digitonin leaves).
+  var ci=cmp.calc.inputs; ci.wellVolUL=perm?40:36; ci.nWells=108; ci.excess=1.1;
+  cmp.d=perm?1:0; cmp.w=perm?60:undefined; if(!perm) delete cmp.w;
+  cmp.title='Compound addition';
+  cmp.html='<ol><li>Prepare each concentration at {{c.fold}} in {{c.diluent}}: {{nConc}} concentrations, {{df}}-fold from {{topUM}} &micro;M, one tube per compound and concentration, as on the plate map.</li><li>Add {{c.addUL}} of the {{c.fold}} to each compound well ({{c.wellVol}} already in the well &rarr; {{c.newVol}}); do not aspirate.</li><li>Add {{c.addUL}} of vehicle ({{c.diluent}} with matched DMSO) to the DMSO wells and to the &minus;ligand, mock and single-plasmid controls. The edge wells get nothing.</li><li>Incubate {{c.wait}} at 37 &deg;C.</li></ol>';
+  rd.d=1; rd.calc.inputs.nWells=128; rd.calc.inputs.perWellUL=perm?11:10;
+  var bl=[mix,sus,seed];
+  if(perm) bl.push({d:1,title:'Permeabilize cells (Digitonin)',
+    calc:{kind:'spike',inputs:{name:'Digitonin 500 µg/mL',wellVolUL:36,foldX:10,series:false,finalUM:40,stockUM:16300,nWells:128,excess:1.1,diluent:'Opti-MEM'}},
+    html:'<ol><li>Add {{c.addUL}} of the {{c.fold}} {{c.name}} to each well but the edge wells ({{c.wellVol}} already in the well &rarr; {{c.newVol}}); do not aspirate.</li></ol>'});
+  bl.push(cmp); bl.push(rd);
+  b.blocks=bl;
+  b.name=perm?'NanoBRET SPARK - Screen 384 (permeabilized)':'NanoBRET SPARK - Screen 384';
+  b.title='NanoBRET — SPARK compound screen, 384-well'+(perm?' [Permeabilized]':'');
+  b.setup={format:'384',cellLine:'HeLa',donors:'NL-DELE1(CTD)',acceptors:'HT-HRI',ratios:'10',doseSeries:true,minVol:0.1,
+           topUM:100,df:3,nConc:3,nReps:3,nCpd:12};
+  b.setupAdd=[{f:'topUM',t:'num',lbl:'Top concentration (µM)',d:100},
+              {f:'df',t:'num',lbl:'Dilution factor',d:3,step:'0.5'},
+              {f:'nConc',t:'num',lbl:'# concentrations',d:3},
+              {f:'nReps',t:'num',lbl:'Technical replicates',d:3},
+              {f:'nCpd',t:'num',lbl:'Compounds on the plate',d:12}];
+  b.layout='nbscreen384';
+  return b;
+}
+EXTRA_PRESET_SEED.NB_SPARK_SCREEN384=_nbSparkScreen384(false);
+EXTRA_PRESET_SEED.NB_SPARK_SCREEN384_PERM=_nbSparkScreen384(true);
 // TurboID proteomics, the cells half (Jon, 2026-11-24, LRRC58): a bait line and a control line, each in biological replicates (one flask a
 // replicate), seeded in normal DMEM; at T0 the medium is swapped for normal or Cys-free DMEM (tet-free FBS, Met and Gln put back in the
 // Cys-free) with dox; the next day MLN4924 (DMSO in the other wells) 4 h before a 60 min biotin pulse, then lysis, all arms at the same time
@@ -6490,6 +6540,8 @@ var CALC_KINDS={
      hint:'The reagent is given as a ratio, as in every other transfection here — 3:1 is the standard. The volume per well follows from the DNA each well receives: the acceptor plus the donor, or the acceptor alone when the donor adds 10% or less to it, since a top-up that small is not pipetted. The table prints the µL per well it worked out.'},
     {k:'optimemPerWell',t:'num',lbl:'Mix dispensed per well (µL)',
      hint:'Exactly this volume goes into every well. The Opti-MEM in each mix is the remainder after the plasmids and the FuGENE HD, so the tube comes to this × wells × overage — Jon\'s rule (2026-09-17): 10 µL into each well, not 10 plus whatever the DNA took.'},
+    {k:'intoCells',t:'check',lbl:'Mix is added to the cell suspension (not to the wells)',
+     hint:'Reverse transfection by spiking: each mix goes into a tube of cells in assay medium, one tube per condition, and the cells are seeded with it. The µL per well above are then the volume of mix in the volume seeded, and the plate is not dispensed into before the cells.'},
     {k:'nPair',t:'num',lbl:'Wells: pair (each donor × ratio)'},{k:'nDonor',t:'num',lbl:'Wells: donor only (each)'},
     {k:'nAcceptor',t:'num',lbl:'Wells: acceptor only (total)'},
     {k:'nMock',t:'num',lbl:'Wells: mock (total)',
@@ -6515,7 +6567,9 @@ var CALC_KINDS={
     {k:'volPerWell',t:'num',lbl:'Vol / well (µL)'},
     {k:'nPlus',t:'num',lbl:'Wells + ligand'},{k:'nMinus',t:'num',lbl:'Wells − ligand'},
     {k:'ligName',t:'txt',lbl:'Ligand'},{k:'stockUM',t:'num',lbl:'Ligand stock (µM)'},
-    {k:'finalNM',t:'num',lbl:'Ligand final (nM)'},{k:'excess',t:'num',lbl:'Excess ×',step:'0.05'}],
+    {k:'finalNM',t:'num',lbl:'Ligand final (nM)'},{k:'excess',t:'num',lbl:'Excess ×',step:'0.05'},
+    {k:'withMix',t:'check',lbl:'Transfection mix goes into this suspension',
+     hint:'The cells are seeded together with their mix (the volume per well above is the cells\' part; the mix adds its own). Off, the cells are seeded onto mix already in the wells.'}],
     defaults:{cellLine:'HeLa',cellsPerWell:20000,volPerWell:90,nPlus:32,nMinus:8,
       ligName:'HaloTag ligand 618',stockUM:100,finalNM:100,excess:1.1},
     compute:function(v){ return nbsuspRecipe(v); } },
@@ -7079,7 +7133,8 @@ function nbtxRecipe(v,counts,nos){
       +nfmt(_nbtxFugeneUL(v))+' µL/well</b>. '):('FuGENE HD <b>'+nfmt(_nbtxFugeneUL(v))+' µL/well</b>. '))
     +(+v.nPairCtrl>0?('The '+nfmt(v.nPairCtrl)+' no-ligand / no-substrate control wells per donor are transfected like any pair well and are '
       +'counted into the 1:'+nfmt(+v.ctrlRatio||R)+' pair mix. '):'')
-    +'Each mix is made to <b>'+nfmt(v.optimemPerWell)+' µL per well</b> × wells × overage — the Opti-MEM is the remainder after the plasmids and the FuGENE, so the tube holds exactly that. Incubate 10–15 min at room temperature, then dispense '+nfmt(v.optimemPerWell)+' µL into every well before the cells.</div>'
+    +'Each mix is made to <b>'+nfmt(v.optimemPerWell)+' µL per well</b> × wells × overage — the Opti-MEM is the remainder after the plasmids and the FuGENE, so the tube holds exactly that. Incubate 10–15 min at room temperature, then '
+    +(v.intoCells?('add '+nfmt(v.optimemPerWell)+' µL per well to the tube of cells of its condition, and seed the cells with it.'):('dispense '+nfmt(v.optimemPerWell)+' µL into every well before the cells.'))+'</div>'
     +'<div class="cc-rule"><b>The 10% rule.</b> A condition is topped up with carrier only when what it is short of is more than '
     +'<b>10% of '+nfmt(ngMax)+' ng</b>. Below that the top-up is a fraction of a microlitre nobody pipettes accurately, so adding it '
     +'introduces more error than the shortfall it corrects — the acceptor-only well, short by one donor\'s worth of nanograms, is the '
@@ -7107,7 +7162,8 @@ function nbsuspRecipe(v){
   return '<b>'+esc(line)+' suspension at '+nfmt(dens/1e6)+' M/mL</b> ('+nfmt(cpw)+' cells in '+nfmt(vw)+' µL/well)'
     +'<div class="cc-tblwrap"><table class="cc-tbl"><tr><th>Suspension</th><th>Volume</th><th>Cells</th><th>Ligand</th></tr>'+rows+'</table></div>'
     +'<div class="cc-note">Two separate suspensions: the ligand goes in the medium, not into each well, so every + well gets the same concentration. '
-    +'Seed '+nfmt(vw)+' µL on top of the transfection mix.</div>';
+    +(v.withMix?('Each is then split into one tube per transfection mix and the mix added to it; the '+nfmt(vw)+' µL per well is the cells\' part, and the mix goes on top of it.')
+                :('Seed '+nfmt(vw)+' µL on top of the transfection mix.'))+'</div>';
 }
 // The overage suffix, so a per-unit sum printed next to a total that includes the overage says
 // which of the two you are looking at. (Archive's calculators established this idiom.)
@@ -8357,6 +8413,55 @@ var PLATE_LAYOUTS=[
        var r1=2+by*nReps, c1=bx*nConc, gid='gsc'+k, name='Compound '+(k+1); k++;
        // A group outlines the block in the editor; no label, because the compound is already
        // on every well, where the summary, the tooltip and Cmd+K all read it.
+       p.groups[gid]={};
+       for(var rr=0;rr<nReps;rr++) for(var cc=0;cc<nConc;cc++)
+         p.wells[wellIdOf(r1+rr,c1+cc)]={typeId:pt,groupId:gid,compound:name,conc:concs[cc],
+           shade:Math.round((nConc>1?cc/(nConc-1):0)*0.8*1000)/1000};
+     }
+     return p; }},
+  // The compound screen on a 384-well plate with the rim left alone (Jon, 2026-11-25): every outer well holds cells in assay medium and
+  // nothing else (flag `edge`: no mix, no ligand, no digitonin, no compound, no substrate), row B is the controls in fours — the pair
+  // without ligand, the mock, the donor alone, the acceptor alone and the pair with DMSO — and the compounds are blocks of
+  // replicates × concentrations from row C, as many as the setup says (`nCpd`) and as the plate holds.
+  {id:'nbscreen384', label:'NanoBRET SPARK screen, 384 — edge wells cells + medium, controls in fours, compound blocks', formats:['384'], format:'384',
+   sub:'Outer wells: cells + medium only · row B: −ligand, mock, donor, acceptor, DMSO, 4 wells each · compounds from row C',
+   build:function(o){
+     o=o||{};
+     var fmt='384', d=PLATE_FORMATS[fmt], p=newPlate(fmt);
+     var nConc=Math.max(1,Math.min(d.c-2,Math.round(+o.nConc||3)));
+     var nReps=Math.max(1,Math.min(d.r-4,Math.round(+o.nReps||3)));
+     var top=(+o.topUM>0?+o.topUM:100)*1000, df=(+o.df>1?+o.df:3);
+     var across=Math.floor((d.c-2)/nConc), down=Math.floor((d.r-3)/nReps), fit=across*down;
+     var want=Math.max(1,Math.round(+o.nCpd||12)), nCpd=Math.min(want,fit);
+     var cw=4;
+     var cs=_nbtxConditions({donorNames:String(o.donors||'NL-DELE1(CTD)'),acceptorNames:String(o.acceptors||'HT-HRI'),
+       ratios:String(o.ratios||'10'),acceptorNg:10,nPair:1,nDonor:1,nAcceptor:1,nMock:1,nUntr:1});
+     function tidOf(k){ var c=cs.filter(function(x){ return x.key===k; })[0]; return c?c.tid:k; }
+     var pt=tidOf('pair'), dt=tidOf('donor'), at=tidOf('acc'), mt=tidOf('mock'), ut=tidOf('untr');
+     p.title='NanoBRET SPARK screen — '+nCpd+' compounds × '+nConc+' pts × '+nReps+' replicate'+(nReps===1?'':'s')+' (384-well, edge left alone)';
+     p.note='The outer wells hold cells in assay medium only (no mix, no ligand, nothing added); the assay is the inner '+(d.r-2)+' × '+(d.c-2)+'. '
+       +'Row B is the controls, '+cw+' wells each: the pair with no HaloTag ligand, the mock, the donor alone, the acceptor alone, and the pair with DMSO — the vehicle every compound is read against. '
+       +'From row C each compound is a block of '+nReps+' row'+(nReps===1?'':'s')+' × '+nConc+' concentration'+(nConc===1?'':'s')+', '
+       +_fmtConc(top)+' at the left and '+nfmt(df)+'-fold to the right (dark to light). Every inner well but the mock is transfected with the pair or one of its halves, and every one but the −ligand wells carries the ligand. '
+       +'Rename the compounds on the wells — the names are this run\'s, not the layout\'s.'
+       +(want>nCpd?(' The setup asks for '+want+' compounds; '+nCpd+' fit.'):'');
+     var ci=0;
+     p.types=cs.map(function(c){ return {id:c.tid, name:(c.key==='untr'?'Edge — cells + medium':c.name), no:++ci, color:PLATE_TYPE_COLORS[(ci-1)%PLATE_TYPE_COLORS.length]}; });
+     p.types.push({id:'blank', name:'Unused', color:'#b9bcc6'});
+     p.groups={};
+     for(var r=0;r<d.r;r++) for(var c=0;c<d.c;c++){
+       var rim=(r===0||r===d.r-1||c===0||c===d.c-1);
+       p.wells[wellIdOf(r,c)]=rim?{typeId:ut,edge:true}:{typeId:'blank'};
+     }
+     var ctrl=[{t:pt,flag:'noLig'},{t:mt},{t:dt},{t:at},{t:pt,compound:'DMSO'}];
+     ctrl.forEach(function(x,xi){
+       var gid='gsctl'+xi; p.groups[gid]={};
+       for(var n=0;n<cw;n++){ var w={typeId:x.t,groupId:gid}; if(x.flag) w[x.flag]=true; if(x.compound) w.compound=x.compound;
+         p.wells[wellIdOf(1,1+xi*cw+n)]=w; }
+     });
+     var concs=[]; for(var i=0;i<nConc;i++) concs.push(_fmtConc(top/Math.pow(df,i)));
+     for(var k=0;k<nCpd;k++){
+       var by=Math.floor(k/across), bx=k%across, r1=2+by*nReps, c1=1+bx*nConc, gid='gsc'+k, name='Compound '+(k+1);
        p.groups[gid]={};
        for(var rr=0;rr<nReps;rr++) for(var cc=0;cc<nConc;cc++)
          p.wells[wellIdOf(r1+rr,c1+cc)]={typeId:pt,groupId:gid,compound:name,conc:concs[cc],
@@ -9640,11 +9745,12 @@ function _expOfBlock(b){
 }
 function plateConditionCounts(e){
   var ps=expPlates(e); if(!ps.length) return null;
-  var c={pair:0,donor:0,acceptor:0,mock:0,untr:0,noLig:0,noSub:0,total:0,transfected:0};
+  var c={pair:0,donor:0,acceptor:0,mock:0,untr:0,noLig:0,noSub:0,edge:0,total:0,transfected:0};
   ps.forEach(function(p){ Object.keys(p.wells||{}).forEach(function(k){
     var w=p.wells[k]; if(!w||!w.typeId) return;
     var id=String(w.typeId);
     c.total++;
+    if(w.edge) c.edge++;
     if(w.noLig) c.noLig++;
     if(w.noSub) c.noSub++;
     // Two conventions reach this: the per-experiment condition ids the plate palette builds
@@ -9668,20 +9774,21 @@ function plateConditionCounts(e){
 // is ticked (what was pipetted is what the step says). The plan moves with it, so following the map
 // is not a deviation from the plan — the map IS the plan.
 var PLATE_FED={spike:['nWells'], rtxmix:['nWells'], reagent:['nWells'], mixparts:['nWells'], seed:['nWells']};
-function plateDosedWells(e,any,line){ var n=0;
-  expPlates(e).filter(function(p){ return !line||_sameLine(plateLine(p),line); }).forEach(function(p){ Object.keys(p.wells||{}).forEach(function(k){ var w=p.wells[k]; if(w&&w.typeId&&w.typeId!=='blank'&&(any||w.conc)) n++; }); });
+// `noEdge`: an addition that skips the edge wells (cells and medium only) — digitonin, the substrate. A seeding counts them.
+function plateDosedWells(e,any,line,noEdge){ var n=0;
+  expPlates(e).filter(function(p){ return !line||_sameLine(plateLine(p),line); }).forEach(function(p){ Object.keys(p.wells||{}).forEach(function(k){ var w=p.wells[k]; if(w&&w.typeId&&w.typeId!=='blank'&&!(noEdge&&w.edge)&&(any||w.conc)) n++; }); });
   return n; }
 // How many wells this block's addition goes into, counted over every plate of the experiment: all of
 // them for a spike, the dosed ones for a compound series, the transfected ones for a transfection
 // mix. null when the plate cannot say (no wells, or nothing of the kind on it).
 function plateReagentWells(e){ var n=0;
   expPlates(e).forEach(function(p){ Object.keys(p.wells||{}).forEach(function(k){ var w=p.wells[k];
-    if(w&&w.typeId&&w.typeId!=='blank'&&w.typeId!=='nosub'&&!w.noSub) n++; }); });
+    if(w&&w.typeId&&w.typeId!=='blank'&&w.typeId!=='nosub'&&!w.noSub&&!w.edge) n++; }); });
   return n; }
 function plateWellsFor(e,b){ var k=b&&b.calc&&b.calc.kind; if(!PLATE_FED[k]||!e) return null;
   var c=plateConditionCounts(e); if(!c||!c.total) return null; var n=null;
   if(k==='rtxmix') n=c.transfected;
-  else if(k==='spike') n=plateDosedWells(e,!(b.calc.inputs&&b.calc.inputs.series));   // a blank well holds no cells and takes nothing
+  else if(k==='spike') n=plateDosedWells(e,!(b.calc.inputs&&b.calc.inputs.series),undefined,true);   // a blank well holds no cells and takes nothing; an edge well takes nothing either
   // A reagent made per well goes into every well with cells in it — but not the wells that are the
   // no-reagent control: a read of "no substrate" is a well that never got it.
   else if(k==='reagent'){ if(!(+(b.calc.inputs&&b.calc.inputs.perWellUL)>0)) return null; n=plateReagentWells(e); }
@@ -9721,7 +9828,8 @@ function syncPlateToCalcs(e){
       // An untransfected well holds cells like any other — it is the control for what the
       // transfection itself does — so it takes a suspension too. Counting only the transfected
       // wells left it out of both.
-      var plus=Math.max(0,(c.transfected+c.untr)-c.noLig), minus=c.noLig;
+      // An edge well is cells in assay medium and nothing else — no ligand — so it takes the no-ligand suspension.
+      var plus=Math.max(0,(c.transfected+c.untr)-c.noLig-c.edge), minus=c.noLig+c.edge;
       // A count typed in the Designer stays the run's.
       if(b.calc.own&&b.calc.own.nPlus) plus=+I.nPlus;
       if(b.calc.own&&b.calc.own.nMinus) minus=+I.nMinus;
@@ -11391,7 +11499,10 @@ document.addEventListener('mousedown',function(ev){ if(!PLE.open) return; var t=
 // The flags a well can carry, and which experiment types they mean anything for.
 var PLATE_FLAGS=[
   {k:'noLig', lbl:'− ligand',    title:'No HaloTag ligand — the matched control for a BRET pair', types:['NB']},
-  {k:'noSub', lbl:'− substrate', title:'No substrate — background well',                          types:['NB']}
+  {k:'noSub', lbl:'− substrate', title:'No substrate — background well',                          types:['NB']},
+  // An edge well holds cells in assay medium and nothing else: no mix, no ligand, no digitonin, no compound, no substrate.
+  // It is on the plate so the wells that are read sit away from the evaporating rim. Its cells are in the no-ligand suspension.
+  {k:'edge',  lbl:'Edge',        title:'Edge well — cells and medium only, nothing is added to it',  types:['NB']}
 ];
 function _plExp(){ var o=_plateOwner(PL.key); return o?o.exp:null; }
 function _plExpTypes(){ var e=_plExp(); return e?expPlateTypes(e):[]; }
@@ -16121,7 +16232,8 @@ var CALC_PUB={
     var s='Cells were reverse-transfected with <b>'+nfmt(aNg)+' ng</b> of '+an+' per well and '+donors
       +' at '+(Rs.length>1?'donor:acceptor mass ratios of ':'a mass ratio of ')+ratioTxt
       +', complexed with FuGENE HD'+(+v.fugeneRatio>0?(' at a <b>'+nfmt(v.fugeneRatio)+':1</b> ratio (µL:µg DNA; '+nfmt(_nbtxFugeneUL(v))+' µL per well)'):(' (<b>'+nfmt(_nbtxFugeneUL(v))+' µL</b> per well)'))
-      +' in Opti-MEM to <b>'+nfmt(v.optimemPerWell)+' µL</b> per well and dispensed into the plate before the cells.';
+      +' in Opti-MEM to <b>'+nfmt(v.optimemPerWell)+' µL</b> per well and '
+      +(v.intoCells?'added to the cells in suspension, which were then seeded.':'dispensed into the plate before the cells.');
     var cp=_nbtxComp(v);
     if(cp) s+=' '+esc(cp.name)+' was added to the pair as a competitor from <b>'+nfmt(cp.top)+' ng</b> per well in <b>1:'+nfmt(cp.df)+'</b> steps over <b>'
       +nfmt(cp.n)+' concentrations</b> ('+nfmt(cp.reps)+' wells each), diluted in carrier DNA so that every well received the same amount of DNA.';
@@ -16137,7 +16249,7 @@ var CALC_PUB={
   nbsusp:function(v){
     var line=esc((cellLineLabel(v.cellLine)||'Cells').replace(/\s*\(.*\)$/,''));
     var s=line+' cells were seeded at <b>'+nfmt(v.cellsPerWell)+' cells per well</b> in <b>'+nfmt(v.volPerWell)
-      +' µL</b> directly onto the transfection complexes.';
+      +(v.withMix?' µL</b> (with its transfection mix added to the suspension before seeding).':' µL</b> directly onto the transfection complexes.');
     if(+v.nPlus>0) s+=' '+esc(v.ligName||'The HaloTag ligand')+' was included in the medium at <b>'+nfmt(v.finalNM)
       +' nM</b> throughout the expression period'
       +((+v.nMinus>0)?', and omitted from the matched no-ligand control wells':'')+'.';
