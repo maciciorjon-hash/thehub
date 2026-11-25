@@ -1131,6 +1131,8 @@ html.lb-loading body > *{visibility:hidden;}
 
 /* Popups */
 .pop{position:fixed;z-index:200;background:var(--glass-solid);border:1px solid var(--glass-brd);border-radius:var(--r-2);box-shadow:var(--glass-shadow),var(--glass-hi);padding:5px;max-height:300px;overflow:auto;width:250px;display:none;}
+/* A right-click menu shows all of its rows: 300px hid Delete (the last row) of the Meetings and experiment menus under a scrollbar. A phone's sheet is sized by its own rule. */
+#ctxmenu:not(.pop-sheet){max-height:min(560px,calc(100dvh - 16px));}
 .pop.open{display:block;}
 .pop-item{display:flex;align-items:center;gap:9px;padding:7px 9px;border-radius:var(--r-1);cursor:pointer;font-size:var(--fs-3);color:var(--text2);}
 .pop-item.sel,.pop-item:hover{background:var(--surface2);color:var(--text);}
@@ -19886,11 +19888,72 @@ function delMeeting(id){ var m=mtgMap()[id]; if(!m) return;
     var _tid=uid(); undoMark('Delete meeting',['meetings.'+id,'trash.'+_tid]);
     lbTrash('meeting',mtgTitle(m)+' · '+fmtDate(m.date),{meeting:m},null,_tid); delete mtgMap()[id];
     if(SEL.page===id) SEL.page=null; save(); renderAll(); }); }
-function ctxMtg(ev,id){ var m=mtgMap()[id]; if(!m) return;
+// ── Right-click ──────────────────────────────────────────────────────────────────────────────────────
+// A meeting row, a project's header in the list, a project tile on the overview and the blank list each have a menu; the
+// verbs work on an id, so they do not need the meeting to be open.
+function mtgRename(id){ var m=mtgMap()[id]; if(!m) return;
+  lbPrompt('Meeting title',m.title||'').then(function(v){ if(v==null) return; v=String(v).replace(/\s+/g,' ').trim(); if(v===(m.title||'')) return;
+    undoMark('Rename meeting',['meetings.'+id]); m.title=v; m.updated=Date.now(); save(); renderAll(); }); }
+function mtgSetStatus(id,v){ var m=mtgMap()[id]; if(!m||m.status===v) return; undoMark('Meeting',['meetings.'+id]); m.status=v; m.updated=Date.now(); save(); renderAll(); }
+function mtgSetKind(id,v){ var m=mtgMap()[id]; if(!m||m.type===v) return; undoMark('Meeting',['meetings.'+id]); m.type=v; m.updated=Date.now(); save(); renderAll(); }
+function mtgMoveTo(id,v){ var m=mtgMap()[id]; if(!m||!projById(v)||m.projectId===v) return; undoMark('Meeting',['meetings.'+id]); m.projectId=v; m.exps=[]; m.updated=Date.now(); if(MTG_PROJ&&MTG_PROJ!==v) MTG_PROJ=v; save(); renderAll(); }
+function mtgMovePick(id){ var m=mtgMap()[id]; if(!m) return;
+  var items=LB.data.projects.filter(function(p){ return p.id!==m.projectId; }).map(function(p){ return {id:p.id,label:p.name,sub:mtgList(p.id).length+' meetings',ic:'',c:p.color}; });
+  if(!items.length){ toast('There is no other project or topic to move it to.'); return; }
+  lbPicker('Move "'+mtgTitle(m)+'" to…',items,function(it){ mtgMoveTo(id,it.id); toast('Moved to '+it.label+'.'); }); }
+// A copy keeps the shape (kind, title, place, call, chair, purpose, who is invited, the agenda unticked) and none of what
+// happened: no notes, decisions or actions, so the open actions of the original are not counted twice.
+function mtgDup(id){ var m=mtgMap()[id]; if(!m) return;
+  var o=mtgNew(m.projectId,m.type,{date:todayStr(),status:'planned',title:m.title||'',start:m.start||'',end:m.end||'',place:m.place||'',link:m.link||'',chair:m.chair||'',purpose:m.purpose||'',
+    attendees:(m.attendees||[]).map(function(x){ return {n:x.n,a:0}; }),agenda:(m.agenda||[]).map(function(a){ return {id:uid(),t:a.t,m:a.m||0,d:0}; })});
+  if(o) toast('Copied: same agenda and people, nothing done yet.'); }
+function mtgKindMenu(id,at){ var m=mtgMap()[id]; if(!m) return;
+  popOpen('ctxmenu',MTG_TYPES.map(function(t){ return {label:t.name,ic:['',NB_COLORS[t.c]],on:t.id===m.type,fn:function(){ mtgSetKind(id,t.id); }}; }),at); }
+function ctxMtg(ev,id){ var m=mtgMap()[id]; if(!m) return; var at={left:ev.clientX,right:ev.clientX,top:ev.clientY,bottom:ev.clientY};
   ctxAt(ev,[{label:'Open',fn:function(){ mtgOpen(m.projectId,id); }},
+    {label:'Rename…',fn:function(){ mtgRename(id); }},
+    {label:'Duplicate',sub:'nothing done',fn:function(){ mtgDup(id); }},
+    {label:'Move to project…',fn:function(){ mtgMovePick(id); }},
+    {label:'Change kind…',sub:mtgType(m.type).name,fn:function(){ setTimeout(function(){ mtgKindMenu(id,at); },0); }},
+    {sep:true},
+    {hdr:'Status'},
+    {label:'Planned',on:m.status==='planned',fn:function(){ mtgSetStatus(id,'planned'); }},
+    {label:'Held',on:m.status==='held',fn:function(){ mtgSetStatus(id,'held'); }},
+    {label:'Cancelled',on:m.status==='cancelled',fn:function(){ mtgSetStatus(id,'cancelled'); }},
+    {sep:true},
+    (m.link?{label:'Open the call link',fn:function(){ var u=String(m.link).trim(); if(!/^https?:\/\//i.test(u)) u='https://'+u; try{ window.open(u,'_blank','noopener'); }catch(e){} }}:null),
     {label:'Export PDF…',fn:function(){ mtgOpen(m.projectId,id); openPdfExport({kind:'meeting',id:id}); }},
     {label:'History…',fn:function(){ openHistory('meetings',id); }},
     {sep:true},{label:'Delete',danger:true,fn:function(){ delMeeting(id); }}]); }
+// A project's header: the verbs of the project and of its meetings together, so nothing needs a trip to Experiments.
+function ctxMtgProject(ev,pid){ var p=projById(pid); if(!p) return; var n=mtgList(pid).length, i=LB.data.projects.map(function(x){ return x.id; }).indexOf(pid), N=LB.data.projects.length;
+  ctxAt(ev,[{label:'New meeting',fn:function(){ mtgNewDialog(pid); }},
+    {label:'Overview',sub:'regulars and open actions',fn:function(){ mtgOpen(pid,null); }},
+    (n&&MTG_VIEW==='project'&&!MTG_Q&&!MTG_PROJ?{label:MTG_FOLD[pid]?'Show its meetings':'Hide its meetings',fn:function(){ mtgFold(pid); }}:null),
+    (n?{label:'Only this project',sub:MTG_PROJ===pid?'filtered':'',on:MTG_PROJ===pid,fn:function(){ mtgFilterProj(MTG_PROJ===pid?'':pid); }}:null),
+    {sep:true},
+    {label:'Regular participants…',fn:function(){ mtgOpen(pid,null); setTimeout(function(){ var b=el('mtg-ros-in'); if(b){ b.scrollIntoView({block:'center'}); b.focus(); } },80); }},
+    (n?{label:'Export PDF…',sub:n+' meeting'+(n===1?'':'s'),fn:function(){ openPdfExport({kind:'meetings',id:pid}); }}:null),
+    {sep:true},
+    {label:'Rename project…',sub:'also in Experiments',fn:function(){ renameProject(pid); }},
+    {label:'Change colour',fn:function(){ cycleProjColor(pid); }},
+    (i>0?{label:'Move up',fn:function(){ moveProject(pid,-1); }}:null),
+    (i<N-1?{label:'Move down',fn:function(){ moveProject(pid,1); }}:null),
+    {sep:true},
+    (n?{label:'Delete its meetings…',danger:true,fn:function(){ delProjectMeetings(pid); }}:null),
+    {label:'Delete project…',danger:true,fn:function(){ delProject(pid); }}]); }
+// The blank part of the list.
+function ctxMtgList(ev){ if(ev.target.closest&&ev.target.closest('.mtg-item,.mtg-grp')) return; var G=_mtgGroups(), all=G.length&&G.every(function(p){ return MTG_FOLD[p.id]; });
+  ctxAt(ev,[{label:'New meeting',fn:function(){ mtgNewDialog(); }},
+    (MTG_VIEW==='project'&&!MTG_Q&&!MTG_PROJ&&G.length?{label:all?'Open every project':'Fold every project',fn:function(){ mtgFoldAll(); }}:null),
+    (mtgAll().length?{label:'Export PDF…',sub:'every meeting',fn:function(){ openPdfExport({kind:'meetings',id:MTG_PROJ||''}); }}:null),
+    ((MTG_Q||MTG_PROJ)?{label:'Clear search and filter',fn:function(){ MTG_Q=''; MTG_PROJ=''; renderAll(); }}:null)]); }
+function delProjectMeetings(pid){ var p=projById(pid), L=mtgList(pid); if(!p||!L.length) return;
+  lbConfirm('Delete the '+L.length+' meeting'+(L.length===1?'':'s')+' of "'+p.name+'"? The project stays. Each goes to Deleted items, restorable for '+TRASH_DAYS+' days.',{title:'Delete meetings',ok:'Delete'}).then(function(ok){ if(!ok) return;
+    var T=L.map(function(m){ return {m:m,t:uid()}; });
+    undoMark('Delete meetings',T.map(function(x){ return 'meetings.'+x.m.id; }).concat(T.map(function(x){ return 'trash.'+x.t; })));
+    T.forEach(function(x){ lbTrash('meeting',mtgTitle(x.m)+' · '+fmtDate(x.m.date),{meeting:x.m},null,x.t); delete mtgMap()[x.m.id]; if(SEL.page===x.m.id) SEL.page=null; });
+    save(); renderAll(); toast(L.length+' meeting'+(L.length===1?'':'s')+' deleted.'); }); }
 
 // ── Fields ───────────────────────────────────────────────────────────────────────────────────────────
 function mtgSet(f,v,list){ var m=mtgCur(); if(!m||m[f]===v) return;
@@ -19900,7 +19963,7 @@ function _mtgListSoon(){ clearTimeout(_mtgListT); _mtgListT=setTimeout(function(
   var rows=el('mtg-rows'); if(rows&&el('mtg-q')) rows.innerHTML=_mtgRowsHtml(); else _renderPagesList(h,SEL.node); },350); }
 function mtgTitleInput(t){ mtgSet('title',String(t.textContent||'').replace(/\n/g,' '),true); }
 function mtgTitleKey(e){ if(e.key==='Enter'){ e.preventDefault(); _nbFocusBody(); } }
-function mtgProject(v){ var m=mtgCur(); if(!m||!projById(v)||m.projectId===v) return; undoMark('Meeting',['meetings.'+m.id]); m.projectId=v; m.exps=[]; m.updated=Date.now(); save(); renderAll(); }
+function mtgProject(v){ var m=mtgCur(); if(m) mtgMoveTo(m.id,v); }
 function mtgPick(f,v){ mtgSet(f,v,true); renderEditor(); }
 function mtgStatus(v){ mtgSet('status',v,true); renderEditor(); }
 function mtgTypeMenu(ev){ var m=mtgCur(); if(!m) return; ev.stopPropagation();
@@ -20010,7 +20073,7 @@ function _mtgItemHtml(m,showProj){ var t=mtgType(m.type), n=_mtgOpenCount(m), pp
 function _mtgMatch(m,q){ if(!q) return true; q=q.toLowerCase();
   var hay=[mtgTitle(m),mtgType(m.type).name,m.place,m.purpose,m.summary,(m.attendees||[]).map(function(x){ return x.n; }).join(' '),(m.actions||[]).map(function(a){ return a.t+' '+(a.who||''); }).join(' '),(m.decisions||[]).map(function(a){ return a.t; }).join(' '),_plain(m.html||'')].join(' ').toLowerCase();
   return hay.indexOf(q)>=0; }
-function _mtgRowsHtml(){ var L=mtgAll().filter(function(m){ return (!MTG_PROJ||m.projectId===MTG_PROJ)&&_mtgMatch(m,MTG_Q); });
+function _mtgRowsHtml(){ if(MTG_PROJ&&!projById(MTG_PROJ)) MTG_PROJ=''; var L=mtgAll().filter(function(m){ return (!MTG_PROJ||m.projectId===MTG_PROJ)&&_mtgMatch(m,MTG_Q); });
   if(!L.length) return '<div class="pages-empty">'+((MTG_Q||MTG_PROJ)?'No meeting matches.':'No meetings yet.<br>Use <b>+ New</b>.')+'</div>';
   var T=todayStr(), h='';
   if(MTG_VIEW==='date'){
@@ -20024,7 +20087,7 @@ function _mtgRowsHtml(){ var L=mtgAll().filter(function(m){ return (!MTG_PROJ||m
   var force=!!(MTG_Q||MTG_PROJ);
   LB.data.projects.forEach(function(p){ var pm=L.filter(function(m){ return m.projectId===p.id; }); if(!pm.length) return;
     var open=pm.reduce(function(s,m){ return s+_mtgOpenCount(m); },0), folded=!force&&!!MTG_FOLD[p.id], here=!!SEL.page&&pm.some(function(m){ return m.id===SEL.page; });
-    h+='<button class="mtg-grp'+(folded?' fold':'')+(folded&&here?' here':'')+'" style="--pc:'+esc(p.color)+'" aria-expanded="'+(!folded)+'" title="'+(folded?'Show':'Hide')+' the meetings of '+esc(p.name)+'" onclick="mtgFold(\''+p.id+'\')">'
+    h+='<button class="mtg-grp'+(folded?' fold':'')+(folded&&here?' here':'')+'" style="--pc:'+esc(p.color)+'" aria-expanded="'+(!folded)+'" title="'+(folded?'Show':'Hide')+' the meetings of '+esc(p.name)+' \u00b7 right-click for more" onclick="mtgFold(\''+p.id+'\')" oncontextmenu="ctxMtgProject(event,\''+p.id+'\')">'
       +'<b class="mtg-chev">'+tbIco(P_CHEV_R,12)+'</b><i></i><span class="mtg-gn">'+esc(p.name)+'</span>'
       +(open?'<em class="mtg-gopen">'+open+' open</em>':'')+'<small>'+pm.length+'</small></button>'
       +(folded?'':'<div class="mtg-gb">'+pm.map(function(m){ return _mtgItemHtml(m,false); }).join('')+'</div>'); });
@@ -20043,14 +20106,14 @@ function _mtgFoldAllBtn(){ if(MTG_VIEW!=='project'||MTG_Q||MTG_PROJ) return '<sp
     +tbIco(all?'<path d="M7 9l5-5 5 5M7 15l5 5 5-5"/>':'<path d="M7 4l5 5 5-5M7 20l5-5 5 5"/>',15)+'</button>'; }
 function mtgFilterProj(v){ MTG_PROJ=v||''; renderAll(); }
 function mtgView(v){ MTG_VIEW=v; renderPages(); }
-function _mtgListHtml(){
+function _mtgListHtml(){ if(MTG_PROJ&&!projById(MTG_PROJ)) MTG_PROJ='';
   var SRCH='<circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/>';
   return '<div class="mtg-head"><div class="pages-hd"><span class="t">Meetings</span>'+_mtgFoldAllBtn()+'<button class="pages-new" onclick="mtgNewDialog()">+ New</button></div>'
     +'<div class="mtg-search"><label class="mtg-q">'+tbIco(SRCH,14)+'<input id="mtg-q" type="search" placeholder="Search people, notes, actions" aria-label="Search meetings" value="'+esc(MTG_Q)+'" oninput="MTG_Q=this.value;_mtgRowsPaint()" autocomplete="off"></label>'
     +'<div class="mtg-row2"><span class="mtg-sel"><select id="mtg-fp" aria-label="Project or topic" onchange="mtgFilterProj(this.value)"><option value="">All projects</option>'
     +LB.data.projects.map(function(p){ return '<option value="'+esc(p.id)+'"'+(p.id===MTG_PROJ?' selected':'')+'>'+esc(p.name)+'</option>'; }).join('')+'</select>'+tbIco(P_CHEV_D,12)+'</span>'
     +'<span class="mtg-seg mtg-seg-s" role="group" aria-label="Group by">'+[['project','Project'],['date','Date']].map(function(v){ return '<button class="'+(MTG_VIEW===v[0]?'on':'')+'" aria-pressed="'+(MTG_VIEW===v[0])+'" onclick="mtgView(\''+v[0]+'\')">'+v[1]+'</button>'; }).join('')+'</span></div></div></div>'
-    +'<div id="mtg-rows">'+_mtgRowsHtml()+'</div>'; }
+    +'<div id="mtg-rows" oncontextmenu="ctxMtgList(event)">'+_mtgRowsHtml()+'</div>'; }
 // ── The overview: a project's meetings at a glance (no meeting open) ─────────────────────────────────
 function renderMeetingsHome(host){
   var pid=MTG_PROJ&&projById(MTG_PROJ)?MTG_PROJ:'', p=pid?projById(pid):null, L=pid?mtgList(pid):mtgAll(), T=todayStr(), mo=T.slice(0,7), open=_mtgOpenActions(pid,null), col=(p&&p.color)||NB_COLORS.blue;
@@ -20076,7 +20139,7 @@ function renderMeetingsHome(host){
       +'<div class="mtg-hint mtg-hint-b">Every new meeting of '+esc(p.name)+' starts with these people. Take someone off one meeting with its x, or mark apologies, without touching this list.</div>';
   } else {
     var tl=LB.data.projects.map(function(q){ var ms=mtgList(q.id); if(!ms.length) return ''; var o=_mtgOpenActions(q.id,null).length;
-      return '<button class="mtg-ptile" style="--pc:'+esc(q.color)+'" onclick="mtgFilterProj(\''+q.id+'\')"><b>'+esc(q.name)+'</b><span>'+ms.length+' meeting'+(ms.length===1?'':'s')+(o?(' \u00b7 <em>'+o+' open</em>'):'')+'</span></button>'; }).join('');
+      return '<button class="mtg-ptile" style="--pc:'+esc(q.color)+'" onclick="mtgFilterProj(\''+q.id+'\')" oncontextmenu="ctxMtgProject(event,\''+q.id+'\')"><b>'+esc(q.name)+'</b><span>'+ms.length+' meeting'+(ms.length===1?'':'s')+(o?(' \u00b7 <em>'+o+' open</em>'):'')+'</span></button>'; }).join('');
     if(tl) h+='<div class="exp-sec-h"><span class="exp-sec-t">Projects and topics</span></div><div class="mtg-pgrid">'+tl+'</div>';
   }
   h+='<div class="exp-sec-h"><span class="exp-sec-t">Open actions</span>'+(Object.keys(owners).length>1?('<select class="mtg-own" onchange="MTG_OWNER=this.value;renderEditor()"><option value="">Everyone</option>'+Object.keys(owners).sort().map(function(w){ return '<option'+(w===MTG_OWNER?' selected':'')+' value="'+esc(w)+'">'+esc(w)+' ('+owners[w]+')</option>'; }).join('')+'</select>'):'')+'</div>'

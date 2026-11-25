@@ -15,6 +15,8 @@
 //                  read by date; a meeting moved to another project follows
 //   MT15 fold      each project's group folds to its header (remembered on the device); a search or a project filter never hides a result;
 //                  one button folds or opens them all
+//   MT16 right-click  a project's header in the list and its tile on the overview, a meeting row and the blank list each open a menu; rename, duplicate
+//                  (nothing done), move to project, status, kind, delete and delete-a-project's-meetings work on an id without the meeting being open
 //   MT3  fields    people (Enter, a comma list, apologies), agenda (tick, minutes, Enter adds, Backspace on empty removes),
 //                  decisions, actions (owner, due, done) all land in the record and survive a reload
 //   MT4  carry     "Open from earlier meetings" lists the open actions of EARLIER meetings only, never a cancelled one's,
@@ -325,6 +327,58 @@ try {
     eq('MT15', 'and a second click opens them all again', await E(() => document.querySelectorAll('#mtg-rows .mtg-item').length), rowsBefore);
     await E(() => { Object.keys(MTG_FOLD).forEach(k => delete MTG_FOLD[k]); MTG_Q = ''; try { localStorage.removeItem('lb_mtg_fold'); } catch (e) {} });
     await E(() => { Object.keys(LB.data.meetings).forEach(k => delete LB.data.meetings[k]); MTG_PROJ = ''; });
+  }
+
+
+  // ── MT16 right-click: project header, tile, meeting row, blank list
+  {
+    const items = async sel => { await p.waitForTimeout(320); /* a menu ignores presses for 260 ms after it opens */ return E(() => [...document.querySelectorAll('#ctxmenu.open .pop-item .pop-l')].map(x => x.textContent)); };
+    const click = async label => { await p.locator('#ctxmenu.open .pop-item', { hasText: new RegExp('^' + label) }).first().click(); await p.waitForTimeout(250); };
+    await E(() => { Object.keys(MTG_FOLD).forEach(k => delete MTG_FOLD[k]); MTG_PROJ = ''; MTG_Q = ''; MTG_VIEW = 'project'; mtgNew(LB.data.projects[0].id, 'group', { date: '2026-03-02' }); mtgNew(LB.data.projects[0].id, 'update', { date: '2026-03-09' }); mtgNew(LB.data.projects[1].id, 'group', { date: '2026-03-03' }); mtgOpen('', null); }); await p.waitForTimeout(250);
+    const pj = await E(() => LB.data.projects.filter(x => mtgList(x.id).length)[0].id);
+    await p.locator('#mtg-rows .mtg-grp').first().click({ button: 'right' });
+    const ph = await items();
+    for (const w of ['New meeting', 'Overview', 'Regular participants…', 'Export PDF…', 'Rename project…', 'Change colour', 'Delete its meetings…', 'Delete project…']) yes('MT16', 'project header menu has ' + w + ' (got ' + ph.join(' | ') + ')', ph.includes(w));
+    yes('MT16', 'a right-click on a header does not fold it', await E(() => document.querySelector('#mtg-rows .mtg-grp').getAttribute('aria-expanded') === 'true'));
+    await click('Hide its meetings');
+    eq('MT16', 'Hide its meetings folds that project', await E(() => document.querySelector('#mtg-rows .mtg-grp').getAttribute('aria-expanded')), 'false');
+    await E(() => { Object.keys(MTG_FOLD).forEach(k => delete MTG_FOLD[k]); _mtgRowsPaint(); });
+    // rename the project from its header
+    await p.locator('#mtg-rows .mtg-grp').first().click({ button: 'right' }); await items(); await click('Rename project…');
+    await p.locator('#lb-dlg-input').fill('Renamed topic'); await p.locator('#lb-dlg-ok').click(); await p.waitForTimeout(300);
+    eq('MT16', 'Rename project renames it, in the list too', await E(a => [projById(a.pj).name, document.querySelector('#mtg-rows .mtg-grp .mtg-gn').textContent], { pj }), ['Renamed topic', 'Renamed topic']);
+    // the blank list
+    await E(() => { document.getElementById('mtg-rows').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 40, clientY: 40 })); });
+    const lm = await items(); yes('MT16', 'the blank list offers New meeting and Export PDF (got ' + lm.join(' | ') + ')', lm.includes('New meeting') && lm.includes('Export PDF…'));
+    await p.keyboard.press('Escape'); await E(() => { var c = document.getElementById('ctxmenu'); c.classList.remove('open'); });
+    // a meeting row
+    const mid1 = await E(a => mtgList(a.pj)[0].id, { pj });
+    await p.locator('#mtg-rows .mtg-item[data-m="' + mid1 + '"]').click({ button: 'right' });
+    const mm = await items();
+    for (const w of ['Open', 'Rename…', 'Duplicate', 'Move to project…', 'Change kind…', 'Planned', 'Held', 'Cancelled', 'Export PDF…', 'History…', 'Delete']) yes('MT16', 'meeting menu has ' + w + ' (got ' + mm.join(' | ') + ')', mm.includes(w));
+    await click('Rename…'); await p.locator('#lb-dlg-input').fill('Pizza night'); await p.locator('#lb-dlg-ok').click(); await p.waitForTimeout(300);
+    eq('MT16', 'Rename sets the title (row and record)', await E(a => [LB.data.meetings[a.mid1].title, document.querySelector('#mtg-rows .mtg-item[data-m="' + a.mid1 + '"] .page-title').textContent], { mid1 }), ['Pizza night', 'Pizza night']);
+    await p.locator('#mtg-rows .mtg-item[data-m="' + mid1 + '"]').click({ button: 'right' }); await items(); await click('Cancelled');
+    eq('MT16', 'Cancelled marks it, without opening it', await E(a => LB.data.meetings[a.mid1].status, { mid1 }), 'cancelled');
+    // duplicate: same agenda and people, nothing done
+    await E(a => { var m = LB.data.meetings[a.mid1]; m.actions = [{ id: 'a1', t: 'Do it', who: 'Ana', due: '', done: 0 }]; m.decisions = [{ id: 'd1', t: 'Yes' }]; m.agenda.forEach(x => x.d = 1); m.attendees = [{ n: 'Ana Ruiz', a: 1 }]; }, { mid1 });
+    const n0 = await E(() => Object.keys(LB.data.meetings).length);
+    await p.locator('#mtg-rows .mtg-item[data-m="' + mid1 + '"]').click({ button: 'right' }); await items(); await click('Duplicate');
+    const dup = await E(a => { var c = mtgCur(), o = LB.data.meetings[a.mid1]; return { n: Object.keys(LB.data.meetings).length, other: c.id !== a.mid1, title: c.title, agenda: c.agenda.length === o.agenda.length, undone: c.agenda.every(x => !x.d), noAct: !c.actions.length && !c.decisions.length, who: c.attendees.map(x => x.n + ':' + x.a), same: c.projectId === o.projectId, st: c.status }; }, { mid1 });
+    eq('MT16', 'Duplicate makes another planned meeting: same agenda unticked and people present, no actions or decisions', [dup.n, dup.other, dup.title, dup.agenda, dup.undone, dup.noAct, dup.who, dup.same, dup.st], [n0 + 1, true, 'Pizza night', true, true, true, ['Ana Ruiz:0'], true, 'planned']);
+    // move + kind, by id, with the meeting not open
+    const other = await E(a => LB.data.projects.filter(x => x.id !== a.pj)[0].id, { pj });
+    await E(() => { mtgOpen('', null); }); await p.waitForTimeout(200);
+    await E(a => { mtgMoveTo(a.mid1, a.other); mtgSetKind(a.mid1, 'jc'); }, { mid1, other });
+    eq('MT16', 'move to project and change kind work on an id', await E(a => { var m = LB.data.meetings[a.mid1]; return [m.projectId === a.other, m.type]; }, { mid1, other }), [true, 'jc']);
+    // delete a project's meetings in one go; the project stays; one undo brings them back
+    await E(() => { MTG_PROJ = ''; mtgOpen('', null); });
+    const want = await E(a => mtgList(a.other).length, { other });
+    await E(a => { delProjectMeetings(a.other); }, { other }); await p.waitForTimeout(200);
+    await p.locator('#lb-dlg-ok').click(); await p.waitForTimeout(300);
+    eq('MT16', 'Delete its meetings empties the project and keeps it', await E(a => [mtgList(a.other).length, !!projById(a.other)], { other }), [0, true]);
+    yes('MT16', 'the deleted meetings are in Deleted items (' + want + ')', await E(w => Object.values(LB.data.trash || {}).filter(t => t.kind === 'meeting').length >= w || (LB.data.trash || []).filter && (LB.data.trash || []).filter(t => t.kind === 'meeting').length >= w, want));
+    await E(() => { MTG_PROJ = ''; Object.keys(LB.data.meetings).forEach(k => delete LB.data.meetings[k]); });
   }
 
   eq('MT11', 'no console errors', errs, []);
