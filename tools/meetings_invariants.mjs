@@ -233,8 +233,8 @@ try {
     yes('MT8', 'with every box off only the head is left', !/Agenda|Decisions|Action items|Blot is clean|Apologies/.test(r.docOff) && r.docOff.includes('Weekly catch-up'));
     yes('MT8', 'no undefined or NaN on paper', !/undefined|NaN|\[object/.test(r.doc + r.bulk));
     eq('MT8', 'the project export is a cover and one page per meeting', [r.pages, /Open actions/.test(r.bulk)], [r.n, true]);
-    await E(() => openPdfExport()); await p.waitForTimeout(900);
-    const dlg = await E(() => ({ rows: [...document.querySelectorAll('#lb-dialog-card .pdfx-row')].filter(x => x.style.display !== 'none').length, sel: document.getElementById('pdfx-scope').value.split(':')[0], frame: !!(document.getElementById('pdfx-frame').srcdoc || '').includes('pd-mt') }));
+    await E(() => openPdfExport()); await p.waitForFunction(() => { var h = document.getElementById('pdfx-prev'); return h && h._pgv && h._pgv.inner != null && !h.classList.contains('pgv-busy'); }, null, { timeout: 15000 });
+    const dlg = await E(() => ({ rows: [...document.querySelectorAll('#lb-dialog-card .pdfx-row')].filter(x => x.style.display !== 'none').length, sel: document.getElementById('pdfx-scope').value.split(':')[0], frame: !!(document.getElementById('pdfx-prev')._pgv.inner || '').includes('pd-mt') }));
     eq('MT8', 'the dialog shows only the meeting boxes, and previews the minutes', [dlg.rows, dlg.sel, dlg.frame], [10, 'meeting', true]);
     await E(() => _lbDlgClose());
   }
