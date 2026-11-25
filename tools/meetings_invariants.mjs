@@ -395,9 +395,9 @@ try {
     await E(a => { var m = mtgCur(); m.exps = []; m.decisions = [{ id: 'dd1', t: 'Wear goggles' }]; m.actions = [{ id: 'aa1', t: 'Check the eyewash', who: 'Ana', due: '', done: 0 }]; m.purpose = 'Quarterly look'; m.attendees = [{ n: 'Ana Ruiz', a: 0 }, { n: 'Bo Li', a: 1 }]; save(); renderEditor(); }, { pj });
     // the dialog: pick the Safety template, save
     await p.locator('#pane-ed .mtg-acts button', { hasText: 'Sections' }).click(); await p.waitForSelector('#lb-dialog.open .mtg-sd');
-    await p.selectOption('#mtg-sd-pre', 'safety'); await p.waitForTimeout(150);
+    await p.selectOption('#mtg-sd-pre', 'safetyfull'); await p.waitForTimeout(150);
     await p.locator('#lb-dialog-card .btn', { hasText: /^Save$/ }).click(); await p.waitForTimeout(350);
-    eq('MT17', 'the Safety template reorders, renames and adds the lists',
+    eq('MT17', 'the detailed Safety template reorders, renames and adds the lists',
       await heads(), ['Attendance', 'Agenda', 'Incidents and near misses', 'Inspections and audits', 'Risk assessments and COSHH', 'Training and compliance', 'Minutes', 'Decisions', 'Action items', 'Key message', 'Next meeting']);
     eq('MT17', 'no Purpose and no Experiments on the page, the toolbar and the editor are still there', await E(() => [!/Purpose|Experiments discussed/.test(document.getElementById('pane-ed').innerText), !!document.querySelector('#pane-ed .jr-b'), !!document.querySelector('#pane-ed .jr-ed')]), [true, true, true]);
     const k = await E(a => Object.fromEntries(_mtgLayout(a.pj).secs.filter(s => s.custom).map(s => [s.n, s.k])), { pj });
@@ -439,7 +439,7 @@ try {
     yes('MT17', 'the plain text has the lists, the check state and the renamed heading', /Incidents and near misses\n1\. Slip in corridor\n2\. Near miss/.test(out.txt) && /\[ \] Exits clear|\[x\] Exits clear/.test(out.txt) && /Actions and owners/.test(out.txt) && !/Wear goggles/.test(out.txt));
     yes('MT17', 'the search reads sections of your own', /fume hood/.test(out.srch) && /car park/.test(out.srch));
     // the other meeting kinds of a project with the template start as a Safety committee, with its agenda
-    eq('MT17', 'the template offers the Safety committee kind, with its agenda', await E(() => [mtgType('safety').name, mtgType('safety').agenda.length, mtgType('safety').agenda[2]]), ['Safety committee', 7, 'Incidents and near misses']);
+    eq('MT17', 'the Safety committee kind starts with nothing to delete', await E(() => [mtgType('safety').name, mtgType('safety').agenda.length]), ['Safety committee', 0]);
     // hide Minutes: the toolbar and the editor go, the minutes stay
     await E(a => { var p = projById(a.pj); p.mtgLayout.secs.forEach(s => { if (s.k === 'notes') s.on = 0; }); mtgMap()[a.mid].html = '<div>Kept text</div>'; save(); renderEditor(); }, { pj, mid }); await p.waitForTimeout(300);
     eq('MT17', 'with Minutes hidden there is no toolbar and no editor, and the text is kept', await E(a => [!!document.querySelector('#pane-ed .jr-b'), !!document.querySelector('#pane-ed .jr-ed'), mtgMap()[a.mid].html], { mid }), [false, false, '<div>Kept text</div>']);
@@ -450,7 +450,8 @@ try {
     eq('MT17', 'choosing the template in the dialog picks the Safety committee kind', await E(() => document.getElementById('mtg-nd-t').value), 'safety');
     await p.locator('#lb-dialog-card .btn', { hasText: /^Create$/ }).click(); await p.waitForTimeout(500);
     const np = await E(() => { var m = mtgCur(), p = projById(m.projectId); return { name: p.name, type: m.type, secs: (p.mtgLayout && p.mtgLayout.secs.filter(s => s.on).map(s => s.n)) || [], agenda: m.agenda.length }; });
-    eq('MT17', 'a new project made with the template carries its layout; the first meeting is a Safety committee', [np.name, np.type, np.agenda, np.secs.includes('Incidents and near misses'), np.secs.includes('Experiments discussed')], ['H&S committee', 'safety', 7, true, false]);
+    eq('MT17', 'a new project made with the template carries its layout; the first meeting is a Safety committee', [np.name, np.type, np.agenda, np.secs.includes('Inspection Notes'), np.secs.includes('Experiments discussed')], ['H&S committee', 'safety', 0, true, false]);
+    eq('MT17', 'the Safety committee template is exactly Jon\'s five sections, no toolbar, every detail field', [await heads(), await E(() => !!document.querySelector('#pane-ed .jr-b')), await E(() => document.querySelectorAll('#pane-ed .mtg-f').length)], [['People', 'Inspection Notes', 'Lab Management Notes', 'Round Table', 'Action points'], false, 8]);
     // back to the default: nothing stored again
     await p.locator('#pane-ed .mtg-acts button', { hasText: 'Sections' }).click(); await p.waitForSelector('#lb-dialog.open .mtg-sd');
     await p.selectOption('#mtg-sd-pre', 'research'); await p.waitForTimeout(120); await p.locator('#lb-dialog-card .btn', { hasText: /^Save$/ }).click(); await p.waitForTimeout(350);
