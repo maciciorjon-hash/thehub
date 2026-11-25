@@ -207,7 +207,7 @@
 //   B65 seeding per line   With two or more cell lines the cell seeding is one step per line (first keeps its place, titled and worded for its line, each counts the plates of its line), the incubation wait sits on the last one only, the read prep follows the number of lines until a number is typed over it, a re-applied setup keeps all of it, a seeding already ticked is left as it was, one undo takes the lines and the split back
 //   B64 echo step         The Echo compound step has inputs and says only what they say: every preset and the library carry the echo calculator (plates, compounds, concentrations, replicates, DMSO — fed by the setup), the words quote its boxes, and no step names a time or a rule nobody recorded ("allow about 3 h", "working window", "first thing", "keep DMSO at or below", a backfill to load). A box left empty reads "—", never a hidden default. A run not started takes the new step; a ticked, noted, typed-wait or finished one is left as written.
 //   B67 hours from setup  The hours of a treatment are the setup's Treatment (h), not words in the step: no step says "note the time" (the chip and the timer do), the Echo step writes no number of hours, and the read is as many days after the compound as the hours say (6 h → the same day, 20 h → the next), for a new run, an edited setup and a run made before — never over a read someone moved by hand or one with a tick.
-//   B69 nb 384 edge       NanoBRET SPARK screen on 384 wells (NB_SPARK_SCREEN384 live, NB_SPARK_SCREEN384_PERM): the 76 rim wells are cells + medium only (flag edge: no mix, no ligand, nothing added, counted into the no-ligand suspension, not into digitonin or the substrate), five controls of four wells, 12 compounds x 3 conc x 3 wells, the mix spiked into the cells (4 µL inside the 36), live compounds the same day after a 2 h wait, permeabilised digitonin 4 µL then the compound 4.44 µL onto 40 µL
+//   B69 nb 384            NanoBRET SPARK screen on 384 wells drawn as Jon draws it (NB_SPARK_SCREEN384 live, NB_SPARK_SCREEN384_PERM): only the 136 wells in use are seeded, controls in row B in fours with a gap (-ligand, donor, acceptor, mock), 12 compounds in triplicate across columns 2-19 with the series down the rows in two bands (D-F, G-I), a 12-well DMSO block in columns 21-22, nothing else filled; the mix spiked into the cells (4 µL inside the 36), live compounds the same day after a 2 h wait, permeabilised digitonin 4 µL then the compound 4.44 µL onto 40 µL; no edge flag
 //   B68 turboid           PR_TURBOID (Jon's TurboID proteomics): 8 six-well plates (4 replicates x a 6-condition bait plate and a 4-condition control plate), each step's wells equal the plate map's (24/16 seeded, 4+12+8+8+8 medium swaps = 40, 16 MLN4924, 20+16 biotin, 40 lysed), the design's media/dox/biotin/MLN4924 per condition, days 0,0,1x5,2x6, waits 900/240/60 = 20 h from T0 to lysis, the control biotin starting from 2,002 µL, dox dilutions equal the setup's ng/mL
 //   B54 plate labels      Words round the plate: select wells and a dashed + sits beside the plate on all four sides over exactly the selected columns/rows; a label
 //                            is typed, edited, removed and undone; a wider one stacks outside a narrower one; nothing written round the plate sits on a well, a header or
@@ -3752,11 +3752,11 @@ async function suite(opts) {
       const two = _tidPlates({ nReps: 2, baitLine: 'A', ctrlLine: 'B' }); if (two.length !== 4 || two[1].cellLine !== 'B') bad('B68', 'replicates', '2 replicates make ' + two.length + ' plates');
     });
 
-    // B69 — NanoBRET SPARK screen on a 384-well plate with the rim left alone and the mix spiked into the cells (live and permeabilised).
-    if (run('B69')) await guard('B69', 'nb 384 edge', async () => {
+    // B69 — NanoBRET SPARK screen on a 384-well plate drawn as Jon draws it, the mix spiked into the cells (live and permeabilised).
+    if (run('B69')) await guard('B69', 'nb 384', async () => {
       const P = (LB.data.projects || []).find(p => (p.sections || []).length);
-      const mk = (key, code, over) => { const tpl = LB.data.presets[key]; if (!tpl) { bad('B69', key, 'the preset is not in the notebook'); return null; }
-        const su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup || {})), over || {});
+      const mk = (key, code) => { const tpl = LB.data.presets[key]; if (!tpl) { bad('B69', key, 'the preset is not in the notebook'); return null; }
+        const su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup || {})));
         const before = new Set(Object.keys(LB.data.experiments));
         buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-11-25', type: 'NB', title: 'INV 384', code, setup: su, plate: true });
         const e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); if (e) clean.push(e); return e; };
@@ -3764,29 +3764,36 @@ async function suite(opts) {
       if (!ea || !eb) return; tick('B69');
       const txt = (e, re) => { const b = blocksInRunOrder(e).find(x => re.test(x.title)); return b ? fillCalcText(b.html, b, e).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ') : ''; };
       const blk = (e, re) => blocksInRunOrder(e).find(x => re.test(x.title));
+      if (PLATE_FLAGS.some(f => f.k === 'edge')) bad('B69', 'flags', 'an edge flag is back: Jon seeds only the wells in use, there is no edge effect to model');
       [['live', ea], ['perm', eb]].forEach(([nm, e]) => {
-        const p = e.plate, ids = Object.keys(p.wells || {});
+        const p = e.plate, ids = Object.keys(p.wells || {}), W = id => p.wells[id] || {};
         if (p.format !== '384' || ids.length !== 384) bad('B69', nm + ' plate', 'format ' + p.format + ', ' + ids.length + ' wells');
-        // the rim (76 wells) is cells + medium only; the 14 x 22 inside holds the assay
-        const rim = ids.filter(i => { const m = /^([A-P])(\d+)$/.exec(i), r = m[1].charCodeAt(0) - 65, c = +m[2] - 1; return r === 0 || r === 15 || c === 0 || c === 23; });
-        if (rim.length !== 76 || rim.some(i => !p.wells[i].edge || p.wells[i].compound || p.wells[i].conc)) bad('B69', nm + ' rim', 'the 76 outer wells are not all edge wells without compound');
-        if (ids.some(i => p.wells[i].edge && !rim.includes(i))) bad('B69', nm + ' inside', 'an edge flag inside the plate');
-        const cnt = {}; ids.forEach(i => { const w = p.wells[i]; if (w.edge || w.typeId === 'blank') return; const k = w.typeId + (w.noLig ? '|noLig' : '') + (w.compound === 'DMSO' ? '|DMSO' : ''); cnt[k] = (cnt[k] || 0) + 1; });
-        const comp = {}; ids.forEach(i => { const w = p.wells[i]; if (w.compound && /^Compound /.test(w.compound)) comp[w.compound] = (comp[w.compound] || 0) + 1; });
-        if (Object.keys(comp).length !== 12 || Object.values(comp).some(n => n !== 9)) bad('B69', nm + ' compounds', '12 compounds x 3 concentrations x 3 wells expected, got ' + JSON.stringify(comp));
-        const ctl = Object.entries(cnt).filter(([k]) => !/^p:.*$/.test(k) || /noLig|DMSO/.test(k));
-        if (ctl.length !== 5 || ctl.some(([, n]) => n !== 4)) bad('B69', nm + ' controls', 'five controls of four wells expected, got ' + JSON.stringify(ctl));
+        const used = ids.filter(i => W(i).typeId !== 'blank');
+        if (used.length !== 136) bad('B69', nm + ' wells', used.length + ' wells in use, expected 136 (108 compound + 12 DMSO + 16 controls)');
+        const PAIR = 'p:NL-DELE1(CTD)+HT-HRI', DON = 'd:NL-DELE1(CTD)', ACC = 'a:HT-HRI';
+        // the image: controls in row B, four wells each with one empty well between (B2-5 -ligand pair, B7-10 donor, B12-15 acceptor, B17-20 mock)
+        [[2, PAIR, true], [7, DON], [12, ACC], [17, 'mock']].forEach(([c0, t, nl]) => { for (let n = 0; n < 4; n++) { const w = W('B' + (c0 + n));
+          if (w.typeId !== t || !!w.noLig !== !!nl) bad('B69', nm + ' controls', 'B' + (c0 + n) + ' is ' + w.typeId + (w.noLig ? ' -ligand' : '') + ', expected ' + t + (nl ? ' -ligand' : '')); } });
+        ['B1', 'B6', 'B11', 'B16', 'B21', 'B24'].forEach(i => { if (W(i).typeId !== 'blank') bad('B69', nm + ' row B', i + ' is not empty'); });
+        for (let c = 1; c <= 24; c++) ['A', 'C', 'J', 'P'].forEach(r => { if (W(r + c).typeId !== 'blank') bad('B69', nm + ' empty rows', r + c + ' is in use'); });
+        for (const r of 'ABCDEFGHIJKLMNOP') for (const c of [1, 23, 24]) if (W(r + c).typeId !== 'blank') bad('B69', nm + ' rim', r + c + ' is in use: only the wells in use are seeded');
+        // compounds: six to a band in triplicate across columns 2-19, the series DOWN the rows (D 100, E 33.3, F 11.1 µM; G, H, I the same for the second band)
+        const D = ['100 µM', '33.3 µM', '11.1 µM'];
+        for (let k = 0; k < 12; k++) { const band = Math.floor(k / 6), c1 = 2 + (k % 6) * 3; for (let cc = 0; cc < 3; cc++) for (let rr = 0; rr < 3; rr++) {
+          const id = 'DEFGHI'[band * 3 + cc] + (c1 + rr), w = W(id);
+          if (w.typeId !== PAIR || w.compound !== 'Compound ' + (k + 1) || w.conc !== D[cc]) bad('B69', nm + ' compounds', id + ' is ' + w.compound + ' ' + w.conc + ', expected Compound ' + (k + 1) + ' ' + D[cc]); } }
+        for (const r of 'DEFGHI') if (W(r + '20').typeId !== 'blank') bad('B69', nm + ' column 20', r + '20 is in use');
+        for (const r of 'DEFGHI') for (const c of [21, 22]) { const w = W(r + c); if (w.typeId !== PAIR || w.compound !== 'DMSO') bad('B69', nm + ' DMSO', r + c + ' is ' + w.compound + ', expected the DMSO block'); }
         const susp = blk(e, /Cell suspension/).calc.inputs, tx = blk(e, /Transfection mix/).calc.inputs;
         if (+susp.cellsPerWell !== 4000 || +susp.volPerWell !== 32 || !susp.withMix || +tx.optimemPerWell !== 4 || !tx.intoCells || +tx.acceptorNg !== 10)
           bad('B69', nm + ' inputs', 'cells ' + susp.cellsPerWell + ' in ' + susp.volPerWell + ' µL, mix ' + tx.optimemPerWell + ' µL, acceptor ' + tx.acceptorNg + ' ng, withMix/intoCells ' + susp.withMix + '/' + tx.intoCells);
-        // the rim takes the no-ligand suspension and no mix: 76 + 4 = 80 without ligand, 124 with
-        if (+susp.nMinus !== 80 || +susp.nPlus !== 124) bad('B69', nm + ' suspension', 'counts ' + susp.nPlus + ' + / ' + susp.nMinus + ' - ligand, expected 124 / 80');
+        if (+susp.nMinus !== 4 || +susp.nPlus !== 132) bad('B69', nm + ' suspension', 'counts ' + susp.nPlus + ' + / ' + susp.nMinus + ' - ligand, expected 132 / 4');
+        const tc = plateTidCounts(e) || {}; if (tc[PAIR] !== 124 || tc[DON] !== 4 || tc[ACC] !== 4 || tc.mock !== 4) bad('B69', nm + ' mix wells', 'wells per mix ' + JSON.stringify(tc) + ', expected 124 pair, 4, 4, 4');
         if (!/36 µL of each tube of cells/.test(txt(e, /Seed the cells/))) bad('B69', nm + ' seeding', 'the seeding does not say 36 µL: ' + txt(e, /Seed the cells/));
-        // nothing is added to the rim: the substrate and (permeabilised) the digitonin count the 128 assay wells
-        const rd = blk(e, /substrate/).calc.inputs; if (+rd.nWells !== 128) bad('B69', nm + ' read', 'the substrate counts ' + rd.nWells + ' wells, not the 128 inside');
-        // the mix is spiked into the cells, so no step puts it in the wells first
+        const rd = blk(e, /substrate/).calc.inputs; if (+rd.nWells !== 136) bad('B69', nm + ' read', 'the substrate counts ' + rd.nWells + ' wells, not the 136 in use');
         const all = blocksInRunOrder(e).map(b => fillCalcText(b.html, b, e)).join(' ') + ' ' + blocksInRunOrder(e).map(b => String(pubSentence(b, e) || '')).join(' ');
         if (/onto the \d+ µL of transfection mix|dispense [\d.]+ µL of the mix into every well|dispensed into the plate before the cells|straight onto the transfection mix/i.test(all)) bad('B69', nm + ' wording', 'a step still puts the mix into the wells first');
+        if (/edge/i.test(all)) bad('B69', nm + ' edge', 'a step still talks about edge wells');
         if (/\{\{[^}]*\}\}/.test(all)) bad('B69', nm + ' tokens', 'an unfilled token in the steps');
       });
       // live: the compounds go on the same day, onto 36 µL (4 µL), after a 2 h wait that follows the seeding; the read is the day after
@@ -3794,13 +3801,13 @@ async function suite(opts) {
       if (+ca.dayOffset !== 0 || +sa.waitMin !== 120 || +ra.dayOffset !== 1 || +ca.calc.inputs.wellVolUL !== 36 || !/Add 4 µL of the 10×/.test(txt(ea, /Compound addition/)))
         bad('B69', 'live timing', 'compound day ' + ca.dayOffset + ', wait after seeding ' + sa.waitMin + ', read day ' + ra.dayOffset + ', well ' + ca.calc.inputs.wellVolUL + ' µL: ' + txt(ea, /Compound addition/).slice(0, 160));
       if (blocksInRunOrder(ea).some(b => /Digitonin/.test(b.title))) bad('B69', 'live', 'the live run has a digitonin step');
-      // permeabilised: seed 36, digitonin 4 µL (day 1), then the compound 10x onto 40 µL (4.44 µL), 1 h, read the same day
+      // permeabilised: seed 36, digitonin 4 µL (day 1) into the 136 wells, then the compound 10x onto 40 µL (4.44 µL), 1 h, read the same day
       const da = blk(eb, /Digitonin/), cb = blk(eb, /Compound addition/), rb = blk(eb, /substrate/);
-      if (!da || !/Add 4 µL of the 10×/.test(txt(eb, /Digitonin/)) || !/\(36 µL already in the well → 40 µL\)|\(36 µL already in the well &rarr; 40 µL\)|36 µL already in the well/.test(txt(eb, /Digitonin/)))
+      if (!da || !/Add 4 µL of the 10×/.test(txt(eb, /Digitonin/)) || !/36 µL already in the well/.test(txt(eb, /Digitonin/)))
         bad('B69', 'perm digitonin', 'the digitonin step says: ' + txt(eb, /Digitonin/));
       if (!cb || +cb.calc.inputs.wellVolUL !== 40 || !/Add 4\.44 µL of the 10×/.test(txt(eb, /Compound addition/)) || +cb.waitMin !== 60 || +cb.dayOffset !== 1 || +rb.dayOffset !== 1)
         bad('B69', 'perm compounds', 'compound well ' + (cb && cb.calc.inputs.wellVolUL) + ' µL, wait ' + (cb && cb.waitMin) + ', days ' + (cb && cb.dayOffset) + '/' + rb.dayOffset);
-      if (+da.calc.inputs.nWells !== 128) bad('B69', 'perm digitonin wells', 'the digitonin counts ' + da.calc.inputs.nWells + ' wells, not the 128 inside the rim');
+      if (da && +da.calc.inputs.nWells !== 136) bad('B69', 'perm digitonin wells', 'the digitonin counts ' + da.calc.inputs.nWells + ' wells, not the 136 in use');
     });
 
     // B54 — words round the plate: what a column or a row is, written beside it.
