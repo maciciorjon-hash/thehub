@@ -5,7 +5,7 @@
 //
 //   MT1  nav       Meetings is its own workspace (one entry in Labbook's own switcher, none per project, none in the Experiments column);
 //                  it opens the overview across every project and topic and remembers where you left it; the crumb says where
-//   MT2  create    each of the nine kinds makes a record under the project, with its agenda and notes skeleton; place and
+//   MT2  create    each of the ten kinds makes a record under the project, with its agenda and notes skeleton; place and
 //                  times come from the last meeting of that kind, people from the project's regulars; dated ahead = Planned
 //   MT12 dialog    "+ New" asks for the project or topic (dropdown, with "new project or topic"), the kind and the date, and
 //                  says who is invited; the meeting is filed under what was picked
@@ -86,7 +86,7 @@ try {
 
   // ── MT2 create
   const types = await E(() => MTG_TYPES.map(t => t.id));
-  eq('MT2', 'nine kinds', types.length, 9);
+  eq('MT2', 'ten kinds', types.length, 10);
   const pid = await E(() => LB.data.projects[0].id);
   for (const t of types) {
     const r = await E(a => { var m = mtgNew(a.pid, a.t); var T = mtgType(a.t); return { proj: m.projectId, type: m.type, ag: m.agenda.length, want: T.agenda.length, notes: (m.html.match(/<h3>/g) || []).length, wantN: T.notes.length, held: m.status, open: SEL.page === m.id }; }, { pid, t });
@@ -271,7 +271,7 @@ try {
     await p.waitForTimeout(300);
     await p.locator('#pane-pages .pages-new').click(); await p.waitForTimeout(300);
     const d = await E(() => ({ opts: [...document.querySelectorAll('#mtg-nd-p option')].map(o => o.textContent), kinds: document.querySelectorAll('#mtg-nd-t option').length, date: document.getElementById('mtg-nd-d').value === todayStr(), ppl: document.getElementById('mtg-nd-ppl').textContent }));
-    eq('MT12', 'the dialog offers every project, "new", nine kinds and today', [d.opts.length, /New project or topic/.test(d.opts[d.opts.length - 1]), d.kinds, d.date], [pj.length + 1, true, 9, true]);
+    eq('MT12', 'the dialog offers every project, "new", ten kinds and today', [d.opts.length, /New project or topic/.test(d.opts[d.opts.length - 1]), d.kinds, d.date], [pj.length + 1, true, 10, true]);
     yes('MT12', 'a project with no history says it has no regulars: ' + d.ppl, /No regulars yet/.test(d.ppl));
     const B = pj[1], A = pj[0];
     await p.locator('#mtg-nd-p').selectOption(B); await p.locator('#mtg-nd-t').selectOption('tap'); await p.locator('#lb-dialog-card .modal-act .btn', { hasText: 'Create' }).click(); await p.waitForTimeout(400);
@@ -440,6 +440,7 @@ try {
     yes('MT17', 'the search reads sections of your own', /fume hood/.test(out.srch) && /car park/.test(out.srch));
     // the other meeting kinds of a project with the template start as a Safety committee, with its agenda
     eq('MT17', 'the Safety committee kind starts with nothing to delete', await E(() => [mtgType('safety').name, mtgType('safety').agenda.length]), ['Safety committee', 0]);
+    eq('MT17', 'Biology Alignment is a kind of its own, offered in New meeting, blank too', await E(a => { mtgNewDialog(a.pj); var o = [...document.querySelectorAll('#mtg-nd-t option')].map(x => x.value + ':' + x.textContent); _lbDlgClose(); var t = mtgType('bioalign'); return [o.includes('bioalign:Biology Alignment'), t.name, t.agenda.length, t.notes.length]; }, { pj }), [true, 'Biology Alignment', 0, 0]);
     // hide Minutes: the toolbar and the editor go, the minutes stay
     await E(a => { var p = projById(a.pj); p.mtgLayout.secs.forEach(s => { if (s.k === 'notes') s.on = 0; }); mtgMap()[a.mid].html = '<div>Kept text</div>'; save(); renderEditor(); }, { pj, mid }); await p.waitForTimeout(300);
     eq('MT17', 'with Minutes hidden there is no toolbar and no editor, and the text is kept', await E(a => [!!document.querySelector('#pane-ed .jr-b'), !!document.querySelector('#pane-ed .jr-ed'), mtgMap()[a.mid].html], { mid }), [false, false, '<div>Kept text</div>']);
