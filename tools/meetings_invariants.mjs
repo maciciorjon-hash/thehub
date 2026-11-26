@@ -29,6 +29,7 @@
 //                  the bulk one has a cover with every open action; the dialog opens on the meeting you are in
 //   MT9  search    the meeting is in the search (title and the words of its notes, actions and people)
 //   MT10 fit       no horizontal overflow and every control inside the sheet at 1280 and 390; the list rows name type and date
+//   MT18 carry     a new Biology Alignment copies the own sections of the latest Safety committee of its project
 //   MT17 sections  each project decides what its meetings are made of: sections switched off, renamed, moved, and sections of its own (list,
 //                  checklist, text) in the dialog; nothing stored for the default; a template (Safety committee) sets them and the kind; what a
 //                  hidden section holds stays; the page, the PDF and the plain text all follow; hiding Notes takes the toolbar with it
@@ -441,6 +442,31 @@ try {
     // the other meeting kinds of a project with the template start as a Safety committee, with its agenda
     eq('MT17', 'the Safety committee kind starts with nothing to delete', await E(() => [mtgType('safety').name, mtgType('safety').agenda.length]), ['Safety committee', 0]);
     eq('MT17', 'Biology Alignment is a kind of its own, offered in New meeting, blank too', await E(a => { mtgNewDialog(a.pj); var o = [...document.querySelectorAll('#mtg-nd-t option')].map(x => x.value + ':' + x.textContent); _lbDlgClose(); var t = mtgType('bioalign'); return [o.includes('bioalign:Biology Alignment'), t.name, t.agenda.length, t.notes.length]; }, { pj }), [true, 'Biology Alignment', 0, 0]);
+    // a Biology Alignment starts with a copy of the latest Safety committee's own sections
+    const ba = await E(() => {
+      addProject('Safety carry'); var id = LB.data.projects[LB.data.projects.length - 1].id, L = _mtgPresetLayout(MTG_PRESETS.filter(x => x.id === 'safety')[0]);
+      L.secs.push({ k: 'chid', on: 0, n: 'Hidden one', custom: 1, kind: 'list' }, { k: 'ctxt', on: 1, n: 'Remarks', custom: 1, kind: 'text' }); _mtgLayoutSave(id, { secs: L.secs, fields: _mtgLayout(id).fields, defKind: 'safety' });
+      var K = Object.fromEntries(_mtgLayout(id).secs.filter(s => s.custom).map(s => [s.n, s.k]));
+      var cx = (t) => { var o = {}; o[K['Inspection Notes']] = [{ id: 'r1' + t, t: 'Eyewash ' + t }, { id: 'r2' + t, t: '  ' }]; o[K['Round Table']] = [{ id: 'r3' + t, t: 'Gloves ' + t }]; o.chid = [{ id: 'r4' + t, t: 'secret' }]; o.ctxt = 'Para ' + t; return o; };
+      var mk = (type, date, over) => mtgNew(id, type, Object.assign({ date }, over || {}));
+      var early = mk('bioalign', '2026-01-01');
+      mk('safety', '2026-09-24', { cx: cx('sep') }); var oct = mk('safety', '2026-10-29', { cx: cx('oct'), actions: [{ id: 'a1', t: 'Fix it', who: '', due: '', done: 0 }], html: '<div>minutes</div>' });
+      mk('safety', '2026-10-30', { cx: cx('can'), status: 'cancelled' }); mk('safety', '2026-12-17', { cx: cx('dec') });
+      var n = mk('bioalign', '2026-10-30'), said = document.getElementById('toast') ? document.getElementById('toast').textContent : document.body.innerText;
+      var C = n.cx || (n.cx = {}), R = C[K['Round Table']] || (C[K['Round Table']] = [{ id: 'none', t: '' }]);
+      var got = { insp: (n.cx[K['Inspection Notes']] || []).map(r => r.t), rt: (n.cx[K['Round Table']] || []).map(r => r.t), lab: n.cx[K['Lab Management Notes']] || null, hid: n.cx.chid || null, txt: n.cx.ctxt, acts: n.actions.length, notes: /minutes/.test(n.html) };
+      var fresh = R[0].id !== oct.cx[K['Round Table']][0].id; R[0].t = 'edited'; var kept = oct.cx[K['Round Table']][0].t;
+      mtgDup(n.id); var dup = Object.keys(mtgCur().cx || {}).length;
+      var other = mk('group', '2026-10-30').cx || null;
+      var nov = mk('safety', '2026-11-26'), afterEmpty = mk('bioalign', '2026-11-27').cx || null;
+      Object.keys(LB.data.meetings).forEach(k => { if (LB.data.meetings[k].projectId === id) delete LB.data.meetings[k]; });
+      return { got, fresh, kept, said: /Copied Inspection Notes, Round Table and Remarks from Safety committee/.test(said), early: early.cx || null, dup, other, afterEmpty };
+    });
+    eq('MT18', 'a Biology Alignment copies the own sections that are on, from the latest Safety committee up to its date (not a cancelled or a later one), without actions or notes', ba.got,
+      { insp: ['Eyewash oct'], rt: ['Gloves oct'], lab: null, hid: null, txt: 'Para oct', acts: 0, notes: false });
+    eq('MT18', 'it is a copy: editing it leaves the committee’s minutes alone', [ba.fresh, ba.kept], [true, 'Gloves oct']);
+    yes('MT18', 'it says what it copied and from where', ba.said);
+    eq('MT18', 'nothing is copied with no earlier committee, into another kind, into a duplicate, or from an older one when the latest is empty', [ba.early, ba.dup, ba.other, ba.afterEmpty], [null, 0, null, null]);
     // hide Minutes: the toolbar and the editor go, the minutes stay
     await E(a => { var p = projById(a.pj); p.mtgLayout.secs.forEach(s => { if (s.k === 'notes') s.on = 0; }); mtgMap()[a.mid].html = '<div>Kept text</div>'; save(); renderEditor(); }, { pj, mid }); await p.waitForTimeout(300);
     eq('MT17', 'with Minutes hidden there is no toolbar and no editor, and the text is kept', await E(a => [!!document.querySelector('#pane-ed .jr-b'), !!document.querySelector('#pane-ed .jr-ed'), mtgMap()[a.mid].html], { mid }), [false, false, '<div>Kept text</div>']);
