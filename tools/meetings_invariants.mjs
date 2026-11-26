@@ -32,6 +32,7 @@
 //   MT18 carry     a new Biology Alignment copies the own sections of the latest Safety committee of its project
 //   MT19 centre    a Biology Alignment keeps no list of people (the whole centre comes)
 //   MT20 minutes   with the standard sections, the three headings are in Notes and the Alignment copies what was written there
+//   MT21 review    the next Safety committee goes through the last one's action points; a ticked one stays in view
 //   MT17 sections  each project decides what its meetings are made of: sections switched off, renamed, moved, and sections of its own (list,
 //                  checklist, text) in the dialog; nothing stored for the default; a template (Safety committee) sets them and the kind; what a
 //                  hidden section holds stays; the page, the PDF and the plain text all follow; hiding Notes takes the toolbar with it
@@ -540,6 +541,31 @@ try {
         Object.keys(LB.data.meetings).forEach(k => { if (LB.data.meetings[k].projectId === a.pj) delete LB.data.meetings[k]; }); MTG_PROJ = ''; save(); return out; }, Object.assign({ minutes }, ids));
       eq('MT20', 'the Notes come across with their sub-bullets, by right-click and on a new one, say so, stay independent, and a duplicate takes none', r, { same: true, shown: ['Keep one box in stores.'], said: true, kept: true, dup: true, auto: true });
       eq('MT20', 'a project with sections of its own gets no headings in Notes', await E(a => _mtgStartHtml(a.pj, mtgType('safety')), { pj }), '');
+      await E(a => mtgOpen(a.pj, a.mid), { pj, mid }); await p.waitForTimeout(250);
+    }
+    // the next Safety committee goes through the last one's action points, and ticking one leaves it in view
+    {
+      const ids = await E(() => {
+        addProject('Safety review'); var id = LB.data.projects[LB.data.projects.length - 1].id, A = (t, done) => ({ id: 'rv' + t.replace(/ /g, ''), t, who: '', due: '', done: done ? 1 : 0 });
+        var old = mtgNew(id, 'safety', { date: '2026-09-24', actions: [A('old open'), A('old done', 1)] });
+        var last = mtgNew(id, 'safety', { date: '2026-10-29', actions: [A('check eyewash'), A('order bins', 1)] });
+        mtgNew(id, 'bioalign', { date: '2026-10-30', actions: [A('centre email')] });
+        mtgNew(id, 'safety', { date: '2026-11-05', status: 'cancelled', actions: [A('cancelled one')] });
+        var next = mtgNew(id, 'safety', { date: '2026-11-26' }); MTG_PROJ = id; mtgOpen(id, next.id);
+        return { pj: id, next: next.id, last: last.id, old: old.id };
+      });
+      await p.waitForTimeout(300);
+      const card = () => E(() => ({ h: document.querySelector('#pane-ed .mtg-carry-h')?.textContent || '', rows: [...document.querySelectorAll('#pane-ed .mtg-carry .mtg-aro')].map(r => (r.querySelector('input').checked ? '[x] ' : '[ ] ') + r.querySelector('.mtg-aro-t').textContent).sort() }));
+      eq('MT21', 'the next committee lists the last one’s action points, done or not, the ones set since, and older ones still open', await card(),
+        { h: 'Action points to review1 of 4 done', rows: ['[ ] centre email', '[ ] check eyewash', '[ ] old open', '[x] order bins'] });
+      for (const t of ['check eyewash', 'old open']) { await p.locator('#pane-ed .mtg-carry .mtg-aro', { hasText: t }).locator('input').click(); await p.waitForTimeout(250); }
+      eq('MT21', 'a ticked one stays, shown done, and is ticked in its own meeting', [await card(), await E(a => [mtgMap()[a.last].actions[0].done, mtgMap()[a.old].actions[0].done], ids), await E(() => { var q = document.querySelector('#pane-ed .mtg-aro.done .mtg-aro-t'); return q ? getComputedStyle(q).textDecorationLine : 'no done row'; })],
+        [{ h: 'Action points to review3 of 4 done', rows: ['[ ] centre email', '[x] check eyewash', '[x] old open', '[x] order bins'] }, [1, 1], 'line-through']);
+      const out = await E(a => { var m = mtgMap()[a.next]; return [_mtgText(m), _pdMeetingHtml(m, pdfOpts()).replace(/<[^>]+>/g, ' ')]; }, ids);
+      yes('MT21', 'the text and the PDF carry the review with what was done', /Action points to review\n(.*\n)*\[x\] check eyewash/.test(out[0]) && /\[ \] centre email/.test(out[0]) && /Action points to review/.test(out[1]) && /check eyewash/.test(out[1]));
+      eq('MT21', 'at the committee after, only what is still open comes back', await E(a => _mtgCarryRows(mtgNew(a.pj, 'safety', { date: '2026-12-17' })).map(x => x.a.t), ids), ['centre email']);
+      eq('MT21', 'another kind keeps to what is open', await E(a => _mtgCarryRows(mtgNew(a.pj, 'group', { date: '2026-12-18' })).map(x => x.a.t), ids), ['centre email']);
+      await E(a => { Object.keys(LB.data.meetings).forEach(k => { if (LB.data.meetings[k].projectId === a.pj) delete LB.data.meetings[k]; }); MTG_PROJ = ''; save(); }, ids);
       await E(a => mtgOpen(a.pj, a.mid), { pj, mid }); await p.waitForTimeout(250);
     }
     // hide Minutes: the toolbar and the editor go, the minutes stay

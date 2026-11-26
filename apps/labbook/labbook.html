@@ -2888,6 +2888,7 @@ body.lb-nonav #mobile-nav-btn{display:none!important;}
 .mtg-carry .mtg-aro:first-of-type{border-top:0;}
 .mtg-acts-list .mtg-aro:first-child{border-top:0;}
 .mtg-aro-t{flex:1 1 220px;min-width:0;overflow-wrap:anywhere;color:var(--text);}
+.mtg-aro.done .mtg-aro-t{color:var(--text3);text-decoration:line-through;}
 .mtg-who{display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-3);color:var(--text2);}
 .mtg-due{font-size:var(--fs-3);color:var(--text2);font-variant-numeric:tabular-nums;}
 .mtg-due.late{color:var(--danger);font-weight:600;}
@@ -20929,6 +20930,7 @@ var MTG_MINUTES_OFF={purpose:function(m){ return !!(m.purpose||'').trim(); },age
   decisions:function(m){ return (m.decisions||[]).some(function(a){ return (a.t||'').trim(); }); },summary:function(m){ return !!(m.summary||'').trim(); },
   exps:function(m){ return (m.exps||[]).length>0; },next:function(m){ return !!(m.next&&m.next.date); }};
 function _mtgLayoutOf(m){ var L=_mtgLayout(m.projectId), p=projById(m.projectId);
+  if(m.type==='safety') L.secs.forEach(function(s){ if(s.k==='carry'&&s.n===_mtgBuiltin('carry').n) s.n='Action points to review'; });
   if(mtgType(m.type).standsIn&&!(p&&p.mtgLayout)) L.secs.forEach(function(s){ if(MTG_MINUTES_OFF[s.k]&&!MTG_MINUTES_OFF[s.k](m)) s.on=0; });
   if(_mtgNoPeople(m.type)) L.secs.forEach(function(s){ if(s.k==='people') s.on=0; }); return L; }
 function _mtgSecOn(L,k){ for(var i=0;i<L.secs.length;i++) if(L.secs[i].k===k) return !!L.secs[i].on; return false; }
@@ -20990,6 +20992,17 @@ function _mtgOpenActions(pid,m){
   var out=[]; (pid?mtgList(pid):mtgAll()).forEach(function(x){ if(m&&(x.id===m.id||_mtgStamp(x)>_mtgStamp(m))) return;
     if(x.status==='cancelled') return;
     (x.actions||[]).forEach(function(a){ if(a&&!a.done&&(a.t||'').trim()) out.push({m:x,a:a}); }); });
+  return out.sort(function(p,q){ return (p.a.due||'9999').localeCompare(q.a.due||'9999')||_mtgStamp(p.m).localeCompare(_mtgStamp(q.m)); }); }
+// What a meeting goes through from the ones before it. A Safety committee reviews: every action point the last committee (and
+// any meeting since) set, done or not, so each can be checked, plus older ones still open or ticked since. A ticked one stays
+// on the page, shown done; what was done by then does not come back at the following committee. Other kinds: only what is open.
+function _mtgCarryRows(m){
+  if(m.type!=='safety') return _mtgOpenActions(m.projectId,m);
+  var now=_mtgStamp(m), E=mtgList(m.projectId).filter(function(x){ return x.id!==m.id&&x.status!=='cancelled'&&_mtgStamp(x)<=now; });
+  var prev=E.filter(function(x){ return x.type==='safety'; })[0], since=prev?_mtgStamp(prev):'', out=[];
+  E.forEach(function(x){ (x.actions||[]).forEach(function(a){ if(!a||!(a.t||'').trim()) return;
+    var at=a.doneIn?mtgMap()[a.doneIn]:null;
+    if(!a.done||a.doneIn===m.id||(prev&&(_mtgStamp(x)>=since||(at&&at.id!==prev.id&&_mtgStamp(at)>since&&_mtgStamp(at)<=now)))) out.push({m:x,a:a}); }); });
   return out.sort(function(p,q){ return (p.a.due||'9999').localeCompare(q.a.due||'9999')||_mtgStamp(p.m).localeCompare(_mtgStamp(q.m)); }); }
 function _mtgOpenCount(m){ return (m.actions||[]).filter(function(a){ return a&&!a.done&&(a.t||'').trim(); }).length; }
 function _mtgSkeleton(t){ return t.notes.map(function(h){ return '<h3>'+esc(h)+'</h3><div><br></div>'; }).join(''); }
@@ -21202,13 +21215,13 @@ function _mtgAgendaPaint(){ var m=mtgCur(), h=el('mtg-ag-h'); if(m&&h){ var s=h.
 function mtgAgendaTick(id,on,box){ mtgRowSet('agenda',id,'d',on?1:0); var r=box&&box.closest('.mtg-row'); if(r) r.classList.toggle('done',!!on); _mtgAgendaPaint(); }
 function mtgMinIn(id,v){ mtgRowSet('agenda',id,'m',+v||0); _mtgAgendaPaint(); }
 function mtgActTick(id,on,box){ var q=_mtgRow('actions',id); if(!q) return; undoMark('Action',['meetings.'+q.m.id,'planner']);
-  q.r.done=on?1:0; if(on) q.r.doneAt=Date.now(); else delete q.r.doneAt; q.m.updated=Date.now(); _mtgSyncTask(q.r); save();
+  q.r.done=on?1:0; delete q.r.doneIn; if(on) q.r.doneAt=Date.now(); else delete q.r.doneAt; q.m.updated=Date.now(); _mtgSyncTask(q.r); save();
   var r=box&&box.closest('.mtg-row'); if(r){ r.classList.toggle('done',!!on); var d=r.querySelector('.mtg-due-in'); if(d&&on) d.classList.remove('late'); }
   var h=el('mtg-ac-h'), s=h&&h.querySelector('.mtg-sh-m'); if(s) s.textContent=_mtgActMeta(q.m); _mtgListSoon(); }
 function _mtgActMeta(m){ var A=m.actions||[]; return A.length?(A.filter(function(a){ return !a.done; }).length+' open of '+A.length):''; }
 // An action ticked in another (earlier) meeting from the carry-over card of this one.
 function mtgTickOther(mid,aid,on){ var m=mtgMap()[mid]; if(!m) return; var a=(m.actions||[]).filter(function(x){ return x.id===aid; })[0]; if(!a) return;
-  undoMark('Action',['meetings.'+mid,'planner']); a.done=on?1:0; if(on) a.doneAt=Date.now(); else delete a.doneAt; m.updated=Date.now(); _mtgSyncTask(a); save(); renderEditor(); _mtgListSoon(); }
+  var here=mtgCur(); undoMark('Action',['meetings.'+mid,'planner']); a.done=on?1:0; if(on) a.doneAt=Date.now(); else delete a.doneAt; if(on&&here) a.doneIn=here.id; else delete a.doneIn; m.updated=Date.now(); _mtgSyncTask(a); save(); renderEditor(); _mtgListSoon(); }
 function _mtgSyncTask(a){ var t=a&&a.task&&plannerTasks()[a.task]; if(!t) return; t.done=!!a.done; if(a.done) t.doneAt=Date.now(); else { delete t.doneAt; t.reopened=Date.now(); } t.updated=Date.now(); }
 function mtgActToPlanner(id){ var q=_mtgRow('actions',id); if(!q||q.r.task) return; var r=q.r;
   undoMark('Action to Planner',['meetings.'+q.m.id,'planner']);
@@ -21353,8 +21366,8 @@ function renderMeetingsHome(host){
     +'</div></div></div>';
   host.innerHTML=h; }
 function _mtgDayShortNum(d){ if(!d) return '–'; try{ return new Date(d+'T12:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short'}); }catch(e){ return d; } }
-function _mtgActRowRO(m,a,showProj){ var late=a.due&&a.due<todayStr(), pr=showProj?projById(m.projectId):null;
-  return '<div class="mtg-aro" style="--mc:'+mtgColor(m)+'"><input type="checkbox" onchange="mtgTickOther(\''+m.id+'\',\''+a.id+'\',this.checked)" aria-label="Done">'
+function _mtgActRowRO(m,a,showProj){ var late=!a.done&&a.due&&a.due<todayStr(), pr=showProj?projById(m.projectId):null;
+  return '<div class="mtg-aro'+(a.done?' done':'')+'" style="--mc:'+mtgColor(m)+'"><input type="checkbox"'+(a.done?' checked':'')+' onchange="mtgTickOther(\''+m.id+'\',\''+a.id+'\',this.checked)" aria-label="Done">'
     +'<span class="mtg-aro-t">'+esc(a.t)+'</span>'+(a.who?('<span class="mtg-who"><span class="mtg-av" style="--av:'+_mtgHue(a.who)+'">'+esc(_mtgInit(a.who))+'</span>'+esc(a.who)+'</span>'):'')
     +(a.due?('<span class="mtg-due'+(late?' late':'')+'">'+esc(_mtgDayShortNum(a.due))+'</span>'):'')
     +'<a class="mtg-from" onclick="mtgOpen(\''+m.projectId+'\',\''+m.id+'\')" title="Open the meeting">'+(pr?(esc(pr.name)+' · '):'')+esc(_mtgDayShortNum(m.date))+' · '+esc(mtgTitle(m))+'</a></div>'; }
@@ -21415,7 +21428,7 @@ function renderMeetingPage(host,m){
   var L=mtgList(m.projectId), at=L.map(function(x){ return x.id; }).indexOf(m.id);
   var nav=L.length>1?('<span class="exh-nav"><button class="exh-act" title="Newer meeting" aria-label="Newer meeting" '+(at>0?('onclick="mtgOpen(\''+m.projectId+'\',\''+L[at-1].id+'\')"'):'disabled')+'>'+tbIco(P_CHEV_L,15)+'</button><span class="exh-nav-n">'+(L.length-at)+'/'+L.length+'</span>'
     +'<button class="exh-act" title="Older meeting" aria-label="Older meeting" '+(at<L.length-1?('onclick="mtgOpen(\''+m.projectId+'\',\''+L[at+1].id+'\')"'):'disabled')+'>'+tbIco(P_CHEV_R,15)+'</button></span>'):'';
-  var carry=_mtgOpenActions(m.projectId,m);
+  var carry=_mtgCarryRows(m);
   var h='<div class="nb-desk jr-desk">'+(_mtgSecOn(LY,'notes')?jrBarHtml():'')+'<div class="nb-wrap"><div class="nb-page jr-sheet mtg-sheet" style="--nb-c:'+col+';--mc:'+col+'">'
   // top: where it is, and what you can do with it
     +'<div class="mtg-top"><div class="nb-crumb"><a class="mtg-back" onclick="mtgOpen(\''+m.projectId+'\',null)" title="All meetings of this project">Meetings · '+esc(p?p.name:'')+'</a>'+nav+'</div>'
@@ -21449,7 +21462,7 @@ function _mtgSecHtml(s,m,c){ var k=s.k, nm=s.n, ppl=c.ppl;
     +'<div class="mtg-ppl"><span id="mtg-chips" class="mtg-chips">'+_mtgChipsHtml(m)+'</span>'
     +'<input id="mtg-att-in" class="mtg-att-in" list="mtg-ppl" placeholder="Add a person, then Enter" onkeydown="mtgAttKey(event)" onblur="mtgAttBlur(this)" autocomplete="off"><datalist id="mtg-ppl">'+_mtgPplOptions(m,ppl)+'</datalist></div>'
     +'<div class="mtg-quick" id="mtg-quick">'+_mtgQuickHtml(m)+'</div>';
-  if(k==='carry') return c.carry.length?('<div class="mtg-carry"><div class="mtg-carry-h">'+esc(nm)+'<span>'+c.carry.length+'</span></div>'+c.carry.map(function(x){ return _mtgActRowRO(x.m,x.a); }).join('')+'</div>'):'';
+  if(k==='carry') return c.carry.length?('<div class="mtg-carry"><div class="mtg-carry-h">'+esc(nm)+'<span>'+(m.type==='safety'?(c.carry.filter(function(x){ return x.a.done; }).length+' of '+c.carry.length+' done'):c.carry.length)+'</span></div>'+c.carry.map(function(x){ return _mtgActRowRO(x.m,x.a); }).join('')+'</div>'):'';
   if(k==='agenda') return _mtgSecH(nm,_mtgAgendaMeta(m),'mtg-ag-h')
     +'<div class="mtg-sec-agenda">'+(m.agenda||[]).map(function(a){ return '<div class="mtg-row'+(a.d?' done':'')+'"><input type="checkbox" '+(a.d?'checked ':'')+'aria-label="Covered" title="Covered" onchange="mtgAgendaTick(\''+a.id+'\',this.checked,this)">'
       +'<input class="mtg-in" data-r="'+a.id+'" value="'+esc(a.t||'')+'" placeholder="Agenda item" oninput="mtgRowSet(\'agenda\',\''+a.id+'\',\'t\',this.value)" onkeydown="mtgRowKey(event,\'agenda\',\''+a.id+'\')">'
@@ -21506,7 +21519,8 @@ function _mtgText(m){ var t=mtgType(m.type), p=projById(m.projectId), L=[], LY=_
   if(_mtgSecOn(LY,'summary')&&m.summary) L.push('',N('summary')+': '+m.summary); if(_mtgSecOn(LY,'purpose')&&m.purpose) L.push(N('purpose')+': '+m.purpose);
   var pr=_mtgPresent(m).map(function(x){ return x.n; }), ab=(m.attendees||[]).filter(function(x){ return x.a; }).map(function(x){ return x.n; });
   LY.secs.forEach(function(s){ if(!s.on) return; var k=s.k;
-    if(k==='people'){ if(pr.length) L.push('','Present: '+pr.join(', ')); if(ab.length) L.push('Apologies: '+ab.join(', ')); }
+    if(k==='carry'){ var cr=_mtgCarryRows(m); if(cr.length){ L.push('',s.n); cr.forEach(function(x){ L.push((x.a.done?'[x] ':'[ ] ')+x.a.t+(x.a.who?(' — '+x.a.who):'')+' (from '+_mtgDayShortNum(x.m.date)+')'); }); } }
+    else if(k==='people'){ if(pr.length) L.push('','Present: '+pr.join(', ')); if(ab.length) L.push('Apologies: '+ab.join(', ')); }
     else if(k==='agenda'){ if((m.agenda||[]).length){ L.push('',s.n); m.agenda.forEach(function(a,i){ L.push((i+1)+'. '+a.t+(a.m?(' ('+a.m+' min)'):'')+(a.d?' [covered]':'')); }); } }
     else if(k==='notes'){ var notes=_htmlLines(m.html||'').join('\n').trim(); if(notes) L.push('',s.n,notes); }
     else if(k==='decisions'){ if((m.decisions||[]).length){ L.push('',s.n); m.decisions.forEach(function(d,i){ L.push('D'+(i+1)+'. '+d.t); }); } }
@@ -21534,7 +21548,7 @@ function _pdMeetingHtml(m,o,opts){ opts=opts||{}; o=o||pdfOpts();
   if(_mtgSecOn(LY,'purpose')&&m.purpose) h+='<div class="pd-mt-purpose"><span>'+esc(_mtgSecName(LY,'purpose'))+'</span>'+esc(m.purpose)+'</div>';
   if(_mtgSecOn(LY,'summary')&&o.mSummary&&m.summary) h+='<div class="pd-mt-take">'+esc(m.summary)+'</div>';
   var pr=_mtgPresent(m), ab=(m.attendees||[]).filter(function(x){ return x.a; }), acts=(m.actions||[]).filter(function(x){ return (x.t||'').trim(); });
-  function carry(s){ if(!o.mCarry) return ''; var c=_mtgOpenActions(m.projectId,m); return c.length?(_mtgPdfH(s.n)+_mtgActTable(c,true)):''; }
+  function carry(s){ if(!o.mCarry) return ''; var c=_mtgCarryRows(m); return c.length?(_mtgPdfH(s.n)+_mtgActTable(c,true)):''; }
   function sec(s){ var k=s.k;
     if(k==='people') return (o.mPeople&&(pr.length||ab.length))?(_mtgPdfH(s.n)+'<div class="pd-mt-ppl">'
       +(pr.length?('<div><span>Present ('+pr.length+')</span>'+pr.map(function(x){ return esc(x.n); }).join(', ')+'</div>'):'')
