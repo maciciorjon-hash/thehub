@@ -13876,7 +13876,7 @@ function _xwMergeIn(t){
 function _xwMergeRoots(t){
   var m=LB.data, base=null; try{ base=_xwBaseJson?JSON.parse(_xwBaseJson):null; }catch(e){ base=null; }
   Object.keys(t).forEach(function(k){
-    if(k==='updated'||k==='planner'||k==='projects'||k==='_rootBase'||_CLOUD_MAPS.indexOf(k)>=0) return;
+    if(k==='updated'||k==='planner'||k==='projects'||k==='_rootBase'||k==='_syncBase'||_CLOUD_MAPS.indexOf(k)>=0) return;
     var theirs=t[k], mine=m[k];
     if(mine===undefined){ m[k]=theirs; return; }
     var sm=_cjson(mine), st=_cjson(theirs); if(sm===st) return;
@@ -13937,7 +13937,7 @@ function _localLoad(){
     if(d&&(typeof d!=='object'||Array.isArray(d))) d=null;
     if(d) _xwBaseJson=rec.json;
     if(d && (d.updated||0)>t0){
-      _adoptLocalTree(d); _lsTree=false;
+      _diskJson=rec.json; _adoptLocalTree(d); _lsTree=false;
       // What localStorage held is older than this: nothing to keep it for.
       try{ localStorage.removeItem('hub_labbook'); localStorage.removeItem('hub_labbook_at'); }catch(e){}
       // The copy this browser could not read was set aside at boot; the notebook is the one here.
@@ -14023,8 +14023,8 @@ function _verWrite(writes){
   return _verIdx().then(function(idx){
     return Promise.all(writes.map(function(w){
       var key=w.path+'@'+w.at;
-      idx[key]={p:w.path,t:w.at,n:w.json.length};
-      return _verOp('readwrite',function(os){ return os.put({p:w.path,t:w.at,json:w.json},key); });
+      idx[key]={p:w.path,t:w.at,n:w.json.length}; if(w.r) idx[key].r=1;
+      return _verOp('readwrite',function(os){ return os.put({p:w.path,t:w.at,json:w.json,r:w.r||0},key); });
     })).then(function(){ return _verPrune(idx); });
   }).then(function(){ _verBusy=false; }).catch(function(){ _verBusy=false; });
 }
@@ -14306,7 +14306,7 @@ function _cloudPush(){
       // Only now is this what the cloud holds. Recording it before the write lands would make
       // a failed write invisible to the next diff, and the record would never be retried.
       _pushWanted=false;
-      Object.keys(delta).forEach(function(p){ if(p==='updated') return; if(delta[p]===null) delete _cloudSeen[p]; else _cloudSeen[p]=now[p]; });
+      Object.keys(delta).forEach(function(p){ if(p==='updated') return; if(delta[p]===null) delete _cloudSeen[p]; else _cloudSeen[p]=now[p]; _baseNote(p,delta[p]===null?undefined:now[p]); });
       setSync(true,true);
     }).catch(function(){ setSync(true,false); });
   }catch(e){ setSync(true,false); }
@@ -14338,7 +14338,7 @@ function _applyRemote(coll,id,val){
     var cur=(LB.data.attachments||{})[id];
     if(val==null){ if(cur&&cur.url&&_cloudSeen&&_cloudSeen[path]) delete LB.data.attachments[id]; }
     else if(!(cur&&cur.url)||val.url){ LB.data.attachments=LB.data.attachments||{}; LB.data.attachments[id]=val; }
-    if(_cloudSeen){ if(incoming===undefined) delete _cloudSeen[path]; else _cloudSeen[path]=incoming; }
+    if(_cloudSeen){ if(incoming===undefined) delete _cloudSeen[path]; else _cloudSeen[path]=incoming; _baseNote(path,incoming); }
     _lsDirty=true; clearTimeout(_lsT); _lsT=setTimeout(_flushLocal,150);
     try{ Array.prototype.forEach.call(document.querySelectorAll('img.lb-att.att-missing[data-att="'+id+'"]'),function(im){ _attLoad(im,LB.data.attachments); }); }catch(e){}
     return;
@@ -14363,7 +14363,7 @@ function _applyRemote(coll,id,val){
   }
   if(val==null){ if(LB.data[coll]) delete LB.data[coll][id]; }
   else { LB.data[coll]=LB.data[coll]||{}; LB.data[coll][id]=val; }
-  if(_cloudSeen) { if(incoming===undefined) delete _cloudSeen[path]; else _cloudSeen[path]=incoming; }
+  if(_cloudSeen) { if(incoming===undefined) delete _cloudSeen[path]; else _cloudSeen[path]=incoming; _baseNote(path,incoming); }
   _lsDirty=true; clearTimeout(_lsT); _lsT=setTimeout(_flushLocal,150);
   if(_openRecordPath()===path){
     _remoteNote='Updated elsewhere — reopen this entry to see the new version.';
@@ -14422,6 +14422,135 @@ function save(){
 // Never lose a pending local write if the tab is hidden/closed before the 150ms flush.
 window.addEventListener('pagehide',function(){ _flushLocal(); _lsEmergency(); _verMaybe(true); });
 document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='hidden'){ _flushLocal(); _lsEmergency(); } });
+// ── The first read, record by record ──────────────────────────────────────────────────────────
+// Which copy of a record is the newer one used to be one question asked of the whole notebook: the
+// tree with the later `updated` won everything. So a device that had saved anything at all (a tick,
+// a migration at boot) wrote its old copy of every other record over the cloud's, and a device
+// that had not was replaced wholesale — the experiment it had made offline, or signed out, was gone
+// from it and had never reached the cloud (2026-11-26: "my experiments do not sync").
+// LB.data._syncBase holds, per record, a short hash of what the cloud last held that this device
+// also knew. With it each record answers for itself: changed here, changed there, or both. With
+// both, the later one stays and the other is kept in Recover → Versions. Nothing written on one
+// device only is ever dropped.
+function _syncHash(s){ var h=2166136261, i; for(i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,16777619); } return (h>>>0).toString(36)+'.'+s.length; }
+function _baseNote(path,json){
+  if(_ROOT_LISTS.indexOf(path)>=0||path==='updated') return;
+  var b=LB.data._syncBase||(LB.data._syncBase={}), h=json===undefined?undefined:_syncHash(json);
+  if(b[path]===h) return;
+  if(h===undefined) delete b[path]; else b[path]=h;
+  _lsDirty=true; clearTimeout(_lsT); _lsT=setTimeout(_flushLocal,150);
+}
+// The tree as this device had it on disk, before the migrations that run on every load touched it:
+// a step reworded by a newer build is not somebody's unsent edit.
+var _diskJson=_lbRaw||null, _userTouched=false;
+['pointerdown','keydown','input','paste','drop'].forEach(function(t){ window.addEventListener(t,function(){ _userTouched=true; },true); });
+// Two copies of a table both devices changed: the winner's, plus whatever only the other one has.
+function _syncUnion(key,win,lose){
+  if(key==='planner'){
+    var wt=(win&&win.tasks)||{}, lt=(lose&&lose.tasks)||{};
+    Object.keys(lt).forEach(function(id){ if(!wt[id]||((lt[id]&&lt[id].updated)||0)>((wt[id]&&wt[id].updated)||0)) wt[id]=lt[id]; });
+    win=win||{}; win.tasks=wt; return win;
+  }
+  if(Array.isArray(win)&&Array.isArray(lose)){ var have={}; win.forEach(function(x){ have[_cjson(x&&x.id!=null?x.id:x)]=1; });
+    lose.forEach(function(x){ if(!have[_cjson(x&&x.id!=null?x.id:x)]) win.push(x); }); return win; }
+  if(win&&lose&&typeof win==='object'&&typeof lose==='object'){ Object.keys(lose).forEach(function(k){ if(win[k]===undefined) win[k]=lose[k]; }); }
+  return win;
+}
+// Brings the cloud tree `v` into the notebook. Returns the paths deleted here that the cloud still
+// holds, so the first push removes them. What is only here, or newer here, is left for that push.
+function _syncMerge(v){
+  var d=LB.data, gone={}, losers=[], clash=[];
+  // A device that holds nothing but the seed adopts the cloud whatever the timestamps say.
+  // The seed is stamped at first launch, so a phone opened after the laptop's last save had
+  // the newer `updated` and kept its six empty projects.
+  var pristine = !Object.keys(d.experiments||{}).length && !Object.keys(d.pages||{}).length
+              && !Object.keys(d.notebook||{}).length && !Object.keys(d.trash||{}).length;
+  var restored=!!d._restored;   // a backup file just restored here wins over what the cloud holds
+  var base=(pristine||restored||_localReadFailed)?{}:(d._syncBase||{});
+  var disk=null; try{ if(_diskJson) disk=JSON.parse(_diskJson); }catch(e){ disk=null; }
+  if(disk&&typeof disk==='object') _lbNormTree(disk); else disk=null;
+  var diskFp=disk?_cloudFingerprintOf(disk):null;
+  var diskStamp=disk?(disk.updated||0):(d.updated||0);
+  var locFp=_cloudFingerprint(), remFp=_cloudFingerprintOf(v);
+  var hereTrash={trash:Object.assign({},d.trash||{})}, thereTrash={trash:v.trash||{}};
+  var projBefore=(d.projects||[]).slice(), touched=false;
+  function copy(x){ return JSON.parse(JSON.stringify(x)); }
+  function changedHere(p,l){
+    if(base[p]===undefined) return true;
+    if(base[p]===_syncHash(l)) return false;
+    // Different now, but as it came off the disk it was what the cloud held and nobody has touched
+    // the app since: the difference is this load's own migrations.
+    if(!_userTouched&&diskFp&&diskFp[p]!==undefined&&base[p]===_syncHash(diskFp[p])) return false;
+    return true;
+  }
+  // Anything about to be replaced or removed here is snapshotted first.
+  try{ if(Object.keys(locFp).some(function(p){ return _ROOT_LISTS.indexOf(p)<0 && remFp[p]!==locFp[p]; })) _snapshotBackup(); }catch(e){}
+  _adopting=true;
+  try{
+    // Projects, folders and notebooks are merged by id against what this device last agreed with the
+    // cloud. A device holding nothing but the seed takes the cloud's lists as they are.
+    _ROOT_LISTS.forEach(function(k){ var rem=_lbList(v[k],true);
+      var m=pristine?copy(rem):copy(_lstMerge(_rootBaseOf(k),_lbList(d[k],true),rem,_rootNest(k)));
+      if(_rootJ(m)!==_rootJ(d[k])){ d[k]=m; touched=true; } });
+    var paths={}; Object.keys(locFp).forEach(function(p){ paths[p]=1; }); Object.keys(remFp).forEach(function(p){ paths[p]=1; });
+    Object.keys(paths).forEach(function(p){
+      if(_ROOT_LISTS.indexOf(p)>=0) return;
+      var l=locFp[p], r=remFp[p]; if(l===r) return;
+      var i=p.indexOf('/'), coll=i<0?null:p.slice(0,i), id=i<0?p:p.slice(i+1);
+      var rv=r===undefined?undefined:(coll?v[coll][id]:v[p]);
+      var lv=l===undefined?undefined:(coll?d[coll][id]:d[p]);
+      var bh=base[p];
+      function keepCopy(json,remote){ if(coll&&coll!=='trash'&&coll!=='attachments') losers.push({path:p,json:json,at:Date.now(),r:remote?1:0}); }
+      function take(){ if(l!==undefined) keepCopy(l,false);
+        if(coll){ d[coll]=d[coll]||{}; d[coll][id]=copy(rv); } else d[p]=copy(rv); touched=true; }
+      if(l===undefined){
+        // Deleted here since the cloud last agreed (it is in this device's bin, or it is a bin entry
+        // that was restored or emptied), and untouched there: the deletion goes up.
+        if(coll&&bh!==undefined&&bh===_syncHash(r)&&(coll==='trash'||_xwGone(hereTrash,coll,id))){ gone[p]=1; return; }
+        take(); return;
+      }
+      if(r===undefined){
+        if(!coll) return;                       // a table the cloud does not have yet: sent
+        // When it went to the other side's bin, if it did.
+        var binAt=null; Object.keys(thereTrash.trash).forEach(function(k){ var one={trash:{}}; one.trash[k]=thereTrash.trash[k];
+          if(_xwGone(one,coll,id)) binAt=Math.max(binAt||0,thereTrash.trash[k].at||0); });
+        var del = bh!==undefined ? (!changedHere(p,l) && (binAt!==null||coll==='trash'||Object.keys(v[coll]||{}).length>0))
+                : (binAt!==null && !((lv&&lv.updated||0)>binAt));
+        if(del){ keepCopy(l,false); delete d[coll][id]; touched=true; }
+        return;                                 // otherwise it is new or edited here: sent
+      }
+      if(coll==='attachments'){ if(rv&&rv.url) take(); else if(!(lv&&lv.url)) take(); return; }
+      if(pristine){ take(); return; }
+      if(restored) return;
+      if(bh!==undefined&&bh===_syncHash(r)) return;       // changed here only: sent
+      if(bh!==undefined&&!changedHere(p,l)){ take(); return; }   // changed there only
+      // Changed on both sides (or this device has no record of what was agreed): the later one stays.
+      var was=lv; if(bh===undefined&&disk){ was=coll?(disk[coll]||{})[id]:disk[p]; if(was===undefined){ take(); return; } }
+      var ls=+((was&&was.updated)||0), rs=+((rv&&rv.updated)||0);
+      var theirs=(ls&&rs&&ls!==rs) ? rs>ls : (v.updated||0)>diskStamp;
+      if(bh!==undefined&&coll&&coll!=='trash') clash.push(p);
+      if(theirs){ var mine=coll?null:copy(lv); take(); if(!coll) d[p]=_syncUnion(p,d[p],mine); }
+      else { keepCopy(r,true); if(!coll) d[p]=_syncUnion(p,d[p],copy(rv)); }
+    });
+    if(touched){
+      d.updated=Math.max(d.updated||0,v.updated||0)||Date.now();
+      _lbNormTree(d); _lbBootFix();
+      _reconcileProjects(projBefore);   // a projects root that orphans the experiments is wrong, whatever its timestamp
+      _backfillPrefixes();              // a tree adopted from the cloud can predate the field too
+      _nbMigrate(); _journalMigrate(); _pubMigrate();
+      seedPresets();
+      _lsDirty=true; _flushLocal();
+    }
+    _ROOT_LISTS.forEach(function(k){ _rootBaseSet(k,v[k]); });   // what the cloud holds is what this device last agreed with
+  } finally { _adopting=false; }
+  if(losers.length) _verWrite(losers);
+  if(touched){ maybeSeed(); renderAll(); }
+  if(clash.length){
+    _remoteNote=(clash.length===1?'“'+esc(_verLabel(clash[0]))+'” was':clash.length+' entries were')+' changed on two devices. The later version is the one here; the other is kept in Recover → Versions.';
+    _cloudBanner(true);
+  }
+  return gone;
+}
 // A failed first read used to end sync for the whole session: no adoption, no _cloudSeen,
 // and _cloudListen never reached — so this device kept saving locally and saying so quietly
 // for hours. The read fails for ordinary reasons (the token is not there yet, the network
@@ -14444,52 +14573,20 @@ function lbInitSync(){
   try{ r.once('value').then(function(s){
     var v=s.val();
     var remoteHas = v && ((v.projects||[]).length || Object.keys(v.experiments||{}).length || (v.generalSections||[]).length || Object.keys(v.pages||{}).length || Object.keys(v.notebook||{}).length);
-    // A device that holds nothing but the seed adopts the cloud whatever the timestamps say.
-    // The seed is stamped at first launch, so a phone opened after the laptop's last save had
-    // the newer `updated` and kept its six empty projects — while the real experiments arrived
-    // one by one through the listeners, filed under project ids this device had never seen.
-    var pristine = !Object.keys(LB.data.experiments||{}).length && !Object.keys(LB.data.pages||{}).length
-                && !Object.keys(LB.data.notebook||{}).length && !Object.keys(LB.data.trash||{}).length;
-    if(v && typeof v==='object' && remoteHas && ((v.updated||0) > (LB.data.updated||0) || pristine)){
-      // Adoption replaces the local tree wholesale, so anything done offline since the last
-      // successful push is about to be overwritten. Take a snapshot first: it costs nothing
-      // and it is the difference between "the cloud won" and "the work is gone".
-      try{ _snapshotBackup(); }catch(e){}
-      var _projBefore=(LB.data.projects||[]).slice();
-      // The cloud wins the tree, but not over a folder made here that has not been sent yet, and not back over one
-      // deleted here: the lists are merged against what this device last agreed with the cloud. A device holding
-      // nothing but the seed takes the cloud's lists as they are (its six placeholder projects are not work).
-      var _rootsMerged={};
-      _ROOT_LISTS.forEach(function(k){ var rem=_lbList(v[k],true);
-        _rootsMerged[k]=pristine?rem:JSON.parse(JSON.stringify(_lstMerge(_rootBaseOf(k),_lbList(LB.data[k],true),rem,_rootNest(k)))); });
-      _adopting=true;
-      // The reconstruction below names every key it keeps, so anything not on that list —
-      // one-time migration flags like _abMigrated and _abSecCleaned, and any key a newer build
-      // adds — was dropped on every adopt, and the migrations then ran again. Carry the rest
-      // across first, then let the named keys overwrite what they cover.
-      var _carry={}; Object.keys(LB.data).forEach(function(k){ _carry[k]=LB.data[k]; });
-      Object.keys(v).forEach(function(k){ _carry[k]=v[k]; });
-      LB.data=Object.assign(_carry,{projects:_rootsMerged.projects,generalSections:_rootsMerged.generalSections,notebooks:_rootsMerged.notebooks,experiments:v.experiments||{},pages:v.pages||{},notebook:v.notebook||{},tags:v.tags||[],presets:v.presets||LB.data.presets,antibodies:v.antibodies||{},attachments:v.attachments||{},planner:(v.planner&&typeof v.planner==='object'&&v.planner.tasks)?v.planner:{tasks:{}},protoDays:v.protoDays||{},_seeded:(v._seeded===undefined?true:v._seeded),_extraPresets:v._extraPresets,updated:v.updated||Date.now()});
-      _lbNormTree(LB.data);
-      LB.data.projects.forEach(function(p,i){ p.sections=p.sections||[]; if(!p.color) p.color=PROJ_COLORS[i%PROJ_COLORS.length]; });
-      _ROOT_LISTS.forEach(function(k){ _rootBaseSet(k,v[k]); });   // what the cloud holds is what this device last agreed with
-      _reconcileProjects(_projBefore);   // a projects root that orphans the cloud's own experiments is wrong, whatever its timestamp
-      _backfillPrefixes();   // a tree adopted from the cloud can predate the field too
-      _nbMigrate(); _journalMigrate(); _pubMigrate();   // and the notebook fields; all idempotent per record
-      seedPresets();
-      _lsDirty=true; _flushLocal();
-      _adopting=false; maybeSeed(); renderAll();
-    }
+    var _gone=(v && typeof v==='object' && remoteHas) ? _syncMerge(v) : {};
     // What the cloud holds — read from the cloud, not assumed from this device. The first push
-    // is then a real diff: what this device changed offline goes up, what only the cloud has is
-    // left alone (it arrives through the listeners below), and a device that adopted has
-    // nothing to send but the migrations it just ran.
-    // Restricted to the keys this device holds: a record only the cloud has must stay out of
-    // _cloudSeen, or _applyRemote would take its child_added for our own write coming back and
-    // never apply it. A record only this device has is absent too, so the first diff sends it.
+    // is then a real diff: what this device changed or made goes up, and nothing else.
+    // Restricted to the keys this device holds (and the ones deleted here): a record only the cloud
+    // has must stay out of _cloudSeen, or _applyRemote would take its child_added for our own write
+    // coming back and never apply it. A record only this device has is absent too, so the first
+    // diff sends it.
     var _remote=_cloudFingerprintOf(v), _local=_cloudFingerprint(), _seen={};
     Object.keys(_local).forEach(function(k){ if(_remote[k]!==undefined) _seen[k]=_remote[k]; });
+    Object.keys(_gone).forEach(function(k){ _seen[k]=_remote[k]; _cloudHeld[k]=1; });
     _cloudSeen=_seen;
+    Object.keys(_remote).forEach(function(k){ _baseNote(k,_remote[k]); });
+    Object.keys(LB.data._syncBase||{}).forEach(function(k){ if(_remote[k]===undefined) _baseNote(k,undefined); });
+    _diskJson=null; if(LB.data._restored){ delete LB.data._restored; _lsDirty=true; }
     _rootsPush(true);   // projects, folders and notebooks: merged with what the cloud holds now, never written over it
     if(_pushWanted || _cloudDelta(_local)) _cloudPush();
     _syncTries=0;
@@ -28856,6 +28953,7 @@ function restoreFromBackupFile(file){
       _verRestoreBackup(parsed&&parsed.versions);
       Promise.all(ids.map(function(id){ return _attPut(id,blobs[id]); })).then(function(results){
         var failed=results.filter(function(x){ return x===false; }).length;
+        data._restored=true; delete data._syncBase;
         LB.data=data; save();
         // The write is asynchronous now; reloading before it lands would bring back the old tree.
         var _written=Promise.resolve(_flushLocal()).then(function(){ return _treeLast; });

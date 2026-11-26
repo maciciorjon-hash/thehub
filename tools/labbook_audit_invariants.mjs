@@ -63,6 +63,10 @@
 //   L29 a day is the day here  A timestamp becomes a date in local time, never the UTC day: at 08:05 on 16 Nov in New Zealand (15 Nov 19:05 UTC) the version list, a file's "added" date,
 //                           an import's date and the Steps CSV's "Completed at" all say 16 Nov. (toISOString().slice(0,10): a version saved at 00:30 in British summer time read as yesterday)
 //   L7 an import is one undo step  Importing one experiment from a file is undone by one ⌘Z (the bundle had it; the single import did not)
+//   L33 each record syncs for itself  A device that is behind (even with a later notebook stamp) takes the newer experiment instead of writing its old one over it;
+//                           an experiment made or edited offline or signed out reaches the cloud and stays on the device; a deletion goes either way and an edit made
+//                           after it survives; changed on both, the later one stays and the other is kept in Versions; a migration at boot is not an edit; a restored
+//                           backup still wins. (one `updated` for the whole tree decided every record: the later tree overwrote the cloud's, the other was replaced whole)
 //
 //   node tools/labbook_audit_invariants.mjs [--url=URL] [--only=L1,L3]
 //   L31 the setup asks about the run  Edit setup opens on what the steps use (a setup saved earlier that said 10 plates beside a seeding step of 8 opened
@@ -357,6 +361,84 @@ try {
     const why = { a: 'a device that never heard of a folder erased it from the cloud on refresh (or did not receive it)', b: 'same, with a base', c: 'a folder made here and not yet sent was lost when the cloud won the tree', d: 'a deletion did not go, or a folder made elsewhere was dropped with it', e: 'a rename elsewhere was reverted, or a new folder here was not sent', f: 'a project that exists only on one side was dropped' };
     for (const k of Object.keys(want)) { const [c, l] = r[k]; if (c !== want[k] || l !== want[k]) bad('L12', `${k}: cloud "${c}", here "${l}", wanted "${want[k]}" — ${why[k]}`); }
     await ctx.close();
+  }
+  // ── L33 ──
+  if (run('L33')) {
+    counts.L33 = 1;
+    const ctx = await newCtx(); const { page, errs } = await open(ctx, { settle: 2500 });
+    const r = await page.evaluate(async () => {
+      const clone = v => JSON.parse(JSON.stringify(v));
+      function mock(cloud) {
+        const set = (k, v) => { if (k.indexOf('/') > 0) { const a = k.split('/'); cloud[a[0]] = cloud[a[0]] || {}; if (v === null) delete cloud[a[0]][a[1]]; else cloud[a[0]][a[1]] = clone(v); } else cloud[k] = clone(v); };
+        return { once: () => Promise.resolve({ val: () => clone(cloud) }), update: d => { Object.keys(d).forEach(k => set(k, d[k])); return Promise.resolve(); },
+          child: n => ({ on() {}, off() {}, transaction: fn => { const out = fn(clone(cloud[n] === undefined ? null : cloud[n])); cloud[n] = clone(out); return Promise.resolve({ committed: true, snapshot: { val: () => clone(cloud[n]) } }); } }) };
+      }
+      const P = [{ id: 'P1', name: 'SPARK', prefix: 'SP', color: '#5e87c5', sections: [{ id: 'S1', name: 'A' }] }];
+      const E = (id, title, updated) => ({ id, projectId: 'P1', sectionId: 'S1', code: id, title, blocks: [], updated });
+      async function sync(cloud) {
+        window._lbFbRef = mock(cloud); _cloudSeen = null; _cloudOn = true; _pushWanted = false; _rootBusy = {}; _rootAgain = {};
+        lbInitSync(); await new Promise(r => setTimeout(r, 600));
+      }
+      // a device: the tree as it is on its disk, and nobody has touched it since
+      function device(tree) { LB.data = Object.assign(lbBlank(), clone(tree)); _lbBootFix(); _diskJson = JSON.stringify(LB.data); _userTouched = false; }
+      const tree = (updated, exps, extra) => Object.assign({ updated, projects: clone(P), experiments: exps, _seeded: true }, extra || {});
+      const show = o => Object.keys(o || {}).filter(k => /^X/.test(k)).sort().map(k => k + ':' + o[k].title).join(' | ');
+      const both = cloud => [show(cloud.experiments), show(LB.data.experiments)];
+      const out = {}; let cloud;
+
+      // first run of this build (nothing recorded as agreed)
+      cloud = tree(1000, { X0: E('X0', 'same', 1), X1: E('X1', 'newer on laptop', 900) });
+      device(tree(2000, { X0: E('X0', 'same', 1), X1: E('X1', 'old copy', 100) })); await sync(cloud); out.stale = both(cloud);
+      cloud = tree(3000, { X0: E('X0', 'same', 1) });
+      device(tree(2000, { X0: E('X0', 'same', 1), X2: E('X2', 'made offline', 2000) })); await sync(cloud); out.made = both(cloud);
+      cloud = tree(3000, { X1: E('X1', 'before', 100) });
+      device(tree(2000, { X1: E('X1', 'edited offline', 2000) })); await sync(cloud); out.edited = both(cloud);
+
+      // with an agreement: sync once, then each side moves
+      async function agreed(exps) { cloud = tree(1000, clone(exps)); device(tree(1000, clone(exps))); await sync(cloud); return clone(LB.data); }
+      let a = await agreed({ X1: E('X1', 'one', 100), X2: E('X2', 'two', 100), X0: E('X0', 'same', 1) });
+      // here: X1 edited (no `updated` bump, as a tick can be); there: X2 edited. Both survive.
+      a.experiments.X1.title = 'one, here'; a.updated = 1500; cloud.experiments.X2 = E('X2', 'two, there', 1600); cloud.updated = 1600;
+      device(a); await sync(cloud); out.each = both(cloud);
+      // deleted here (in the bin), deleted there (in the cloud's bin)
+      a = await agreed({ X1: E('X1', 'one', 100), X2: E('X2', 'two', 100), X0: E('X0', 'same', 1) });
+      a.trash = { t1: { kind: 'experiment', label: 'one', at: Date.now(), payload: { exp: clone(a.experiments.X1) } } }; delete a.experiments.X1; a.updated = 1500;
+      cloud.trash = { t2: { kind: 'experiment', label: 'two', at: Date.now(), payload: { exp: clone(cloud.experiments.X2) } } }; delete cloud.experiments.X2; cloud.updated = 1600;
+      device(a); await sync(cloud); out.deleted = both(cloud);
+      // deleted there, edited here since: the edit is not thrown away
+      a = await agreed({ X1: E('X1', 'one', 100), X0: E('X0', 'same', 1) });
+      a.experiments.X1 = E('X1', 'worked on after', 1700); a.updated = 1700; delete cloud.experiments.X1; cloud.updated = 1600;
+      device(a); await sync(cloud); out.kept = both(cloud);
+      // changed on both: the later stays, the other is in Versions
+      a = await agreed({ X1: E('X1', 'one', 100) });
+      a.experiments.X1 = E('X1', 'here earlier', 1500); a.updated = 1900; cloud.experiments.X1 = E('X1', 'there later', 1800); cloud.updated = 1800;
+      device(a); await sync(cloud); await new Promise(r => setTimeout(r, 500));
+      out.both = both(cloud);
+      const vs = await _verList('experiments/X1'); const texts = [];
+      for (const q of vs) { const rec = await _verOp('readonly', os => os.get(q.key)); texts.push(JSON.parse(rec.json).title); }
+      out.version = texts.includes('here earlier');
+      // a migration of this load is not an edit
+      a = await agreed({ X1: E('X1', 'old wording', 100) });
+      cloud.experiments.X1 = E('X1', 'edited on laptop', 1800); cloud.updated = 1800;
+      device(a); LB.data.experiments.X1.title = 'reworded by the new build'; LB.data.experiments.X1.updated = Date.now(); await sync(cloud); out.migrated = both(cloud);
+      // a restored backup wins, as before
+      a = await agreed({ X1: E('X1', 'today', 1800) });
+      a.experiments.X1 = E('X1', 'from the backup', 100); a.updated = Date.now(); a._restored = true; delete a._syncBase;
+      device(a); await sync(cloud); out.restored = both(cloud);
+      out.leaked = Object.keys(cloud).filter(k => k === '_syncBase' || k === '_restored');
+      return out;
+    });
+    const want = { stale: 'X0:same | X1:newer on laptop', made: 'X0:same | X2:made offline', edited: 'X1:edited offline',
+      each: 'X0:same | X1:one, here | X2:two, there', deleted: 'X0:same', kept: 'X0:same | X1:worked on after', both: 'X1:there later',
+      migrated: 'X1:edited on laptop', restored: 'X1:from the backup' };
+    const why = { stale: 'a device that is behind wrote its old copy over the newer one', made: 'an experiment made offline was dropped or never sent',
+      edited: 'an edit made offline was lost', each: 'edits to two different experiments on two devices did not both survive', deleted: 'a deletion did not go both ways',
+      kept: 'an edit made after the deletion elsewhere was thrown away', both: 'changed on both, the later one did not stay', migrated: 'a boot migration counted as an edit and beat the real one',
+      restored: 'a restored backup was undone by the cloud' };
+    for (const k of Object.keys(want)) { const [c, l] = r[k]; if (c !== want[k] || l !== want[k]) bad('L33', `${k}: cloud "${c}", here "${l}", wanted "${want[k]}" — ${why[k]}`); }
+    if (!r.version) bad('L33', 'changed on both: the version that lost is not in Recover → Versions');
+    if (r.leaked.length) bad('L33', 'device-only keys reached the cloud: ' + r.leaked.join(','));
+    errs.forEach(m => bad('L33', 'page error: ' + m)); await ctx.close();
   }
   // ── L10 ──
   if (run('L14')) {
@@ -957,7 +1039,7 @@ try {
     errs.forEach(m => bad('L32', 'page error: ' + m)); await ctx.close();
   }
 } finally { await browser.close(); if (srv) srv.kill(); }
-for (const id of ['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8', 'L9', 'L10', 'L11', 'L12', 'L13', 'L14', 'L15', 'L16', 'L17', 'L18', 'L19', 'L20', 'L21', 'L22', 'L23', 'L24', 'L25', 'L26', 'L27', 'L28', 'L29', 'L30', 'L31', 'L32']) { if (ONLY && !ONLY.includes(id)) continue; const fs_ = findings.filter(f => f.id === id); process.stdout.write(`  ${fs_.length ? '✗' : '✓'} ${id}${fs_.length ? '  — ' + fs_.length + ' finding(s)' : ''}\n`); }
+for (const id of ['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8', 'L9', 'L10', 'L11', 'L12', 'L13', 'L14', 'L15', 'L16', 'L17', 'L18', 'L19', 'L20', 'L21', 'L22', 'L23', 'L24', 'L25', 'L26', 'L27', 'L28', 'L29', 'L30', 'L31', 'L32', 'L33']) { if (ONLY && !ONLY.includes(id)) continue; const fs_ = findings.filter(f => f.id === id); process.stdout.write(`  ${fs_.length ? '✗' : '✓'} ${id}${fs_.length ? '  — ' + fs_.length + ' finding(s)' : ''}\n`); }
 const seen = new Set(); findings.forEach(f => { const k = f.id + f.m; if (seen.has(k)) return; seen.add(k); process.stdout.write(`     [${f.id}] ${f.m}\n`); });
 if (!findings.length) process.stdout.write('\nLabbook audit invariants hold.\n');
 process.exit(findings.length ? 1 : 0);
