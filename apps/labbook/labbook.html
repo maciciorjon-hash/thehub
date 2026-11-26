@@ -21004,6 +21004,15 @@ function mtgRosterStar(i){ var m=mtgCur(); if(!m||!m.attendees[i]) return; var n
 // ── Create, open, delete ─────────────────────────────────────────────────────────────────────────────
 function mtgOpen(pid,id){ if(!id&&pid) MTG_PROJ=pid;
   SEL.node={kind:'meetings',projectId:null,sectionId:null}; SEL.page=id||null; TAGFILTER=null; renderAll(); }
+// A Biology Alignment tells the whole centre what the Safety committee said the day before, so a new one starts with a copy
+// of that meeting's own sections (the ones switched on), to edit without touching the committee's minutes. The source is the
+// project's latest Safety committee up to its date; if that one holds nothing, an older one is not brought back.
+function _mtgCarrySafety(m){ if(m.type!=='bioalign'||m.cx) return null;
+  var src=mtgList(m.projectId).filter(function(x){ return x.type==='safety'&&x.status!=='cancelled'&&(x.date||'')<=m.date; })[0]; if(!src) return null;
+  var names=[]; _mtgLayout(m.projectId).secs.forEach(function(s){ if(!s.custom||!s.on||!_mtgCxHas(src,s)) return;
+    m.cx=m.cx||{}; m.cx[s.k]=s.kind==='text'?_mtgCxText(src,s.k):_mtgCxRows(src,s.k).map(function(r){ return Object.assign({},r,{id:uid()}); });
+    names.push(s.n); });
+  return names.length?{from:src,names:names}:null; }
 function mtgNew(pid,tid,over){
   var p=projById(pid); if(!p) return null;
   var t=mtgType(tid||'group'), L=mtgList(pid), prev=L.filter(function(x){ return x.type===t.id; })[0]||L[0], d=(over&&over.date)||todayStr();
@@ -21014,7 +21023,9 @@ function mtgNew(pid,tid,over){
     agenda:t.agenda.map(function(x){ return {id:uid(),t:x,m:0,d:0}; }),
     html:_mtgSkeleton(t),decisions:[],actions:[],exps:[],next:null,created:Date.now(),updated:Date.now()};
   Object.keys(over||{}).forEach(function(k){ m[k]=over[k]; });
+  var carried=_mtgCarrySafety(m);
   undoMark('New meeting',['meetings.'+m.id]); mtgMap()[m.id]=m; save(); mtgOpen(pid,m.id);
+  if(carried){ var nm=carried.names; toast('Copied '+(nm.length>1?(nm.slice(0,-1).join(', ')+' and '+nm[nm.length-1]):nm[0])+' from '+mtgTitle(carried.from)+', '+_mtgDayMid(carried.from.date)+'.'); }
   setTimeout(function(){ var ti=document.querySelector('#pane-ed .mtg-title'); if(ti) ti.focus(); },60);
   return m;
 }
@@ -21068,7 +21079,7 @@ function mtgMovePick(id){ var m=mtgMap()[id]; if(!m) return;
 // A copy keeps the shape (kind, title, place, call, chair, purpose, who is invited, the agenda unticked) and none of what
 // happened: no notes, decisions or actions, so the open actions of the original are not counted twice.
 function mtgDup(id){ var m=mtgMap()[id]; if(!m) return;
-  var o=mtgNew(m.projectId,m.type,{date:todayStr(),status:'planned',title:m.title||'',start:m.start||'',end:m.end||'',place:m.place||'',link:m.link||'',chair:m.chair||'',purpose:m.purpose||'',
+  var o=mtgNew(m.projectId,m.type,{date:todayStr(),status:'planned',cx:{},title:m.title||'',start:m.start||'',end:m.end||'',place:m.place||'',link:m.link||'',chair:m.chair||'',purpose:m.purpose||'',
     attendees:(m.attendees||[]).map(function(x){ return {n:x.n,a:0}; }),agenda:(m.agenda||[]).map(function(a){ return {id:uid(),t:a.t,m:a.m||0,d:0}; })});
   if(o) toast('Copied: same agenda and people, nothing done yet.'); }
 function mtgKindMenu(id,at){ var m=mtgMap()[id]; if(!m) return;
