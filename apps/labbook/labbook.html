@@ -20885,7 +20885,7 @@ var MTG_TYPES=[
    agenda:['Goals','Experiments to run','Reagents and resources','Timeline','Who does what'],
    notes:['Plan','Open questions']},
   {id:'safety',name:'Safety committee',c:'amber',agenda:[],notes:[]},
-  {id:'bioalign',name:'Biology Alignment',c:'violet',agenda:[],notes:[]},
+  {id:'bioalign',name:'Biology Alignment',c:'violet',noPeople:1,agenda:[],notes:[]}, // the whole centre comes: no list of people
   {id:'other',name:'Other',c:'slate',agenda:[],notes:[]}
 ];
 // ── Sections ─────────────────────────────────────────────────────────────────────────────────────────
@@ -20920,6 +20920,9 @@ function _mtgLayout(pid){ var p=projById(pid), sv=p&&p.mtgLayout, secs=[], seen=
   MTG_SECS.forEach(function(b){ if(!seen[b.k]) secs.push({k:b.k,on:1,n:b.n,custom:0,kind:''}); });
   var f={}; MTG_FIELDS.forEach(function(x){ f[x[0]]=!(sv&&sv.fields&&sv.fields[x[0]]===0); });
   return {secs:secs,fields:f,defKind:(sv&&sv.defKind)||''}; }
+// What one meeting is made of: its project's sections, without People for a kind that keeps no list of who came.
+function _mtgNoPeople(type){ return !!mtgType(type).noPeople; }
+function _mtgLayoutOf(m){ var L=_mtgLayout(m.projectId); if(_mtgNoPeople(m.type)) L.secs.forEach(function(s){ if(s.k==='people') s.on=0; }); return L; }
 function _mtgSecOn(L,k){ for(var i=0;i<L.secs.length;i++) if(L.secs[i].k===k) return !!L.secs[i].on; return false; }
 function _mtgSecName(L,k){ for(var i=0;i<L.secs.length;i++) if(L.secs[i].k===k) return L.secs[i].n; var b=_mtgBuiltin(k); return b?b.n:k; }
 function _mtgLayoutIsDefault(L){ if(MTG_FIELDS.some(function(x){ return !L.fields[x[0]]; })) return false; if(L.defKind) return false;
@@ -20966,7 +20969,7 @@ function _mtgDayLong(d){ try{ return new Date(d+'T12:00:00').toLocaleDateString(
 function _mtgDayMid(d){ try{ return new Date(d+'T12:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',year:'numeric'}); }catch(e){ return fmtDate(d); } }
 function _mtgWhen(m,long){ var s=m.date?(long?_mtgDayLong(m.date):_mtgDayMid(m.date)):'No date';
   if(m.start) s+=' · '+m.start+(m.end?('–'+m.end):''); var d=_mtgDur(m); if(d) s+=' · '+_mtgDurTxt(d); return s; }
-function _mtgPresent(m){ return (m.attendees||[]).filter(function(x){ return !x.a; }); }
+function _mtgPresent(m){ return (_mtgNoPeople(m.type)?[]:(m.attendees||[])).filter(function(x){ return !x.a; }); }
 function _mtgInit(n){ var w=String(n||'').trim().split(/\s+/).filter(Boolean); if(!w.length) return '?'; return (w[0].charAt(0)+(w.length>1?w[w.length-1].charAt(0):'')).toUpperCase(); }
 function _mtgHue(n){ var h=0, s=String(n||''); for(var i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))>>>0; return NB_COLORS[NB_COLOR_KEYS[h%NB_COLOR_KEYS.length]]; }
 // Everyone this project's meetings have named, most frequent first, so the datalist offers the usual people at the top.
@@ -20988,7 +20991,7 @@ function _mtgSkeleton(t){ return t.notes.map(function(h){ return '<h3>'+esc(h)+'
 // of the last five meetings. Taking someone off one meeting (x) or marking apologies never touches the list; the star does.
 function _mtgRoster(pid,exceptId){ var p=projById(pid); if(!p) return [];
   if(Array.isArray(p.mtgPeople)) return p.mtgPeople.slice();
-  var L=mtgList(pid).filter(function(m){ return m.id!==exceptId&&m.status!=='cancelled'&&(m.attendees||[]).length; }).slice(0,5); if(!L.length) return [];
+  var L=mtgList(pid).filter(function(m){ return m.id!==exceptId&&m.status!=='cancelled'&&!_mtgNoPeople(m.type)&&(m.attendees||[]).length; }).slice(0,5); if(!L.length) return [];
   var n={}; L.forEach(function(m){ (m.attendees||[]).forEach(function(x){ if(x.n&&!x.a) n[x.n]=(n[x.n]||0)+1; }); });
   var need=Math.ceil(L.length/2), out=Object.keys(n).filter(function(k){ return n[k]>=need; }).sort(function(a,b){ return n[b]-n[a]||a.localeCompare(b); });
   return out.length?out:(L[0].attendees||[]).filter(function(x){ return !x.a; }).map(function(x){ return x.n; }); }
@@ -21007,13 +21010,13 @@ function mtgOpen(pid,id){ if(!id&&pid) MTG_PROJ=pid;
 // A Biology Alignment tells the whole centre what the Safety committee said the day before, so a new one starts with a copy
 // of that meeting's own sections (the ones switched on), to edit without touching the committee's minutes. The source is the
 // project's latest Safety committee up to its date; if that one holds nothing, an older one is not brought back.
-function _mtgCarrySafety(m){ if(m.type!=='bioalign'||m.cx) return null;
-  var src=mtgList(m.projectId).filter(function(x){ return x.type==='safety'&&x.status!=='cancelled'&&(x.date||'')<=m.date; })[0]; if(!src) return null;
+function _mtgCarrySafety(m,from){ if(m.type!=='bioalign'||m.cx) return null;
+  var src=from||mtgList(m.projectId).filter(function(x){ return x.type==='safety'&&x.status!=='cancelled'&&(x.date||'')<=m.date; })[0]; if(!src) return null;
   var names=[]; _mtgLayout(m.projectId).secs.forEach(function(s){ if(!s.custom||!s.on||!_mtgCxHas(src,s)) return;
     m.cx=m.cx||{}; m.cx[s.k]=s.kind==='text'?_mtgCxText(src,s.k):_mtgCxRows(src,s.k).map(function(r){ return Object.assign({},r,{id:uid()}); });
     names.push(s.n); });
   return names.length?{from:src,names:names}:null; }
-function mtgNew(pid,tid,over){
+function mtgNew(pid,tid,over,from){
   var p=projById(pid); if(!p) return null;
   var t=mtgType(tid||'group'), L=mtgList(pid), prev=L.filter(function(x){ return x.type===t.id; })[0]||L[0], d=(over&&over.date)||todayStr();
   var m={id:uid(),projectId:pid,title:'',type:t.id,status:d>todayStr()?'planned':'held',date:d,
@@ -21023,7 +21026,8 @@ function mtgNew(pid,tid,over){
     agenda:t.agenda.map(function(x){ return {id:uid(),t:x,m:0,d:0}; }),
     html:_mtgSkeleton(t),decisions:[],actions:[],exps:[],next:null,created:Date.now(),updated:Date.now()};
   Object.keys(over||{}).forEach(function(k){ m[k]=over[k]; });
-  var carried=_mtgCarrySafety(m);
+  if(_mtgNoPeople(m.type)) m.attendees=[];
+  var carried=_mtgCarrySafety(m,from);
   undoMark('New meeting',['meetings.'+m.id]); mtgMap()[m.id]=m; save(); mtgOpen(pid,m.id);
   if(carried){ var nm=carried.names; toast('Copied '+(nm.length>1?(nm.slice(0,-1).join(', ')+' and '+nm[nm.length-1]):nm[0])+' from '+mtgTitle(carried.from)+', '+_mtgDayMid(carried.from.date)+'.'); }
   setTimeout(function(){ var ti=document.querySelector('#pane-ed .mtg-title'); if(ti) ti.focus(); },60);
@@ -21041,7 +21045,7 @@ function mtgNewDialog(pid,tid){
     +LB.data.projects.map(function(p){ return '<option value="'+esc(p.id)+'"'+(p.id===cur?' selected':'')+'>'+esc(p.name)+'</option>'; }).join('')+'<option value="__new">+ New project or topic\u2026</option></select>'
     +'<input id="mtg-nd-new" type="text" placeholder="Name of the project or topic" style="display:none" onkeydown="if(event.key===\'Enter\'){event.preventDefault();_mtgNdGo();}"></div>'
     +'<div class="exh-fld" id="mtg-nd-layw" style="display:none"><label for="mtg-nd-lay">What its meetings are made of</label><select id="mtg-nd-lay" onchange="_mtgNdLay()">'+MTG_PRESETS.map(function(x){ return '<option value="'+x.id+'">'+esc(x.name)+'</option>'; }).join('')+'</select><div class="mtg-sd-note" id="mtg-nd-layn">'+esc(MTG_PRESETS[0].note)+' You can change the sections later from any meeting.</div></div>'
-    +'<div class="exh-fld"><label for="mtg-nd-t">Kind</label><select id="mtg-nd-t">'+MTG_TYPES.map(function(t){ return '<option value="'+t.id+'"'+(t.id===(tid||'group')?' selected':'')+'>'+esc(t.name)+'</option>'; }).join('')+'</select></div>'
+    +'<div class="exh-fld"><label for="mtg-nd-t">Kind</label><select id="mtg-nd-t" onchange="_mtgNdChange(true)">'+MTG_TYPES.map(function(t){ return '<option value="'+t.id+'"'+(t.id===(tid||'group')?' selected':'')+'>'+esc(t.name)+'</option>'; }).join('')+'</select></div>'
     +'<div class="exh-fld"><label for="mtg-nd-d">Date</label><input id="mtg-nd-d" type="date" value="'+todayStr()+'"></div>'
     +'<div class="mtg-nd-ppl" id="mtg-nd-ppl"></div></div>'
     +'<div class="modal-act"><span class="grow"></span><button class="btn ghost" onclick="_lbDlgClose()">Cancel</button><button class="btn" onclick="_mtgNdGo()">Create</button></div>';
@@ -21051,8 +21055,8 @@ function _mtgNdLay(){ var l=el('mtg-nd-lay'), pr=l&&MTG_PRESETS.filter(function(
 function _mtgNdChange(keepKind){ var s=el('mtg-nd-p'), n=el('mtg-nd-new'), b=el('mtg-nd-ppl'); if(!s||!b) return;
   var isNew=s.value==='__new'; if(n){ n.style.display=isNew?'':'none'; if(isNew) n.focus(); } var lw=el('mtg-nd-layw'); if(lw) lw.style.display=isNew?'':'none';
   if(!keepKind&&!isNew){ var t=el('mtg-nd-t'), L=mtgList(s.value), k=(L[0]&&L[0].type)||_mtgLayout(s.value).defKind; if(t&&k) t.value=k; }
-  var r=isNew?[]:_mtgRoster(s.value);
-  b.innerHTML=isNew?'A new project has no regulars yet; add people on the meeting and star the ones who always come.':(r.length?('<b>Invited</b> '+r.map(esc).join(', ')+'<span>the regulars of this project; take anyone off on the meeting</span>'):'No regulars yet: add people on the meeting and star the ones who always come.'); }
+  var r=isNew?[]:_mtgRoster(s.value), kt=el('mtg-nd-t');
+  b.innerHTML=(kt&&_mtgNoPeople(kt.value))?'The whole centre comes: this kind keeps no list of people.':isNew?'A new project has no regulars yet; add people on the meeting and star the ones who always come.':(r.length?('<b>Invited</b> '+r.map(esc).join(', ')+'<span>the regulars of this project; take anyone off on the meeting</span>'):'No regulars yet: add people on the meeting and star the ones who always come.'); }
 function _mtgNdGo(){ var s=el('mtg-nd-p'), t=el('mtg-nd-t'), dt=el('mtg-nd-d'); if(!s||!t) return; var pid=s.value, nm=(el('mtg-nd-new')||{}).value;
   if(pid==='__new'){ nm=String(nm||'').trim(); if(!nm){ toast('Name the project or topic first.'); return; } addProject(nm); pid=LB.data.projects[LB.data.projects.length-1].id;
     var lay=el('mtg-nd-lay'), pr=lay&&MTG_PRESETS.filter(function(x){ return x.id===lay.value; })[0], pl=_mtgPresetLayout(pr); if(pl) _mtgLayoutSave(pid,{secs:pl.secs,fields:_mtgLayout(pid).fields,defKind:pl.defKind}); }
@@ -21082,12 +21086,17 @@ function mtgDup(id){ var m=mtgMap()[id]; if(!m) return;
   var o=mtgNew(m.projectId,m.type,{date:todayStr(),status:'planned',cx:{},title:m.title||'',start:m.start||'',end:m.end||'',place:m.place||'',link:m.link||'',chair:m.chair||'',purpose:m.purpose||'',
     attendees:(m.attendees||[]).map(function(x){ return {n:x.n,a:0}; }),agenda:(m.agenda||[]).map(function(a){ return {id:uid(),t:a.t,m:a.m||0,d:0}; })});
   if(o) toast('Copied: same agenda and people, nothing done yet.'); }
+// From one Safety committee in particular (right-click): its Biology Alignment is the next day, Monday after a Friday.
+function mtgBioFromSafety(id){ var s=mtgMap()[id]; if(!s) return;
+  var d=addDays(s.date||todayStr(),1), wd=new Date(d+'T12:00:00').getDay(); if(wd===6) d=addDays(d,2); else if(wd===0) d=addDays(d,1);
+  return mtgNew(s.projectId,'bioalign',{date:d},s); }
 function mtgKindMenu(id,at){ var m=mtgMap()[id]; if(!m) return;
   popOpen('ctxmenu',MTG_TYPES.map(function(t){ return {label:t.name,ic:['',NB_COLORS[t.c]],on:t.id===m.type,fn:function(){ mtgSetKind(id,t.id); }}; }),at); }
 function ctxMtg(ev,id){ var m=mtgMap()[id]; if(!m) return; var at={left:ev.clientX,right:ev.clientX,top:ev.clientY,bottom:ev.clientY};
   ctxAt(ev,[{label:'Open',fn:function(){ mtgOpen(m.projectId,id); }},
     {label:'Rename…',fn:function(){ mtgRename(id); }},
     {label:'Duplicate',sub:'nothing done',fn:function(){ mtgDup(id); }},
+    (m.type==='safety'&&m.status!=='cancelled'?{label:'Create Biology Alignment from this',fn:function(){ mtgBioFromSafety(id); }}:null),
     {label:'Move to project…',fn:function(){ mtgMovePick(id); }},
     {label:'Change kind…',sub:mtgType(m.type).name,fn:function(){ setTimeout(function(){ mtgKindMenu(id,at); },0); }},
     {sep:true},
@@ -21388,7 +21397,7 @@ function mtgSdSave(){ var S=_MSD; if(!S||!projById(S.pid)) return; S.secs.forEac
   _mtgLayoutSave(S.pid,{secs:S.secs,fields:S.fields,defKind:S.defKind}); _lbDlgClose(); _MSD=null; renderAll(); toast('Meeting sections saved.'); }
 
 function renderMeetingPage(host,m){
-  var t=mtgType(m.type), col=NB_COLORS[t.c], p=projById(m.projectId), has=_noteHasContent(m.html), names=_mtgNames(m), ppl=_mtgPeople(m.projectId), LY=_mtgLayout(m.projectId), who=(names.length||_mtgSecOn(LY,'people'))?names:_mtgRoster(m.projectId);
+  var t=mtgType(m.type), col=NB_COLORS[t.c], p=projById(m.projectId), has=_noteHasContent(m.html), names=_mtgNames(m), ppl=_mtgPeople(m.projectId), LY=_mtgLayoutOf(m), who=(names.length||_mtgSecOn(LY,'people'))?names:_mtgRoster(m.projectId);
   var L=mtgList(m.projectId), at=L.map(function(x){ return x.id; }).indexOf(m.id);
   var nav=L.length>1?('<span class="exh-nav"><button class="exh-act" title="Newer meeting" aria-label="Newer meeting" '+(at>0?('onclick="mtgOpen(\''+m.projectId+'\',\''+L[at-1].id+'\')"'):'disabled')+'>'+tbIco(P_CHEV_L,15)+'</button><span class="exh-nav-n">'+(L.length-at)+'/'+L.length+'</span>'
     +'<button class="exh-act" title="Older meeting" aria-label="Older meeting" '+(at<L.length-1?('onclick="mtgOpen(\''+m.projectId+'\',\''+L[at+1].id+'\')"'):'disabled')+'>'+tbIco(P_CHEV_R,15)+'</button></span>'):'';
@@ -21478,7 +21487,7 @@ function mtgCxTick(k,id,on,box){ mtgRowSet('cx:'+k,id,'d',on?1:0); var r=box&&bo
 
 
 // Plain text for an email.
-function _mtgText(m){ var t=mtgType(m.type), p=projById(m.projectId), L=[], LY=_mtgLayout(m.projectId), N=function(k){ return _mtgSecName(LY,k); };
+function _mtgText(m){ var t=mtgType(m.type), p=projById(m.projectId), L=[], LY=_mtgLayoutOf(m), N=function(k){ return _mtgSecName(LY,k); };
   L.push(mtgTitle(m)+' ('+t.name+(p?(', '+p.name):'')+')'); L.push(_mtgWhen(m,true)+((m.place&&LY.fields.place)?(' · '+m.place):''));
   if(_mtgSecOn(LY,'summary')&&m.summary) L.push('',N('summary')+': '+m.summary); if(_mtgSecOn(LY,'purpose')&&m.purpose) L.push(N('purpose')+': '+m.purpose);
   var pr=_mtgPresent(m).map(function(x){ return x.n; }), ab=(m.attendees||[]).filter(function(x){ return x.a; }).map(function(x){ return x.n; });
@@ -21506,7 +21515,7 @@ function _pdMeetingHtml(m,o,opts){ opts=opts||{}; o=o||pdfOpts();
     +'<div class="pd-mt-head"><div class="pd-mt-kick"><i></i>'+esc((p?p.name:'')+(p?' · ':'')+t.name+st)+'</div>'
     +'<div class="pd-mt-title">'+esc(mtgTitle(m))+'</div>'
     +'<div class="pd-mt-when">'+esc((m.date?_mtgDayLong(m.date):'No date')+(m.start?(' · '+m.start+(m.end?('–'+m.end):'')):''))+(d?('<span>'+esc(_mtgDurTxt(d))+'</span>'):'')+'</div></div>';
-  var LY=_mtgLayout(m.projectId), facts=[['Where',m.place,'place'],['Link',m.link,'link'],['Chair',m.chair,'chair'],['Minutes by',m.scribe,'scribe']].filter(function(x){ return x[1]&&LY.fields[x[2]]; });
+  var LY=_mtgLayoutOf(m), facts=[['Where',m.place,'place'],['Link',m.link,'link'],['Chair',m.chair,'chair'],['Minutes by',m.scribe,'scribe']].filter(function(x){ return x[1]&&LY.fields[x[2]]; });
   if(facts.length) h+='<div class="pd-mt-facts">'+facts.map(function(x){ return '<div><span>'+esc(x[0])+'</span>'+esc(x[1])+'</div>'; }).join('')+'</div>';
   if(_mtgSecOn(LY,'purpose')&&m.purpose) h+='<div class="pd-mt-purpose"><span>'+esc(_mtgSecName(LY,'purpose'))+'</span>'+esc(m.purpose)+'</div>';
   if(_mtgSecOn(LY,'summary')&&o.mSummary&&m.summary) h+='<div class="pd-mt-take">'+esc(m.summary)+'</div>';
