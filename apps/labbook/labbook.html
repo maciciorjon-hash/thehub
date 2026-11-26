@@ -20884,8 +20884,9 @@ var MTG_TYPES=[
   {id:'planning',name:'Planning',c:'olive',
    agenda:['Goals','Experiments to run','Reagents and resources','Timeline','Who does what'],
    notes:['Plan','Open questions']},
-  {id:'safety',name:'Safety committee',c:'amber',agenda:[],notes:[]},
-  {id:'bioalign',name:'Biology Alignment',c:'violet',noPeople:1,agenda:[],notes:[]}, // the whole centre comes: no list of people
+  // standsIn: the headings go in the Notes when the project has no sections of its own for them (Jon writes the minutes there)
+  {id:'safety',name:'Safety committee',c:'amber',standsIn:1,agenda:[],notes:['Inspection Notes','Lab Management','Round table']},
+  {id:'bioalign',name:'Biology Alignment',c:'violet',noPeople:1,standsIn:1,agenda:[],notes:['Inspection Notes','Lab Management','Round table']}, // the whole centre comes: no list of people
   {id:'other',name:'Other',c:'slate',agenda:[],notes:[]}
 ];
 // ── Sections ─────────────────────────────────────────────────────────────────────────────────────────
@@ -20902,8 +20903,8 @@ var MTG_PRESETS=[
   {id:'research',name:'Research group',note:'The lot: purpose, agenda, notes, decisions, actions, experiments.',secs:null},
   {id:'committee',name:'Committee or admin',note:'Attendance, agenda, minutes, decisions and actions. No experiments.',kind:'tap',
    secs:[['people','Attendance'],['carry'],['agenda'],['notes','Minutes'],['decisions'],['actions'],['summary','Key message'],['next'],['purpose',null,0],['exps',null,0]]},
-  {id:'safety',name:'Safety committee',note:'People, Inspection Notes, Lab Management Notes, Round Table, Action points. Nothing else.',kind:'safety',
-   secs:[['people'],['+','Inspection Notes','list'],['+','Lab Management Notes','list'],['+','Round Table','list'],['carry'],['actions','Action points'],
+  {id:'safety',name:'Safety committee',note:'People, Inspection Notes, Lab Management, Round table, Action points. Nothing else.',kind:'safety',
+   secs:[['people'],['+','Inspection Notes','list'],['+','Lab Management','list'],['+','Round table','list'],['carry'],['actions','Action points'],
      ['agenda',null,0],['notes',null,0],['decisions',null,0],['summary',null,0],['next',null,0],['purpose',null,0],['exps',null,0]]},
   {id:'safetyfull',name:'Safety committee, detailed',note:'Attendance, agenda, incidents, inspections, risk assessments, training, minutes, decisions, actions.',kind:'other',
    secs:[['people','Attendance'],['carry'],['agenda'],['+','Incidents and near misses','list'],['+','Inspections and audits','list'],['+','Risk assessments and COSHH','list'],['+','Training and compliance','list'],
@@ -20922,13 +20923,21 @@ function _mtgLayout(pid){ var p=projById(pid), sv=p&&p.mtgLayout, secs=[], seen=
   return {secs:secs,fields:f,defKind:(sv&&sv.defKind)||''}; }
 // What one meeting is made of: its project's sections, without People for a kind that keeps no list of who came.
 function _mtgNoPeople(type){ return !!mtgType(type).noPeople; }
-function _mtgLayoutOf(m){ var L=_mtgLayout(m.projectId); if(_mtgNoPeople(m.type)) L.secs.forEach(function(s){ if(s.k==='people') s.on=0; }); return L; }
+// With the project's sections never set, a Safety committee or Biology Alignment page is its three headings in Notes: the
+// research sections go, except one this meeting already holds something in. A layout saved from Sections wins.
+var MTG_MINUTES_OFF={purpose:function(m){ return !!(m.purpose||'').trim(); },agenda:function(m){ return (m.agenda||[]).some(function(a){ return (a.t||'').trim(); }); },
+  decisions:function(m){ return (m.decisions||[]).some(function(a){ return (a.t||'').trim(); }); },summary:function(m){ return !!(m.summary||'').trim(); },
+  exps:function(m){ return (m.exps||[]).length>0; },next:function(m){ return !!(m.next&&m.next.date); }};
+function _mtgLayoutOf(m){ var L=_mtgLayout(m.projectId), p=projById(m.projectId);
+  if(mtgType(m.type).standsIn&&!(p&&p.mtgLayout)) L.secs.forEach(function(s){ if(MTG_MINUTES_OFF[s.k]&&!MTG_MINUTES_OFF[s.k](m)) s.on=0; });
+  if(_mtgNoPeople(m.type)) L.secs.forEach(function(s){ if(s.k==='people') s.on=0; }); return L; }
 function _mtgSecOn(L,k){ for(var i=0;i<L.secs.length;i++) if(L.secs[i].k===k) return !!L.secs[i].on; return false; }
 function _mtgSecName(L,k){ for(var i=0;i<L.secs.length;i++) if(L.secs[i].k===k) return L.secs[i].n; var b=_mtgBuiltin(k); return b?b.n:k; }
 function _mtgLayoutIsDefault(L){ if(MTG_FIELDS.some(function(x){ return !L.fields[x[0]]; })) return false; if(L.defKind) return false;
   return L.secs.length===MTG_SECS.length&&L.secs.every(function(s,i){ return s.k===MTG_SECS[i].k&&s.on&&s.n===MTG_SECS[i].n; }); }
 function _mtgLayoutSave(pid,L){ var p=projById(pid); if(!p) return; undoMark('Meeting sections',['projects']);
-  if(_mtgLayoutIsDefault(L)) delete p.mtgLayout;
+  // the default is stored where a minutes kind is filed: unstored, its page would not show what the dialog has ticked
+  if(_mtgLayoutIsDefault(L)&&!mtgList(pid).some(function(m){ return mtgType(m.type).standsIn; })) delete p.mtgLayout;
   else p.mtgLayout={secs:L.secs.map(function(s){ var o={k:s.k,on:s.on?1:0,n:s.n}; if(s.custom){ o.custom=1; o.kind=s.kind; } return o; }),fields:MTG_FIELDS.reduce(function(o,x){ if(!L.fields[x[0]]) o[x[0]]=0; return o; },{}),defKind:L.defKind||''};
   save(); }
 // A meeting's section of its own: the rows of a list or checklist, or the text of a paragraph.
@@ -20984,6 +20993,9 @@ function _mtgOpenActions(pid,m){
   return out.sort(function(p,q){ return (p.a.due||'9999').localeCompare(q.a.due||'9999')||_mtgStamp(p.m).localeCompare(_mtgStamp(q.m)); }); }
 function _mtgOpenCount(m){ return (m.actions||[]).filter(function(a){ return a&&!a.done&&(a.t||'').trim(); }).length; }
 function _mtgSkeleton(t){ return t.notes.map(function(h){ return '<h3>'+esc(h)+'</h3><div><br></div>'; }).join(''); }
+function _mtgStartHtml(pid,t){ return (t.standsIn&&_mtgLayout(pid).secs.some(function(s){ return s.custom&&s.on; }))?'':_mtgSkeleton(t); }
+// Anything under the headings: a skeleton nobody has written in is not minutes.
+function _mtgNotesWritten(html){ return _noteHasContent(String(html||'').replace(/<h3\b[^>]*>[\s\S]*?<\/h3>/gi,'')); }
 
 // ── The regulars of a project or topic ───────────────────────────────────────────────────────────────
 // Who comes to a project's meetings is remembered on the project (`mtgPeople`), so a new meeting starts with them and
@@ -21008,11 +21020,13 @@ function mtgRosterStar(i){ var m=mtgCur(); if(!m||!m.attendees[i]) return; var n
 function mtgOpen(pid,id){ if(!id&&pid) MTG_PROJ=pid;
   SEL.node={kind:'meetings',projectId:null,sectionId:null}; SEL.page=id||null; TAGFILTER=null; renderAll(); }
 // A Biology Alignment tells the whole centre what the Safety committee said the day before, so a new one starts with a copy
-// of that meeting's own sections (the ones switched on), to edit without touching the committee's minutes. The source is the
+// of that meeting's Notes and own sections (the ones switched on), to edit without touching the committee's minutes. The source is the
 // project's latest Safety committee up to its date; if that one holds nothing, an older one is not brought back.
 function _mtgCarrySafety(m,from){ if(m.type!=='bioalign'||m.cx) return null;
   var src=from||mtgList(m.projectId).filter(function(x){ return x.type==='safety'&&x.status!=='cancelled'&&(x.date||'')<=m.date; })[0]; if(!src) return null;
-  var names=[]; _mtgLayout(m.projectId).secs.forEach(function(s){ if(!s.custom||!s.on||!_mtgCxHas(src,s)) return;
+  var names=[], LY=_mtgLayout(m.projectId);
+  if(_mtgSecOn(LY,'notes')&&_mtgNotesWritten(src.html)){ m.html=src.html; names.push(_mtgSecName(LY,'notes')); }
+  LY.secs.forEach(function(s){ if(!s.custom||!s.on||!_mtgCxHas(src,s)) return;
     m.cx=m.cx||{}; m.cx[s.k]=s.kind==='text'?_mtgCxText(src,s.k):_mtgCxRows(src,s.k).map(function(r){ return Object.assign({},r,{id:uid()}); });
     names.push(s.n); });
   return names.length?{from:src,names:names}:null; }
@@ -21024,7 +21038,7 @@ function mtgNew(pid,tid,over,from){
     chair:(prev&&prev.chair&&_mtgRoster(pid).indexOf(prev.chair)>=0)?prev.chair:'',scribe:'',purpose:'',summary:'',
     attendees:_mtgRoster(pid).map(function(n){ return {n:n,a:0}; }),
     agenda:t.agenda.map(function(x){ return {id:uid(),t:x,m:0,d:0}; }),
-    html:_mtgSkeleton(t),decisions:[],actions:[],exps:[],next:null,created:Date.now(),updated:Date.now()};
+    html:_mtgStartHtml(pid,t),decisions:[],actions:[],exps:[],next:null,created:Date.now(),updated:Date.now()};
   Object.keys(over||{}).forEach(function(k){ m[k]=over[k]; });
   if(_mtgNoPeople(m.type)) m.attendees=[];
   var carried=_mtgCarrySafety(m,from);
