@@ -22060,6 +22060,22 @@ function dHubContextFor(e,extra){ e=e||_curExp(); var cell=(e&&e.cellLines||'').
   (e&&_plateContext(e)||[]).forEach(function(p){Object.keys(p.wells||{}).forEach(function(id){var w=p.wells[id]||{}; if(w.compound) ctx.compounds.push({name:w.compound,concentration:w.conc||'',unit:''});});});
   if(extra) Object.keys(extra).forEach(function(k){ctx[k]=extra[k];}); return ctx;
 }
+// The plate maps another app can lay over its own readings (Beacon › Layout from Labbook): every experiment that has
+// one, newest first, as copies. Read only. What a well means in the other app is that app's business, so a well goes
+// out as it is stored, with the names of the plate's own well types (a NanoBRET pair is a type).
+function lbPlateMapsForApps(){
+  return Object.keys((LB.data&&LB.data.experiments)||{}).map(function(k){ return LB.data.experiments[k]; }).filter(function(e){ return e&&e.kind!=='note'; }).map(function(e){
+    var plates=expPlateList(e).filter(function(x){ return x.p&&x.p.wells&&Object.keys(x.p.wells).length; });
+    if(!plates.length) return null;
+    var pj=projById(e.projectId)||{};
+    return {id:e.id,code:e.code||'',title:e.title||'',project:pj.name||'',date:e.startDate?fmtDate(e.startDate):'',updated:+e.updated||+e.created||0,
+      archived:!!(e.archived||e.status==='abandoned'),
+      plates:plates.map(function(x){ // Which wells are one compound where the map does not name it: Labbook's own reading (a block, or a column of a screen).
+        var slot={}; plateCompoundSlots(x.p).forEach(function(s,i){ if(!s.name) s.ids.forEach(function(w){ slot[w]=s.gid||('col'+i); }); });
+        return {label:plateLabel(x.key,x.p),cellLine:plateLine(x.p),format:String(x.p.format||'96'),slots:slot,
+        types:(x.p.types||[]).map(function(t){ return {id:t.id,name:t.name||t.id}; }),wells:JSON.parse(JSON.stringify(x.p.wells))}; })};
+  }).filter(Boolean).sort(function(a,b){ return (a.archived-b.archived)||(b.updated-a.updated); });
+}
 // ── Live cell cultures, read straight from the shell's JournalStore ─────────────────────────
 // Incubator, Cell Archive and this panel all read the same store, so a passage logged in
 // Incubator shows up here without a reload and without Labbook keeping its own copy. There is
