@@ -78,6 +78,22 @@ PROFILES = {
                 'incubator', 'cellarchive', 'cryo',
                 'echo', 'hitfinder', 'deg', 'spectra', 'lumina', 'beacon'],
 }
+def _before_head_end(html, block, what):
+    """`block` (which ends in </head>) takes the place of the document's own </head>.
+
+    Never the first `</head>` in the text: an app that builds a page in JavaScript (PrintKit's preview) writes one in a
+    string, above the real one. Replacing that one put `<script>` tags inside a script, whose `</script>` then ended it:
+    both published PWAs showed code as text and had no manifest or no Cells. Scripts, styles and comments are blanked
+    (same length, so the offsets hold) before looking - the shell's _realHeadCloseIndex does the same.
+    """
+    masked = re.sub(r'(?is)<script\b[^>]*>.*?</script>|<style\b[^>]*>.*?</style>|<!--.*?-->',
+                    lambda m: ' ' * len(m.group(0)), html)
+    i = masked.find('</head>')
+    if i < 0:
+        sys.stderr.write('%s profile: could not find </head>\n' % what)
+        sys.exit(1)
+    return html[:i] + block + html[i + len('</head>'):]
+
 # ── Standalone Labbook ────────────────────────────────────────────────────
 # Labbook + Archive as one self-contained file, with no dHUB around it. Archive is embedded
 # verbatim as a base64 iframe: it publishes its bridge onto window.parent, which inside Labbook
@@ -183,10 +199,7 @@ if profile in ('labbook', 'labbook-pwa', 'labbook-app'):
         # LB_NATIVE: this is the installed app, not a browser tab. Google sign-in cannot complete inside a WKWebView
         # (popup and redirect are both refused), so the app signs in with email and password only.
         fb_tags = fb_tags.replace('<script>\n// If these tags', '<script>var LB_NATIVE = true;</script>\n<script>\n// If these tags', 1)
-    lb, n = re.subn(r'</head>', lambda m: cells_host + fb_tags, lb, count=1)
-    if n != 1:
-        sys.stderr.write('labbook profile: could not find </head>\n')
-        sys.exit(1)
+    lb = _before_head_end(lb, cells_host + fb_tags, 'labbook')
 
     if profile == 'labbook':
         out = OUT if args else os.path.join(BASE, 'labbook-standalone.html')
@@ -206,7 +219,7 @@ if profile in ('labbook', 'labbook-pwa', 'labbook-app'):
             shutil.rmtree(out_dir)
         os.makedirs(os.path.join(out_dir, 'firebase'))
         os.makedirs(os.path.join(out_dir, 'fonts'))
-        lb = lb.replace('</head>', '<meta name="robots" content="noindex, nofollow">\n</head>', 1)
+        lb = _before_head_end(lb, '<meta name="robots" content="noindex, nofollow">\n</head>', 'labbook-app')
         open(os.path.join(out_dir, 'index.html'), 'w', encoding='utf-8').write(lb)
         files = vendored_files()
         for rel in files:
@@ -245,10 +258,7 @@ if ('serviceWorker' in navigator) {
 }
 </script>
 </head>'''
-    lb, n = re.subn(r'</head>', head, lb, count=1)
-    if n != 1:
-        sys.stderr.write('labbook-pwa profile: could not find </head>\n')
-        sys.exit(1)
+    lb = _before_head_end(lb, head, 'labbook-pwa')
     ver = hashlib.sha256(lb.encode('utf-8')).hexdigest()[:10]
 
     manifest = '''{
@@ -379,10 +389,7 @@ if ('serviceWorker' in navigator) {
 }
 </script>
 </head>'''
-    html, n = re.subn(r'</head>', head, html, count=1)
-    if n != 1:
-        sys.stderr.write('archive profile: could not find </head>\n')
-        sys.exit(1)
+    html = _before_head_end(html, head, 'archive')
     # Hash the *built* page, so a change to the injected head is a new cache too.
     ver = hashlib.sha256(html.encode('utf-8')).hexdigest()[:10]
 

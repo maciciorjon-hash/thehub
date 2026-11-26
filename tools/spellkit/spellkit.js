@@ -113,8 +113,8 @@ var SpellKit = (function () {
     if (n && /[0-9_\/\\@=+*<>~^|]/.test(n)) return true;
     if (p === '.' && i > 1 && /[A-Za-z0-9]/.test(text.charAt(i - 2))) return true;
     if (n === '.' && /[A-Za-z0-9]/.test(text.charAt(i + len + 1))) return true;
-    if (p === '-' && i > 1) { var b = /[A-Za-z0-9_]*$/.exec(text.slice(0, i - 1))[0]; if (/[0-9_A-Z]/.test(b)) return true; }
-    if (n === '-') { var f = /^[A-Za-z0-9_]*/.exec(text.slice(i + len + 1))[0]; if (/[0-9_A-Z]/.test(f)) return true; }
+    if (p === '-' && i > 1) { var b = /[A-Za-z0-9_]*$/.exec(text.slice(Math.max(0, i - 1 - LONG), i - 1))[0]; if (/[0-9_A-Z]/.test(b)) return true; }
+    if (n === '-') { var f = /^[A-Za-z0-9_]*/.exec(text.slice(i + len + 1, i + len + 1 + LONG))[0]; if (/[0-9_A-Z]/.test(f)) return true; }
     return false;
   }
   var CHEMY = /(ase|ose|ine|ide|ate|ite|one|ium|mab|nib|mycin|cillin|zole|vir|statin|cycline|oxin|ogen|ene|yne|yl|ol|in)$/;
@@ -132,13 +132,26 @@ var SpellKit = (function () {
   }
   var DUP_OK = { had: 1, that: 1, bye: 1, no: 1, so: 1, very: 1, ha: 1, sure: 1, well: 1, yes: 1, many: 1, few: 1, new: 1, one: 1 };
   var TOKEN = /[A-Za-z]+(?:['’][A-Za-z]+)*/g;
+  // No English word is longer. A longer run of letters is a sequence or a key: never looked up (near() builds some 54 copies of the word
+  // per letter), and the rules that look back from a word look no further than this.
+  var LONG = 64;
+  // Links and e-mail addresses, found one run without spaces at a time. A single pattern for an address (\S+@\S+\.\S+) is tried again from every
+  // letter of a long run, so its time grew with the square of the run: 200,000 characters froze the page for the best part of an hour.
+  function linkSpans(text) {
+    var spans = [], rx = /\S+/g, m;
+    while ((m = rx.exec(text))) {
+      var w = m[0], u = w.search(/(?:https?:\/\/|www\.)\S/), at = w.indexOf('@', 1), dot = w.lastIndexOf('.', w.length - 2);
+      if (at > 0 && dot >= at + 2) spans.push([m.index, m.index + w.length]);
+      else if (u >= 0) spans.push([m.index + u, m.index + w.length]);
+    }
+    return spans;
+  }
 
   // The misspelled words of a string. A newline ends a paragraph; \u0001 stands for something that is not text (a chip, a link).
   function scan(text) {
     var out = [];
     if (!loaded || !CFG.on) return out;
-    var skipRx = /(?:https?:\/\/|www\.)\S+|\S+@\S+\.\S+/g, skip = [], sm;
-    while ((sm = skipRx.exec(text))) skip.push([sm.index, sm.index + sm[0].length]);
+    var skip = linkSpans(text);
     var off = 0, blocks = text.split('\n');
     blocks.forEach(function (blk) {
       var base = off; off += blk.length + 1;
@@ -150,7 +163,7 @@ var SpellKit = (function () {
         var tok = m[0], i = m.index, gi = base + i, letters = tok.replace(/['’]/g, '').length;
         var cur = { s: gi, e: gi + tok.length, word: tok, lw: norm(tok).toLowerCase(), skip: true };
         if (/[À-ɏͰ-῿]/.test(blk.charAt(i - 1) + blk.charAt(i + tok.length))) { prev = null; continue; }
-        if (letters <= 2) { prev = null; continue; }
+        if (letters <= 2 || letters > LONG) { prev = null; continue; }
         if (/[A-Z]/.test(tok.slice(1))) { prev = null; continue; }                            // PBS, PROTACs, dTAG, McX
         var inLink = skip.some(function (r) { return gi >= r[0] && gi < r[1]; });
         if (inLink || skipContext(blk, i, tok.length)) { prev = null; continue; }
@@ -391,8 +404,8 @@ var SpellKit = (function () {
   function wordBefore(node, off) {
     var pe = node.parentElement;
     if (pe && pe.closest && pe.closest('a,code,pre,kbd,samp,sup,sub,[data-nospell],[contenteditable="false"]')) return null;   // a link, a code, a chip: not prose
-    var stem = node.data.slice(0, off).replace(/ /g, ' '), m = /([A-Za-z]+(?:['’][A-Za-z]+)*)$/.exec(stem);
-    if (!m) return null;
+    var stem = node.data.slice(0, off).replace(/ /g, ' '), m = /([A-Za-z]+(?:['’][A-Za-z]+)*)$/.exec(stem.slice(-(LONG + 1)));
+    if (!m || m[0].length > LONG) return null;
     var at = stem.length - m[0].length, pre = stem.slice(0, at);
     if (at > 0 && /[À-ɏ]/.test(stem.charAt(at - 1))) return null;
     if (at === 0) { var ps = node.previousSibling; if (ps && (ps.nodeType === 3 || (ps.nodeType === 1 && !BLOCK.test(ps.tagName) && ps.tagName !== 'BR'))) return null; }

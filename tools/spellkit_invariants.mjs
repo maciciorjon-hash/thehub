@@ -27,6 +27,9 @@
 //   SK10 settings            Check spelling off: no underline, no fix; Fix typos off: underline, no fix; the dictionary dialog adds and removes
 //   SK11 a phone keeps its keyboard   a touch device does not run the engine and its editors keep the browser's own spell-check on
 //   SK12 it is fast          scanning a 6 000-word page takes well under a frame budget and typing in a long note stays smooth
+//   SK13 a long run is no trap   200,000 characters without a space (a sequence, a pasted key), alone, hyphenated or dotted, are scanned at
+//                            once, and links and addresses beside them are still left alone. (The address pattern's time grew with the square
+//                            of the run: the page hung, and CI cut the Labbook suite at 60 minutes.)
 //
 //   node tools/spellkit_invariants.mjs [--url=URL] [--page=apps/labbook/x.html] [--kit=path] [--only=SK1,SK7]      exit 1 on any finding
 import fs from 'node:fs';
@@ -50,6 +53,19 @@ vm.runInContext(fs.readFileSync(path.join(ROOT, args.kit || 'tools/spellkit/spel
 const S = ctx.S;
 S.load(zlib.gunzipSync(Buffer.from(fs.readFileSync(path.join(ROOT, 'tools/spellkit/dict.b64'), 'utf8').trim(), 'base64')).toString('utf8'));
 const miss = t => S.scan(t).filter(x => x.kind === 'miss').map(x => x.word);
+
+if (want('SK13')) {
+  // In the VM with a time limit, so that the bug fails the check instead of hanging it.
+  const runs = { 'one letter': 'y'.repeat(100000), 'DNA': 'acgtgacctg'.repeat(10000), 'hyphenated': 'ab-'.repeat(33000), 'dotted': 'ab.'.repeat(33000), 'at signs': 'a@'.repeat(50000) };
+  for (const [name, t] of Object.entries(runs)) {
+    ctx.T = 'The cells were washed\n' + t + ' and zorbitrax';
+    let ms = Infinity;
+    try { const t0 = Date.now(); vm.runInContext('S.scan(T)', ctx, { timeout: 4000 }); ms = Date.now() - t0; } catch (e) { if (!/timed out/i.test(e.message)) throw e; }
+    check('SK13', '100,000 characters without a space (' + name + ') are scanned in under 800 ms', ms < 800, { ms: ms === Infinity ? 'over 4000' : ms });
+  }
+  check('SK13', 'a link, www and an address are still left alone, and the typo after them is still found',
+    JSON.stringify(miss('see https://exmaple.org/recieve and www.supernatent.com or recieve@dundee.ac.uk then seperate')) === '["seperate"]', miss('see https://exmaple.org/recieve and www.supernatent.com or recieve@dundee.ac.uk then seperate'));
+}
 
 if (want('SK1')) {
   const right = 'colour color normalised normalized centre center litre liter microlitre micrometre haemoglobin labelled labeled analyse analyze behaviour neighbour favourite grey gray aluminium artefact whilst organisation organization sulphate programme '

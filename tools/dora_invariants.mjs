@@ -678,14 +678,22 @@ if (run('DO18')) await guard('DO18', async () => {
       bar: [...document.querySelectorAll('#fbar .ctl-l > *, #panel-table .tbar .ctl-l > *')].filter(e => e.offsetParent).map(e => (e.id || e.className) + ':' + r(e)),
       w: document.getElementById('main-table').getBoundingClientRect().width };
   });
-  const base = await snap(); const moved = [];
+  const moved = [];
   const steps = [['setDgUnit', ['pM', 'uM', 'mM', 'M', 'p', 'nM']], ['setDmaxUnit', ['frac', 'rem', 'remfrac', 'pct']]];
-  for (const [fn, vals] of steps) for (const v of vals) {
-    await p.evaluate(([f, x]) => window[f](x), [fn, v]); await p.waitForTimeout(250);
-    const n = await snap();
-    if (n.ths.join('|') !== base.ths.join('|')) moved.push(fn + '(' + v + ') moved the columns');
-    if (n.row.join('|') !== base.row.join('|')) moved.push(fn + '(' + v + ') moved the cells');
-    if (n.bar.join('|') !== base.bar.join('|')) moved.push(fn + '(' + v + ') moved the toolbar');
+  // Twice: as this machine draws it, and with the toolbar's text 0.6 px a letter wider. CI's Linux fonts are wider than a Mac's, and a readout whose
+  // minimum fitted "remaining ≤" to the pixel passed here and moved the toolbar there (red on every run from 2026-11-24 to 11-26).
+  for (const wide of [false, true]) {
+    const st = wide ? await p.addStyleTag({ content: '#fbar, #fbar *, #panel-table .tbar, #panel-table .tbar * { letter-spacing: .6px !important; }' }) : null;
+    if (wide) await p.waitForTimeout(250);
+    const base = await snap();
+    for (const [fn, vals] of steps) for (const v of vals) {
+      await p.evaluate(([f, x]) => window[f](x), [fn, v]); await p.waitForTimeout(250);
+      const n = await snap(); const how = fn + '(' + v + ')' + (wide ? ' in a wider font' : '');
+      if (n.ths.join('|') !== base.ths.join('|')) moved.push(how + ' moved the columns');
+      if (n.row.join('|') !== base.row.join('|')) moved.push(how + ' moved the cells');
+      if (n.bar.join('|') !== base.bar.join('|')) moved.push(how + ' moved the toolbar');
+    }
+    if (st) { await st.evaluate(e => e.remove()); await p.waitForTimeout(250); }
   }
   !moved.length ? ok() : bad('DO18', 'a choice moved the layout: ' + moved.slice(0, 4).join(' · '));
   // the size of the structures changes the structure column and nothing else's width
