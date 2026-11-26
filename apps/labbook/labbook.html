@@ -13609,6 +13609,7 @@ function _lbAuthWatch(){
         // is empty and push the whole tree over whatever is really there.
         if(_cloudOn && oldRef){ try{ _cloudUnlisten(oldRef); }catch(e){} }
         _cloudSeen=null; _verSeen=null; _syncTries=0; clearTimeout(_syncRetryT);
+        _cloudWasRead(); _cloudFailed=false;
         if(uid && was!==null) toast('Signed in — syncing');
         // Storage follows the session: whatever was attached before this sign-in (a photo
         // taken at the bench, offline) is what the sweep now finds a home for.
@@ -13705,6 +13706,23 @@ var _syncT=null,_adopting=false,_synced=true;
 // "Saved ✓ / Saved and synced". The work WAS on this device — that part was true — but the
 // pill claimed a durability that had just failed. _cloudFailed carries the difference.
 var _cloudFailed=false;
+// Until the cloud notebook has been read once, nothing here is synced, whatever has been written
+// locally. _synced starts true, and the SDK's once() simply waits when it cannot get through (a
+// firewall, a VPN, a content blocker): a second computer showed an empty notebook and "Saved and
+// synced" for as long as it stayed open (2026-11-26).
+var _cloudSlow=false, _cloudSlowT=null, _cloudWhy='', _CLOUD_SLOW_MS=12000;
+function _cloudUnread(){ return hasCloud() && _cloudSeen===null; }
+// Said once per way of failing, and kept until it is clicked or the cloud answers: on a narrow
+// window the pill is only a dot.
+function _cloudNotRead(kind){
+  var key=kind+'|'+_cloudWhy, b=el('lb-remote'); if(_cloudNotRead.said===key) return; _cloudNotRead.said=key;
+  _remoteNote='<b>Not synced.</b> '+(kind==='slow'?'The cloud has not answered yet.':'The cloud notebook could not be read.')+' What you see is only what is on this device. Hover the status at the top for what to check.';
+  _cloudBanner(); b=el('lb-remote'); if(b){ clearTimeout(b._t); b.setAttribute('data-nosync','1'); }
+}
+function _cloudWasRead(){
+  clearTimeout(_cloudSlowT); _cloudSlowT=null; _cloudSlow=false; _cloudWhy=''; _cloudNotRead.said='';
+  var b=el('lb-remote'); if(b && b.getAttribute('data-nosync')) b.remove();
+}
 function setSync(ok,cloudOk){ _synced=ok; if(cloudOk!==undefined) _cloudFailed=!cloudOk; updateStatus(); }
 // True only when there is a real cloud target. Standalone there is none, and the status pill
 // must not claim otherwise — "Saved and synced" on a build that syncs nowhere is the kind of
@@ -13723,13 +13741,24 @@ function updateStatus(){ var p=el('lb-status'); if(!p) return; var txt=el('lb-st
   // A storage failure outranks everything else — never show "Saved ✓" when it isn't true.
   if(_storageBroken){ p.classList.add('offline'); if(txt) txt.textContent='Not saved!'; p.title='Browser storage rejected a write — see the warning. Export a backup now.'; return; }
   if(!hasCloud()){
-    // No cloud configured at all (standalone build): saved, but only here.
+    // No cloud to write to: signed out, no SDK, or a local file. lbAuthState() knows which.
+    var au=lbAuthState();
+    if(au.kind==='signedout'){ p.classList.add('offline'); if(txt) txt.textContent='Not signed in';
+      p.title=au.txt+' Sign in (Settings → About) to see and sync your notebook.'; return; }
     p.classList.add(_synced?'online':'saving');
     if(txt) txt.textContent=_synced?'Saved on this device':'Saving…';
-    p.title=_synced?'Saved to this browser. There is no cloud sync in this build — use Backup to move your notebook between machines.':'Saving to this browser…';
+    p.title=_synced?'Saved to this browser, not to the cloud. '+(au.kind==='host'?'There is no cloud sync here — use Backup to move your notebook between machines.':au.txt):'Saving to this browser…';
     return;
   }
   if(!on){ p.classList.add('offline'); if(txt) txt.textContent='Offline'; p.title='Offline — changes saved locally'; }
+  else if(_cloudUnread()){
+    if(_cloudFailed){ p.classList.add('offline'); if(txt) txt.textContent='Not synced';
+      p.title='The cloud notebook could not be read'+(_cloudWhy==='denied'?': the database refused this sign-in. Check you are signed in with your own account — signing out and in again renews it.':(_cloudWhy?' ('+_cloudWhy+').':'.'))+' What you see is only what is on this device. It is tried again every minute.'; }
+    else if(_cloudSlow){ p.classList.add('offline'); if(txt) txt.textContent='Not synced';
+      p.title='No answer from the cloud yet, so what you see is only what is on this device. A network, firewall, VPN or content blocker may be blocking Firebase. It connects by itself once it gets through.'; }
+    else { p.classList.add('saving'); if(txt) txt.textContent='Connecting…';
+      p.title='Reading your cloud notebook. Nothing is synced until it answers.'; }
+  }
   else if(_synced && _cloudFailed){
     // Saved here, not saved there. Say the smaller true thing rather than the bigger false one.
     p.classList.add('offline'); if(txt) txt.textContent='Saved on this device';
@@ -14557,8 +14586,9 @@ function _syncMerge(v){
 // blinked), so it must be retried rather than treated as a verdict.
 var _syncTries=0,_syncRetryT=null;
 function _syncRetry(){
-  if(_syncTries>=6) return;                    // ~10 min of trying, then wait for a reload
-  var wait=Math.min(60000, 4000*Math.pow(2,_syncTries)); _syncTries++;
+  // It never gives up: after the first few it is once a minute. It used to stop after six, and a
+  // tab left open stayed unsynced until somebody thought to reload it.
+  var wait=Math.min(60000, 4000*Math.pow(2,Math.min(_syncTries,4))); _syncTries++;
   clearTimeout(_syncRetryT); _syncRetryT=setTimeout(lbInitSync, wait);
 }
 function lbInitSync(){
@@ -14570,6 +14600,8 @@ function lbInitSync(){
     // to replace. Without one — file://, no SDK, embedded with no parent auth — settle at once.
     if(_authKnown || !_lbFbSelf()) _markBootSettled();
     return; }
+  if(_cloudSeen===null && !_cloudSlowT) _cloudSlowT=setTimeout(function(){ if(!_cloudUnread()||_cloudFailed) return; _cloudSlow=true; _cloudNotRead('slow'); updateStatus(); }, _CLOUD_SLOW_MS);
+  updateStatus();
   try{ r.once('value').then(function(s){
     var v=s.val();
     var remoteHas = v && ((v.projects||[]).length || Object.keys(v.experiments||{}).length || (v.generalSections||[]).length || Object.keys(v.pages||{}).length || Object.keys(v.notebook||{}).length);
@@ -14590,13 +14622,21 @@ function lbInitSync(){
     _rootsPush(true);   // projects, folders and notebooks: merged with what the cloud holds now, never written over it
     if(_pushWanted || _cloudDelta(_local)) _cloudPush();
     _syncTries=0;
+    _cloudWasRead();
     setSync(true,true);
     _cloudListen(r);
     // The tree in memory is now the one the cloud agrees with. Only from here is "this
     // attachment is referenced by nothing" a statement about the notebook rather than about
     // how far the network had got.
     _markBootSettled();
-  }).catch(function(){ setSync(true,false); _syncRetry(); }); }catch(e){ _syncRetry(); }
+  }).catch(_cloudReadFailed); }catch(e){ _cloudReadFailed(e); }
+}
+function _cloudReadFailed(e){
+  var m=String((e&&(e.code||'')+' '+(e.message||''))||'').trim();
+  _cloudWhy=/permission.?denied/i.test(m)?'denied':m.slice(0,140);
+  setSync(true,false);
+  if(_cloudUnread()){ _cloudNotRead('failed'); updateStatus(); }
+  _syncRetry();
 }
 
 // ── Layout ──

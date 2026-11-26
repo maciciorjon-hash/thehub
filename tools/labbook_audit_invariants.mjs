@@ -63,6 +63,7 @@
 //   L29 a day is the day here  A timestamp becomes a date in local time, never the UTC day: at 08:05 on 16 Nov in New Zealand (15 Nov 19:05 UTC) the version list, a file's "added" date,
 //                           an import's date and the Steps CSV's "Completed at" all say 16 Nov. (toISOString().slice(0,10): a version saved at 00:30 in British summer time read as yesterday)
 //   L7 an import is one undo step  Importing one experiment from a file is undone by one ⌘Z (the bundle had it; the single import did not)
+//   L34 the label is honest  Until the cloud notebook has been read, nothing says "Saved ✓": no answer or a refused read reads "Not synced" with a notice, it keeps retrying, and signed out says so.
 //   L33 each record syncs for itself  A device that is behind (even with a later notebook stamp) takes the newer experiment instead of writing its old one over it;
 //                           an experiment made or edited offline or signed out reaches the cloud and stays on the device; a deletion goes either way and an edit made
 //                           after it survives; changed on both, the later one stays and the other is kept in Versions; a migration at boot is not an edit; a restored
@@ -362,6 +363,40 @@ try {
     for (const k of Object.keys(want)) { const [c, l] = r[k]; if (c !== want[k] || l !== want[k]) bad('L12', `${k}: cloud "${c}", here "${l}", wanted "${want[k]}" — ${why[k]}`); }
     await ctx.close();
   }
+  // ── L34 ──
+  if (run('L34')) {
+    counts.L34 = 1;
+    const ctx = await newCtx(); const { page, errs } = await open(ctx, { settle: 2500 });
+    const r = await page.evaluate(async () => {
+      const wait = ms => new Promise(r => setTimeout(r, ms));
+      const pill = () => { const p = document.getElementById('lb-status'); return { txt: document.getElementById('lb-status-txt').textContent, title: p.title, cls: p.className }; };
+      const note = () => { const b = document.getElementById('lb-remote'); return b ? b.textContent : ''; };
+      let answer = null;
+      const ref = how => ({ once: () => how === 'silent' ? new Promise(res => { answer = res; }) : Promise.reject(new Error('PERMISSION_DENIED: Permission denied')), update: () => Promise.resolve(),
+        child: () => ({ on() {}, off() {}, transaction: () => Promise.resolve({ committed: true, snapshot: { val: () => null } }) }) });
+      function start(how) { if (typeof _cloudWasRead === 'function') _cloudWasRead(); _cloudFailed = false; window._lbFbRef = ref(how); _cloudSeen = null; _cloudOn = false; _syncTries = 0; clearTimeout(_syncRetryT); _syncRetryT = null; setSync(true); lbInitSync(); }
+      _CLOUD_SLOW_MS = 700; const out = {};
+      start('silent'); await wait(150); out.pending = pill();
+      await wait(900); out.slow = pill(); out.slowNote = note();
+      save(); await wait(2000); out.slowEdit = pill();
+      answer({ val: () => null }); await wait(900); out.answered = pill(); out.answeredNote = note();
+      start('denied'); await wait(300); out.denied = pill(); out.deniedNote = note();
+      save(); await wait(2000); out.deniedEdit = pill();
+      // it keeps trying: there is no number of failures after which it stops
+      clearTimeout(_syncRetryT); _syncRetryT = null; _syncTries = 40; _syncRetry(); out.retries = _syncRetryT !== null; clearTimeout(_syncRetryT);
+      if (typeof _cloudWasRead === 'function') _cloudWasRead(); _cloudFailed = false; _lbFbRef = undefined; _lbOwnFb = { auth: () => ({ currentUser: null }) }; setSync(true); out.signedOut = pill();
+      return out;
+    });
+    for (const k of ['pending', 'slow', 'slowEdit', 'denied', 'deniedEdit', 'signedOut']) if (r[k].title === 'Saved and synced' || /✓/.test(r[k].txt) || /\bonline\b/.test(r[k].cls)) bad('L34', `${k}: the label claims it is synced before the cloud was read — "${r[k].txt}" / "${r[k].title}"`);
+    if (r.slow.txt !== 'Not synced' || r.slowEdit.txt !== 'Not synced') bad('L34', `no answer from the cloud: wanted "Not synced", got "${r.slow.txt}", after an edit "${r.slowEdit.txt}"`);
+    if (r.denied.txt !== 'Not synced' || r.deniedEdit.txt !== 'Not synced' || !/refused/.test(r.denied.title)) bad('L34', `refused read: "${r.denied.txt}", after an edit "${r.deniedEdit.txt}" / "${r.denied.title}"`);
+    if (!/Not synced/.test(r.slowNote) || !/Not synced/.test(r.deniedNote)) bad('L34', 'no notice that this device is not synced');
+    if (r.answered.txt !== 'Saved ✓' || /Not synced/.test(r.answeredNote)) bad('L34', `once the cloud answered: "${r.answered.txt}", notice "${r.answeredNote}"`);
+    if (!r.retries) bad('L34', 'after many failed reads it stops trying');
+    if (r.signedOut.txt !== 'Not signed in') bad('L34', `signed out: "${r.signedOut.txt}"`);
+    errs.forEach(m => bad('L34', 'page error: ' + m)); await ctx.close();
+  }
+
   // ── L33 ──
   if (run('L33')) {
     counts.L33 = 1;
@@ -1039,7 +1074,7 @@ try {
     errs.forEach(m => bad('L32', 'page error: ' + m)); await ctx.close();
   }
 } finally { await browser.close(); if (srv) srv.kill(); }
-for (const id of ['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8', 'L9', 'L10', 'L11', 'L12', 'L13', 'L14', 'L15', 'L16', 'L17', 'L18', 'L19', 'L20', 'L21', 'L22', 'L23', 'L24', 'L25', 'L26', 'L27', 'L28', 'L29', 'L30', 'L31', 'L32', 'L33']) { if (ONLY && !ONLY.includes(id)) continue; const fs_ = findings.filter(f => f.id === id); process.stdout.write(`  ${fs_.length ? '✗' : '✓'} ${id}${fs_.length ? '  — ' + fs_.length + ' finding(s)' : ''}\n`); }
+for (const id of ['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8', 'L9', 'L10', 'L11', 'L12', 'L13', 'L14', 'L15', 'L16', 'L17', 'L18', 'L19', 'L20', 'L21', 'L22', 'L23', 'L24', 'L25', 'L26', 'L27', 'L28', 'L29', 'L30', 'L31', 'L32', 'L33', 'L34']) { if (ONLY && !ONLY.includes(id)) continue; const fs_ = findings.filter(f => f.id === id); process.stdout.write(`  ${fs_.length ? '✗' : '✓'} ${id}${fs_.length ? '  — ' + fs_.length + ' finding(s)' : ''}\n`); }
 const seen = new Set(); findings.forEach(f => { const k = f.id + f.m; if (seen.has(k)) return; seen.add(k); process.stdout.write(`     [${f.id}] ${f.m}\n`); });
 if (!findings.length) process.stdout.write('\nLabbook audit invariants hold.\n');
 process.exit(findings.length ? 1 : 0);
